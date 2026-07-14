@@ -1045,6 +1045,8 @@ router.get(
       res.status(500).json({ error: "Failed to fetch customer" });
     }
   },
+);
+
 // ── PATCH /api/msp/customers/:id ──────────────────────────────────────────────
 // Edit an existing customer. Scoped to the authenticated MSP (unless PlatformAdmin).
 const editCustomerSchema = z.object({
