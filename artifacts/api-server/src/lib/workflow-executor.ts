@@ -2298,13 +2298,25 @@ async function executeNode(
           // ── Run Workflow: execute a published sub-workflow synchronously ─────
           const globalMaxDepth = Math.max(1, parseInt(process.env.RUN_WORKFLOW_MAX_DEPTH ?? "5", 10) || 5);
           const workflowIdRaw = node.data.workflowId as string | number | undefined;
-          const subDefId = typeof workflowIdRaw === "number"
+          let subDefId = typeof workflowIdRaw === "number"
             ? workflowIdRaw
             : parseInt(String(workflowIdRaw ?? ""), 10);
 
+          const workflowNameRaw = node.data.workflowName as string | undefined;
+
+          if (isNaN(subDefId) && workflowNameRaw?.trim()) {
+            const resolvedRows = await db.select({ id: wfDefinitionsTable.id })
+              .from(wfDefinitionsTable)
+              .where(eq(wfDefinitionsTable.name, workflowNameRaw.trim()))
+              .limit(1);
+            if (resolvedRows[0]) {
+              subDefId = resolvedRows[0].id;
+            }
+          }
+
           if (isNaN(subDefId)) {
             nodeError = true;
-            output = { error: "run_workflow requires a workflowId" };
+            output = { error: workflowNameRaw?.trim() ? `run_workflow: no workflow found with name "${workflowNameRaw.trim()}"` : "run_workflow requires a workflowId or workflowName" };
           } else {
             const rawDepth = payload._depth;
             const currentDepth = Math.max(0, Number.isInteger(rawDepth) ? (rawDepth as number) : 0);

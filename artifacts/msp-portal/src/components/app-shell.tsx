@@ -429,12 +429,16 @@ function TenantSwitcher({
               className="text-sm gap-2"
               onSelect={() => {
                 if (t.type === "msp") {
-                  if (t.slug) {
-                    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                    window.location.href = `${base}/${t.slug}/dashboard`;
-                  } else {
-                    navigate("/msps");
-                  }
+                  fetchWithAuth(`/api/admin/msps/${t.id}/impersonate`, { method: "POST" })
+                    .then(async (res) => {
+                      if (!res.ok) return;
+                      const data = (await res.json()) as { token?: string };
+                      if (data.token) {
+                        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                        window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                      }
+                    })
+                    .catch(() => {});
                   return;
                 }
                 // Customer impersonation: issue a single-use token, then open

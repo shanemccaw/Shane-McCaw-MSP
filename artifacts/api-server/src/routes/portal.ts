@@ -6214,6 +6214,47 @@ router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res
   res.json({ token, client: { id: client.id, email: client.email, name: client.name } });
 });
 
+// PlatformAdmin: impersonate an MSP by finding that MSP's MSPAdmin user and
+// issuing a single-use impersonation token, consumed by /auth/impersonate-exchange
+// (the exchange endpoint is already generic — it derives full MSP claims from
+// the target user, so no changes are needed there).
+router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request, res: Response) => {
+  const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+  if (isNaN(mspId)) { res.status(400).json({ error: "Invalid MSP ID" }); return; }
+
+  const [msp] = await db.select().from(mspsTable).where(eq(mspsTable.id, mspId)).limit(1);
+  if (!msp) { res.status(404).json({ error: "MSP not found" }); return; }
+
+  const [mspAdmin] = await db.select().from(mspUsersTable)
+    .where(and(eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.mspRole, "MSPAdmin")))
+    .limit(1);
+  if (!mspAdmin) { res.status(404).json({ error: "No MSPAdmin user found for this MSP" }); return; }
+
+  const impersonateAdminId = req.user!.id;
+  const { randomBytes: randomBytesMsp } = await import("crypto");
+  const mspToken = randomBytesMsp(32).toString("hex");
+  const mspExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+  await db.insert(impersonationTokensTable).values({
+    token: mspToken,
+    clientUserId: mspAdmin.userId,
+    adminUserId: impersonateAdminId,
+    expiresAt: mspExpiresAt,
+  });
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "admin_impersonated_msp",
+    entityType: "msp",
+    entityId: msp.id,
+    entityLabel: msp.name,
+  });
+
+  res.json({ token: mspToken, msp: { id: msp.id, name: msp.name, slug: msp.slug } });
+});
+
 // ─── MSP: Impersonation ──────────────────────────────────────────────────────
 // MSPAdmin and MSPOperator can impersonate a customer within their own MSP.
 // PlatformAdmin can impersonate any customer across any MSP.

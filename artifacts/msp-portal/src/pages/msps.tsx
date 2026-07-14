@@ -289,10 +289,18 @@ export default function MspsPage() {
                           size="icon"
                           className="size-7"
                           onClick={() => {
-                            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                            window.location.href = `${base}/${m.slug}/dashboard`;
+                            fetchWithAuth(`/api/admin/msps/${m.id}/impersonate`, { method: "POST" })
+                              .then(async (res) => {
+                                if (!res.ok) return;
+                                const data = (await res.json()) as { token?: string };
+                                if (data.token) {
+                                  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                                  window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                                }
+                              })
+                              .catch(() => {});
                           }}
-                          title={`Go to ${m.name} dashboard`}
+                          title={`Impersonate ${m.name}`}
                         >
                           <ExternalLink className="size-3.5" />
                         </Button>
