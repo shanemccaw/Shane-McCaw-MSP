@@ -273,4 +273,4 @@ export function PendingApprovalsPage() {
       />
     </div>
   );
-}
+} export default PendingApprovalsPage;
