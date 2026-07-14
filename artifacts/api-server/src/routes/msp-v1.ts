@@ -242,7 +242,54 @@ router.get(
         )
         .orderBy(desc(pendingApprovalsTable.createdAt));
 
-      res.json(rows.map(r => ({ ...r.approval, definitionName: r.defName })));
+      const { mspSowsTable, mspCustomersTable } = await import("@workspace/db");
+      const enrichedRows = [];
+
+      for (const r of rows) {
+        const approval = r.approval;
+        const context = (approval.context as Record<string, any>) ?? {};
+        let sowDetails = null;
+        let customerDetails = null;
+
+        if (context.sowId) {
+          const [sow] = await db
+            .select()
+            .from(mspSowsTable)
+            .where(eq(mspSowsTable.sowId, context.sowId))
+            .limit(1);
+
+          if (sow) {
+            sowDetails = {
+              title: sow.title,
+              amountCents: sow.amountCents,
+              currency: sow.currency,
+            };
+
+            if (sow.customerId) {
+              const [customer] = await db
+                .select({ name: mspCustomersTable.name })
+                .from(mspCustomersTable)
+                .where(eq(mspCustomersTable.id, sow.customerId))
+                .limit(1);
+              if (customer) {
+                customerDetails = {
+                  id: sow.customerId,
+                  name: customer.name,
+                };
+              }
+            }
+          }
+        }
+
+        enrichedRows.push({
+          ...approval,
+          definitionName: r.defName,
+          sow: sowDetails,
+          customer: customerDetails,
+        });
+      }
+
+      res.json(enrichedRows);
     } catch (err) {
       req.log.error({ err }, "pending-approvals (msp): list failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to list pending approvals");
