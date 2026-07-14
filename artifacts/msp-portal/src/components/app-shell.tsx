@@ -449,7 +449,8 @@ function TenantSwitcher({
                     if (!res.ok) return;
                     const data = (await res.json()) as { token?: string };
                     if (data.token) {
-                      window.open(`/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                      window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
                     }
                   })
                   .catch(() => {});
