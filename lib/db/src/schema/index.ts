@@ -2021,6 +2021,7 @@ export interface WfNode {
     | "kanban_auto_fire"
     | "msp_dunning_advance"
     | "msp_overage_meter"
+    | "alert_evaluate_rules"
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

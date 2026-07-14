@@ -13,7 +13,7 @@ index 5eb60ed..ca6df04 100644
 @@ -174,8 +174,10 @@ app.listen(port, (err) => {
    });
  
-   // ── Platform Alert Engine ─────────────────────────────────────────────────
+   // ── Platform Alert Engine ────────────────────────────────────────────────
 -  // Ensures alert tables, seeds default rules, starts polling every 5 minutes.
 -  initAlertEngine(5 * 60 * 1000).catch((err: unknown) => {
 +  // Ensures alert tables exist and default rules are seeded. Evaluation itself
@@ -38,7 +38,7 @@ index b862257..a570eb7 100644
      rule_key: string;
 @@ -452,43 +452,19 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
  
- // ── Public API ────────────────────────────────────────────────────────────────
+ // ── Public API ───────────────────────────────────────────────────────────────
  
 -let alertInterval: ReturnType<typeof setInterval> | null = null;
 -
@@ -136,7 +136,7 @@ index 9b7beb0..11e1bd1 100644
 +      return { dryRun: true, evaluated: false, note: "dry run — alert rule evaluation skipped" };
 +
      case "kanban_auto_fire":
-       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "\", note: \"dry run — kanban auto-fire skipped" };
+       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
  
 @@ -5632,6 +5636,18 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
          break;

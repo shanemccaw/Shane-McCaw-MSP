@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { initAlertEngine } from "./lib/alert-engine";
+import { ensureAlertEngineReady } from "./lib/alert-engine";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
@@ -174,8 +174,10 @@ app.listen(port, (err) => {
   });
 
   // ── Platform Alert Engine ─────────────────────────────────────────────────
-  // Ensures alert tables, seeds default rules, starts polling every 5 minutes.
-  initAlertEngine(5 * 60 * 1000).catch((err: unknown) => {
+  // Ensures alert tables exist and default rules are seeded. Evaluation itself
+  // now runs via the "__system__: Alert Rule Evaluation" seeded Workflow (see
+  // seed-system-workflows.ts) instead of a setInterval poller.
+  ensureAlertEngineReady().catch((err: unknown) => {
     logger.warn({ err }, "alert-engine: init failed (non-fatal)");
   });
 

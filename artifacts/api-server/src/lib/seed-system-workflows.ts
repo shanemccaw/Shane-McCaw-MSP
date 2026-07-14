@@ -521,6 +521,23 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
+    name: "__system__: Alert Rule Evaluation",
+    description: "Runs every 5 minutes to evaluate platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate) and deliver alerts via Exchange Online email and browser push. Replaces the old alert-engine.ts setInterval poller.",
+    triggerType: "schedule",
+    cron: "*/5 * * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start",               position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
+        { id: "act",   type: "alert_evaluate_rules", position: { x: 100, y: 230 }, data: { nodeType: "alert_evaluate_rules", label: "Evaluate Alert Rules" } },
+        { id: "end",   type: "end",                 position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "act" },
+        { id: "e2", source: "act",   target: "end" },
+      ],
+    },
+  },
+  {
     name: "__system__: Workflow Cleanup",
     description: "Nightly job (03:00 UTC) that deletes workflow runs older than 90 days.",
     triggerType: "schedule",

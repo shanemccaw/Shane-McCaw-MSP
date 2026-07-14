@@ -80,6 +80,7 @@ import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
 import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
@@ -863,6 +864,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "reconcile_orphaned_runs":
       return { dryRun: true, reconciled: false, task: (node.data.task as string | undefined) ?? "reconcile_orphaned_runs", note: "dry run — reconciliation skipped" };
+
+    case "alert_evaluate_rules":
+      return { dryRun: true, evaluated: false, note: "dry run — alert rule evaluation skipped" };
 
     case "kanban_auto_fire":
       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
@@ -5629,6 +5633,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           logger.info("wf-executor: reconcile_orphaned_runs completed");
           output = { reconciled: true, task: rorTask };
         }
+        break;
+      }
+
+      case "alert_evaluate_rules": {
+        await runAlertRuleEvaluation();
+        logger.info("wf-executor: alert_evaluate_rules completed");
+        output = { evaluated: true };
         break;
       }
 

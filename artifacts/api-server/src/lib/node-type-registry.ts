@@ -624,6 +624,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Reconciles orphaned workflow runs — no AI",
   },
   {
+    nodeType: "alert_evaluate_rules",
+    isAIDependent: false,
+    description: "Evaluates platform alert rules and delivers via Exchange Online / push — no AI",
+  },
+  {
     nodeType: "kanban_auto_fire",
     isAIDependent: false,
     description: "Auto-fires kanban card actions — no AI",
