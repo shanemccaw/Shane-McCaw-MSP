@@ -1,505 +1,335 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  Menu, X, Rocket, ChevronDown,
-  LayoutGrid, Building2, GraduationCap, Sparkles, FolderOpen, Zap,
-  Shield, ShieldCheck, Cloud, Activity, ArrowLeftRight, Users,
-  Star, TrendingUp, Award,
-  Info, Tag, Mail, ScanSearch, ClipboardList,
+  Menu, X, ChevronDown, ShieldCheck, Zap, Activity,
+  FileText, Shield, Layers, HelpCircle, ArrowRight
 } from "lucide-react";
-import { CTAButton } from "./CTAButton";
-import { cn } from "@/lib/utils";
 
-// ─── Nav icon helper ───────────────────────────────────────────────────────────
-function getNavIcon(label: string): React.ReactNode {
-  const l = label.toLowerCase();
-  if (l.includes("copilot"))                                  return <Sparkles    className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("sharepoint"))                               return <FolderOpen  className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("power platform") || l.includes("quick-start") || l.includes("power automate")) return <Zap className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("security") || l.includes("compliance"))    return <ShieldCheck className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("governance"))                               return <Shield      className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("migration"))                                return <ArrowLeftRight className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("training") || l.includes("enablement"))    return <GraduationCap className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("cloud"))                                    return <Cloud       className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("health") || l.includes("audit"))           return <Activity    className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("tenant"))                                   return <ScanSearch  className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("teams"))                                    return <Users       className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("architecture") || l.includes("strategy") || l.includes("m365") || l.includes("microsoft 365")) return <Building2 className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("essentials"))                               return <Star        className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("growth"))                                   return <TrendingUp  className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("enterprise"))                               return <Award       className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("start here"))                               return <Rocket       className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("quiz"))                                     return <ClipboardList className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("about"))                                    return <Info        className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("pric"))                                     return <Tag         className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("contact"))                                  return <Mail        className="w-5 h-5" aria-hidden="true" />;
-  return                                                             <LayoutGrid  className="w-5 h-5" aria-hidden="true" />;
-}
-
-/** Auto-adds icons to a nav array by calling getNavIcon on each item's label. */
-function withIcons(items: Array<Omit<NavItem, "icon">>): NavItem[] {
-  return items.map((item) => ({ ...item, icon: getNavIcon(item.label) }));
-}
-
-// ─── Nav data ─────────────────────────────────────────────────────────────────
-interface NavItem { label: string; href: string; icon?: React.ReactNode; featured?: boolean; badge?: string; }
-
-const SERVICES_ITEMS: NavItem[] = withIcons([
-  { label: "Service Overview",              href: "/services" },
-  { label: "M365 Architecture & Strategy",  href: "/services/microsoft-365" },
-  { label: "M365 Training",                 href: "/services/m365-training" },
-  { label: "Copilot & AI",                  href: "/services/copilot-ai" },
-  { label: "SharePoint",                    href: "/services/sharepoint" },
-  { label: "Power Platform",                href: "/services/power-platform" },
-  { label: "Governance",                    href: "/services/governance" },
-  { label: "Cloud Migration",               href: "/services/cloud-migration" },
-]);
-
-const RETAINER_ITEMS: NavItem[] = withIcons([
-  { label: "All Retainer Plans",   href: "/retainers" },
-  { label: "Start Here",           href: "/retainer-quiz" },
-  { label: "Architect Essentials", href: "/retainers/architect-essentials" },
-  { label: "Architect Growth",     href: "/retainers/architect-growth" },
-  { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
-]);
-
-const ASSESSMENTS_ITEMS: NavItem[] = [
-  { label: "Free Copilot Readiness Snapshot", href: "/lp/copilot-readiness-lead-generation-campaign", featured: true, badge: "FREE" },
-  ...withIcons([
-    { label: "Copilot Readiness Assessment",     href: "/copilot-quiz" },
-    { label: "M365 Health Assessment",           href: "/m365-health-quiz" },
-    { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz" },
-    { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz" },
-    { label: "Security & Compliance Assessment", href: "/security-compliance-quiz" },
-    { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz" },
-    { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz" },
-    { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
-  ]),
-];
-
-const COMPANY_ITEMS: NavItem[] = withIcons([
-  { label: "About",        href: "/about" },
-  { label: "How We Work",  href: "/how-it-works" },
-  { label: "Resources",    href: "/resources" },
-  { label: "Contact",      href: "/contact" },
-]);
-
-// ─── Menu key type ─────────────────────────────────────────────────────────────
-type MenuKey = "services" | "retainers" | "assessments" | "company";
-
-// ─── Dropdown trigger ──────────────────────────────────────────────────────────
-function DropdownTrigger({
-  menuKey, label, isActive, isOpen, onToggle, triggerRef,
-}: {
-  menuKey: MenuKey;
-  label: string;
-  isActive: boolean;
-  isOpen: boolean;
-  onToggle: (key: MenuKey) => void;
-  triggerRef?: React.RefObject<HTMLButtonElement | null>;
-}) {
-  return (
-    <button
-      ref={triggerRef}
-      onClick={() => onToggle(menuKey)}
-      aria-haspopup="true"
-      aria-expanded={isOpen}
-      className={cn(
-        "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-        isActive || isOpen
-          ? "text-primary"
-          : "text-white/80 hover:text-white hover:bg-white/5"
-      )}
-    >
-      {label}
-      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isOpen && "rotate-180")} />
-    </button>
-  );
-}
-
-// ─── Dropdown panel ────────────────────────────────────────────────────────────
-function DropdownPanel({
-  items, location, twoCol, width, onClose, triggerRef,
-}: {
-  items: NavItem[];
-  location: string;
-  twoCol?: boolean;
-  width?: string;
-  onClose: () => void;
-  triggerRef?: React.RefObject<HTMLButtonElement | null>;
-}) {
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // Arrow key navigation within the open dropdown
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!panelRef.current) return;
-    const focusable = Array.from(
-      panelRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]')
-    );
-    const idx = focusable.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const next = focusable[(idx + 1) % focusable.length];
-      next?.focus();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const prev = focusable[(idx - 1 + focusable.length) % focusable.length];
-      prev?.focus();
-    } else if (e.key === "Escape") {
-      onClose();
-      triggerRef?.current?.focus();
-    } else if (e.key === "Tab") {
-      onClose();
-    }
-  }, [onClose, triggerRef]);
-
-  return (
-    <div
-      ref={panelRef}
-      role="menu"
-      onKeyDown={handleKeyDown}
-      className={cn(
-        "absolute top-full left-0 mt-1.5 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5",
-        width ?? (twoCol ? "w-[28rem]" : "w-60")
-      )}
-    >
-      <div className={cn(twoCol && "grid grid-cols-2")}>
-        {items.map((item) => (
-          item.featured ? (
-            <Link
-              key={`${item.href}::${item.label}`}
-              href={item.href}
-              role="menuitem"
-              tabIndex={0}
-              onClick={onClose}
-              data-track="nav"
-              className={cn(
-                "col-span-2 flex items-center gap-3 px-4 py-2.5 mx-1.5 my-1 rounded-lg text-sm font-semibold transition-colors focus:outline-none",
-                "bg-[#00B4D8]/10 border border-[#00B4D8]/25 hover:bg-[#00B4D8]/20",
-                location === item.href ? "text-[#00B4D8]" : "text-[#00B4D8]"
-              )}
-            >
-              <span className="shrink-0 w-5 h-5 opacity-70">⚡</span>
-              <span className="flex-1">{item.label}</span>
-              {item.badge && (
-                <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-[#00B4D8] text-[#0A2540]">
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          ) : (
-            <Link
-              key={`${item.href}::${item.label}`}
-              href={item.href}
-              role="menuitem"
-              tabIndex={0}
-              onClick={onClose}
-              data-track="nav"
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 text-sm transition-colors focus:outline-none focus:bg-white/10",
-                location === item.href
-                  ? "text-primary font-medium"
-                  : "text-white/75 hover:text-white hover:bg-white/5"
-              )}
-            >
-              {item.icon && <span className="shrink-0 w-5 h-5 opacity-60">{item.icon}</span>}
-              {!item.icon && <span className="shrink-0 w-5 h-5" aria-hidden="true" />}
-              {item.label}
-            </Link>
-          )
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Header ───────────────────────────────────────────────────────────────────
-export function Header() {
+export default function Header() {
   const [location] = useLocation();
-  const isHome = location === "/";
-  const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
-  const [mobileExpanded, setMobileExpanded] = useState<Record<string, boolean>>({});
-  const navRef = useRef<HTMLUListElement>(null);
+  const [assessmentsDropdownOpen, setAssessmentsDropdownOpen] = useState(false);
+  const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
 
-  // Per-trigger refs so Escape can return focus to the button that opened the menu
-  const triggerRefs: Record<MenuKey, React.RefObject<HTMLButtonElement | null>> = {
-    services:    useRef<HTMLButtonElement>(null),
-    retainers:   useRef<HTMLButtonElement>(null),
-    assessments: useRef<HTMLButtonElement>(null),
-    company:     useRef<HTMLButtonElement>(null),
+  const assessmentsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const servicesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnterAssessments = () => {
+    if (assessmentsTimeoutRef.current) clearTimeout(assessmentsTimeoutRef.current);
+    setAssessmentsDropdownOpen(true);
   };
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  const handleMouseLeaveAssessments = () => {
+    assessmentsTimeoutRef.current = setTimeout(() => {
+      setAssessmentsDropdownOpen(false);
+    }, 150);
+  };
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) {
-        setOpenMenu(null);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, []);
+  const handleMouseEnterServices = () => {
+    if (servicesTimeoutRef.current) clearTimeout(servicesTimeoutRef.current);
+    setServicesDropdownOpen(true);
+  };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpenMenu((prev) => {
-          if (prev) triggerRefs[prev].current?.focus();
-          return null;
-        });
-        setMobileMenuOpen(false);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const handleMouseLeaveServices = () => {
+    servicesTimeoutRef.current = setTimeout(() => {
+      setServicesDropdownOpen(false);
+    }, 150);
+  };
 
-  useEffect(() => {
+  const closeMobileMenu = useCallback(() => {
     setMobileMenuOpen(false);
-    setOpenMenu(null);
-  }, [location]);
-
-  function toggle(key: MenuKey) {
-    setOpenMenu((prev) => (prev === key ? null : key));
-  }
-
-  function closeAll() { setOpenMenu(null); }
-
-  function toggleMobileSection(key: string) {
-    setMobileExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  const isMonitoringActive  = location === "/monitoring";
-  const isServicesActive    = location.startsWith("/services");
-  const isRetainersActive   = location.startsWith("/retainers") || location === "/retainer-quiz";
-  const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
-  const isMspActive         = location === "/msp";
-  const isCompanyActive     = ["/about", "/contact", "/how-it-works", "/resources"].includes(location) || location.startsWith("/how-it-works") || location.startsWith("/resources");
-
-  const headerClasses = cn(
-    "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-    isHome && !scrolled
-      ? "bg-transparent py-5"
-      : "bg-[#0A2540]/95 backdrop-blur-md py-3.5 shadow-[0_1px_0_rgba(255,255,255,0.08)]"
-  );
-
-  const MOBILE_SECTIONS = [
-    { key: "services",    label: "Services",    items: SERVICES_ITEMS },
-    { key: "retainers",   label: "Retainers",   items: RETAINER_ITEMS },
-    { key: "assessments", label: "Assessments", items: ASSESSMENTS_ITEMS },
-    { key: "company",     label: "Company",     items: COMPANY_ITEMS },
-  ];
+  }, []);
 
   return (
-    <header className={headerClasses}>
-      <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-6">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 text-white hover:opacity-90 transition-opacity shrink-0">
-          <Rocket className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-base tracking-tight">Shane McCaw Consulting</span>
-        </Link>
+    <header className="fixed top-0 left-0 right-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 sm:h-20">
+          
+          {/* Brand Logo / Authority */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+              <ShieldCheck className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-lg text-white tracking-tight leading-none group-hover:text-blue-400 transition-colors">
+                Shane McCaw
+              </span>
+              <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">
+                M365 Governance SaaS
+              </span>
+            </div>
+          </Link>
 
-        {/* Desktop nav */}
-        <nav className="hidden lg:flex flex-1 items-center justify-between" aria-label="Main navigation" role="navigation">
-          <ul ref={navRef} className="flex items-center gap-0.5">
-
-            {/* Monitoring — direct link */}
-            <li>
-              <Link
-                href="/monitoring"
-                data-track="nav"
-                className={cn(
-                  "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  isMonitoringActive
-                    ? "text-primary"
-                    : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                Monitoring
-              </Link>
-            </li>
-
-            {/* Retainers */}
-            <li className="relative">
-              <DropdownTrigger menuKey="retainers" label="Retainers" isActive={isRetainersActive} isOpen={openMenu === "retainers"} onToggle={toggle} triggerRef={triggerRefs.retainers} />
-              {openMenu === "retainers" && (
-                <DropdownPanel items={RETAINER_ITEMS} location={location} width="w-56" onClose={closeAll} triggerRef={triggerRefs.retainers} />
-              )}
-            </li>
-
-            {/* Services */}
-            <li className="relative">
-              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} triggerRef={triggerRefs.services} />
-              {openMenu === "services" && (
-                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.services} />
-              )}
-            </li>
-
-            {/* Assessments */}
-            <li className="relative">
-              <DropdownTrigger menuKey="assessments" label="Assessments" isActive={isAssessmentsActive} isOpen={openMenu === "assessments"} onToggle={toggle} triggerRef={triggerRefs.assessments} />
-              {openMenu === "assessments" && (
-                <DropdownPanel items={ASSESSMENTS_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.assessments} />
-              )}
-            </li>
-
-            {/* MSP/Partners — direct link */}
-            <li>
-              <Link
-                href="/msp"
-                data-track="nav"
-                className={cn(
-                  "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  isMspActive
-                    ? "text-primary"
-                    : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                MSP/Partners
-              </Link>
-            </li>
-
-            {/* Company dropdown (About / Resources / Contact) */}
-            <li className="relative">
-              <DropdownTrigger menuKey="company" label="Company" isActive={isCompanyActive} isOpen={openMenu === "company"} onToggle={toggle} triggerRef={triggerRefs.company} />
-              {openMenu === "company" && (
-                <DropdownPanel items={COMPANY_ITEMS} location={location} width="w-44" onClose={closeAll} triggerRef={triggerRefs.company} />
-              )}
-            </li>
-
-          </ul>
-
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            <a
-              href="/portal/"
-              className="text-sm font-semibold px-4 py-2 rounded-lg border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center gap-1">
+            <Link
+              href="/"
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                location === "/" ? "text-blue-400 bg-blue-500/10" : "text-slate-300 hover:text-white hover:bg-slate-900"
+              }`}
             >
-              Client Login
-            </a>
-            <CTAButton href="/assessment" className="text-sm px-5 py-2 whitespace-nowrap">Free Assessment</CTAButton>
-          </div>
-        </nav>
+              Home
+            </Link>
 
-        {/* Mobile toggle */}
-        <button
-          className="lg:hidden ml-auto text-white/80 hover:text-white transition-colors"
-          onClick={() => setMobileMenuOpen((o) => !o)}
-          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-          aria-expanded={mobileMenuOpen}
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+            {/* Assessments Dropdown */}
+            <div
+              className="relative"
+              onMouseEnter={handleMouseEnterAssessments}
+              onMouseLeave={handleMouseLeaveAssessments}
+            >
+              <Link
+                href="/assessments"
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  location.startsWith("/assessments")
+                    ? "text-blue-400 bg-blue-500/10"
+                    : "text-slate-300 hover:text-white hover:bg-slate-900"
+                }`}
+              >
+                <span>Assessments</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${assessmentsDropdownOpen ? "rotate-180 text-blue-400" : "text-slate-400"}`} />
+              </Link>
+
+              {assessmentsDropdownOpen && (
+                <div className="absolute top-full left-0 w-80 mt-1 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-2 z-50">
+                  <Link
+                    href="/assessments"
+                    onClick={() => setAssessmentsDropdownOpen(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-800/80 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 shrink-0">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white group-hover:text-blue-400 transition-colors flex items-center gap-1">
+                        Paid M365 Assessments
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Fixed-price diagnostic deliverables & instant execution.
+                      </p>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="/assessments?tab=free"
+                    onClick={() => setAssessmentsDropdownOpen(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-800/80 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
+                      <Activity className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                        Free Telemetry Snapshots
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Instant tenant risk scoring and lead telemetry.
+                      </p>
+                    </div>
+                  </Link>
+
+                  <div className="border-t border-slate-800/80 my-1 pt-1">
+                    <Link
+                      href="/copilot-quiz"
+                      onClick={() => setAssessmentsDropdownOpen(false)}
+                      className="flex items-center justify-between p-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
+                    >
+                      <span>Copilot Readiness Quiz</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                    <Link
+                      href="/m365-health-quiz"
+                      onClick={() => setAssessmentsDropdownOpen(false)}
+                      className="flex items-center justify-between p-2 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors"
+                    >
+                      <span>M365 Health Quiz</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Services Dropdown */}
+            <div
+              className="relative"
+              onMouseEnter={handleMouseEnterServices}
+              onMouseLeave={handleMouseLeaveServices}
+            >
+              <button
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  location.startsWith("/services") || location === "/monitoring" || location === "/projects"
+                    ? "text-blue-400 bg-blue-500/10"
+                    : "text-slate-300 hover:text-white hover:bg-slate-900"
+                }`}
+              >
+                <span>Services & Platform</span>
+                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${servicesDropdownOpen ? "rotate-180 text-blue-400" : "text-slate-400"}`} />
+              </button>
+
+              {servicesDropdownOpen && (
+                <div className="absolute top-full left-0 w-80 mt-1 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-2 z-50">
+                  <Link
+                    href="/monitoring"
+                    onClick={() => setServicesDropdownOpen(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-800/80 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 shrink-0">
+                      <Shield className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white group-hover:text-indigo-400 transition-colors">
+                        Tenant Monitoring Engine
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        24/7 automated drift, SLA & security tracking.
+                      </p>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="/projects"
+                    onClick={() => setServicesDropdownOpen(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-800/80 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 shrink-0">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white group-hover:text-blue-400 transition-colors">
+                        Fixed-Price Projects
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Structured migrations, Copilot rollouts & hardening.
+                      </p>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="/services"
+                    onClick={() => setServicesDropdownOpen(false)}
+                    className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-800/80 transition-colors group"
+                  >
+                    <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white group-hover:text-amber-400 transition-colors">
+                        Architect Retainers
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Dedicated M365 governance advisory & support.
+                      </p>
+                    </div>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <Link
+              href="/msp"
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                location === "/msp" ? "text-blue-400 bg-blue-500/10" : "text-slate-300 hover:text-white hover:bg-slate-900"
+              }`}
+            >
+              MSP Resellers
+            </Link>
+
+            <Link
+              href="/about"
+              className={`px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                location === "/about" ? "text-blue-400 bg-blue-500/10" : "text-slate-300 hover:text-white hover:bg-slate-900"
+              }`}
+            >
+              About Shane
+            </Link>
+          </nav>
+
+          {/* Right Action CTA */}
+          <div className="hidden md:flex items-center gap-3">
+            <Link
+              href="/assessments"
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5"
+            >
+              <span>Explore M365 Catalog</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          {/* Mobile Menu Toggle Button */}
+          <div className="flex md:hidden items-center">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
+              aria-label="Toggle Navigation Menu"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
+
+        </div>
       </div>
 
-      {/* Mobile menu */}
+      {/* Mobile Menu Content */}
       {mobileMenuOpen && (
-        <div
-          className="lg:hidden absolute top-full left-0 right-0 bg-[#0A2540] border-t border-white/10 shadow-xl overflow-y-auto max-h-[calc(100vh-4rem)]"
-          role="navigation"
-          aria-label="Mobile navigation"
-        >
-          <div className="px-5 py-3 space-y-0.5">
+        <div className="md:hidden bg-slate-950 border-b border-slate-800 px-4 pt-2 pb-6 space-y-3">
+          <Link
+            href="/"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            Home
+          </Link>
+          <Link
+            href="/assessments"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-blue-400 hover:bg-slate-900"
+          >
+            M365 Assessments & Snapshots
+          </Link>
+          <Link
+            href="/monitoring"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            Tenant Monitoring
+          </Link>
+          <Link
+            href="/projects"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            Fixed-Price Projects
+          </Link>
+          <Link
+            href="/services"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            Architect Retainers
+          </Link>
+          <Link
+            href="/msp"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            MSP Resellers
+          </Link>
+          <Link
+            href="/about"
+            onClick={closeMobileMenu}
+            className="block px-3 py-2 rounded-lg text-base font-medium text-slate-200 hover:bg-slate-900"
+          >
+            About Shane
+          </Link>
 
-            {MOBILE_SECTIONS.map(({ key, label, items }) => (
-              <div key={key}>
-                <button
-                  onClick={() => toggleMobileSection(key)}
-                  aria-expanded={mobileExpanded[key] ?? false}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white/40 hover:text-white/60 transition-colors"
-                >
-                  {label}
-                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", mobileExpanded[key] && "rotate-180")} />
-                </button>
-
-                {mobileExpanded[key] && (
-                  <div className="pb-2">
-                    {items.map((item) => (
-                      item.featured ? (
-                        <Link
-                          key={`${item.href}::${item.label}`}
-                          href={item.href}
-                          onClick={() => setMobileMenuOpen(false)}
-                          className="flex items-center gap-2 px-3 py-2 mx-1 mb-1 rounded-lg text-sm font-semibold text-[#00B4D8] bg-[#00B4D8]/10 border border-[#00B4D8]/25 hover:bg-[#00B4D8]/20 transition-colors"
-                        >
-                          <span className="shrink-0 opacity-70">⚡</span>
-                          <span className="flex-1">{item.label}</span>
-                          {item.badge && (
-                            <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-[#00B4D8] text-[#0A2540]">
-                              {item.badge}
-                            </span>
-                          )}
-                        </Link>
-                      ) : (
-                        <Link
-                          key={`${item.href}::${item.label}`}
-                          href={item.href}
-                          onClick={() => setMobileMenuOpen(false)}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                            location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
-                          )}
-                        >
-                          {item.icon && <span className="shrink-0 opacity-60">{item.icon}</span>}
-                          {item.label}
-                        </Link>
-                      )
-                    ))}
-                  </div>
-                )}
-
-                <div className="border-t border-white/10 mx-3" />
-              </div>
-            ))}
-
-            {/* Monitoring — standalone direct link */}
-            <div>
-              <Link
-                href="/monitoring"
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "flex items-center px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors",
-                  isMonitoringActive ? "text-primary" : "text-white/40 hover:text-white/60"
-                )}
-              >
-                Monitoring
-              </Link>
-              <div className="border-t border-white/10 mx-3" />
-            </div>
-
-            {/* MSP/Partners — standalone direct link */}
-            <div>
-              <Link
-                href="/msp"
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "flex items-center px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors",
-                  isMspActive ? "text-primary" : "text-white/40 hover:text-white/60"
-                )}
-              >
-                MSP/Partners
-              </Link>
-              <div className="border-t border-white/10 mx-3" />
-            </div>
-
-          </div>
-
-          <div className="px-5 py-4 border-t border-white/10 flex flex-col gap-2.5">
-            <a
-              href="/portal/"
-              className="w-full text-center font-semibold py-2.5 px-6 rounded-lg border border-white/20 text-white/80 hover:text-white hover:bg-white/5 transition-colors text-sm"
-              onClick={() => setMobileMenuOpen(false)}
+          <div className="pt-2">
+            <Link
+              href="/assessments"
+              onClick={closeMobileMenu}
+              className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold bg-blue-600 text-white block"
             >
-              Client Login
-            </a>
-            <CTAButton href="/assessment" className="w-full justify-center">Free Assessment</CTAButton>
+              Explore Catalog
+            </Link>
           </div>
         </div>
       )}

@@ -5241,6 +5241,23 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         req.log.warn({ err: purchaseEventErr, sessionId: session.id }, "onboarding_purchase: purchase.completed emission failed (non-fatal)");
       }
 
+      // Emit purchase.completed with serviceIds for the modern document-routing pipeline
+      try {
+        const purchaseClientId = webhookUserIdOverride
+          ?? (session.metadata?.userId ? parseInt(session.metadata.userId, 10) : NaN);
+        const rawServiceIds = session.metadata?.serviceIds; // comma-separated, e.g. "14" or "14,22"
+        if (!isNaN(purchaseClientId) && rawServiceIds) {
+          void emitWorkflowEvent("purchase.completed", {
+            clientId: purchaseClientId,
+            serviceIds: rawServiceIds,
+            tenantId: purchaseTenantId ?? undefined,
+          });
+          req.log.info({ clientId: purchaseClientId, serviceIds: rawServiceIds }, "onboarding_purchase: purchase.completed emitted");
+        }
+      } catch (purchaseEventErr) {
+        req.log.warn({ err: purchaseEventErr, sessionId: session.id }, "onboarding_purchase: purchase.completed emission failed (non-fatal)");
+      }
+
       // Backfill any orphaned diagnostic runs (created at consent, before msp_customers row existed)
       // with the real customerId now that provisioning has created the customer record.
       if (purchaseTenantId) {

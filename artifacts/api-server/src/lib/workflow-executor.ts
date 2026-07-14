@@ -2739,15 +2739,73 @@ async function executeNode(
           output = { mode, waitedUntil: ts ?? null };
         } else if (mode === "until_condition") {
           const expression = node.data.expression as string | undefined;
+          const abortExpression = node.data.abortExpression as string | undefined;
+          const refreshNodeIds = node.data.refreshNodeIds as string[] | undefined;
           const intervalMs = Math.max(1000, ((node.data.interval as number | undefined) ?? 30) * 1000);
           const timeoutMs = ((node.data.timeout as number | undefined) ?? 300) * 1000;
           const deadline = Date.now() + timeoutMs;
-          let met = false;
-          while (Date.now() < deadline) {
-            if (expression && evalCondition(expression, payload)) { met = true; break; }
-            await new Promise(r => setTimeout(r, Math.min(intervalMs, deadline - Date.now())));
+
+          let refreshNodes: WfNode[] = [];
+          if (refreshNodeIds && refreshNodeIds.length > 0) {
+            const runRows = await db.select({ versionId: wfRunsTable.versionId })
+              .from(wfRunsTable)
+              .where(eq(wfRunsTable.id, runId))
+              .limit(1);
+            const rRow = runRows[0];
+            if (rRow) {
+              const versionRows = await db.select({ graph: wfVersionsTable.graph })
+                .from(wfVersionsTable)
+                .where(eq(wfVersionsTable.id, rRow.versionId))
+                .limit(1);
+              const vRow = versionRows[0];
+              if (vRow) {
+                const graph = (vRow.graph as WfGraph) ?? { nodes: [], edges: [] };
+                refreshNodes = graph.nodes.filter(n => refreshNodeIds.includes(n.id));
+              }
+            }
           }
-          output = { mode, conditionMet: met };
+
+          let met = false;
+          let aborted = false;
+          while (Date.now() < deadline) {
+            if (refreshNodes.length > 0) {
+              for (const rNode of refreshNodes) {
+                try {
+                  const rResult = await executeNode(rNode, payload, runId, dryRun, inputValues, definitionId);
+                  const prevNodes = (payload.nodes as Record<string, unknown>) ?? {};
+                  const updatedNodes = { ...prevNodes, [rNode.id]: rResult.output };
+                  payload = {
+                    ...payload,
+                    ...rResult.output,
+                    nodes: updatedNodes,
+                    steps: updatedNodes,
+                  };
+                } catch (err) {
+                  logger.error({ runId, nodeId: node.id, refreshNodeId: rNode.id, err }, "wf-executor: delay node refresh failed for sub-node");
+                }
+              }
+            }
+
+            if (expression && evalCondition(expression, payload)) {
+              met = true;
+              break;
+            }
+
+            if (abortExpression && evalCondition(abortExpression, payload)) {
+              aborted = true;
+              break;
+            }
+
+            const waitTime = Math.min(intervalMs, deadline - Date.now());
+            if (waitTime <= 0) break;
+            await new Promise(r => setTimeout(r, waitTime));
+          }
+
+          if (aborted) {
+            output = { mode, conditionMet: false, aborted: true };
+          } else {
+            output = { mode, conditionMet: met };
+          }
         } else {
           output = { mode, note: "unknown delay mode" };
         }

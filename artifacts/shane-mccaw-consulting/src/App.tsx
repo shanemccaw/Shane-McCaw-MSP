@@ -1,158 +1,97 @@
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect, useRef } from "react";
-import { initTracker, trackPageview } from "@/lib/analytics";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/Home";
-import About from "@/pages/About";
-import Services from "@/pages/Services";
-import Resources from "@/pages/Resources";
-import Contact from "@/pages/Contact";
-import Book from "@/pages/Book";
-import Microsoft365 from "@/pages/services/Microsoft365";
-import CopilotAI from "@/pages/services/CopilotAI";
-import SharePoint from "@/pages/services/SharePoint";
-import PowerPlatform from "@/pages/services/PowerPlatform";
-import Governance from "@/pages/services/Governance";
-import CloudMigration from "@/pages/services/CloudMigration";
-import M365Training from "@/pages/services/M365Training";
-import SecurityHardening from "@/pages/services/SecurityHardening";
-import ArticlePage from "@/pages/ArticlePage";
-import CopilotQuiz from "@/pages/CopilotQuiz";
-import M365HealthQuiz from "@/pages/quizzes/M365HealthQuiz";
-import SharePointQuiz from "@/pages/quizzes/SharePointQuiz";
-import PowerPlatformQuiz from "@/pages/quizzes/PowerPlatformQuiz";
-import SecurityQuiz from "@/pages/quizzes/SecurityQuiz";
-import TeamsQuiz from "@/pages/quizzes/TeamsQuiz";
-import MigrationQuiz from "@/pages/quizzes/MigrationQuiz";
-import GovernanceQuiz from "@/pages/quizzes/GovernanceQuiz";
-import QuizResultsPage from "@/pages/QuizResultsPage";
-import ArchitectEssentials from "@/pages/retainers/ArchitectEssentials";
-import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
-import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
-import RetainersOverview from "@/pages/retainers/RetainersOverview";
-import RetainerQuiz from "@/pages/retainers/RetainerQuiz";
-import MicroOfferDetail from "@/pages/quick-wins/MicroOfferDetail";
-import QuickWinQuiz from "@/pages/QuickWinQuiz";
-import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
-import HowItWorks from "@/pages/HowItWorks";
-import TechnicalOverview from "@/pages/TechnicalOverview";
-import LandingPage from "@/pages/LandingPage";
-import Assessments from "@/pages/Assessments";
-import Checkout from "@/pages/Checkout";
-import OnboardingLink from "@/pages/OnboardingLink";
-import MicroOffers from "@/pages/MicroOffers";
-import Pricing from "@/pages/Pricing";
-import Privacy from "@/pages/Privacy";
+import React, { useEffect } from "react";
+import { Switch, Route, useLocation } from "wouter";
+import Home from "./pages/Home";
+import Assessments from "./pages/Assessments";
+import AssessmentDetail from "./pages/AssessmentDetail";
+import Services from "./pages/Services";
+import Projects from "./pages/Projects";
+import Monitoring from "./pages/Monitoring";
+import Pricing from "./pages/Pricing";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
+import Book from "./pages/Book";
+import Checkout from "./pages/Checkout";
+import HowItWorks from "./pages/HowItWorks";
+import TechnicalOverview from "./pages/TechnicalOverview";
+import Msp from "./pages/Msp";
+import Resources from "./pages/Resources";
+import ArticlePage from "./pages/ArticlePage";
+import OnboardingLink from "./pages/OnboardingLink";
+import Terms from "./pages/legal/Terms";
+import Privacy from "./pages/legal/Privacy";
+import NotFound from "./pages/not-found";
 
-import Assessment from "@/pages/Assessment";
-import AssessmentDetail from "@/pages/AssessmentDetail";
-import Monitoring from "@/pages/Monitoring";
-import Projects from "@/pages/Projects";
-import Msp from "@/pages/Msp";
-import Terms from "@/pages/legal/Terms";
-import LegalPrivacy from "@/pages/legal/Privacy";
+// Legacy Quiz Pages
+import CopilotQuiz from "./pages/CopilotQuiz";
+import M365HealthQuiz from "./pages/quizzes/M365HealthQuiz";
+import MigrationQuiz from "./pages/quizzes/MigrationQuiz";
+import SecurityQuiz from "./pages/quizzes/SecurityQuiz";
+import GovernanceQuiz from "./pages/quizzes/GovernanceQuiz";
+import PowerPlatformQuiz from "./pages/quizzes/PowerPlatformQuiz";
+import SharePointQuiz from "./pages/quizzes/SharePointQuiz";
+import TeamsQuiz from "./pages/quizzes/TeamsQuiz";
+import RetainerQuiz from "./pages/retainers/RetainerQuiz";
+import RetainerQuizResults from "./pages/retainers/RetainerQuizResults";
+import QuickWinQuiz from "./pages/QuickWinQuiz";
+import QuickWinResultsPage from "./pages/QuickWinResultsPage";
+import QuizResultsPage from "./pages/QuizResultsPage";
 
-const queryClient = new QueryClient();
-
-function ScrollToTop() {
-  const [location] = useLocation();
+// Helper for Legacy Route Redirects
+function RedirectToAssessments() {
+  const [, setLocation] = useLocation();
   useEffect(() => {
-    if (!window.location.hash) {
-      window.scrollTo(0, 0);
-    }
-  }, [location]);
+    setLocation("/assessments", { replace: true });
+  }, [setLocation]);
   return null;
 }
 
-function AnalyticsTracker() {
-  const [location] = useLocation();
-  const initialized = useRef(false);
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      initTracker();
-    }
-  }, []);
-  useEffect(() => {
-    void trackPageview(location);
-  }, [location]);
-  return null;
-}
-
-function Router() {
+export default function App() {
   return (
-    <>
-      <ScrollToTop />
-      <AnalyticsTracker />
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/about" component={About} />
-        <Route path="/assessment" component={Assessment} />
-        <Route path="/assessment/details" component={AssessmentDetail} />
-        <Route path="/monitoring" component={Monitoring} />
-        <Route path="/retainers" component={RetainersOverview} />
-        <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
-        <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
-        <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
-        <Route path="/projects" component={Projects} />
-        <Route path="/msp" component={Msp} />
-        <Route path="/services" component={Services} />
-        <Route path="/services/microsoft-365" component={Microsoft365} />
-        <Route path="/services/copilot-ai" component={CopilotAI} />
-        <Route path="/services/sharepoint" component={SharePoint} />
-        <Route path="/services/power-platform" component={PowerPlatform} />
-        <Route path="/services/governance" component={Governance} />
-        <Route path="/services/cloud-migration" component={CloudMigration} />
-        <Route path="/services/m365-training" component={M365Training} />
-        <Route path="/services/security-hardening" component={SecurityHardening} />
-        <Route path="/resources" component={Resources} />
-        <Route path="/resources/:slug" component={ArticlePage} />
-        <Route path="/contact" component={Contact} />
-        <Route path="/book" component={Book} />
-        <Route path="/checkout" component={Checkout} />
-        <Route path="/legal/terms" component={Terms} />
-        <Route path="/legal/privacy" component={LegalPrivacy} />
-        <Route path="/privacy" component={Privacy} />
-        <Route path="/quick-wins" component={MicroOffers} />
-        <Route path="/quick-wins/:slug" component={MicroOfferDetail} />
-        <Route path="/pricing" component={Pricing} />
-        <Route path="/copilot-quiz" component={CopilotQuiz} />
-        <Route path="/m365-health-quiz" component={M365HealthQuiz} />
-        <Route path="/sharepoint-readiness-quiz" component={SharePointQuiz} />
-        <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
-        <Route path="/security-compliance-quiz" component={SecurityQuiz} />
-        <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
-        <Route path="/migration-readiness-quiz" component={MigrationQuiz} />
-        <Route path="/governance-maturity-quiz" component={GovernanceQuiz} />
-        <Route path="/quiz/results/:leadId" component={QuizResultsPage} />
-        <Route path="/quick-win-quiz" component={QuickWinQuiz} />
-        <Route path="/quick-win/results/:resultId" component={QuickWinResultsPage} />
-        <Route path="/retainer-quiz" component={RetainerQuiz} />
-        <Route path="/how-it-works/technical" component={TechnicalOverview} />
-        <Route path="/how-it-works" component={HowItWorks} />
-        <Route path="/assessments" component={Assessments} />
-        <Route path="/lp/:slug" component={LandingPage} />
-        <Route path="/onboarding/:token" component={OnboardingLink} />
-        <Route component={NotFound} />
-      </Switch>
-    </>
+    <Switch>
+      {/* Primary Routes */}
+      <Route path="/" component={Home} />
+      <Route path="/assessments" component={Assessments} />
+      <Route path="/assessments/:slug" component={AssessmentDetail} />
+      <Route path="/services" component={Services} />
+      <Route path="/projects" component={Projects} />
+      <Route path="/monitoring" component={Monitoring} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/about" component={About} />
+      <Route path="/contact" component={Contact} />
+      <Route path="/book" component={Book} />
+      <Route path="/checkout" component={Checkout} />
+      <Route path="/how-it-works" component={HowItWorks} />
+      <Route path="/technical-overview" component={TechnicalOverview} />
+      <Route path="/msp" component={Msp} />
+      <Route path="/resources" component={Resources} />
+      <Route path="/resources/:slug" component={ArticlePage} />
+      <Route path="/onboarding" component={OnboardingLink} />
+
+      {/* Legal Routes */}
+      <Route path="/terms" component={Terms} />
+      <Route path="/privacy" component={Privacy} />
+
+      {/* Decommissioned Routes -> Redirects to /assessments */}
+      <Route path="/micro-offers" component={RedirectToAssessments} />
+      <Route path="/assessment" component={RedirectToAssessments} />
+
+      {/* Quizzes & Lead Capture */}
+      <Route path="/copilot-quiz" component={CopilotQuiz} />
+      <Route path="/m365-health-quiz" component={M365HealthQuiz} />
+      <Route path="/migration-quiz" component={MigrationQuiz} />
+      <Route path="/security-quiz" component={SecurityQuiz} />
+      <Route path="/governance-quiz" component={GovernanceQuiz} />
+      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
+      <Route path="/sharepoint-quiz" component={SharePointQuiz} />
+      <Route path="/teams-quiz" component={TeamsQuiz} />
+      <Route path="/retainer-quiz" component={RetainerQuiz} />
+      <Route path="/retainer-quiz-results" component={RetainerQuizResults} />
+      <Route path="/quick-win-quiz" component={QuickWinQuiz} />
+      <Route path="/quick-win-results" component={QuickWinResultsPage} />
+      <Route path="/quiz-results" component={QuizResultsPage} />
+
+      {/* 404 Fallback */}
+      <Route component={NotFound} />
+    </Switch>
   );
 }
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-}
-
-export default App;

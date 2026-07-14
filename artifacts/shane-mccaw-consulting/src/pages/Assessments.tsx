@@ -1,169 +1,220 @@
-import { Link } from "wouter";
-import { Layout } from "@/components/Layout";
-import { SEOMeta } from "@/components/SEOMeta";
-import { ArrowRight, Clock, ClipboardCheck, FileText } from "lucide-react";
-
-const ASSESSMENTS = [
-  {
-    name: "Copilot Readiness",
-    description:
-      "Find out if your Microsoft 365 tenant is prepared for Copilot deployment — identity hygiene, data labeling, and licensing gaps included.",
-    href: "/copilot-quiz",
-    icon: "🤖",
-  },
-  {
-    name: "M365 Tenant Health",
-    description:
-      "Score your tenant's security posture, admin role hygiene, DLP coverage, and conditional access policies against Microsoft best practices.",
-    href: "/m365-health-quiz",
-    icon: "🏥",
-  },
-  {
-    name: "SharePoint Readiness",
-    description:
-      "Evaluate your SharePoint architecture for governance gaps, oversharing risks, and migration readiness before your next project.",
-    href: "/sharepoint-readiness-quiz",
-    icon: "📁",
-  },
-  {
-    name: "Governance Maturity",
-    description:
-      "Benchmark your Microsoft 365 governance program — policies, lifecycle management, guest access controls, and compliance posture.",
-    href: "/governance-maturity-quiz",
-    icon: "📋",
-  },
-  {
-    name: "Migration Readiness",
-    description:
-      "Assess how prepared your environment is for a cloud or tenant-to-tenant migration — dependencies, blockers, and risk factors.",
-    href: "/migration-readiness-quiz",
-    icon: "🚀",
-  },
-  {
-    name: "Power Platform Readiness",
-    description:
-      "Gauge your organization's readiness to scale Power Apps and Power Automate safely — governance, connectors, and environment strategy.",
-    href: "/power-platform-quiz",
-    icon: "⚡",
-  },
-  {
-    name: "Security & Compliance",
-    description:
-      "Identify gaps in your Microsoft 365 security stack — Defender, Purview, Entra ID, and your incident response readiness.",
-    href: "/security-compliance-quiz",
-    icon: "🔒",
-  },
-  {
-    name: "Teams Maturity",
-    description:
-      "Measure how effectively your organization uses Microsoft Teams — governance, sprawl, adoption, and integration with the wider M365 stack.",
-    href: "/teams-maturity-quiz",
-    icon: "💬",
-  },
-];
+import React, { useState } from 'react';
+import { useLocation } from 'wouter';
+import { useServices, PublicService } from '../hooks/useServices';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
+import { ShieldCheck, Zap, ArrowRight, CheckCircle2, Clock, Activity, AlertTriangle, FileText } from 'lucide-react';
 
 export default function Assessments() {
+  const [, setLocation] = useLocation();
+  const { services, loading, error } = useServices({ category: 'assessment' });
+  const [activeTab, setActiveTab] = useState<'all' | 'paid' | 'free'>('all');
+
+  const paidAssessments = services.filter((s) => !s.isFreeOffering);
+  const freeAssessments = services.filter((s) => s.isFreeOffering);
+
+  const displayedServices =
+    activeTab === 'paid'
+      ? paidAssessments
+      : activeTab === 'free'
+      ? freeAssessments
+      : services;
+
+  const handleCheckout = (service: PublicService) => {
+    if (service.isFreeOffering) {
+      setLocation(`/contact?service=${encodeURIComponent(service.slug)}`);
+    } else {
+      setLocation(`/checkout?service=${encodeURIComponent(service.slug)}`);
+    }
+  };
+
   return (
-    <Layout>
-      <SEOMeta
-        title="Free Microsoft 365 Assessments | Shane McCaw Consulting"
-        description="Take a free self-service Microsoft 365 health assessment. 5 minutes. Instant PDF score report. No account or credit card required."
-      />
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      <Header />
 
-      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-28 pb-20 text-center px-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/30 rounded-full px-4 py-1.5 mb-6">
-            <ClipboardCheck className="w-4 h-4 text-[#00B4D8]" />
-            <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">
-              Free &amp; No Account Required
-            </span>
+      <main className="flex-grow pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+        {/* NASA Authority & Engine Hero */}
+        <div className="text-center max-w-4xl mx-auto mb-12">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-4">
+            <ShieldCheck className="w-4 h-4 text-blue-400" />
+            NASA M365 Governance Framework Standard
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-white leading-tight mb-5">
-            Free Microsoft 365{" "}
-            <span className="text-[#0078D4]">Health Assessments</span>
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-4">
+            Automated Tenant Intelligence & Paid M365 Governance Assessments
           </h1>
-          <p className="text-lg text-white/65 max-w-2xl mx-auto leading-relaxed">
-            Takes 5 minutes. Instant PDF score report. No credit card.
+          <p className="text-lg text-slate-400 leading-relaxed">
+            Architected by Shane McCaw—creator of NASA's federal Copilot governance standard. Our automated signal engines analyze Drift, Security, Health, SLA compliance, and Scope Creep to deliver actionable tenant insights.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-8 text-sm text-white/50">
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-[#0078D4]" /> ~5 minutes each
-            </span>
-            <span className="flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-[#0078D4]" /> Instant PDF report
-            </span>
-            <span className="flex items-center gap-1.5">
-              <ClipboardCheck className="w-4 h-4 text-[#0078D4]" /> No login needed
-            </span>
+
+          {/* Tab Filter */}
+          <div className="flex justify-center gap-2 mt-8">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'all'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              All Assessments ({services.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('paid')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'paid'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Paid Deliverables ({paidAssessments.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('free')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'free'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Free Diagnostic Snapshots ({freeAssessments.length})
+            </button>
           </div>
         </div>
-      </section>
 
-      {/* ── Assessment grid ───────────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {ASSESSMENTS.map((a) => (
-              <div
-                key={a.href}
-                className="group bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-[#0078D4]/40 transition-all duration-200 flex flex-col p-6"
-              >
-                {/* Icon + badge row */}
-                <div className="flex items-start justify-between mb-4">
-                  <span className="text-3xl" role="img" aria-label={a.name}>
-                    {a.icon}
-                  </span>
-                  <span className="inline-flex items-center gap-1 bg-[#0078D4]/8 text-[#0078D4] text-[11px] font-semibold px-2.5 py-1 rounded-full border border-[#0078D4]/20">
-                    <Clock className="w-3 h-3" />
-                    ~5 min
-                  </span>
-                </div>
+        {/* Loading / Error States */}
+        {loading && (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+          </div>
+        )}
 
-                {/* Name */}
-                <h2 className="text-base font-bold text-[#0A2540] mb-2 leading-snug">
-                  {a.name}
-                </h2>
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center max-w-xl mx-auto my-8">
+            Failed to load assessment catalog. Please refresh or contact support.
+          </div>
+        )}
 
-                {/* Description */}
-                <p className="text-sm text-gray-500 leading-relaxed flex-1 mb-5">
-                  {a.description}
-                </p>
+        {/* Catalog Grid */}
+        {!loading && !error && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {displayedServices.map((service) => {
+              const isFree = service.isFreeOffering;
+              const priceDisplay = isFree
+                ? 'FREE'
+                : service.basePrice
+                ? `$${service.basePrice.toLocaleString()}`
+                : 'Custom';
 
-                {/* CTA */}
-                <Link
-                  href={a.href}
-                  className="inline-flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#005A9E] text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors group-hover:shadow-sm"
+              return (
+                <div
+                  key={service.slug}
+                  className={`flex flex-col rounded-2xl p-6 transition-all duration-200 border ${
+                    isFree
+                      ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                      : 'bg-slate-900 border-blue-500/30 hover:border-blue-500/60 shadow-lg shadow-blue-950/20'
+                  }`}
                 >
-                  Take Free Assessment
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                </Link>
+                  {/* Card Header Tag */}
+                  <div className="flex items-center justify-between mb-4">
+                    <span
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        isFree
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                      }`}
+                    >
+                      {isFree ? 'Free Telemetry Snapshot' : 'Paid Deliverable Assessment'}
+                    </span>
+                    {service.durationDays && (
+                      <span className="flex items-center gap-1 text-xs text-slate-400">
+                        <Clock className="w-3.5 h-3.5" />
+                        {service.durationDays} Day Turnaround
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Title & Tagline */}
+                  <h2 className="text-xl font-bold text-white mb-2">{service.name}</h2>
+                  <p className="text-sm text-slate-400 mb-4 line-clamp-3">
+                    {service.description}
+                  </p>
+
+                  {/* Pricing Display */}
+                  <div className="mt-auto pt-4 border-t border-slate-800/80 mb-6">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-extrabold text-white">{priceDisplay}</span>
+                      {!isFree && service.billingType === 'one_time' && (
+                        <span className="text-xs text-slate-400">/ one-time</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Key Deliverables / Inclusions Checklist */}
+                  {service.deliverables && service.deliverables.length > 0 && (
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                        Deliverables Include:
+                      </p>
+                      <ul className="space-y-1.5">
+                        {service.deliverables.slice(0, 4).map((deliverable, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                            <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                            <span>{deliverable}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* CTA Action */}
+                  <button
+                    onClick={() => handleCheckout(service)}
+                    className={`w-full py-3 px-4 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+                      isFree
+                        ? 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30'
+                    }`}
+                  >
+                    <span>{isFree ? 'Run Free Diagnostic' : `Buy Assessment — ${priceDisplay}`}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Continuous Engine Signal Callout Section */}
+        <div className="mt-20 bg-gradient-to-r from-slate-900 via-blue-950/40 to-slate-900 border border-slate-800 rounded-3xl p-8 sm:p-12">
+          <div className="max-w-3xl mx-auto text-center">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+              Powered by 6 Real-Time M365 Signal Derivation Engines
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed mb-8">
+              Assessments aren't manual questionnaires. They run on our proprietary signal engine matrix that monitors Drift, Security, Tenant Health, SLA adherence, and Scope Creep live across your environment.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-left">
+              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800">
+                <Activity className="w-5 h-5 text-blue-400 mb-2" />
+                <p className="text-xs font-bold text-white">Drift Engine</p>
+                <p className="text-xs text-slate-400">Detects unauthorized baseline changes</p>
               </div>
-            ))}
+              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800">
+                <ShieldCheck className="w-5 h-5 text-emerald-400 mb-2" />
+                <p className="text-xs font-bold text-white">Security Engine</p>
+                <p className="text-xs text-slate-400">Uncovers sharing & permission exposure</p>
+              </div>
+              <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800">
+                <AlertTriangle className="w-5 h-5 text-amber-400 mb-2" />
+                <p className="text-xs font-bold text-white">Health Engine</p>
+                <p className="text-xs text-slate-400">Evaluates tenant operational risk score</p>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
+      </main>
 
-      {/* ── Bottom CTA ───────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20 px-6 text-center">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-4">
-            Ready for a deeper analysis?
-          </h2>
-          <p className="text-white/60 mb-8 text-base leading-relaxed">
-            Our fixed-price Quick Win packages go beyond a score — they deliver
-            a full audit, remediation plan, and hands-on implementation in a
-            defined timeframe.
-          </p>
-          <Link
-            href="/quick-wins"
-            className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#005A9E] text-white font-semibold px-8 py-4 rounded-xl text-base transition-colors"
-          >
-            See our Quick Win packages
-            <ArrowRight className="w-5 h-5" />
-          </Link>
-        </div>
-      </section>
-    </Layout>
+      <Footer />
+    </div>
   );
 }

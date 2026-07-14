@@ -96,7 +96,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   // ── On Purchase — Run Monitoring Package ──────────────────────────────────
   {
-    name: "On Purchase — Run Monitoring Package",
+    name: "Run Assessment",
     description:
       "Triggered when a client grants monitoring consent (tenant admin OAuth consent, pre-payment). " +
       "Gathers real M365 telemetry so the tenant can be advertised to and so document generation " +
@@ -1397,10 +1397,400 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Purchase — Route Document Generation ──────────────────────────────────
+  {
+    name: "Purchase — Route Document Generation",
+    description: "Triggered on purchase.completed. Iterates over serviceIds in payment metadata, resolves their packageKeys, and routes to Generate Engagement Document workflow.",
+    triggerType: "event",
+    eventNames: ["purchase.completed"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Purchase Completed" },
+        },
+        {
+          id: "emit_received",
+          type: "action",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Purchase Received",
+            eventType: "purchase_readiness.received",
+            extraPayload: JSON.stringify({ status: "purchase_received" }),
+          },
+        },
+        {
+          id: "loop",
+          type: "foreach",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "foreach",
+            label: "For Each Purchased Service",
+            arrayPath: "serviceIds",
+            itemAlias: "serviceId",
+          },
+        },
+        {
+          id: "resolve_doc_type",
+          type: "sql_query",
+          position: { x: 150, y: 480 },
+          data: {
+            nodeType: "sql_query",
+            label: "Resolve Document Type",
+            query: `SELECT CASE WHEN type_attributes->>'packageKey' IS NOT NULL THEN 'consolidated_sow' ELSE 'default' END AS "docType", type_attributes->>'packageKey' AS "packageKey" FROM services WHERE id = $1::int LIMIT 1`,
+            params: ["{{serviceId}}"],
+          },
+        },
+        {
+          id: "switch_doc_type",
+          type: "switch_case",
+          position: { x: 150, y: 620 },
+          data: {
+            nodeType: "switch_case",
+            label: "Route Document Type",
+            switchExpr: "{{steps.resolve_doc_type.docType}}",
+            cases: [
+              { id: "consolidated_sow", matchValue: "consolidated_sow", label: "Consolidated SOW" },
+            ],
+          },
+        },
+        {
+          id: "gen_doc",
+          type: "action",
+          position: { x: 50, y: 760 },
+          data: {
+            nodeType: "action",
+            actionType: "run_workflow",
+            label: "Generate Engagement Document",
+            workflowName: "Generate Engagement Document",
+            inputMapping: [
+              { key: "clientId", expr: "{{clientId}}" },
+              { key: "tenantId", expr: "{{tenantId}}" },
+              { key: "packageKey", expr: "{{steps.resolve_doc_type.packageKey}}" },
+            ],
+          },
+        },
+        {
+          id: "end_loop",
+          type: "end",
+          position: { x: 250, y: 760 },
+          data: { nodeType: "end", label: "Done Service" },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 450, y: 480 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "emit_received" },
+        { id: "e2", source: "emit_received", target: "loop" },
+        { id: "e3", source: "loop", target: "resolve_doc_type", sourceHandle: "body" },
+        { id: "e4", source: "resolve_doc_type", target: "switch_doc_type" },
+        { id: "e5", source: "switch_doc_type", target: "gen_doc", sourceHandle: "consolidated_sow" },
+        { id: "e6", source: "switch_doc_type", target: "end_loop", sourceHandle: "default" },
+        { id: "e7", source: "gen_doc", target: "end_loop" },
+        { id: "e8", source: "loop", target: "end", sourceHandle: "done" },
+      ],
+    },
+  },
+  // ── Generate Engagement Document ──────────────────────────────────────────
+  {
+    name: "Generate Engagement Document",
+    description: "Invoked programmatically to check payment status and assessment status, wait until ready, and generate Consolidated SOW.",
+    triggerType: "manual",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Start Generation" },
+        },
+        {
+          id: "emit_checking",
+          type: "action",
+          position: { x: 300, y: 180 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Checking Readiness",
+            eventType: "purchase_readiness.checking",
+            extraPayload: JSON.stringify({ status: "checking_readiness" }),
+          },
+        },
+        {
+          id: "check_paid",
+          type: "sql_query",
+          position: { x: 180, y: 300 },
+          data: {
+            nodeType: "sql_query",
+            label: "Check Payment",
+            query: `SELECT CASE WHEN status = 'paid' THEN true ELSE false END AS "hasPaid" FROM checkout_sessions WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+            params: ["{{tenantId}}"],
+          },
+        },
+        {
+          id: "check_assessment",
+          type: "sql_query",
+          position: { x: 420, y: 300 },
+          data: {
+            nodeType: "sql_query",
+            label: "Check Assessment Status",
+            query: `SELECT status AS "assessmentRunStatus" FROM wf_runs WHERE definition_id = (SELECT id FROM wf_definitions WHERE name = 'Run Assessment' LIMIT 1) AND payload->>'tenantId' = $1 ORDER BY created_at DESC LIMIT 1`,
+            params: ["{{tenantId}}"],
+          },
+        },
+        {
+          id: "delay_until_ready",
+          type: "delay",
+          position: { x: 300, y: 420 },
+          data: {
+            nodeType: "delay",
+            label: "Wait for Telemetry & Payment",
+            mode: "until_condition",
+            expression: "steps.check_paid.hasPaid == true && steps.check_assessment.assessmentRunStatus == 'completed'",
+            abortExpression: "steps.check_assessment.assessmentRunStatus == 'failed' || steps.check_assessment.assessmentRunStatus == 'cancelled'",
+            refreshNodeIds: ["check_paid", "check_assessment"],
+            interval: 5,
+            timeout: 30,
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 540 },
+          data: {
+            nodeType: "condition",
+            label: "Condition Met?",
+            expression: "steps.delay_until_ready.conditionMet == true",
+          },
+        },
+        {
+          id: "branch_abort",
+          type: "condition",
+          position: { x: 500, y: 660 },
+          data: {
+            nodeType: "condition",
+            label: "Aborted?",
+            expression: "steps.delay_until_ready.aborted == true",
+          },
+        },
+        {
+          id: "emit_ready",
+          type: "action",
+          position: { x: 100, y: 660 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Ready",
+            eventType: "purchase_readiness.ready",
+          },
+        },
+        {
+          id: "get_signals",
+          type: "get_tenant_signals",
+          position: { x: 100, y: 780 },
+          data: {
+            nodeType: "get_tenant_signals",
+            label: "Get Tenant Signals",
+            clientId: "{{clientId}}",
+          },
+        },
+        {
+          id: "emit_analyzing",
+          type: "action",
+          position: { x: 100, y: 900 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Analyzing",
+            eventType: "purchase_readiness.analyzing",
+            extraPayload: JSON.stringify({ signalCount: "{{steps.get_signals.signalCount}}" }),
+          },
+        },
+        {
+          id: "gen_sow",
+          type: "action",
+          position: { x: 100, y: 1020 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            docCategory: "consulting",
+            clientId: "{{clientId}}",
+            signalsOverride: "{{signals}}",
+          },
+        },
+        {
+          id: "emit_complete",
+          type: "action",
+          position: { x: 100, y: 1140 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Complete",
+            eventType: "purchase_readiness.complete",
+            extraPayload: JSON.stringify({ documentId: "{{steps.gen_sow.documentId}}" }),
+          },
+        },
+        {
+          id: "notify_success",
+          type: "create_notification",
+          position: { x: 100, y: 1260 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: Document Generated",
+            title: "Engagement document generated",
+            body: "Consolidated SOW generated successfully for client {{clientId}}.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_success",
+          type: "end",
+          position: { x: 100, y: 1380 },
+          data: { nodeType: "end", label: "Completed Successfully" },
+        },
+        {
+          id: "emit_doc_failed",
+          type: "action",
+          position: { x: 250, y: 1140 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Doc Failed",
+            eventType: "purchase_readiness.doc_failed",
+          },
+        },
+        {
+          id: "notify_doc_failed",
+          type: "create_notification",
+          position: { x: 250, y: 1260 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: Doc Generation Failed",
+            title: "Engagement document generation failed",
+            body: "SOW generation failed for client {{clientId}}. Check run logs.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_doc_failed",
+          type: "end",
+          position: { x: 250, y: 1380 },
+          data: { nodeType: "end", label: "Failed Doc Generation" },
+        },
+        {
+          id: "emit_telemetry_failed",
+          type: "action",
+          position: { x: 400, y: 780 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Telemetry Failed",
+            eventType: "purchase_readiness.telemetry_failed",
+          },
+        },
+        {
+          id: "notify_telemetry_failed",
+          type: "create_notification",
+          position: { x: 400, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: Assessment Failed",
+            title: "Assessment run failed",
+            body: "Assessment run for tenant {{tenantId}} failed or was cancelled. SOW could not be generated.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_telemetry_failed",
+          type: "end",
+          position: { x: 400, y: 1020 },
+          data: { nodeType: "end", label: "Telemetry Failed — Manual Review" },
+        },
+        {
+          id: "emit_still_processing",
+          type: "action",
+          position: { x: 600, y: 780 },
+          data: {
+            nodeType: "action",
+            actionType: "emit_event",
+            label: "Emit Still Processing",
+            eventType: "purchase_readiness.still_processing",
+          },
+        },
+        {
+          id: "notify_timeout",
+          type: "create_notification",
+          position: { x: 600, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: Timeout",
+            title: "SOW Generation Timed Out",
+            body: "SOW generation for client {{clientId}} timed out waiting for telemetry. Manual follow-up required.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_timeout",
+          type: "end",
+          position: { x: 600, y: 1020 },
+          data: { nodeType: "end", label: "Timed Out — Manual Review" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "emit_checking" },
+        { id: "e2", source: "emit_checking", target: "check_paid" },
+        { id: "e3", source: "emit_checking", target: "check_assessment" },
+        { id: "e4", source: "check_paid", target: "delay_until_ready" },
+        { id: "e5", source: "check_assessment", target: "delay_until_ready" },
+        { id: "e6", source: "delay_until_ready", target: "branch" },
+        { id: "e7", source: "branch", target: "emit_ready", sourceHandle: "true" },
+        { id: "e8", source: "branch", target: "branch_abort", sourceHandle: "false" },
+        { id: "e9", source: "branch_abort", target: "emit_telemetry_failed", sourceHandle: "true" },
+        { id: "e10", source: "branch_abort", target: "emit_still_processing", sourceHandle: "false" },
+        { id: "e11", source: "emit_ready", target: "get_signals" },
+        { id: "e12", source: "get_signals", target: "emit_analyzing" },
+        { id: "e13", source: "emit_analyzing", target: "gen_sow" },
+        { id: "e14", source: "gen_sow", target: "emit_complete" },
+        { id: "e15", source: "gen_sow", target: "emit_doc_failed", sourceHandle: "onError" },
+        { id: "e16", source: "emit_complete", target: "notify_success" },
+        { id: "e17", source: "notify_success", target: "end_success" },
+        { id: "e18", source: "emit_doc_failed", target: "notify_doc_failed" },
+        { id: "e19", source: "notify_doc_failed", target: "end_doc_failed" },
+        { id: "e20", source: "emit_telemetry_failed", target: "notify_telemetry_failed" },
+        { id: "e21", source: "notify_telemetry_failed", target: "end_telemetry_failed" },
+        { id: "e22", source: "emit_still_processing", target: "notify_timeout" },
+        { id: "e23", source: "notify_timeout", target: "end_timeout" },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
   try {
+    // One-time migration patch to rename the consent-triggered monitoring package
+    // workflow to "Run Assessment" and cleanup trigger events before seeding
+    await pool.query(
+      `UPDATE wf_definitions SET name = 'Run Assessment'
+       WHERE name = 'On Purchase — Run Monitoring Package'`
+    );
+    await pool.query(
+      `DELETE FROM wf_triggers
+       WHERE definition_id = (SELECT id FROM wf_definitions WHERE name = 'Run Assessment')
+         AND type = 'event'
+         AND config->>'eventName' = 'purchase.completed'`
+    );
+
     for (const seed of SYSTEM_WORKFLOWS) {
       // 1. Upsert definition (idempotent by name)
       const defResult = await pool.query<{ id: number }>(
@@ -1920,7 +2310,7 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         logger.info({ defId }, "seed-system-workflows: patched MSP Overage Metering — replaced system_action with msp_overage_meter");
-      } else if (seed.name === "On Purchase — Run Monitoring Package") {
+      } else if (seed.name === "Run Assessment") {
         // Patch v1: upgrade graphs seeded without monitor_get_package (find_object → execute_pkg directly).
         // Guard: fires when execute_pkg node takes its packageKey from resolve_pkg (not get_pkg),
         // meaning monitor_get_package was absent in that version.
