@@ -50,7 +50,7 @@ export function CustomerPicker({ value, onChange, placeholder = "Select a custom
     setLoading(true);
     fetchWithAuth(`/api/msp/v1/msps/${user.mspId}/customers?limit=200`)
       .then((r) => r.json())
-      .then((data: { customers?: PickerCustomer[] }) => setCustomers(data.customers ?? []))
+      .then((data: { data?: PickerCustomer[] }) => setCustomers(data.data ?? []))
       .catch(() => setCustomers([]))
       .finally(() => setLoading(false));
   }, [user?.mspId, fetchWithAuth]);
