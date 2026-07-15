@@ -898,6 +898,34 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: SLA engine tables failed (non-fatal)");
   });
 
+  // ── SLA signal-to-policy mapping + per-MSP SLA blend weights ────────────────
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS sla_signal_policy_map (
+      id           SERIAL PRIMARY KEY,
+      signal_key   TEXT NOT NULL,
+      policy_id    INTEGER NOT NULL REFERENCES sla_policies(id) ON DELETE CASCADE,
+      msp_id       INTEGER REFERENCES msps(id) ON DELETE CASCADE,
+      is_active    BOOLEAN NOT NULL DEFAULT true,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_signal_policy_map_signal_key_idx ON sla_signal_policy_map (signal_key);
+    CREATE INDEX IF NOT EXISTS sla_signal_policy_map_msp_id_idx ON sla_signal_policy_map (msp_id);
+
+    CREATE TABLE IF NOT EXISTS msp_sla_weights (
+      id           SERIAL PRIMARY KEY,
+      msp_id       INTEGER NOT NULL UNIQUE REFERENCES msps(id) ON DELETE CASCADE,
+      w_signal     NUMERIC(5,2) NOT NULL DEFAULT 50,
+      w_timer      NUMERIC(5,2) NOT NULL DEFAULT 50,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `).then(() => {
+    logger.info("Migration: sla_signal_policy_map and msp_sla_weights tables ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: SLA signal-policy-map/weights tables failed (non-fatal)");
+  });
+
   // ── client_m365_profiles: ensure profile JSONB column exists ──────────────
   // The /api/msp/reports/license-waste route reads profile->>'hasLicensingWaste'
   // and profile->>'estimatedAnnualWasteDollars'. If the column is absent the
