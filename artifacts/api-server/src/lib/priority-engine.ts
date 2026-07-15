@@ -213,13 +213,20 @@ export async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
-  const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenantId);
+  const { mergedProfile, findings, customerId, mspId } = await buildTenantProfileAndFindings(tenantId);
   const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
 
-  const { firedSignals } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const { firedSignals } = computeTenantSignals(
+    mergedProfile,
+    findings,
+    rules,
+    groups,
+    disabledSignalKeys,
+    customerId != null && mspId != null ? { customerId, mspId } : undefined,
+  );
 
   return { firedSignalKeys: [...firedSignals], rules };
 }
