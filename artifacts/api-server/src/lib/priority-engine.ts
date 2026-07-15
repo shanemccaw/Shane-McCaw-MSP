@@ -18,7 +18,7 @@
  *   { engine, score, breakdown, rawSignals, rawRules, workflowVariables, timestamp }
  */
 
-import { db, clientM365ProfilesTable, scriptRunResultsTable } from "@workspace/db";
+import { db, clientM365ProfilesTable, scriptRunResultsTable, mspUsersTable, mspCustomersTable, tenantMonitorProfilesTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import {
   computeTenantSignals,
@@ -171,6 +171,29 @@ export async function buildTenantProfileAndFindings(
   const mergedProfile: Record<string, unknown> = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
   for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
   const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
+
+  const [customerRow] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspUsersTable)
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .where(eq(mspUsersTable.userId, clientUserId))
+    .limit(1);
+  const tenantId = customerRow?.tenantId ?? null;
+
+  if (tenantId) {
+    const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
+      checkKey: tenantMonitorProfilesTable.checkKey,
+      extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+    })
+      .from(tenantMonitorProfilesTable)
+      .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
+      .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
+
+    for (const row of monitorRows) {
+      const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+      mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+    }
+  }
 
   return { mergedProfile, findings };
 }

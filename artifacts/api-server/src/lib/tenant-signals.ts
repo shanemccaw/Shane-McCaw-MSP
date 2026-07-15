@@ -389,6 +389,12 @@ export function evaluateRule(
       const result = !isNaN(val) && val < threshold;
       return { result, reason: `profile[${sourceKey}] = ${val} ${result ? "<" : ">="} ${threshold}` };
     }
+    case "threshold": {
+      const val = Number(mergedProfile[`${sourceKey}__itemCount`] ?? 0);
+      const threshold = Number(compareValue ?? 0);
+      const result = !isNaN(val) && val > threshold;
+      return { result, reason: `monitor[${sourceKey}].itemCount = ${val} ${result ? ">" : "<="} ${threshold}` };
+    }
     case "findings_keyword": {
       const keyword = (sourceKey ?? "").toLowerCase();
       const result = parsedFindings.some(f => f.toLowerCase().includes(keyword));

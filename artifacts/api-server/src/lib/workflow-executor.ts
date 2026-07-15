@@ -27,6 +27,8 @@ import {
   leadsTable,
   usersTable,
   mspUsersTable,
+  mspCustomersTable,
+  tenantMonitorProfilesTable,
   projectsTable,
   opportunitiesTable,
   clientDocumentsTable,
@@ -3172,7 +3174,17 @@ async function executeNode(
           };
         } else {
           try {
-            const [profileRow, scriptRuns] = await Promise.all([
+            // Resolve usersTable.id -> mspCustomersTable.tenantId via the same join
+            // pattern used in portal.ts's ensureDirectCustomerRecord/ensureClientMspUser.
+            const [customerRow] = await db
+              .select({ tenantId: mspCustomersTable.tenantId })
+              .from(mspUsersTable)
+              .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+              .where(eq(mspUsersTable.userId, gtsClientId))
+              .limit(1);
+            const gtsTenantId = customerRow?.tenantId ?? null;
+
+            const [profileRow, scriptRuns, monitorRows] = await Promise.all([
               db.select({ profile: clientM365ProfilesTable.profile })
                 .from(clientM365ProfilesTable)
                 .where(eq(clientM365ProfilesTable.clientId, gtsClientId))
@@ -3188,13 +3200,32 @@ async function executeNode(
               ))
               .orderBy(desc(scriptRunResultsTable.createdAt))
               .limit(50),
+              gtsTenantId
+                ? db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
+                    checkKey: tenantMonitorProfilesTable.checkKey,
+                    extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+                  })
+                  .from(tenantMonitorProfilesTable)
+                  .where(eq(tenantMonitorProfilesTable.tenantId, gtsTenantId))
+                  .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt))
+                : Promise.resolve([]),
             ]);
 
+            // Legacy (scriptRunResultsTable) profile first, oldest-first so newer
+            // legacy runs win over older ones, matching the pre-existing behavior.
             const mergedProfile: Record<string, unknown> = {};
             for (const run of [...scriptRuns].reverse()) {
               Object.assign(mergedProfile, run.profileUpdates ?? {});
             }
             Object.assign(mergedProfile, (profileRow[0]?.profile as Record<string, unknown> | null) ?? {});
+
+            // Monitor data merged in last so it wins on key collision (it's the
+            // fresher, modern pipeline). Each check contributes a synthetic
+            // `${checkKey}__itemCount` key that "threshold" rules read.
+            for (const row of monitorRows) {
+              const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+              mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+            }
 
             const allFindings = [...new Set(scriptRuns.flatMap(r => (r.parsedFindings as string[] | null) ?? []))];
 
@@ -3215,7 +3246,7 @@ async function executeNode(
             const signals = [...firedSignals];
             const hasSignals = firedSignals.size > 1;
             output = { signals, signalCount: signals.length, hasSignals };
-            logger.info({ runId, gtsClientId, signalCount: signals.length, hasSignals }, "wf-executor: get_tenant_signals completed");
+            logger.info({ runId, gtsClientId, gtsTenantId, monitorCheckCount: monitorRows.length, signalCount: signals.length, hasSignals }, "wf-executor: get_tenant_signals completed");
           } catch (gtsErr) {
             nodeError = true;
             const errMsg = gtsErr instanceof Error ? gtsErr.message : String(gtsErr);
