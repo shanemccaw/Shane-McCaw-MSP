@@ -6,9 +6,14 @@ import Footer from '../components/Footer';
 import { ShieldCheck, Zap, ArrowRight, CheckCircle2, Clock, Activity, AlertTriangle, FileText } from 'lucide-react';
 
 export default function Assessments() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { services, loading, error } = useServices({ category: 'assessment' });
-  const [activeTab, setActiveTab] = useState<'all' | 'paid' | 'free'>('all');
+
+  const activeTab = location.includes('/start')
+    ? 'free'
+    : location.includes('/premium')
+    ? 'paid'
+    : 'all';
 
   const paidAssessments = services.filter((s) => !s.isFreeOffering);
   const freeAssessments = services.filter((s) => s.isFreeOffering);
@@ -49,7 +54,7 @@ export default function Assessments() {
           {/* Tab Filter */}
           <div className="flex justify-center gap-2 mt-8">
             <button
-              onClick={() => setActiveTab('all')}
+              onClick={() => setLocation('/assessments/all')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === 'all'
                   ? 'bg-blue-600 text-white'
@@ -59,7 +64,7 @@ export default function Assessments() {
               All Assessments ({services.length})
             </button>
             <button
-              onClick={() => setActiveTab('paid')}
+              onClick={() => setLocation('/assessments/premium')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === 'paid'
                   ? 'bg-blue-600 text-white'
@@ -69,7 +74,7 @@ export default function Assessments() {
               Paid Deliverables ({paidAssessments.length})
             </button>
             <button
-              onClick={() => setActiveTab('free')}
+              onClick={() => setLocation('/assessments/start')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === 'free'
                   ? 'bg-blue-600 text-white'
