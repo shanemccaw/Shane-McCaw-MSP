@@ -37,6 +37,7 @@ import {
   getFiredSignalKeysForTenant,
 } from "./priority-engine.ts";
 import { computeHealthEngine, calculateArchitectureHealthScore } from "./health-engine.ts";
+import { computeSecurityEngine, runSecurityEngineForTenant } from "./security-engine.ts";
 import { computeDriftEngine } from "./drift-engine.ts";
 import { computeForecastingEngine } from "./forecasting-engine.ts";
 import { getCrmSignalWeights, filterCrmSignals, sumCrmScore, calculateCrmScore } from "./crm-engine.ts";
@@ -216,12 +217,22 @@ export const ENGINE_DEFS: EngineDef[] = [
   {
     key: "health",
     label: "Architecture Health Engine",
-    description: "Sums governance/security/compliance/adoption/copilot/architecture impact into an overall health score.",
+    description: "Sums governance/compliance/adoption/copilot/architecture/licensing impact into an overall health score (security is computed by the standalone Security Engine and combined into the total).",
     categoryPrefix: "governance",
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateArchitectureHealthScore(tenantId),
     runForPayload: (input) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+  },
+  {
+    key: "security",
+    label: "Security Engine",
+    description: "Sums securityImpact across currently-fired, enabled signals into a standalone security posture score.",
+    categoryPrefix: "security",
+    tenantScoped: true,
+    ruleOwnership: "platform",
+    runForTenant: (tenantId) => runSecurityEngineForTenant(tenantId),
+    runForPayload: (input) => computeSecurityEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
   },
   {
     key: "drift",

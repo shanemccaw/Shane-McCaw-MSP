@@ -37,11 +37,11 @@ import {
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
+import { computeSecurityEngine } from "./security-engine.ts";
 
 /** The seven architecture-health pillars, in the order the task spec lists them. */
 export const HEALTH_PILLARS = [
   "governance",
-  "security",
   "compliance",
   "adoption",
   "copilot",
@@ -51,7 +51,7 @@ export const HEALTH_PILLARS = [
 export type HealthPillar = typeof HEALTH_PILLARS[number];
 
 /** Maps each pillar to the intelligence field that carries its impact value. */
-export const PILLAR_FIELD: Record<HealthPillar, string> = {
+export const PILLAR_FIELD: Record<HealthPillar | "security", string> = {
   governance: "governanceImpact",
   security: "securityImpact",
   compliance: "complianceImpact",
@@ -67,7 +67,7 @@ export interface HealthPillarContribution {
 }
 
 export interface HealthPillarBreakdown {
-  pillar: HealthPillar;
+  pillar: HealthPillar | "security";
   score: number;
   contributions: HealthPillarContribution[];
 }
@@ -253,5 +253,12 @@ export async function calculateArchitectureHealthScore(tenantId: number): Promis
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
 
-  return computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const healthResult = computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const securityResult = computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+
+  return {
+    ...healthResult,
+    score: healthResult.score + securityResult.score,
+    breakdown: [...healthResult.breakdown, securityResult.breakdown],
+  };
 }
