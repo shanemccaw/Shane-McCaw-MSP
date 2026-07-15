@@ -5,7 +5,7 @@ import {
   FileText, Shield, Layers, HelpCircle, ArrowRight
 } from "lucide-react";
 
-export default function Header() {
+export function Header() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assessmentsDropdownOpen, setAssessmentsDropdownOpen] = useState(false);
@@ -336,3 +336,5 @@ export default function Header() {
     </header>
   );
 }
+
+export default Header;
