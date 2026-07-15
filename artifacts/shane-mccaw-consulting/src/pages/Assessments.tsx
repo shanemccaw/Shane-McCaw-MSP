@@ -24,7 +24,7 @@ export default function Assessments() {
     if (service.isFreeOffering) {
       setLocation(`/contact?service=${encodeURIComponent(service.slug ?? "")}`);
     } else {
-      setLocation(`/checkout?service=${encodeURIComponent(service.slug ?? "")}`);
+      setLocation(`/checkout?product=${encodeURIComponent(service.slug ?? "")}`);
     }
   };
 
