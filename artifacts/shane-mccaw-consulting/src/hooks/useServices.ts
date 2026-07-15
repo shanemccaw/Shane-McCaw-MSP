@@ -32,6 +32,7 @@ export interface PublicService {
   fulfillmentTypeKey: string | null;
   workflowTasks: { title: string; description: string | null; order: number }[];
   workflowSummary: { title: string; description: string | null }[];
+  isFreeOffering?: boolean | null;
   typeAttributes: Record<string, unknown> | null;
 }
 
@@ -61,11 +62,18 @@ export function formatPriceDisplay(service: PublicService): string {
 const _cache: Record<string, PublicService[]> = {};
 const _pending: Record<string, Promise<PublicService[]>> = {};
 
-export function fetchServices(type?: string): Promise<PublicService[]> {
-  const key = type ?? "__all__";
+export function fetchServices(params?: string | { type?: string; category?: string }): Promise<PublicService[]> {
+  const type = typeof params === "string" ? params : params?.type;
+  const category = typeof params === "string" ? undefined : params?.category;
+  const key = type ? `type:${type}` : category ? `category:${category}` : "__all__";
+
   if (_cache[key]) return Promise.resolve(_cache[key]);
   if (!_pending[key]) {
-    const url = type ? `/api/services?type=${encodeURIComponent(type)}` : "/api/services";
+    const urlParts = [];
+    if (type) urlParts.push(`type=${encodeURIComponent(type)}`);
+    if (category) urlParts.push(`category=${encodeURIComponent(category)}`);
+    const url = urlParts.length > 0 ? `/api/services?${urlParts.join("&")}` : "/api/services";
+
     _pending[key] = fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error("Failed to fetch services");
@@ -98,12 +106,15 @@ export function useServiceHasPdf(pageHref: string): boolean {
   return match?.hasPdf ?? false;
 }
 
-export function useServices(type?: string): {
+export function useServices(params?: string | { type?: string; category?: string }): {
   services: PublicService[];
   loading: boolean;
   error: string | null;
 } {
-  const key = type ?? "__all__";
+  const type = typeof params === "string" ? params : params?.type;
+  const category = typeof params === "string" ? undefined : params?.category;
+  const key = type ? `type:${type}` : category ? `category:${category}` : "__all__";
+
   const [services, setServices] = useState<PublicService[]>(_cache[key] ?? []);
   const [loading, setLoading] = useState<boolean>(!_cache[key]);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +127,7 @@ export function useServices(type?: string): {
     }
     let cancelled = false;
     setLoading(true);
-    fetchServices(type)
+    fetchServices(params)
       .then((data) => {
         if (!cancelled) {
           setServices(data);
@@ -132,7 +143,7 @@ export function useServices(type?: string): {
     return () => {
       cancelled = true;
     };
-  }, [key, type]);
+  }, [key, params]);
 
   return { services, loading, error };
 }

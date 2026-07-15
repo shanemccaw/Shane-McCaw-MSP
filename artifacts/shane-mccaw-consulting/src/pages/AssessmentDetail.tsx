@@ -347,11 +347,10 @@ export default function AssessmentDetail() {
               </p>
             </div>
 
-            <div className={`grid grid-cols-1 ${
-              (allDeliverables.length > 0 && features.length > 0 && deliverables.length > 0)
+            <div className={`grid grid-cols-1 ${(allDeliverables.length > 0 && features.length > 0 && deliverables.length > 0)
                 ? "lg:grid-cols-2"
                 : "max-w-[640px] mx-auto"
-            } gap-8`}>
+              } gap-8`}>
               {allDeliverables.length > 0 && (
                 <div className="bg-white rounded-2xl p-8 border border-border">
                   <div className="flex items-center gap-3 mb-6">
