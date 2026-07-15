@@ -4,7 +4,26 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { Brain, X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ShieldCheck, AlertTriangle, FileText, Target, Users, Building2, ArrowRight, Lock, Database, Globe } from "lucide-react";
+import {
+  Brain,
+  X,
+  ChevronRight,
+  CheckCircle,
+  Loader2,
+  BarChart3,
+  Award,
+  Zap,
+  ShieldCheck,
+  AlertTriangle,
+  FileText,
+  Target,
+  Users,
+  Building2,
+  ArrowRight,
+  Lock,
+  Database,
+  Globe,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
@@ -25,7 +44,13 @@ interface QuizResults {
   whatThisMeans: string;
 }
 
-type QuizState = "idle" | "intro" | "questioning" | "lead-capture" | "submitting" | "results";
+type QuizState =
+  | "idle"
+  | "intro"
+  | "questioning"
+  | "lead-capture"
+  | "submitting"
+  | "results";
 
 // ─── Lead capture schema ───────────────────────────────────────────────────────
 const leadSchema = z.object({
@@ -157,7 +182,9 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
   return (
     <div className="w-full">
       <div className="flex justify-between text-xs text-white/60 mb-1">
-        <span>Question {step} of {total}</span>
+        <span>
+          Question {step} of {total}
+        </span>
         <span>{pct}%</span>
       </div>
       <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -173,7 +200,8 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 // ─── Score Bar ─────────────────────────────────────────────────────────────────
 function ScoreBar({ score, label }: { score: number; label: string }) {
   const pct = (score / 10) * 100;
-  const colour = score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-primary" : "bg-red-400";
+  const colour =
+    score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-primary" : "bg-red-400";
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
@@ -182,7 +210,10 @@ function ScoreBar({ score, label }: { score: number; label: string }) {
       </div>
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
         <div
-          className={cn("h-full rounded-full transition-all duration-700", colour)}
+          className={cn(
+            "h-full rounded-full transition-all duration-700",
+            colour,
+          )}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -202,7 +233,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
   const [submitError, setSubmitError] = useState("");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [resendEmail, setResendEmail] = useState("");
-  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [resendState, setResendState] = useState<
+    "idle" | "sending" | "sent" | "error"
+  >("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -218,7 +251,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
     setState("questioning");
     setLoading(true);
     try {
-      const data = await apiPost<{ content: string }>("/quiz/chat", { messages: [] });
+      const data = await apiPost<{ content: string }>("/quiz/chat", {
+        messages: [],
+      });
       setCurrentQuestion(data.content);
       setMessages([{ role: "assistant", content: data.content }]);
       setQuestionIndex(1);
@@ -248,15 +283,24 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
     setLoading(true);
     try {
-      const data = await apiPost<{ content: string }>("/quiz/chat", { messages: updatedMessages });
-      const assistantMsg: Message = { role: "assistant", content: data.content };
+      const data = await apiPost<{ content: string }>("/quiz/chat", {
+        messages: updatedMessages,
+      });
+      const assistantMsg: Message = {
+        role: "assistant",
+        content: data.content,
+      };
       setMessages([...updatedMessages, assistantMsg]);
       setCurrentQuestion(data.content);
       setQuestionIndex((q) => q + 1);
     } catch {
       // Use slot-based fallback: questionIndex is the slot we just answered,
       // so the next question lives at that same index (0-based).
-      setCurrentQuestion(FALLBACK_QUESTIONS[Math.min(questionIndex, FALLBACK_QUESTIONS.length - 1)]);
+      setCurrentQuestion(
+        FALLBACK_QUESTIONS[
+          Math.min(questionIndex, FALLBACK_QUESTIONS.length - 1)
+        ],
+      );
       setQuestionIndex((q) => q + 1);
     } finally {
       setLoading(false);
@@ -269,12 +313,15 @@ function QuizModal({ onClose }: { onClose: () => void }) {
     setState("submitting");
     setSubmitError("");
     try {
-      const data = await apiPost<QuizResults & { success: boolean }>("/quiz/submit", {
-        name: lead.name,
-        email: lead.email,
-        company: lead.company,
-        conversation: messages,
-      });
+      const data = await apiPost<QuizResults & { success: boolean }>(
+        "/quiz/submit",
+        {
+          name: lead.name,
+          email: lead.email,
+          company: lead.company,
+          conversation: messages,
+        },
+      );
       setSubmittedEmail(lead.email);
       setResendEmail(lead.email);
       setResults(data);
@@ -288,14 +335,24 @@ function QuizModal({ onClose }: { onClose: () => void }) {
   // Resend (or forward) the PDF report to another email
   async function handleResend(e: React.FormEvent) {
     e.preventDefault();
-    if (!results?.leadId || !results?.resendToken || !resendEmail || resendState === "sending") return;
+    if (
+      !results?.leadId ||
+      !results?.resendToken ||
+      !resendEmail ||
+      resendState === "sending"
+    )
+      return;
     setResendState("sending");
     try {
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       const res = await fetch(`${base}/api/quiz/resend-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: results.leadId, resendToken: results.resendToken, email: resendEmail }),
+        body: JSON.stringify({
+          leadId: results.leadId,
+          resendToken: results.resendToken,
+          email: resendEmail,
+        }),
       });
       setResendState(res.ok ? "sent" : "error");
     } catch {
@@ -314,12 +371,13 @@ function QuizModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-[#0A2540] rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
-
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-white text-sm">Copilot Readiness Assessment</span>
+            <span className="font-semibold text-white text-sm">
+              Copilot Readiness Assessment
+            </span>
           </div>
           {state === "questioning" && (
             <div className="flex-1 mx-6">
@@ -337,7 +395,6 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-6 min-h-0">
-
           {/* Intro state */}
           {state === "intro" && (
             <div className="space-y-6 text-center py-4">
@@ -345,19 +402,34 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 <Brain className="w-8 h-8 text-primary" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">How Copilot-Ready Is Your Organisation?</h2>
+                <h2 className="text-2xl font-bold text-white mb-2">
+                  How Copilot-Ready Is Your Organisation?
+                </h2>
                 <p className="text-white/70 text-sm leading-relaxed max-w-md mx-auto">
-                  Answer 10 AI-powered questions across 5 readiness dimensions. Takes around 5 minutes.
-                  You'll receive a personalised PDF report and service recommendation by email.
+                  Answer 10 AI-powered questions across 5 readiness dimensions.
+                  Takes around 5 minutes. You'll receive a personalised PDF
+                  report and service recommendation by email.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3 text-left">
                 {[
-                  { icon: <BarChart3 className="w-4 h-4" />, label: "5 categories scored" },
-                  { icon: <Award className="w-4 h-4" />, label: "Maturity tier rating" },
-                  { icon: <Zap className="w-4 h-4" />, label: "PDF report emailed" },
+                  {
+                    icon: <BarChart3 className="w-4 h-4" />,
+                    label: "5 categories scored",
+                  },
+                  {
+                    icon: <Award className="w-4 h-4" />,
+                    label: "Maturity tier rating",
+                  },
+                  {
+                    icon: <Zap className="w-4 h-4" />,
+                    label: "PDF report emailed",
+                  },
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-white/5 rounded-lg p-3">
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 bg-white/5 rounded-lg p-3"
+                  >
                     <span className="text-primary">{item.icon}</span>
                     <span className="text-white/70 text-xs">{item.label}</span>
                   </div>
@@ -382,7 +454,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <>
                   <div className="bg-white/5 rounded-xl p-5 border border-white/10">
-                    <p className="text-white text-base leading-relaxed">{currentQuestion}</p>
+                    <p className="text-white text-base leading-relaxed">
+                      {currentQuestion}
+                    </p>
                   </div>
                   <div className="space-y-3">
                     <textarea
@@ -401,11 +475,18 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       className="w-full py-3 px-6 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       {loading ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                          Processing…
+                        </>
                       ) : questionIndex >= TOTAL_QUESTIONS ? (
-                        <>See My Results <ChevronRight className="w-4 h-4" /></>
+                        <>
+                          See My Results <ChevronRight className="w-4 h-4" />
+                        </>
                       ) : (
-                        <>Next Question <ChevronRight className="w-4 h-4" /></>
+                        <>
+                          Next Question <ChevronRight className="w-4 h-4" />
+                        </>
                       )}
                     </button>
                   </div>
@@ -419,36 +500,55 @@ function QuizModal({ onClose }: { onClose: () => void }) {
             <form onSubmit={handleSubmit(onLeadSubmit)} className="space-y-5">
               <div className="text-center mb-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">Assessment Complete!</h3>
+                <h3 className="text-xl font-bold text-white">
+                  Assessment Complete!
+                </h3>
                 <p className="text-white/60 text-sm mt-1">
-                  Enter your details to receive your personalised PDF report by email.
+                  Enter your details to receive your personalised PDF report by
+                  email.
                 </p>
               </div>
               {submitError && (
-                <p className="text-red-400 text-sm text-center bg-red-400/10 rounded-lg p-3">{submitError}</p>
+                <p className="text-red-400 text-sm text-center bg-red-400/10 rounded-lg p-3">
+                  {submitError}
+                </p>
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Full Name *</label>
+                  <label className="block text-white/70 text-sm mb-1.5">
+                    Full Name *
+                  </label>
                   <input
                     {...register("name")}
                     placeholder="Jane Smith"
                     className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
                   />
-                  {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}
+                  {errors.name && (
+                    <p className="text-red-400 text-xs mt-1">
+                      {errors.name.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Work Email *</label>
+                  <label className="block text-white/70 text-sm mb-1.5">
+                    Work Email *
+                  </label>
                   <input
                     {...register("email")}
                     type="email"
                     placeholder="jane@company.com"
                     className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
                   />
-                  {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
+                  {errors.email && (
+                    <p className="text-red-400 text-xs mt-1">
+                      {errors.email.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Company (optional)</label>
+                  <label className="block text-white/70 text-sm mb-1.5">
+                    Company (optional)
+                  </label>
                   <input
                     {...register("company")}
                     placeholder="Acme Corp"
@@ -472,8 +572,12 @@ function QuizModal({ onClose }: { onClose: () => void }) {
           {state === "submitting" && (
             <div className="flex flex-col items-center justify-center py-16 space-y-4">
               <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              <p className="text-white font-semibold">Analysing your responses…</p>
-              <p className="text-white/50 text-sm">Generating your personalised readiness report</p>
+              <p className="text-white font-semibold">
+                Analysing your responses…
+              </p>
+              <p className="text-white/50 text-sm">
+                Generating your personalised readiness report
+              </p>
             </div>
           )}
 
@@ -482,29 +586,52 @@ function QuizModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-6">
               <div className="text-center">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">Your Readiness Report</h3>
+                <h3 className="text-xl font-bold text-white">
+                  Your Readiness Report
+                </h3>
                 {submittedEmail ? (
-                  <p className="text-white/50 text-sm mt-1">PDF report sent to <span className="text-teal-400 font-medium">{submittedEmail}</span></p>
+                  <p className="text-white/50 text-sm mt-1">
+                    PDF report sent to{" "}
+                    <span className="text-teal-400 font-medium">
+                      {submittedEmail}
+                    </span>
+                  </p>
                 ) : (
-                  <p className="text-white/50 text-sm mt-1">Check your inbox — your full PDF report has been emailed to you.</p>
+                  <p className="text-white/50 text-sm mt-1">
+                    Check your inbox — your full PDF report has been emailed to
+                    you.
+                  </p>
                 )}
               </div>
 
               {/* Forward report form — only shown when a valid resend token was issued */}
               {results.leadId && results.resendToken && (
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
+                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">
+                    Forward Report to Another Address
+                  </p>
                   {resendState === "sent" ? (
                     <div className="flex items-center gap-2 text-teal-400 text-sm">
                       <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>Report sent to <span className="font-medium">{resendEmail}</span></span>
+                      <span>
+                        Report sent to{" "}
+                        <span className="font-medium">{resendEmail}</span>
+                      </span>
                     </div>
                   ) : (
-                    <form onSubmit={(e) => { void handleResend(e); }} className="flex gap-2">
+                    <form
+                      onSubmit={(e) => {
+                        void handleResend(e);
+                      }}
+                      className="flex gap-2"
+                    >
                       <input
                         type="email"
                         value={resendEmail}
-                        onChange={(e) => { setResendEmail(e.target.value); setResendState("idle"); }}
+                        onChange={(e) => {
+                          setResendEmail(e.target.value);
+                          setResendState("idle");
+                        }}
                         placeholder="colleague@company.com"
                         required
                         className="flex-1 min-w-0 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-primary"
@@ -515,13 +642,20 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                         className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
                       >
                         {resendState === "sending" ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</>
-                        ) : "Send PDF"}
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                            Sending…
+                          </>
+                        ) : (
+                          "Send PDF"
+                        )}
                       </button>
                     </form>
                   )}
                   {resendState === "error" && (
-                    <p className="text-red-400 text-xs mt-2">Failed to send. Please try again.</p>
+                    <p className="text-red-400 text-xs mt-2">
+                      Failed to send. Please try again.
+                    </p>
                   )}
                 </div>
               )}
@@ -530,12 +664,19 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
                   <p className="text-white/50 text-xs mb-1">Total Score</p>
-                  <p className="text-4xl font-bold text-primary">{results.totalScore}</p>
+                  <p className="text-4xl font-bold text-primary">
+                    {results.totalScore}
+                  </p>
                   <p className="text-white/40 text-xs">out of 50</p>
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
                   <p className="text-white/50 text-xs mb-1">Maturity Tier</p>
-                  <div className={cn("inline-block px-3 py-1 rounded-full text-white text-sm font-bold mt-1", TIER_COLOURS[results.tier] ?? "bg-primary")}>
+                  <div
+                    className={cn(
+                      "inline-block px-3 py-1 rounded-full text-white text-sm font-bold mt-1",
+                      TIER_COLOURS[results.tier] ?? "bg-primary",
+                    )}
+                  >
                     {results.tier}
                   </div>
                 </div>
@@ -543,7 +684,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
               {/* Category breakdown */}
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Category Breakdown</p>
+                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">
+                  Category Breakdown
+                </p>
                 {CATEGORIES.map((cat) => (
                   <ScoreBar
                     key={cat.key}
@@ -556,45 +699,75 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               {/* What it means */}
               {results.whatThisMeans && (
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-2">What This Means</p>
-                  <p className="text-white/80 text-sm leading-relaxed">{results.whatThisMeans}</p>
+                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-2">
+                    What This Means
+                  </p>
+                  <p className="text-white/80 text-sm leading-relaxed">
+                    {results.whatThisMeans}
+                  </p>
                 </div>
               )}
 
               {/* Recommended service */}
               <div className="bg-primary/10 border border-primary/30 rounded-xl p-4">
-                <p className="text-primary text-xs font-semibold uppercase tracking-wider mb-1">Recommended Next Step</p>
-                <p className="text-white font-bold text-base">{results.recommendedService}</p>
+                <p className="text-primary text-xs font-semibold uppercase tracking-wider mb-1">
+                  Recommended Next Step
+                </p>
+                <p className="text-white font-bold text-base">
+                  {results.recommendedService}
+                </p>
                 {results.serviceDescription && (
-                  <p className="text-white/60 text-sm mt-1">{results.serviceDescription}</p>
+                  <p className="text-white/60 text-sm mt-1">
+                    {results.serviceDescription}
+                  </p>
                 )}
               </div>
 
               {/* Upsell: tier-personalised offer */}
               {(() => {
-                const upsell = TIER_UPSELLS[results.tier] ?? TIER_UPSELLS["Developing"];
+                const upsell =
+                  TIER_UPSELLS[results.tier] ?? TIER_UPSELLS["Developing"];
                 return (
                   <div className="bg-primary/10 border border-primary/30 rounded-xl p-5 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-primary text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
+                      <p className="text-primary text-xs font-bold uppercase tracking-wider">
+                        Recommended Next Step
+                      </p>
                       <span className="text-primary text-xs font-semibold bg-primary/10 px-2.5 py-1 rounded-full border border-primary/30">
                         {upsell.badge}
                       </span>
                     </div>
-                    <p className="text-white font-bold text-base">{upsell.name}</p>
-                    <p className="text-white/70 text-sm leading-relaxed">{upsell.description}</p>
+                    <p className="text-white font-bold text-base">
+                      {upsell.name}
+                    </p>
+                    <p className="text-white/70 text-sm leading-relaxed">
+                      {upsell.description}
+                    </p>
                     <div className="flex flex-col sm:flex-row gap-2 pt-1">
                       <a
                         href={`/checkout?product=${upsell.slug}`}
                         className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
-                        onClick={() => trackEvent("quiz_upsell_cta_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
+                        onClick={() =>
+                          trackEvent("quiz_upsell_cta_click", {
+                            quiz_type: "copilot",
+                            tier: results.tier,
+                            score: results.totalScore,
+                            upsell_slug: upsell.slug,
+                          })
+                        }
                       >
                         {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
                       </a>
                       <a
                         href="/book"
                         className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
-                        onClick={() => trackEvent("quiz_upsell_book_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore })}
+                        onClick={() =>
+                          trackEvent("quiz_upsell_book_click", {
+                            quiz_type: "copilot",
+                            tier: results.tier,
+                            score: results.totalScore,
+                          })
+                        }
                       >
                         Book a Free Call
                       </a>
@@ -603,9 +776,17 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       <a
                         href={upsell.servicePath}
                         className="inline-flex items-center gap-1 text-primary/70 hover:text-primary text-sm transition-colors"
-                        onClick={() => trackEvent("quiz_service_page_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, service_path: upsell.servicePath })}
+                        onClick={() =>
+                          trackEvent("quiz_service_page_click", {
+                            quiz_type: "copilot",
+                            tier: results.tier,
+                            score: results.totalScore,
+                            service_path: upsell.servicePath,
+                          })
+                        }
                       >
-                        Explore the {upsell.servicePageLabel} service <ArrowRight className="w-3 h-3" />
+                        Explore the {upsell.servicePageLabel} service{" "}
+                        <ArrowRight className="w-3 h-3" />
                       </a>
                     </div>
                   </div>
@@ -629,7 +810,9 @@ export default function CopilotQuiz() {
     } else {
       document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [modalOpen]);
 
   return (
@@ -641,13 +824,19 @@ export default function CopilotQuiz() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
         <div
           className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, #ffffff 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+          }}
         />
 
         <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
             <Brain className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Copilot AI Readiness Assessment</span>
+            <span className="text-primary text-sm font-semibold uppercase tracking-wide">
+              Copilot AI Readiness Assessment
+            </span>
           </div>
 
           <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
@@ -657,10 +846,15 @@ export default function CopilotQuiz() {
           </h1>
 
           <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
-            Copilot underperforms when governance, data classification, identity, and change management aren't ready. Most organizations skip the pre-deployment assessment and pay for it in adoption failures and compliance exposure.
+            Copilot underperforms when governance, data classification,
+            identity, and change management aren't ready. Most organizations
+            skip the pre-deployment assessment and pay for it in adoption
+            failures and compliance exposure.
           </p>
           <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same readiness framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your deployment will break before it does.
+            This 10-question assessment — built on the same readiness framework
+            Shane applied as Lead M365 Architect at NASA — identifies exactly
+            where your deployment will break before it does.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
@@ -670,7 +864,9 @@ export default function CopilotQuiz() {
               { value: "Free", label: "personalized PDF report" },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
+                <p className="text-3xl font-extrabold text-[#00B4D8]">
+                  {stat.value}
+                </p>
                 <p className="text-white/50 text-sm mt-1">{stat.label}</p>
               </div>
             ))}
@@ -684,19 +880,28 @@ export default function CopilotQuiz() {
             <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <p className="text-white/30 text-sm mt-4">No account required · Results and PDF delivered instantly</p>
+          <p className="text-white/30 text-sm mt-4">
+            No account required · Results and PDF delivered instantly
+          </p>
         </div>
       </section>
 
       {/* Why This Quiz Exists */}
       <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+            Why This Assessment Exists
+          </p>
           <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
-            Copilot readiness isn't optional — it's what separates a successful deployment from an expensive failure.
+            Copilot readiness isn't optional — it's what separates a successful
+            deployment from an expensive failure.
           </h2>
           <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
-            Microsoft Copilot doesn't run on intention. It runs on infrastructure. Organizations that skip pre-deployment readiness work consistently see the same outcome: low adoption, high support burden, and compliance exposure they didn't anticipate. This quiz identifies the gaps before you spend your deployment budget.
+            Microsoft Copilot doesn't run on intention. It runs on
+            infrastructure. Organizations that skip pre-deployment readiness
+            work consistently see the same outcome: low adoption, high support
+            burden, and compliance exposure they didn't anticipate. This quiz
+            identifies the gaps before you spend your deployment budget.
           </p>
           <div className="grid md:grid-cols-3 gap-6">
             {[
@@ -721,12 +926,24 @@ export default function CopilotQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center mb-4", item.colour)}>
+                <div
+                  key={i}
+                  className="bg-[#F7F9FC] rounded-2xl border border-border p-6"
+                >
+                  <div
+                    className={cn(
+                      "w-11 h-11 rounded-xl flex items-center justify-center mb-4",
+                      item.colour,
+                    )}
+                  >
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">
+                    {item.title}
+                  </h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">
+                    {item.body}
+                  </p>
                 </div>
               );
             })}
@@ -737,12 +954,16 @@ export default function CopilotQuiz() {
       {/* Who This Is For */}
       <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">
+            Who This Assessment Is For
+          </p>
           <h2 className="text-3xl font-extrabold text-white text-center mb-4">
-            Built for organizations where a failed Copilot deployment is not an option.
+            Built for organizations where a failed Copilot deployment is not an
+            option.
           </h2>
           <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
-            If you're in any of these groups, you need this assessment before your deployment begins.
+            If you're in any of these groups, you need this assessment before
+            your deployment begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -779,12 +1000,19 @@ export default function CopilotQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div
+                  key={i}
+                  className="bg-white/5 border border-white/10 rounded-2xl p-5"
+                >
                   <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
                     <Icon className="w-5 h-5 text-[#00B4D8]" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-extrabold text-white mb-1">
+                    {item.title}
+                  </h3>
+                  <p className="text-white/50 text-sm leading-relaxed">
+                    {item.body}
+                  </p>
                 </div>
               );
             })}
@@ -795,10 +1023,17 @@ export default function CopilotQuiz() {
       {/* How It Works */}
       <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to PDF in under five minutes.</h2>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+            How It Works
+          </p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            From first question to PDF in under five minutes.
+          </h2>
           <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            Ten questions. Five readiness dimensions. A NASA-grade scoring model. An instant readiness score, a personalized PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+            Ten questions. Five readiness dimensions. A NASA-grade scoring
+            model. An instant readiness score, a personalized PDF report, and a
+            recommended next step — delivered to your inbox the moment you
+            finish.
           </p>
           <div className="grid md:grid-cols-3 gap-10">
             {[
@@ -819,9 +1054,15 @@ export default function CopilotQuiz() {
               },
             ].map((item) => (
               <div key={item.step} className="relative">
-                <div className="text-7xl font-black text-primary/8 mb-4 leading-none">{item.step}</div>
-                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">{item.title}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                <div className="text-7xl font-black text-primary/8 mb-4 leading-none">
+                  {item.step}
+                </div>
+                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">
+                  {item.title}
+                </h3>
+                <p className="text-slate-500 text-sm leading-relaxed">
+                  {item.desc}
+                </p>
               </div>
             ))}
           </div>
@@ -830,7 +1071,8 @@ export default function CopilotQuiz() {
               onClick={() => setModalOpen(true)}
               className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the assessment now{" "}
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -839,10 +1081,16 @@ export default function CopilotQuiz() {
       {/* The Five Dimensions */}
       <section className="py-20 bg-[#F7F9FC]">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Readiness Dimensions</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+            The Five Readiness Dimensions
+          </p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            What the assessment measures — and why it matters.
+          </h2>
           <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            These five dimensions determine whether a Copilot deployment delivers value or creates liability. Each is scored independently so you know exactly where to focus before deployment begins.
+            These five dimensions determine whether a Copilot deployment
+            delivers value or creates liability. Each is scored independently so
+            you know exactly where to focus before deployment begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
@@ -851,50 +1099,65 @@ export default function CopilotQuiz() {
                 accent: "text-blue-600",
                 label: "Dimension 1",
                 title: "Infrastructure & Identity",
-                measures: "M365 licensing status, Entra ID health, MFA enforcement, device compliance policies, and Conditional Access coverage.",
-                matters: "Copilot's access scope is determined by your identity architecture. Misconfigured Conditional Access or incomplete MFA becomes an attack surface when Copilot begins indexing.",
+                measures:
+                  "M365 licensing status, Entra ID health, MFA enforcement, device compliance policies, and Conditional Access coverage.",
+                matters:
+                  "Copilot's access scope is determined by your identity architecture. Misconfigured Conditional Access or incomplete MFA becomes an attack surface when Copilot begins indexing.",
                 fail: "MFA not universally enforced; no device compliance baseline; Entra ID in hybrid with unmanaged devices.",
-                ready: "All users on MFA, Intune-managed devices, Conditional Access policies covering all apps, Entra ID health score above 80%.",
+                ready:
+                  "All users on MFA, Intune-managed devices, Conditional Access policies covering all apps, Entra ID health score above 80%.",
               },
               {
                 colour: "bg-teal-500",
                 accent: "text-teal-600",
                 label: "Dimension 2",
                 title: "Data & Compliance",
-                measures: "Sensitivity label coverage, DLP policy maturity, data governance framework, information barriers, and retention policies.",
-                matters: "Copilot surfaces files, emails, and chats from across your tenant. Without classification, it surfaces everything — including what shouldn't be accessible to every user.",
+                measures:
+                  "Sensitivity label coverage, DLP policy maturity, data governance framework, information barriers, and retention policies.",
+                matters:
+                  "Copilot surfaces files, emails, and chats from across your tenant. Without classification, it surfaces everything — including what shouldn't be accessible to every user.",
                 fail: "No sensitivity labels deployed; DLP policies absent or unenforced; no documented data governance framework.",
-                ready: "Labels applied to >80% of files, DLP policies enforced across Exchange and SharePoint, governance framework documented and current.",
+                ready:
+                  "Labels applied to >80% of files, DLP policies enforced across Exchange and SharePoint, governance framework documented and current.",
               },
               {
                 colour: "bg-violet-500",
                 accent: "text-violet-600",
                 label: "Dimension 3",
                 title: "AI Literacy",
-                measures: "Employee AI skills baseline, existence of a training programme, AI champion network, and adoption culture readiness.",
-                matters: "Copilot adoption correlates directly with AI literacy. Without a baseline and a structured enablement programme, licence utilization stays below 30%.",
+                measures:
+                  "Employee AI skills baseline, existence of a training programme, AI champion network, and adoption culture readiness.",
+                matters:
+                  "Copilot adoption correlates directly with AI literacy. Without a baseline and a structured enablement programme, licence utilization stays below 30%.",
                 fail: "No AI training programme; no champions; employees unaware of Copilot capabilities; no adoption tracking.",
-                ready: "Structured enablement programme in place; AI champions identified; pilot group trained and reporting outcomes.",
+                ready:
+                  "Structured enablement programme in place; AI champions identified; pilot group trained and reporting outcomes.",
               },
               {
                 colour: "bg-orange-500",
                 accent: "text-orange-600",
                 label: "Dimension 4",
                 title: "Change Management",
-                measures: "Executive sponsorship, IT readiness for support burden, rollout planning maturity, and policy documentation.",
-                matters: "Change management failures are the most common cause of AI deployment failure — more common than technical issues. Without executive sponsorship and documented policy, pilots stall.",
+                measures:
+                  "Executive sponsorship, IT readiness for support burden, rollout planning maturity, and policy documentation.",
+                matters:
+                  "Change management failures are the most common cause of AI deployment failure — more common than technical issues. Without executive sponsorship and documented policy, pilots stall.",
                 fail: "No executive sponsor; IT team not trained on Copilot support; no rollout plan; no acceptable use policy.",
-                ready: "Exec sponsor confirmed; IT trained on Copilot administration; rollout plan documented; AUP drafted and approved.",
+                ready:
+                  "Exec sponsor confirmed; IT trained on Copilot administration; rollout plan documented; AUP drafted and approved.",
               },
               {
                 colour: "bg-green-500",
                 accent: "text-green-600",
                 label: "Dimension 5",
                 title: "Business Process",
-                measures: "Identified priority use cases, success metrics, ROI tracking methodology, and process ownership accountability.",
-                matters: "Copilot delivers ROI when it's applied to specific, measurable use cases. Deployments without defined use cases produce vague outputs and no defensible business case.",
+                measures:
+                  "Identified priority use cases, success metrics, ROI tracking methodology, and process ownership accountability.",
+                matters:
+                  "Copilot delivers ROI when it's applied to specific, measurable use cases. Deployments without defined use cases produce vague outputs and no defensible business case.",
                 fail: "No use cases identified; no success metrics; no owner accountable for adoption outcomes.",
-                ready: "Three or more priority use cases defined; success metrics agreed; ROI baseline established; named owner per use case.",
+                ready:
+                  "Three or more priority use cases defined; success metrics agreed; ROI baseline established; named owner per use case.",
               },
               {
                 colour: "bg-primary",
@@ -912,39 +1175,73 @@ export default function CopilotQuiz() {
                 key={item.title}
                 className={cn(
                   "rounded-2xl p-6 border",
-                  item.cta ? "bg-[#0A2540] border-[#0A2540] flex flex-col justify-between" : "bg-white border-slate-100 shadow-sm"
+                  item.cta
+                    ? "bg-[#0A2540] border-[#0A2540] flex flex-col justify-between"
+                    : "bg-white border-slate-100 shadow-sm",
                 )}
               >
                 <div>
                   <div className="flex items-center gap-3 mb-4">
                     <div className={cn("w-2 h-10 rounded-full", item.colour)} />
                     <div>
-                      <p className={cn("text-xs font-bold uppercase tracking-wide", item.cta ? "text-white/40" : "text-muted-foreground")}>{item.label}</p>
-                      <h3 className={cn("font-extrabold text-lg", item.cta ? "text-white" : "text-[#0A2540]")}>{item.title}</h3>
+                      <p
+                        className={cn(
+                          "text-xs font-bold uppercase tracking-wide",
+                          item.cta ? "text-white/40" : "text-muted-foreground",
+                        )}
+                      >
+                        {item.label}
+                      </p>
+                      <h3
+                        className={cn(
+                          "font-extrabold text-lg",
+                          item.cta ? "text-white" : "text-[#0A2540]",
+                        )}
+                      >
+                        {item.title}
+                      </h3>
                     </div>
                   </div>
                   {item.cta ? (
                     <p className="text-white/60 text-sm leading-relaxed">
-                      All five dimensions scored, ranked by risk level, and mapped to a tailored service recommendation. Personalized PDF delivered to your inbox the moment you finish.
+                      All five dimensions scored, ranked by risk level, and
+                      mapped to a tailored service recommendation. Personalized
+                      PDF delivered to your inbox the moment you finish.
                     </p>
                   ) : (
                     <div className="space-y-3 text-sm">
                       <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">What it measures</p>
-                        <p className="text-slate-500 leading-relaxed">{item.measures}</p>
+                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">
+                          What it measures
+                        </p>
+                        <p className="text-slate-500 leading-relaxed">
+                          {item.measures}
+                        </p>
                       </div>
                       <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">Why it matters</p>
-                        <p className="text-slate-500 leading-relaxed">{item.matters}</p>
+                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">
+                          Why it matters
+                        </p>
+                        <p className="text-slate-500 leading-relaxed">
+                          {item.matters}
+                        </p>
                       </div>
                       <div className="flex gap-3">
                         <div className="flex-1 bg-red-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Failure looks like</p>
-                          <p className="text-xs text-slate-600 leading-relaxed">{item.fail}</p>
+                          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">
+                            Failure looks like
+                          </p>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {item.fail}
+                          </p>
                         </div>
                         <div className="flex-1 bg-emerald-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1">Readiness looks like</p>
-                          <p className="text-xs text-slate-600 leading-relaxed">{item.ready}</p>
+                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1">
+                            Readiness looks like
+                          </p>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {item.ready}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -967,12 +1264,16 @@ export default function CopilotQuiz() {
       {/* What You Receive */}
       <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+            What You Receive
+          </p>
           <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
             A personalized deployment risk report. Free. Instant.
           </h2>
           <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
-            Not a generic score. Not a newsletter signup. A real report — the same diagnostic framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
+            Not a generic score. Not a newsletter signup. A real report — the
+            same diagnostic framework Shane applies in paid engagements —
+            delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
@@ -1009,13 +1310,20 @@ export default function CopilotQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
+                <div
+                  key={i}
+                  className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5"
+                >
                   <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
                     <Icon className="w-5 h-5 text-[#0078D4]" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                    <h3 className="font-extrabold text-[#0A2540] mb-1">
+                      {item.title}
+                    </h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">
+                      {item.body}
+                    </p>
                   </div>
                 </div>
               );
@@ -1027,20 +1335,31 @@ export default function CopilotQuiz() {
       {/* Bottom CTA */}
       <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Don't Deploy Blind</p>
+          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">
+            Don't Deploy Blind
+          </p>
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
             Know your deployment risk before you spend your Copilot budget.
           </h2>
           <p className="text-white/60 text-lg mb-3 leading-relaxed">
-            Most organizations discover their readiness gaps after deployment — when adoption is low, support burden is high, and the business case is already under scrutiny.
+            Most organizations discover their readiness gaps after deployment —
+            when adoption is low, support burden is high, and the business case
+            is already under scrutiny.
           </p>
           <p className="text-white/60 text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gaps it surfaces are not.
+            This assessment takes five minutes. The PDF report is free. The gaps
+            it surfaces are not.
           </p>
-          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
+          <CTAButton
+            onClick={() => setModalOpen(true)}
+            className="text-base px-8 py-4"
+          >
             Take the Free Assessment Now
           </CTAButton>
-          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
+          <p className="text-white/30 text-sm mt-4">
+            No account required · No sales follow-up · Results delivered
+            instantly
+          </p>
         </div>
       </section>
 
