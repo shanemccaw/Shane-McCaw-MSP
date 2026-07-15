@@ -122,40 +122,52 @@ export function computePricingEngine(
 }
 
 async function calculatePricingImpact(tenantId: number): Promise<PricingEngineOutput> {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
+  if (customerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  }
   return computePricingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
 }
 
 // ── shared tenant-scoped payload wrapper for drift/forecasting (no lib wrapper exists) ──
 
 async function calculateDriftForTenant(tenantId: number) {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
+  if (customerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  }
   return computeDriftEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
 }
 
 async function calculateForecastForTenant(tenantId: number) {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
+  if (customerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  }
   return computeForecastingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
 }
 
 async function calculateMspForTenant(tenantId: number) {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
+  if (customerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  }
   return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys);
 }
 
