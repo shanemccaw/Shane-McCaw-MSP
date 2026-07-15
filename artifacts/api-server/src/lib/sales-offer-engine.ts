@@ -234,7 +234,7 @@ export async function runSalesOfferEngineForTenant(
   tenantId: number,
   mspId: number | null = null,
 ): Promise<SalesOfferEngineOutput> {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
+  const [{ mergedProfile, findings, customerId, mspId: resolvedMspId }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
     await Promise.all([
       buildTenantProfileAndFindings(tenantId),
       fetchSignalRulesAndGroups(),
@@ -244,7 +244,14 @@ export async function runSalesOfferEngineForTenant(
       loadSalesOfferConfig(mspId),
     ]);
 
-  const { firedSignals } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const { firedSignals } = computeTenantSignals(
+    mergedProfile,
+    findings,
+    rules,
+    groups,
+    disabledSignalKeys,
+    customerId != null && resolvedMspId != null ? { customerId, mspId: resolvedMspId } : undefined,
+  );
 
   return computeSalesOfferEngine(tenantId, firedSignals, ruleGroups, services, config);
 }
