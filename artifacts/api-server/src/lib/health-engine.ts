@@ -234,11 +234,15 @@ async function buildTenantProfileAndFindings(
  * delegating to the pure `computeHealthEngine`.
  */
 export async function calculateArchitectureHealthScore(tenantId: number): Promise<HealthEngineOutput> {
-  const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
+
+  if (customerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  }
 
   return computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
 }
