@@ -3,7 +3,7 @@ import { useLocation, Link } from 'wouter';
 import { useServices, PublicService } from '../hooks/useServices';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { ShieldCheck, Clock, ChevronRight, Activity, Shield, Lock, ActivitySquare } from 'lucide-react';
+import { ShieldCheck, Clock, ChevronRight, Activity, Shield, Lock, AlertTriangle, Layers, TrendingUp, Zap } from 'lucide-react';
 
 export default function Assessments() {
   const [location, setLocation] = useLocation();
@@ -43,45 +43,63 @@ export default function Assessments() {
       <main className="flex-grow pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         {/* NASA Authority & Engine Hero */}
         <div className="text-center max-w-4xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4 text-blue-400" />
             NASA M365 Governance Framework Standard
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-4">
-            Automated Tenant Intelligence & Paid M365 Governance Assessments
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-5">
+            Six Signal Engines.<br />
+            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">One Tenant. Zero Blind Spots.</span>
           </h1>
-          <p className="text-lg text-slate-400 leading-relaxed">
-            Architected by Shane McCaw—creator of NASA's federal Copilot governance standard. Our automated signal engines analyze Drift, Security, Health, SLA compliance, and Scope Creep to deliver actionable tenant insights.
+          <p className="text-lg text-slate-400 leading-relaxed max-w-3xl mx-auto mb-8">
+            Architected by Shane McCaw — creator of NASA's federal Copilot governance standard. Every assessment is powered by automated signal engines that harvest Microsoft Graph telemetry to surface Drift, Security, Health, SLA, Scope Creep, and Sales Offer intelligence.
           </p>
 
+          {/* Engine signal badges */}
+          <div className="flex flex-wrap justify-center gap-2 mb-10">
+            {[
+              { icon: Layers, label: 'Drift Engine', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+              { icon: Lock, label: 'Security Engine', color: 'text-red-400 bg-red-500/10 border-red-500/20' },
+              { icon: Activity, label: 'Health Engine', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+              { icon: Clock, label: 'SLA Engine', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
+              { icon: AlertTriangle, label: 'Scope Creep Engine', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+              { icon: TrendingUp, label: 'Sales Offer Engine', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
+            ].map(({ icon: Icon, label, color }) => (
+              <span key={label} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${color}`}>
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </span>
+            ))}
+          </div>
+
           {/* Tab Filter */}
-          <div className="flex justify-center gap-2 mt-8">
+          <div className="inline-flex bg-slate-900 border border-slate-800 p-1.5 rounded-xl gap-1">
             <button
               onClick={() => setLocation('/assessments/all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'all'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
                 }`}
             >
-              All Assessments ({services.length})
+              All ({services.length})
             </button>
             <button
               onClick={() => setLocation('/assessments/premium')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'paid'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'paid'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
                 }`}
             >
               Paid Deliverables ({paidAssessments.length})
             </button>
             <button
               onClick={() => setLocation('/assessments/start')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'free'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'free'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
                 }`}
             >
-              Free Diagnostic Snapshots ({freeAssessments.length})
+              Free Snapshots ({freeAssessments.length})
             </button>
           </div>
         </div>
@@ -169,37 +187,32 @@ export default function Assessments() {
           </div>
         )}
 
-        {/* Engine Explanation Section */}
+        {/* Signal Engine Methodology Section */}
         <section className="mt-24 pt-16 border-t border-slate-800/80">
           <div className="max-w-3xl mx-auto text-center mb-12">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">Telemetry-Driven Governance Methodology</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">What the Signal Engines Surface</h2>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Our proprietary audit engines connect secure read-only Graph API integrations to capture M365 configuration drift, compliance anomalies, and lifecycle security metrics instantly.
+              Every assessment is driven by automated engines that connect via secure read-only Microsoft Graph API to instantly harvest and score your tenant governance posture.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-850">
-              <Shield className="w-8 h-8 text-blue-400 mb-4" />
-              <h3 className="text-base font-bold text-white mb-2">NASA-Grade Compliance</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Assessments align directly to the federal standards configured by Shane McCaw for high-security cloud parameters.
-              </p>
-            </div>
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-850">
-              <ActivitySquare className="w-8 h-8 text-blue-400 mb-4" />
-              <h3 className="text-base font-bold text-white mb-2">Drift Intelligence</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                We benchmark your current production parameters against standard gold templates to identify configuration drift.
-              </p>
-            </div>
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-850">
-              <Lock className="w-8 h-8 text-blue-400 mb-4" />
-              <h3 className="text-base font-bold text-white mb-2">Automated Discovery</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                No manual data gathering. Telemetry collection is fully automated and executes within minutes of connection.
-              </p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              { icon: Layers, title: 'Drift Engine', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', desc: 'Detects unauthorized configuration deviations from your approved baseline across all M365 workloads.' },
+              { icon: Lock, title: 'Security Engine', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20', desc: 'Identifies anonymous links, stale guest accounts, OAuth app over-privileges, and MFA coverage gaps.' },
+              { icon: Activity, title: 'Health Engine', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', desc: 'Calculates real-time composite health scores and triggers automated remediation runbooks on threshold breach.' },
+              { icon: Clock, title: 'SLA Engine', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20', desc: 'Tracks delivery SLAs, response timelines, milestone execution rates and uptime guarantees proactively.' },
+              { icon: AlertTriangle, title: 'Scope Creep Engine', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', desc: 'Validates every engineer workstream against your legal SOW parameters to prevent undocumented obligations.' },
+              { icon: TrendingUp, title: 'Sales Offer Engine', color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', desc: 'Analyzes telemetry gaps to dynamically calculate targeted upgrade recommendations and monitoring expansions.' },
+            ].map(({ icon: Icon, title, color, bg, desc }) => (
+              <div key={title} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors">
+                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
+                  <Icon className={`w-5 h-5 ${color}`} />
+                </div>
+                <h3 className="text-sm font-bold text-white mb-1.5">{title}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+              </div>
+            ))}
           </div>
         </section>
       </main>
