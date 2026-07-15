@@ -1345,6 +1345,20 @@
       "when": 1752710400000,
       "tag": "0182_licensing_pillar_benchmark",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1752796800000,
+      "tag": "0183_add_tenant_engine_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1752883200000,
+      "tag": "0184_add_testbed_fields_and_overrides",
+      "breakpoints": true
     }
   ]
 }

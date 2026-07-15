@@ -46,6 +46,8 @@ export const mspsTable = pgTable("msps", {
   exportReadyAt: timestamp("export_ready_at", { withTimezone: true }),
   // Marks Shane's own MSP row — direct (non-brokered) customers default to this MSP.
   isDirectBusiness: boolean("is_direct_business").notNull().default(false),
+  isTestbed: boolean("is_testbed").notNull().default(false),
+  testbedMetadata: jsonb("testbed_metadata").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -67,6 +69,7 @@ export const mspCustomersTable = pgTable("msp_customers", {
   ownerType: text("owner_type", { enum: ["customer", "msp", "platform"] }).notNull().default("customer"),
   tags: text("tags").array().notNull().default([]),
   isTestbed: boolean("is_testbed").notNull().default(false),
+  testbedMetadata: jsonb("testbed_metadata").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -76,6 +79,21 @@ export const mspCustomersTable = pgTable("msp_customers", {
 export const insertMspCustomerSchema = createInsertSchema(mspCustomersTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type MspCustomer = typeof mspCustomersTable.$inferSelect;
 export type InsertMspCustomer = typeof mspCustomersTable.$inferInsert;
+
+export const tenantEngineOverridesTable = pgTable("tenant_engine_overrides", {
+  id: serial("id").primaryKey(),
+  testbedCustomerId: integer("testbed_customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  runId: text("run_id"),
+  graphEndpoint: text("graph_endpoint").notNull(),
+  fieldPath: text("field_path").notNull(),
+  injectedValue: jsonb("injected_value").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertTenantEngineOverrideSchema = createInsertSchema(tenantEngineOverridesTable).omit({ id: true, createdAt: true });
+export type TenantEngineOverride = typeof tenantEngineOverridesTable.$inferSelect;
+export type InsertTenantEngineOverride = typeof tenantEngineOverridesTable.$inferInsert;
 
 // ── MSP User Role Hierarchy ────────────────────────────────────────────────────
 //
