@@ -1,5 +1,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { logger } from "./logger";
+import { startSlaTimer } from "./sla-engine";
 
 // ─── Signal enabled/disabled state ────────────────────────────────────────────
 //
@@ -411,6 +413,7 @@ export function computeTenantSignals(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string> = new Set(),
+  context?: { customerId: number; mspId: number },
 ): { firedSignals: Set<string>; trace: RuleTraceEntry[] } {
   const trace: RuleTraceEntry[] = [];
   const firedSignals = new Set<string>();
@@ -497,7 +500,55 @@ export function computeTenantSignals(
     if (signalFired) firedSignals.add(signalKey);
   }
 
+  // ── Fire-and-forget: trigger SLA timers for any "sla:" signals ────────────
+  if (context) {
+    const slaSignalKeys = [...firedSignals].filter(k => k.startsWith("sla:"));
+    if (slaSignalKeys.length > 0) {
+      triggerSlaTimersForFiredSignals(context.customerId, context.mspId, slaSignalKeys)
+        .catch(err => logger.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget SLA timer trigger failed"));
+    }
+  }
+
   return { firedSignals, trace };
+}
+
+// ── SLA timer trigger helper (fire-and-forget, unexported) ──────────────────
+
+async function triggerSlaTimersForFiredSignals(
+  customerId: number,
+  mspId: number,
+  slaSignalKeys: string[],
+): Promise<void> {
+  for (const signalKey of slaSignalKeys) {
+    try {
+      const result = await db.execute(sql`
+        SELECT policy_id AS "policyId" FROM sla_signal_policy_map
+        WHERE signal_key = ${signalKey} AND is_active = true AND (msp_id = ${mspId} OR msp_id IS NULL)
+        ORDER BY msp_id NULLS LAST LIMIT 1
+      `);
+      const row = result.rows[0] as { policyId: number } | undefined;
+      if (!row) continue;
+
+      const { timerId, alreadyExisted } = await startSlaTimer({
+        mspId,
+        customerId,
+        policyId: row.policyId,
+        phase: "resolution",
+        ticketType: "signal_compliance",
+        idempotencyKey: `sla-signal:${customerId}:${signalKey}`,
+      });
+
+      logger.info(
+        { signalKey, policyId: row.policyId, timerId, alreadyExisted },
+        "computeTenantSignals: SLA timer triggered for fired signal",
+      );
+    } catch (err) {
+      logger.warn(
+        { err, signalKey, customerId, mspId },
+        "triggerSlaTimersForFiredSignals: failed to process signal key",
+      );
+    }
+  }
 }
 
 /**
