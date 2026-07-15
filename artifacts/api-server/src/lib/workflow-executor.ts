@@ -91,7 +91,6 @@ import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
-import { startSlaTimer } from "./sla-engine";
 
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
@@ -3240,54 +3239,15 @@ async function executeNode(
               getDisabledSignalKeys(),
             ]);
 
+            const [{ customerId: gtsCustomerId, mspId: gtsMspId }] = [customerRow ?? { customerId: null, mspId: null }];
             const { firedSignals } = computeTenantSignals(
               mergedProfile,
               allFindings,
               signalRules as Parameters<typeof computeTenantSignals>[2],
               signalGroups as Parameters<typeof computeTenantSignals>[3],
               disabledSignalKeys,
+              gtsCustomerId != null && gtsMspId != null ? { customerId: gtsCustomerId, mspId: gtsMspId } : undefined,
             );
-
-            // ── SLA timer auto-start for fired "sla:"-prefixed signals ────────
-            // Best-effort side-effect — must never fail the node.
-            const slaSignalKeys = [...firedSignals].filter(k => k.startsWith("sla:"));
-            if (slaSignalKeys.length > 0) {
-              try {
-                const resolvedCustomerId = customerRow?.customerId ?? null;
-                const resolvedMspId = customerRow?.mspId ?? null;
-                if (resolvedCustomerId == null || resolvedMspId == null) {
-                  logger.warn({ runId, gtsClientId }, "wf-executor: get_tenant_signals — skipping SLA timer start: customerId or mspId missing from customerRow");
-                } else {
-                  for (const signalKey of slaSignalKeys) {
-                    try {
-                      // Prefer an MSP-specific mapping; fall back to a global (msp_id IS NULL) mapping.
-                      const mappingResult = await pool.query<{ policy_id: number }>(
-                        `SELECT policy_id FROM sla_signal_policy_map
-                         WHERE signal_key = $1 AND is_active = true
-                         ORDER BY msp_id NULLS LAST
-                         LIMIT 1`,
-                        [signalKey],
-                      );
-                      if (mappingResult.rows.length === 0) continue;
-                      const policyId = mappingResult.rows[0].policy_id;
-                      await startSlaTimer({
-                        mspId: resolvedMspId,
-                        customerId: resolvedCustomerId,
-                        policyId,
-                        phase: "resolution",
-                        ticketType: "signal_compliance",
-                        idempotencyKey: `sla-signal:${resolvedCustomerId}:${signalKey}`,
-                        traceId: String(runId),
-                      });
-                    } catch (signalErr) {
-                      logger.warn({ runId, gtsClientId, signalKey, err: signalErr }, "wf-executor: get_tenant_signals — SLA timer start failed for signal (non-fatal)");
-                    }
-                  }
-                }
-              } catch (slaTimerErr) {
-                logger.warn({ runId, gtsClientId, err: slaTimerErr }, "wf-executor: get_tenant_signals — SLA timer block failed (non-fatal)");
-              }
-            }
 
             const signals = [...firedSignals];
             const hasSignals = firedSignals.size > 1;
