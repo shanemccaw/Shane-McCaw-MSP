@@ -1,6 +1,6 @@
 import { logger } from "./logger";
-import { db, tenantConsentTable, tenantMonitorProfilesTable } from "@workspace/db";
-import { eq, ne, and } from "drizzle-orm";
+import { db, tenantConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable } from "@workspace/db";
+import { eq, ne, and, or, gt, isNull } from "drizzle-orm";
 import { createAuditLog } from "./audit";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -247,6 +247,72 @@ function isConsentErrorBody(body: string): boolean {
   );
 }
 
+function setPathValue(obj: any, path: string, value: any) {
+  if (!obj) return;
+  const parts = path.split('.');
+  let current = obj;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const arrayMatch = part.match(/^([^\[]+)(?:\[(\d+)\])+$/);
+    if (arrayMatch) {
+      const baseKey = arrayMatch[1];
+      const indices: number[] = [];
+      const indexRegex = /\[(\d+)\]/g;
+      let match;
+      while ((match = indexRegex.exec(part)) !== null) {
+        indices.push(parseInt(match[1], 10));
+      }
+      
+      if (!current[baseKey]) {
+        current[baseKey] = [];
+      }
+      let arr = current[baseKey];
+      for (let j = 0; j < indices.length; j++) {
+        const idx = indices[j];
+        if (j === indices.length - 1 && i === parts.length - 1) {
+          arr[idx] = value;
+        } else {
+          if (!arr[idx]) {
+            arr[idx] = (j < indices.length - 1) ? [] : {};
+          }
+          arr = arr[idx];
+        }
+      }
+      current = arr;
+    } else {
+      if (i === parts.length - 1) {
+        current[part] = value;
+      } else {
+        if (!current[part]) {
+          current[part] = {};
+        }
+        current = current[part];
+      }
+    }
+  }
+}
+
+function matchEndpoint(graphEndpoint: string, path: string): boolean {
+  const cleanEndpoint = graphEndpoint.split('?')[0] ?? '';
+  const cleanPath = path.split('?')[0] ?? '';
+  
+  const normEndpoint = cleanEndpoint.replace(/^\/v1\.0/, '');
+  const normPath = cleanPath.replace(/^\/v1\.0/, '');
+  
+  return normEndpoint === normPath;
+}
+
+export function applyGraphResponseOverride(endpoint: string, rawData: any, overrides: any[]) {
+  if (!rawData) return rawData;
+  const cloned = JSON.parse(JSON.stringify(rawData));
+  for (const override of overrides) {
+    if (matchEndpoint(override.graphEndpoint, endpoint)) {
+      setPathValue(cloned, override.fieldPath, override.injectedValue);
+    }
+  }
+  return cloned;
+}
+
 /**
  * Perform a Graph API call against a specific customer tenant.
  * Automatically handles 401 responses AND non-2xx responses whose body signals
@@ -292,6 +358,45 @@ export async function graphFetchForTenant(
     // Non-consent 400/403 — return the response with the body already consumed.
     // Re-wrap as a synthetic Response so callers can still check ok/status.
     return new Response(text, { status: res.status, headers: res.headers });
+  }
+
+  if (res.ok) {
+    try {
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id })
+        .from(mspCustomersTable)
+        .where(and(eq(mspCustomersTable.tenantId, tenantId), eq(mspCustomersTable.isTestbed, true)))
+        .limit(1);
+
+      if (customer) {
+        const allOverrides = await db
+          .select()
+          .from(tenantEngineOverridesTable)
+          .where(
+            and(
+              eq(tenantEngineOverridesTable.testbedCustomerId, customer.id),
+              or(
+                isNull(tenantEngineOverridesTable.expiresAt),
+                gt(tenantEngineOverridesTable.expiresAt, new Date())
+              )
+            )
+          );
+
+        const activeOverrides = allOverrides.filter(o => matchEndpoint(o.graphEndpoint, path));
+
+        if (activeOverrides.length > 0) {
+          const rawJson = await res.json();
+          const interceptedJson = applyGraphResponseOverride(path, rawJson, activeOverrides);
+          return new Response(JSON.stringify(interceptedJson), {
+            status: res.status,
+            statusText: res.statusText,
+            headers: res.headers,
+          });
+        }
+      }
+    } catch (err) {
+      logger.error({ err, tenantId, path }, "Error applying graph response overrides");
+    }
   }
 
   return res;
