@@ -13,11 +13,12 @@ import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 import MonitorChecksPage from "@/pages/MonitorChecks";
 import MonitoringPackagesPage from "@/pages/MonitoringPackages";
 
-const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla", "monitoring", "sales_offer", "scope_creep"] as const;
+const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "security", "drift", "forecasting", "crm", "msp", "sla", "monitoring", "sales_offer", "scope_creep"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   priority: "Priority Engine",
   pricing: "Pricing Engine",
   health: "Health Engine",
+  security: "Security Engine",
   drift: "Drift Engine",
   forecasting: "Forecasting Engine",
   crm: "CRM Engine",
