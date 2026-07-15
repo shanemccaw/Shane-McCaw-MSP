@@ -19,7 +19,7 @@ const KNOWN_SIGNAL_KEYS = new Set([
   "hasExchangeOnPrem",
   "hasPowerPlatformUsage",
   "hasGovernanceGaps",
-  "hasSecurityGaps",
+  "security:has_gaps",
   "hasCopilotLicenses",
   "hasSharePointIssues",
   "hasLicensingWaste",
@@ -35,8 +35,8 @@ function mapTitleToSignals(title: string): string[] | null {
   if (t.includes("copilot")) return ["hasCopilotLicenses"];
   if (t.includes("governance remediation") || t.includes("governance foundations")) return ["hasGovernanceGaps"];
   if (t.includes("sharepoint") || t.includes("information architecture")) return ["hasSharePointIssues"];
-  if (t.includes("security") && t.includes("compliance")) return ["hasSecurityGaps", "hasDLPGaps"];
-  if (t.includes("security")) return ["hasSecurityGaps"];
+  if (t.includes("security") && t.includes("compliance")) return ["security:has_gaps", "hasDLPGaps"];
+  if (t.includes("security")) return ["security:has_gaps"];
   if (t.includes("licensing") || t.includes("license optim")) return ["hasLicensingWaste"];
   if (t.includes("data protection") || t.includes("dlp")) return ["hasDLPGaps"];
 

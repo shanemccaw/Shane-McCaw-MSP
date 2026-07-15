@@ -100,7 +100,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   hasExchangeOnPrem:           "Exchange On-Premises",
   hasPowerPlatformUsage:       "Power Platform Usage",
   hasGovernanceGaps:           "Governance Gaps",
-  hasSecurityGaps:             "Security Gaps",
+  "security:has_gaps":         "Security Gaps",
   hasCopilotLicenses:          "Copilot Licenses",
   hasSharePointIssues:         "SharePoint Issues",
   hasLicensingWaste:           "Licensing Waste",

@@ -49,11 +49,11 @@ async function main() {
   await insertRule("hasGovernanceGaps", "profile_key_lt", "governanceScore", "60", null, 0);
   await insertRule("hasGovernanceGaps", "profile_key_truthy", "hasGovernanceGaps", null, null, 1);
 
-  // hasSecurityGaps — one AND group (mfaEnforced + CA = 0), one OR ungrouped (securityScore)
-  const secAndGroupId = await insertGroup("hasSecurityGaps", "AND", "MFA + Conditional Access check");
-  await insertRule("hasSecurityGaps", "profile_key_falsy", "mfaEnforced", null, secAndGroupId, 0);
-  await insertRule("hasSecurityGaps", "profile_key_eq", "conditionalAccessPolicyCount", "0", secAndGroupId, 1);
-  await insertRule("hasSecurityGaps", "profile_key_lt", "securityScore", "60", null, 2);
+  // security:has_gaps — one AND group (mfaEnforced + CA = 0), one OR ungrouped (securityScore)
+  const secAndGroupId = await insertGroup("security:has_gaps", "AND", "MFA + Conditional Access check");
+  await insertRule("security:has_gaps", "profile_key_falsy", "mfaEnforced", null, secAndGroupId, 0);
+  await insertRule("security:has_gaps", "profile_key_eq", "conditionalAccessPolicyCount", "0", secAndGroupId, 1);
+  await insertRule("security:has_gaps", "profile_key_lt", "securityScore", "60", null, 2);
 
   // hasCopilotLicenses — single ungrouped rule
   await insertRule("hasCopilotLicenses", "profile_key_gt", "copilotLicenseCount", "0", null, 0);
