@@ -151,7 +151,7 @@ export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<
  */
 export async function buildTenantProfileAndFindings(
   clientUserId: number,
-): Promise<{ mergedProfile: Record<string, unknown>; findings: string[] }> {
+): Promise<{ mergedProfile: Record<string, unknown>; findings: string[]; customerId: number | null; mspId: number | null }> {
   const [profileRow] = await db
     .select({ profile: clientM365ProfilesTable.profile })
     .from(clientM365ProfilesTable)
@@ -173,12 +173,18 @@ export async function buildTenantProfileAndFindings(
   const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
 
   const [customerRow] = await db
-    .select({ tenantId: mspCustomersTable.tenantId })
+    .select({
+      tenantId: mspCustomersTable.tenantId,
+      customerId: mspCustomersTable.id,
+      mspId: mspCustomersTable.mspId,
+    })
     .from(mspUsersTable)
     .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
     .where(eq(mspUsersTable.userId, clientUserId))
     .limit(1);
   const tenantId = customerRow?.tenantId ?? null;
+  const customerId = customerRow?.customerId ?? null;
+  const mspId = customerRow?.mspId ?? null;
 
   if (tenantId) {
     const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
@@ -195,7 +201,7 @@ export async function buildTenantProfileAndFindings(
     }
   }
 
-  return { mergedProfile, findings };
+  return { mergedProfile, findings, customerId, mspId };
 }
 
 /**
