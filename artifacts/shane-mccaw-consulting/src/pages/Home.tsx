@@ -189,14 +189,14 @@ export default function Home() {
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto">
             <Link
-              href="/assessments/all"
+              href="/assessments"
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 text-base"
             >
               <span>Explore M365 Catalog</span>
               <ArrowRight className="w-5 h-5" />
             </Link>
             <Link
-              href="/assessments/start"
+              href="/assessments?tab=free"
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 transition-all flex items-center justify-center text-base"
             >
               Run Free Diagnostic
@@ -327,7 +327,7 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10 max-w-xs sm:max-w-none mx-auto">
               <Link
-                href="/assessments/all"
+                href="/assessments"
                 className="px-6 py-3.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors"
               >
                 Explore M365 Catalog

@@ -51,6 +51,9 @@ export default function App() {
       {/* Primary Routes */}
       <Route path="/" component={Home} />
       <Route path="/assessments" component={Assessments} />
+      <Route path="/assessments/all" component={Assessments} />
+      <Route path="/assessments/start" component={Assessments} />
+      <Route path="/assessments/premium" component={Assessments} />
       <Route path="/assessments/:slug" component={AssessmentDetail} />
       <Route path="/services" component={Services} />
       <Route path="/projects" component={Projects} />
