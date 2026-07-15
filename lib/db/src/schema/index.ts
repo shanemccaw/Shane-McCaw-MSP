@@ -2498,6 +2498,24 @@ export const industryBenchmarkReferenceTable = pgTable("industry_benchmark_refer
   asOfDate: date("as_of_date"),
 });
 
+// Tenant Engine Snapshots — point-in-time score history per engine per tenant
+export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  engineKey: text("engine_key").notNull(),
+  score: integer("score").notNull().default(0),
+  trendDirection: text("trend_direction"),
+  breakdown: jsonb("breakdown").$type<Record<string, unknown>[]>().notNull().default([]),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+}, (table) => ({
+  customerEngineCapturedIdx: index("tenant_engine_snapshots_customer_engine_captured_idx")
+    .on(table.customerId, table.engineKey, table.capturedAt),
+}));
+
+export type InsertTenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferInsert;
+export type TenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferSelect;
+
 export type IndustryBenchmarkReference = typeof industryBenchmarkReferenceTable.$inferSelect;
 
 export * from "./msp";

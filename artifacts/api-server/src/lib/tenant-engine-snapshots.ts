@@ -1,11 +1,9 @@
 /**
-* tenant-engine-snapshots.ts
-*
-* Read/write helpers for tenant_engine_snapshots — point-in-time score history
-* per engine (health, drift, priority, etc.) per tenant. Purely additive storage
-* layer: nothing currently calls saveEngineSnapshot(). A later task wires it into
-* the engine computation flow so history starts accumulating.
-*/
+ * tenant-engine-snapshots.ts
+ *
+ * Read/write helpers for tenant_engine_snapshots — point-in-time score history
+ * per engine (health, drift, priority, etc.) per tenant.
+ */
 import { db, tenantEngineSnapshotsTable } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 
@@ -18,11 +16,6 @@ export interface SaveEngineSnapshotInput {
   breakdown?: Record<string, unknown>[];
 }
 
-/**
-* Persists a single engine score snapshot for a tenant. Call this once per
-* engine per completed monitoring/diagnostics run once wired up (not yet wired
-* up as of this task).
-*/
 export async function saveEngineSnapshot(input: SaveEngineSnapshotInput): Promise<void> {
   await db.insert(tenantEngineSnapshotsTable).values({
     mspId: input.mspId,
@@ -34,12 +27,6 @@ export async function saveEngineSnapshot(input: SaveEngineSnapshotInput): Promis
   });
 }
 
-/**
-* Returns the N most recent snapshots for a given tenant + engine, newest first.
-* Callers wanting "current vs previous" should request limit: 2 and compare
-* result[0] (current) against result[1] (previous), guarding for result.length < 2
-* (no previous snapshot exists yet).
-*/
 export async function getRecentEngineSnapshots(
   customerId: number,
   engineKey: string,
