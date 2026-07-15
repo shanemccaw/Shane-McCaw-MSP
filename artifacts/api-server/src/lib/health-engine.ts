@@ -28,7 +28,7 @@
  * engines, admin UI, workflow nodes, SOW wiring.
  */
 
-import { db, clientM365ProfilesTable, scriptRunResultsTable } from "@workspace/db";
+import { db, clientM365ProfilesTable, scriptRunResultsTable, mspUsersTable, mspCustomersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import {
   computeTenantSignals,
@@ -204,7 +204,7 @@ export function computeHealthEngine(
  */
 async function buildTenantProfileAndFindings(
   clientUserId: number,
-): Promise<{ mergedProfile: Record<string, unknown>; findings: string[] }> {
+): Promise<{ mergedProfile: Record<string, unknown>; findings: string[]; customerId: number | null; mspId: number | null }> {
   const [profileRow] = await db
     .select({ profile: clientM365ProfilesTable.profile })
     .from(clientM365ProfilesTable)
@@ -225,7 +225,16 @@ async function buildTenantProfileAndFindings(
   for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
   const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
 
-  return { mergedProfile, findings };
+  const [customerRow] = await db
+    .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+    .from(mspUsersTable)
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .where(eq(mspUsersTable.userId, clientUserId))
+    .limit(1);
+  const customerId = customerRow?.customerId ?? null;
+  const mspId = customerRow?.mspId ?? null;
+
+  return { mergedProfile, findings, customerId, mspId };
 }
 
 /**
