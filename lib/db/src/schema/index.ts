@@ -1,7 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { mspsTable } from "./msp";
+import { mspsTable, mspCustomersTable } from "./msp";
 
 export interface WizardOption {
   id: string;
@@ -639,6 +639,24 @@ export const signalDerivationRulesTable = pgTable("signal_derivation_rules", {
 
 export type SignalDerivationRule = typeof signalDerivationRulesTable.$inferSelect;
 export type InsertSignalDerivationRule = typeof signalDerivationRulesTable.$inferInsert;
+
+export const tenantSignalHistoryTable = pgTable("tenant_signal_history", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  signalKey: text("signal_key").notNull(),
+  category: text("category"),
+  firedAt: timestamp("fired_at"),
+  resolvedAt: timestamp("resolved_at"),
+  ruleVersion: integer("rule_version"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  customerSignalFiredIdx: index("tenant_signal_history_customer_signal_fired_idx")
+    .on(table.customerId, table.signalKey, table.firedAt),
+}));
+
+export type TenantSignalHistory = typeof tenantSignalHistoryTable.$inferSelect;
+export type InsertTenantSignalHistory = typeof tenantSignalHistoryTable.$inferInsert;
 
 export const signalRuleAuditLogTable = pgTable("signal_rule_audit_log", {
   id: serial("id").primaryKey(),
