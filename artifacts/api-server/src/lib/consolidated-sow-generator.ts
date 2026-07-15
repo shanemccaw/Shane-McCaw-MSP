@@ -8,6 +8,8 @@ import {
   insightsGeneratedDocumentsTable,
   engagementProjectsTable,
   quickWinPresentationsTable,
+  mspUsersTable,
+  mspCustomersTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
@@ -479,12 +481,21 @@ export async function generateConsolidatedSowDocument(
     // Always evaluate signals — empty rules means no signals fire, which is the correct
     // deterministic baseline. Projects with signal-key triggers require a matching fired
     // signal to be included; the legacy guard allows old plan-name strings through.
+    const [slaCustomerRow] = await db
+      .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspUsersTable)
+      .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+      .where(eq(mspUsersTable.userId, clientUserId))
+      .limit(1);
+    const slaResolvedCustomerId = slaCustomerRow?.customerId ?? null;
+    const slaResolvedMspId = slaCustomerRow?.mspId ?? null;
     const { firedSignals } = computeTenantSignals(
       mergedSowProfileForSignals,
       allFindingsForSignals,
       typedSignalRules,
       signalGroups.rows as unknown as Parameters<typeof computeTenantSignals>[3],
       disabledSignalKeys,
+      slaResolvedCustomerId != null && slaResolvedMspId != null ? { customerId: slaResolvedCustomerId, mspId: slaResolvedMspId } : undefined,
     );
 
     // Extract adj:* keys — these drive pricing adjustment gating, not project inclusion.
