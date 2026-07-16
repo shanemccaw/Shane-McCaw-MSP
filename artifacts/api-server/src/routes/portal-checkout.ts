@@ -39,6 +39,7 @@ import {
   mspAgreementAcceptancesTable,
   mspSubscriptionsTable,
   mspUsersTable,
+  mspsTable,
 } from "@workspace/db";
 import { eq, and, count, gte, or } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
@@ -277,8 +278,18 @@ router.post(
     const actorEmail = (req.user as { email?: string } | undefined)?.email ?? "";
     const mspId = offerRow.mspId;
 
+    let customCustomerAgreement: string | null = null;
+    if (mspId) {
+      const [parentMsp] = await db
+        .select({ customCustomerAgreement: mspsTable.customCustomerAgreement })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, mspId))
+        .limit(1);
+      customCustomerAgreement = parentMsp?.customCustomerAgreement ?? null;
+    }
+
     // Fetch current agreement for legal snapshot logging
-    const [currentAgreement] = await db
+    const [platformAgreement] = await db
       .select({
         id: platformAgreementsTable.id,
         version: platformAgreementsTable.version,
@@ -289,8 +300,12 @@ router.post(
       .where(eq(platformAgreementsTable.isCurrentVersion, true))
       .limit(1);
 
-    const legalAgreementText = currentAgreement?.body ?? "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
-    const agreementVersionStr = currentAgreement?.version ?? "1.0";
+    const currentAgreement = customCustomerAgreement
+      ? { id: null, version: "custom", title: "Customer Agreement", body: customCustomerAgreement }
+      : platformAgreement;
+
+    const legalAgreementText = currentAgreement?.body || "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
+    const agreementVersionStr = currentAgreement?.version || "1.0";
 
     // ── Branch 1: price === 0 (free assessment) ───────────────────────────────
     if (amountCents === 0 && allowFreeCheckout) {
@@ -433,7 +448,7 @@ router.post(
       ? {
           agreement_accepted: "true" as const,
           agreement_version: currentAgreement.version,
-          agreement_id: String(currentAgreement.id),
+          agreement_id: currentAgreement.id ? String(currentAgreement.id) : "",
           agreement_accepted_at: body.acceptedAt ?? new Date().toISOString(),
           agreement_ip: getClientIp(req) ?? "",
           actor_user_id: String(actorId ?? ""),
@@ -857,7 +872,17 @@ async function handleCheckoutCompleted(
   });
   const wholesaleChargedCents = pricing.wholesaleCostCents;
 
-  const [currentAgreement] = await db
+  let customCustomerAgreement: string | null = null;
+  if (mspId) {
+    const [parentMsp] = await db
+      .select({ customCustomerAgreement: mspsTable.customCustomerAgreement })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspId))
+      .limit(1);
+    customCustomerAgreement = parentMsp?.customCustomerAgreement ?? null;
+  }
+
+  const [platformAgreement] = await db
     .select({
       version: platformAgreementsTable.version,
       body: platformAgreementsTable.body,
@@ -866,8 +891,8 @@ async function handleCheckoutCompleted(
     .where(eq(platformAgreementsTable.isCurrentVersion, true))
     .limit(1);
 
-  const legalAgreementText = currentAgreement?.body ?? "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
-  const agreementVersionToPass = currentAgreement?.version ?? "1.0";
+  const legalAgreementText = customCustomerAgreement || platformAgreement?.body || "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
+  const agreementVersionToPass = customCustomerAgreement ? "custom" : (platformAgreement?.version ?? "1.0");
 
   const result = await resolveFulfillment({
     fulfillmentTypeKey,
