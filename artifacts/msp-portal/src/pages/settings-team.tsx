@@ -200,7 +200,7 @@ export default function SettingsTeamPage() {
     }
   }
 
-  const isMspAdmin = user?.mspRole === "MSPAdmin" || user?.role === "admin";
+  const isMspAdmin = user?.mspRole === "MSPAdmin" || user?.mspRole === "PlatformAdmin" || user?.role === "admin";
 
   const actions = (
     <div className="flex items-center gap-2">

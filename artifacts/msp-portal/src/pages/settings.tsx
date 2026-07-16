@@ -32,7 +32,10 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("org");
 
-  const isAuthorized = user && PERMITTED_ROLES.includes(user.role);
+  const isAuthorized = user && (
+    (user.mspRole && PERMITTED_ROLES.includes(user.mspRole)) ||
+    user.role === "admin"
+  );
 
   if (!isAuthorized) {
     return (
