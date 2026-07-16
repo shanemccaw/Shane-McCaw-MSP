@@ -14,7 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc } from "drizzle-orm";
-import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, db } from "@workspace/db";
+import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 import {
   computeTenantSignals,
@@ -373,6 +373,13 @@ async function writeEngineSnapshot(
     const mspId = customerRow?.mspId ?? null;
     if (customerId == null) return;
 
+    const [auditRow] = await db
+      .select({ id: signalRuleAuditLogTable.id })
+      .from(signalRuleAuditLogTable)
+      .orderBy(desc(signalRuleAuditLogTable.id))
+      .limit(1);
+    const currentRuleVersion = auditRow?.id ?? null;
+
     const r = result as { score?: number; breakdown?: unknown } | null | undefined;
     const score = typeof r?.score === "number" ? r.score : 0;
     const breakdown = Array.isArray(r?.breakdown) ? r.breakdown : (r?.breakdown ? [r.breakdown] : []);
@@ -395,7 +402,15 @@ async function writeEngineSnapshot(
       delta,
       breakdown,
       runId: randomUUID(),
+      ruleVersion: currentRuleVersion,
     });
+
+    const [priorBaseline] = await db
+      .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion })
+      .from(engineBaselineHistoryTable)
+      .where(and(eq(engineBaselineHistoryTable.customerId, customerId), eq(engineBaselineHistoryTable.engineKey, engineKey)))
+      .orderBy(desc(engineBaselineHistoryTable.createdAt))
+      .limit(1);
 
     if (previousScore == null) {
       await db.insert(engineBaselineHistoryTable).values({
@@ -405,7 +420,22 @@ async function writeEngineSnapshot(
         baselineScore: score,
         resetTriggerType: "initial",
         resetTriggerRef: null,
-        ruleVersion: null,
+        ruleVersion: currentRuleVersion,
+      });
+    } else if (
+      priorBaseline &&
+      priorBaseline.ruleVersion !== null &&
+      currentRuleVersion !== null &&
+      priorBaseline.ruleVersion !== currentRuleVersion
+    ) {
+      await db.insert(engineBaselineHistoryTable).values({
+        customerId,
+        mspId,
+        engineKey,
+        baselineScore: score,
+        resetTriggerType: "rule_version_change",
+        resetTriggerRef: String(currentRuleVersion),
+        ruleVersion: currentRuleVersion,
       });
     }
   } catch (err) {
