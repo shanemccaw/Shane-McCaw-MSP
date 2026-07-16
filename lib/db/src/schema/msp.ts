@@ -1960,3 +1960,13 @@ export const simulationRuns = pgTable("simulation_runs", {
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
+
+export type SavedSqlScript = typeof savedSqlScripts.$inferSelect;
+export type InsertSavedSqlScript = typeof savedSqlScripts.$inferInsert;
+
+export type SimulationProfile = typeof simulationProfiles.$inferSelect;
+export type InsertSimulationProfile = typeof simulationProfiles.$inferInsert;
+
+export type SimulationRun = typeof simulationRuns.$inferSelect;
+export type InsertSimulationRun = typeof simulationRuns.$inferInsert;
+

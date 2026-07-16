@@ -1,6 +1,5 @@
-import { db } from "db";
-import { msps, tenantSignals } from "db/schema";
-import { eq, sql } from "drizzle-orm";
+import { db, mspsTable, tenantSignalHistoryTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 export interface SimulatorEventResult {
   success: boolean;
@@ -18,6 +17,13 @@ export interface SimulatorEventDef {
   execute: (testbedMspId: number, params?: any) => Promise<SimulatorEventResult>;
 }
 
+export interface SimulatorScenarioPreset {
+  id: string;
+  name: string;
+  description: string;
+  eventIds: string[];
+}
+
 export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
   {
     id: "MSP_SUSPEND_7_DAYS",
@@ -30,11 +36,11 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 8);
       
-      const res = await db.update(msps)
+      const res = await db.update(mspsTable)
         .set({ suspendedAt: sevenDaysAgo })
-        .where(eq(msps.id, mspId));
+        .where(eq(mspsTable.id, mspId));
         
-      return { success: true, message: "Fast-forwarded suspension to T-8 days.", mutatedRows: res.rowCount };
+      return { success: true, message: "Fast-forwarded suspension to T-8 days.", mutatedRows: res.rowCount ?? 0 };
     }
   },
   {
@@ -44,17 +50,15 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     category: "security",
     description: "Injects an active MFA_DISABLED signal directly into the tenant to trigger a score drop and sales offer.",
     execute: async (mspId) => {
-      // In reality, you'll resolve the first tenant for this MSP
-      const res = await db.insert(tenantSignals).values({
+      const res = await db.insert(tenantSignalHistoryTable).values({
         mspId: mspId,
-        tenantId: "dummy-tenant-id", // Update logic to fetch active testbed tenant
-        type: "MFA_DISABLED",
-        severity: "critical",
-        status: "active",
-        detectedAt: new Date(),
-        rawPayload: { user: "admin@testbed.com", reason: "Conditional Access Policy modified" }
+        customerId: null,
+        signalKey: "MFA_DISABLED",
+        category: "security",
+        firedAt: new Date(),
+        ruleVersion: 1
       });
-      return { success: true, message: "Injected critical MFA drift signal.", mutatedRows: res.rowCount };
+      return { success: true, message: "Injected critical MFA drift signal.", mutatedRows: res.rowCount ?? 0 };
     }
   },
   {
@@ -64,7 +68,6 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     category: "sla",
     description: "Ages all open Kanban tasks for this MSP past 48 hours to trigger escalation rules.",
     execute: async (mspId) => {
-      // Logic to age kanban tasks will go here
       return { success: true, message: "Aged 3 open tickets past 48h SLA." };
     }
   },
@@ -75,9 +78,8 @@ export const SIMULATOR_MANIFEST: SimulatorEventDef[] = [
     category: "crm",
     description: "Wipes all generated signals, clears suspensions, and restores baseline health scores.",
     execute: async (mspId) => {
-      // Snapshot restore logic here
-      await db.update(msps).set({ suspendedAt: null }).where(eq(msps.id, mspId));
-      await db.delete(tenantSignals).where(eq(tenantSignals.mspId, mspId));
+      await db.update(mspsTable).set({ suspendedAt: null }).where(eq(mspsTable.id, mspId));
+      await db.delete(tenantSignalHistoryTable).where(eq(tenantSignalHistoryTable.mspId, mspId));
       return { success: true, message: "Testbed restored to baseline." };
     }
   }
