@@ -1,5 +1,14 @@
 import { db, mspsTable, tenantSignalHistoryTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+export interface SimulatorContext {
+  isTestbed: boolean;
+  testbedMspId: number;
+}
+
+export const simulatorStorage = new AsyncLocalStorage<SimulatorContext>();
+
 
 export interface SimulatorEventResult {
   success: boolean;

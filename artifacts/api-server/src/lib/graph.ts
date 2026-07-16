@@ -1,6 +1,7 @@
 import { logger } from "./logger";
-import { db, tenantConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable } from "@workspace/db";
+import { db, tenantConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable, usersTable, mspsTable } from "@workspace/db";
 import { eq, ne, and, or, gt, isNull } from "drizzle-orm";
+import { simulatorStorage } from "./simulator-events";
 import { createAuditLog } from "./audit";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -557,6 +558,44 @@ export interface GraphMailAttachment {
   contentBytes: string;
 }
 
+async function isDesignatedAdminContact(email: string): Promise<boolean> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const store = simulatorStorage.getStore();
+  if (!store) return false;
+
+  const adminEmails: string[] = [];
+
+  try {
+    // 1. Get platform administrators (role = 'admin')
+    const admins = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.role, "admin"));
+    adminEmails.push(...admins.map((a) => (a.email ? a.email.toLowerCase() : "")));
+
+    // 2. Get target MSP's testbedMetadata.adminEmails
+    if (store.testbedMspId) {
+      const [msp] = await db
+        .select({ testbedMetadata: mspsTable.testbedMetadata })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, store.testbedMspId))
+        .limit(1);
+      if (msp?.testbedMetadata && typeof msp.testbedMetadata === "object") {
+        const metadata = msp.testbedMetadata as any;
+        if (Array.isArray(metadata.adminEmails)) {
+          adminEmails.push(...metadata.adminEmails.map((e: any) => String(e).toLowerCase()));
+        } else if (typeof metadata.adminEmails === "string") {
+          adminEmails.push(metadata.adminEmails.toLowerCase());
+        }
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "isDesignatedAdminContact: error checking admin contacts");
+  }
+
+  return adminEmails.includes(normalizedEmail);
+}
+
 /**
  * Send an email via Exchange Online using the Graph sendMail API.
  * Requires Mail.Send application permission granted in Azure AD.
@@ -570,6 +609,16 @@ export async function sendMailViaGraph(opts: {
   htmlBody: string;
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }): Promise<void> {
+  const store = simulatorStorage.getStore();
+  if (store?.isTestbed) {
+    const isAllowed = await isDesignatedAdminContact(opts.to);
+    if (!isAllowed) {
+      logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Email to non-admin suppressed");
+      return;
+    }
+    logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real email dispatch to admin contact");
+  }
+
   const toRecipients: GraphMailRecipient[] = [
     { emailAddress: { address: opts.to } },
   ];
@@ -621,6 +670,16 @@ export async function sendMailViaGraphForMsp(opts: {
   htmlBody: string;
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }): Promise<void> {
+  const store = simulatorStorage.getStore();
+  if (store?.isTestbed) {
+    const isAllowed = await isDesignatedAdminContact(opts.to);
+    if (!isAllowed) {
+      logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] MSP Email to non-admin suppressed");
+      return;
+    }
+    logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real MSP email dispatch to admin contact");
+  }
+
   const token = await getAccessTokenForTenant(opts.mspTenantId);
 
   const toRecipients: GraphMailRecipient[] = [

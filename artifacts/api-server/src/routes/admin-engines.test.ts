@@ -25,12 +25,19 @@ vi.mock("@workspace/db", () => ({
       }),
     }),
     insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }) }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue({ rowCount: 1 }),
+      }),
+    }),
   },
-  usersTable: {},
+  usersTable: { id: "id", role: "role", email: "email" },
   engagementProjectsTable: {},
   signalRuleGroupsTable: {},
   signalDerivationRulesTable: {},
   mspCustomersTable: {},
+  mspsTable: { id: "id", isTestbed: "is_testbed", testbedMetadata: "testbed_metadata" },
+  savedSqlScripts: { id: "id" },
 }));
 
 vi.mock("../middlewares/requireAuth", () => ({
@@ -56,6 +63,20 @@ vi.mock("./admin-signal-rules", () => ({
   parseIntelligenceFields: vi.fn().mockReturnValue({}),
   saveSnapshot: vi.fn().mockResolvedValue(undefined),
 }));
+
+const { mockRunForTenant } = vi.hoisted(() => ({
+  mockRunForTenant: vi.fn(),
+}));
+
+vi.mock("../lib/engine-registry", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../lib/engine-registry")>();
+  return {
+    ...original,
+    getEngineDef: vi.fn().mockReturnValue({
+      runForTenant: mockRunForTenant,
+    }),
+  };
+});
 
 let app: Express;
 
@@ -187,16 +208,7 @@ describe("POST /api/admin/simulator/run", () => {
     } as any);
 
     // Mock engine runForTenant
-    const runForTenantMock = vi.fn().mockResolvedValue({ score: 99 });
-    vi.mock("../lib/engine-registry", async (importOriginal) => {
-      const original = await importOriginal<typeof import("../lib/engine-registry")>();
-      return {
-        ...original,
-        getEngineDef: vi.fn().mockReturnValue({
-          runForTenant: runForTenantMock,
-        }),
-      };
-    });
+    mockRunForTenant.mockResolvedValue({ score: 99 });
 
     const res = await request(app)
       .post("/admin/simulator/run")
@@ -212,6 +224,106 @@ describe("POST /api/admin/simulator/run", () => {
     expect(res.status).toBe(200);
     expect(res.body.traces).toHaveLength(3); // June 1, 2, 3
     expect(res.body.traces[0].output).toEqual({ score: 99 });
-    expect(runForTenantMock).toHaveBeenCalledTimes(3);
+    expect(mockRunForTenant).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("GET /simulator/manifest", () => {
+  it("returns manifest events when authorized", async () => {
+    const res = await request(app)
+      .get("/simulator/manifest")
+      .set(authHeader);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.events)).toBe(true);
+    expect(res.body.events.length).toBeGreaterThan(0);
+  });
+});
+
+describe("POST /simulator/fire-event", () => {
+  it("fails if target MSP is not a testbed", async () => {
+    const { db } = await import("@workspace/db");
+    vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: 10, isTestbed: false }]),
+        }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post("/simulator/fire-event")
+      .set(authHeader)
+      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedMspId: 10 });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("is_testbed = true");
+  });
+
+  it("fires a manifest event successfully when target is testbed", async () => {
+    const { db } = await import("@workspace/db");
+    vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: 10, isTestbed: true }]),
+        }),
+      }),
+    } as any);
+    // Mock db.update for event execution
+    vi.spyOn(db, "update").mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue({ rowCount: 1 }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post("/simulator/fire-event")
+      .set(authHeader)
+      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedMspId: 10 });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});
+
+describe("POST /simulator/sql/execute", () => {
+  it("rejects queries with destructive commands", async () => {
+    const res = await request(app)
+      .post("/simulator/sql/execute")
+      .set(authHeader)
+      .send({ query: "DROP TABLE users;" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("prohibited");
+  });
+
+  it("executes read/write query successfully", async () => {
+    const { db } = await import("@workspace/db");
+    const mockExecute = vi.fn().mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
+    (db as any).execute = mockExecute;
+
+    const res = await request(app)
+      .post("/simulator/sql/execute")
+      .set(authHeader)
+      .send({ query: "SELECT * FROM users;" });
+    expect(res.status).toBe(200);
+    expect(res.body.rows).toEqual([{ id: 1 }]);
+    expect(mockExecute).toHaveBeenCalled();
+  });
+});
+
+describe("POST /simulator/session-lock", () => {
+  it("updates MSP metadata with lock session ID", async () => {
+    const { db } = await import("@workspace/db");
+    const mockUpdate = vi.spyOn(db, "update").mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue({ rowCount: 1 }),
+      }),
+    } as any);
+
+    const res = await request(app)
+      .post("/simulator/session-lock")
+      .set(authHeader)
+      .send({ testbedMspId: 10, lock: true });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.locked).toBe(true);
+    expect(mockUpdate).toHaveBeenCalled();
   });
 });

@@ -1,4 +1,44 @@
 import { logger } from "./logger";
+import { db, mspsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { simulatorStorage } from "./simulator-events";
+
+async function isDesignatedAdminPhone(phone: string): Promise<boolean> {
+  const normalizedPhone = phone.trim();
+  const allowedPhones: string[] = [];
+  
+  if (process.env.SHANE_PHONE_NUMBER) {
+    allowedPhones.push(process.env.SHANE_PHONE_NUMBER.trim());
+  }
+  
+  const store = simulatorStorage.getStore();
+  if (store?.testbedMspId) {
+    try {
+      const [msp] = await db
+        .select({ testbedMetadata: mspsTable.testbedMetadata })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, store.testbedMspId))
+        .limit(1);
+      if (msp?.testbedMetadata && typeof msp.testbedMetadata === "object") {
+        const metadata = msp.testbedMetadata as any;
+        if (Array.isArray(metadata.adminPhones)) {
+          allowedPhones.push(...metadata.adminPhones.map((p: any) => String(p).trim()));
+        } else if (typeof metadata.adminPhones === "string") {
+          allowedPhones.push(metadata.adminPhones.trim());
+        }
+        if (Array.isArray(metadata.adminSms)) {
+          allowedPhones.push(...metadata.adminSms.map((p: any) => String(p).trim()));
+        } else if (typeof metadata.adminSms === "string") {
+          allowedPhones.push(metadata.adminSms.trim());
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, "isDesignatedAdminPhone: error querying target MSP testbedMetadata");
+    }
+  }
+  
+  return allowedPhones.includes(normalizedPhone);
+}
 
 /**
  * Send an SMS via Twilio.
@@ -20,6 +60,16 @@ export async function sendAdminSms(body: string): Promise<void> {
     return;
   }
 
+  const store = simulatorStorage.getStore();
+  if (store?.isTestbed) {
+    const isAllowed = await isDesignatedAdminPhone(to);
+    if (!isAllowed) {
+      logger.info({ to }, "[Simulator] SMS to non-admin suppressed");
+      return;
+    }
+    logger.info({ to }, "[Simulator] Allowing real SMS dispatch to admin contact");
+  }
+
   try {
     const { default: twilio } = await import("twilio");
     const client = twilio(accountSid, authToken);
@@ -29,3 +79,4 @@ export async function sendAdminSms(body: string): Promise<void> {
     logger.error({ err }, "Failed to send SMS via Twilio");
   }
 }
+

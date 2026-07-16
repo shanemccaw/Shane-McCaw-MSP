@@ -1,9 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, savedSqlScripts } from "@workspace/db";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
   ENGINE_DEFS,
   getEngineDef,
@@ -703,11 +704,6 @@ router.get("/admin/engines/signals/:signalKey/logs", requireAdmin, async (req: R
   }
 });
 
-// artifacts/api-server/src/routes/admin-engines.ts
-import { SIMULATOR_MANIFEST } from "../lib/simulator-events";
-import { savedSqlScripts, msps } from "db/schema";
-import { eq, sql } from "drizzle-orm";
-
 // ---------------------------------------------------------------------------
 // SIMULATOR STUDIO API ROUTES
 // ---------------------------------------------------------------------------
@@ -745,9 +741,14 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
     }
 
     // Verify target MSP is marked as a testbed
-    const targetMsp = await db.query.msps.findFirst({
-      where: eq(msps.id, Number(testbedMspId))
-    });
+    const [targetMsp] = await db
+      .select({
+        id: mspsTable.id,
+        isTestbed: mspsTable.isTestbed,
+      })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, Number(testbedMspId)))
+      .limit(1);
 
     if (!targetMsp || !targetMsp.isTestbed) {
       return res.status(403).json({ error: "Simulator actions can only be executed against designated testbed MSPs (is_testbed = true)." });
@@ -759,7 +760,10 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
     }
 
     const startTime = Date.now();
-    const result = await eventDef.execute(Number(testbedMspId), params);
+    const context = { isTestbed: true, testbedMspId: targetMsp.id };
+    const result = await simulatorStorage.run(context, async () => {
+      return await eventDef.execute(Number(testbedMspId), params);
+    });
     const executionMs = Date.now() - startTime;
 
     return res.json({
@@ -783,6 +787,12 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
 
     if (!query || typeof query !== "string") {
       return res.status(400).json({ error: "A valid SQL query string is required." });
+    }
+
+    // Destructive SQL command protection
+    const DESTRUCTIVE_KEYWORDS = /\b(drop|truncate|alter|rename)\b/i;
+    if (DESTRUCTIVE_KEYWORDS.test(query)) {
+      return res.status(400).json({ error: "Destructive SQL commands (DROP, TRUNCATE, ALTER, RENAME) are prohibited." });
     }
 
     const startTime = Date.now();
@@ -853,9 +863,9 @@ router.post("/simulator/session-lock", requireAdmin, async (req: Request, res: R
 
     const lockSessionId = lock ? `demo-session-${Date.now()}` : null;
 
-    await db.update(msps)
-      .set({ testbedProfileOverrides: sql`jsonb_set(COALESCE(testbed_profile_overrides, '{}'::jsonb), '{sim_lock_session_id}', ${JSON.stringify(lockSessionId)}::jsonb)` })
-      .where(eq(msps.id, Number(testbedMspId)));
+    await db.update(mspsTable)
+      .set({ testbedMetadata: sql`jsonb_set(COALESCE(${mspsTable.testbedMetadata}, '{}'::jsonb), '{sim_lock_session_id}', ${JSON.stringify(lockSessionId)}::jsonb)` })
+      .where(eq(mspsTable.id, Number(testbedMspId)));
 
     return res.json({ 
       success: true, 

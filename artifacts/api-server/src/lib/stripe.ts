@@ -206,3 +206,40 @@ export async function getMspDefaultPaymentMethod(
     return undefined;
   }
 }
+
+import { simulatorStorage } from "./simulator-events";
+
+// Global Stripe prototype interceptor for testbed runs
+import("stripe").then((m) => {
+  const StripeClass = m.default;
+  if (StripeClass && StripeClass.prototype) {
+    const originalRequest = (StripeClass.prototype as any)._request;
+    if (originalRequest) {
+      (StripeClass.prototype as any)._request = function (
+        method: string,
+        path: string,
+        data?: any,
+        auth?: string | null,
+        options?: any,
+        callback?: any,
+      ) {
+        const store = simulatorStorage.getStore();
+        if (store?.isTestbed) {
+          const response: any = {
+            id: `mock_${path.split("/").pop() ?? "id"}_${Math.random().toString(36).substring(7)}`,
+            status: "active",
+            client_secret: "mock_client_secret",
+            data: [{ id: "pm_mock_123" }]
+          };
+          if (callback) {
+            callback(null, response);
+            return;
+          }
+          return Promise.resolve(response);
+        }
+        return originalRequest.apply(this, arguments);
+      };
+    }
+  }
+}).catch(() => {});
+
