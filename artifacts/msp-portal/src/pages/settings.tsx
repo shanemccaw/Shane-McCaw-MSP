@@ -26,11 +26,27 @@ import SettingsEmailTemplates from "./settings-email-templates";
 import SettingsSessions from "./settings-sessions";
 
 // Roles permitted to view settings tabs
-const PERMITTED_ROLES = ["MSPAdmin", "PlatformAdmin"];
+const PERMITTED_ROLES = ["MSPAdmin"];
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("org");
+
+  if (user?.role === "PlatformAdmin") {
+    return (
+      <DashboardShell title="Settings" description="Manage your MSP organization and platform preferences">
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="pt-6 text-center">
+            <Lock className="h-10 w-10 mx-auto text-destructive mb-3" />
+            <h3 className="text-lg font-semibold text-foreground mb-1">Access Restricted</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+              Platform Admin settings are managed through the central Admin Panel (/admin-panel).
+            </p>
+          </CardContent>
+        </Card>
+      </DashboardShell>
+    );
+  }
 
   const isAuthorized = user && (
     (user.mspRole && PERMITTED_ROLES.includes(user.mspRole)) ||
