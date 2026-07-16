@@ -1774,6 +1774,43 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  {
+    name: "__system__: Engine Score Retention & Rollup",
+    description: "Runs nightly at 04:00 UTC. Compacts tenant_engine_snapshots rows older than 90 days into engine_score_daily_rollup (one row per customer/engine/day, preserving the day's final score and every distinct signal that changed that day), then deletes only the original rows already confirmed present in the rollup \u2014 never deletes anything that wasn't safely preserved first.",
+    triggerType: "schedule",
+    cron: "0 4 * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 04:00" } },
+        {
+          id: "rollup",
+          type: "sql_query",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "sql_query",
+            label: "Compact Into Daily Rollup",
+            query: "WITH inserted AS (INSERT INTO engine_score_daily_rollup (customer_id, msp_id, engine_key, day, score, changed_signal_keys) SELECT s.customer_id, s.msp_id, s.engine_key, DATE(s.captured_at) AS day, (ARRAY_AGG(s.score ORDER BY s.captured_at DESC))[1] AS score, COALESCE((SELECT jsonb_agg(DISTINCT jsonb_build_object('signalKey', d.signal_key, 'direction', d.direction)) FROM engine_score_signal_deltas d JOIN tenant_engine_snapshots s2 ON s2.id = d.history_id WHERE s2.customer_id = s.customer_id AND s2.engine_key = s.engine_key AND DATE(s2.captured_at) = DATE(s.captured_at)), '[]'::jsonb) AS changed_signal_keys FROM tenant_engine_snapshots s WHERE s.captured_at < NOW() - INTERVAL '90 days' AND s.customer_id IS NOT NULL GROUP BY s.customer_id, s.msp_id, s.engine_key, DATE(s.captured_at) ON CONFLICT (customer_id, engine_key, day) DO NOTHING RETURNING 1) SELECT COUNT(*)::int AS rolled_up_count FROM inserted",
+          },
+        },
+        {
+          id: "purge",
+          type: "sql_query",
+          position: { x: 100, y: 360 },
+          data: {
+            nodeType: "sql_query",
+            label: "Delete Rolled-Up Rows",
+            query: "WITH deleted AS (DELETE FROM tenant_engine_snapshots s WHERE s.captured_at < NOW() - INTERVAL '90 days' AND EXISTS (SELECT 1 FROM engine_score_daily_rollup r WHERE r.customer_id = s.customer_id AND r.engine_key = s.engine_key AND r.day = DATE(s.captured_at)) RETURNING s.id) SELECT COUNT(*)::int AS deleted_count FROM deleted",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 490 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",  target: "rollup" },
+        { id: "e2", source: "rollup", target: "purge"  },
+        { id: "e3", source: "purge",  target: "end"    },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
