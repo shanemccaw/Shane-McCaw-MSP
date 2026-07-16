@@ -3,6 +3,7 @@ import { Database, Table, Key, Link as LinkIcon, ChevronRight, ChevronDown, Refr
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ColumnMeta {
   name: string;
@@ -18,6 +19,7 @@ interface TableMeta {
 }
 
 export function LiveDbSchemaTree() {
+  const { fetchWithAuth } = useAuth();
   const [tables, setTables] = useState<TableMeta[]>([]);
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +29,7 @@ export function LiveDbSchemaTree() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/simulator/db-schema");
+      const res = await fetchWithAuth("/api/simulator/db-schema");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load schema");
       setTables(data.tables || []);
