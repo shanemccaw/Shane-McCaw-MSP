@@ -411,6 +411,7 @@ router.post(
             serviceClass: "free",
             legalAgreementText,
             agreementVersion: agreementVersionStr,
+            wholesalePriceCharged: 0,
           },
         });
       } else {
@@ -721,6 +722,7 @@ router.post(
             customerEmail: actorEmail,
             legalAgreementText,
             agreementVersion: agreementVersionStr,
+            wholesalePriceCharged: wholesaleCostCents,
           },
         });
       }
