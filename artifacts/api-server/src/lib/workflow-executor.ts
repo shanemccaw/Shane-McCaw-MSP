@@ -3743,8 +3743,6 @@ async function executeNode(
         // Idempotent: node.data.idempotencyKey prevents duplicate violation events when
         // the workflow node is retried (e.g. after a transient failure).
         const { emitOfferEvent: soEmit } = await import("./sales-offer-engine.ts");
-        const { db: soViolDb, salesOfferEventsTable: soViolEvtTable } = await import("@workspace/db");
-        const { eq: soViolEq, and: soViolAnd } = await import("drizzle-orm");
         const soViolOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
         const soViolType = (interp(node.data.violationType as string | undefined, payload) ?? "policy");
         const soViolIdempKey = interp(node.data.idempotencyKey as string | undefined, payload) ?? null;
@@ -3753,22 +3751,14 @@ async function executeNode(
           output = { error: "sales_offer_violation requires offerId" };
         } else {
           try {
-            // Dedupe: if idempotencyKey supplied, skip if already emitted
-            if (soViolIdempKey) {
-              const existing = await soViolDb
-                .select({ id: soViolEvtTable.id })
-                .from(soViolEvtTable)
-                .where(soViolAnd(soViolEq(soViolEvtTable.offerId, soViolOfferId), soViolEq(soViolEvtTable.eventName, "offer.violation")))
-                .limit(1);
-              if (existing.length > 0) {
-                output = { offerId: soViolOfferId, violationType: soViolType, emitted: false, skipped: true, reason: "idempotent: already emitted" };
-                logger.info({ runId, soViolOfferId }, "wf-executor: sales_offer_violation skipped (idempotent)");
-                break;
-              }
+            const { alreadyExisted: soViolAlreadyExisted } = await soEmit(soViolOfferId, "offer.violation", { violationType: soViolType, note: interp(node.data.note as string | undefined, payload) ?? "" }, null, soViolIdempKey ?? undefined);
+            if (soViolAlreadyExisted) {
+              output = { offerId: soViolOfferId, violationType: soViolType, emitted: false, skipped: true, reason: "idempotent: already emitted" };
+              logger.info({ runId, soViolOfferId }, "wf-executor: sales_offer_violation skipped (idempotent)");
+            } else {
+              output = { offerId: soViolOfferId, violationType: soViolType, emitted: true };
+              logger.info({ runId, soViolOfferId, soViolType }, "wf-executor: sales_offer_violation emitted");
             }
-            await soEmit(soViolOfferId, "offer.violation", { violationType: soViolType, note: interp(node.data.note as string | undefined, payload) ?? "", idempotencyKey: soViolIdempKey }, null);
-            output = { offerId: soViolOfferId, violationType: soViolType, emitted: true };
-            logger.info({ runId, soViolOfferId, soViolType }, "wf-executor: sales_offer_violation emitted");
           } catch (soViolErr) {
             nodeError = true;
             output = { error: soViolErr instanceof Error ? soViolErr.message : String(soViolErr) };
@@ -3781,9 +3771,6 @@ async function executeNode(
       case "sales_offer_escalate": {
         // Idempotent: dedupe on (offerId, "offer.escalated") when idempotencyKey supplied.
         const { emitOfferEvent: soEscEmit } = await import("./sales-offer-engine.ts");
-        const { db: soEscDb } = await import("@workspace/db");
-        const { salesOfferEventsTable: soEscEvtTable } = await import("@workspace/db");
-        const { eq: soEscEq, and: soEscAnd } = await import("drizzle-orm");
         const soEscOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
         const soEscTo = interp(node.data.escalatedTo as string | undefined, payload) ?? "admin";
         const soEscIdempKey = interp(node.data.idempotencyKey as string | undefined, payload) ?? null;
@@ -3792,21 +3779,14 @@ async function executeNode(
           output = { error: "sales_offer_escalate requires offerId" };
         } else {
           try {
-            if (soEscIdempKey) {
-              const existing = await soEscDb
-                .select({ id: soEscEvtTable.id })
-                .from(soEscEvtTable)
-                .where(soEscAnd(soEscEq(soEscEvtTable.offerId, soEscOfferId), soEscEq(soEscEvtTable.eventName, "offer.escalated")))
-                .limit(1);
-              if (existing.length > 0) {
-                output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: false, skipped: true, reason: "idempotent: already emitted" };
-                logger.info({ runId, soEscOfferId }, "wf-executor: sales_offer_escalate skipped (idempotent)");
-                break;
-              }
+            const { alreadyExisted: soEscAlreadyExisted } = await soEscEmit(soEscOfferId, "offer.escalated", { escalatedTo: soEscTo, note: interp(node.data.note as string | undefined, payload) ?? "" }, null, soEscIdempKey ?? undefined);
+            if (soEscAlreadyExisted) {
+              output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: false, skipped: true, reason: "idempotent: already emitted" };
+              logger.info({ runId, soEscOfferId }, "wf-executor: sales_offer_escalate skipped (idempotent)");
+            } else {
+              output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: true };
+              logger.info({ runId, soEscOfferId, soEscTo }, "wf-executor: sales_offer_escalate emitted");
             }
-            await soEscEmit(soEscOfferId, "offer.escalated", { escalatedTo: soEscTo, note: interp(node.data.note as string | undefined, payload) ?? "", idempotencyKey: soEscIdempKey }, null);
-            output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: true };
-            logger.info({ runId, soEscOfferId, soEscTo }, "wf-executor: sales_offer_escalate emitted");
           } catch (soEscErr) {
             nodeError = true;
             output = { error: soEscErr instanceof Error ? soEscErr.message : String(soEscErr) };

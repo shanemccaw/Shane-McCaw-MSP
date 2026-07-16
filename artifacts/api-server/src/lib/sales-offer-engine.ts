@@ -315,13 +315,24 @@ export async function emitOfferEvent(
   eventName: string,
   payload: Record<string, unknown>,
   actorUserId: number | null,
-): Promise<void> {
+  idempotencyKey?: string,
+): Promise<{ alreadyExisted: boolean }> {
+  if (idempotencyKey) {
+    const [existing] = await db
+      .select({ id: salesOfferEventsTable.id })
+      .from(salesOfferEventsTable)
+      .where(eq(salesOfferEventsTable.idempotencyKey, idempotencyKey))
+      .limit(1);
+    if (existing) return { alreadyExisted: true };
+  }
   await db.insert(salesOfferEventsTable).values({
     offerId,
     eventName,
     payload: { offerId, eventName, ...payload },
     actorUserId,
+    idempotencyKey: idempotencyKey ?? null,
   });
+  return { alreadyExisted: false };
 }
 
 // ── State transition ─────────────────────────────────────────────────────────
