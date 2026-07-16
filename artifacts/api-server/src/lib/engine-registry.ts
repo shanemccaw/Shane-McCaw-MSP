@@ -577,6 +577,44 @@ export function validateEngineManifest(): string[] {
   return order;
 }
 
+/**
+ * Runs some or all engines for a tenant, strictly in the order computed by
+ * validateEngineManifest() — this is the actual consumer of the manifest's
+ * dependency graph, not just a validator. Each engine's own runForTenant is
+ * called in turn; a failure in one engine is logged and does not prevent
+ * the remaining engines from running. Returns a map of engineKey -> result
+ * (or null if that engine failed).
+ *
+ * If engineKeys is provided, only those engines run (still in manifest
+ * order relative to each other) — useful for running a single engine plus
+ * whatever it transitively depends on, without running the full set.
+ */
+export async function runEngineManifestForTenant(
+  tenantId: number,
+  ctx?: EngineContext,
+  engineKeys?: string[],
+): Promise<Record<string, unknown>> {
+  const order = validateEngineManifest();
+  const targetKeys = engineKeys ? order.filter(k => engineKeys.includes(k)) : order;
+  const results: Record<string, unknown> = {};
+
+  for (const key of targetKeys) {
+    const def = getEngineDef(key);
+    if (!def) {
+      logger.warn({ engineKey: key, tenantId }, "runEngineManifestForTenant: unknown engine key in manifest order, skipping");
+      continue;
+    }
+    try {
+      results[key] = await def.runForTenant(tenantId, ctx);
+    } catch (err) {
+      logger.warn({ err, engineKey: key, tenantId }, "runEngineManifestForTenant: engine run failed — continuing with remaining engines in manifest order");
+      results[key] = null;
+    }
+  }
+
+  return results;
+}
+
 export async function buildEngineTestInputForTenant(tenantId: number): Promise<EngineTestInput> {
   const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
