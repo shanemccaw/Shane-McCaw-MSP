@@ -2389,6 +2389,7 @@ export const salesOfferEventsTable = pgTable("sales_offer_events", {
   eventName: text("event_name").notNull(),
   /** Full event envelope stored for replay / downstream consumption. */
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  idempotencyKey: text("idempotency_key"),
   actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
