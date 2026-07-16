@@ -62,6 +62,19 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
 
+  const [testbeds, setTestbeds] = useState<Array<{ id: number; name: string; domain?: string }>>([]);
+  const [simulatorMode, setSimulatorMode] = useState(false);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [stepDays, setStepDays] = useState("1");
+  const [simulationTraces, setSimulationTraces] = useState<Array<{ timestamp: string; output: unknown }>>([]);
+  const [selectedTraceIndex, setSelectedTraceIndex] = useState(0);
+  const [simulating, setSimulating] = useState(false);
+
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true);
     try {
@@ -103,6 +116,49 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [engineKey, fetchWithAuth]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithAuth("/api/admin/testbeds")
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        setTestbeds(d.testbeds ?? []);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
+
+  const runSimulation = async () => {
+    if (!testTenantId) {
+      toast({ title: "Validation Error", description: "Please select a testbed customer", variant: "destructive" });
+      return;
+    }
+    setSimulating(true);
+    setSimulationTraces([]);
+    setSelectedTraceIndex(0);
+    try {
+      const res = await fetchWithAuth("/api/admin/simulator/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testbedCustomerId: Number(testTenantId),
+          engineKey,
+          startDate,
+          endDate,
+          stepDays: Number(stepDays),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Simulation run failed");
+      setSimulationTraces(data.traces ?? []);
+      toast({ title: "Simulation Complete", description: `Loaded ${data.traces?.length ?? 0} trace steps.` });
+    } catch (err) {
+      toast({ title: "Simulation failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSimulating(false);
+    }
+  };
 
   const buildBody = (): Record<string, unknown> => {
     if (testTenantId.trim()) return { tenantId: Number(testTenantId), debug: true };
@@ -274,40 +330,151 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
 
         <TabsContent value="testing" className="space-y-4 mt-4">
           <Card>
-            <CardHeader><CardTitle className="text-sm">Run a test</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">Run a test</CardTitle>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="simulator-mode"
+                    checked={simulatorMode}
+                    onChange={e => {
+                      setSimulatorMode(e.target.checked);
+                      setSimulationTraces([]);
+                      setTestResult(null);
+                    }}
+                    className="rounded border-[#30363D] bg-background"
+                  />
+                  <label htmlFor="simulator-mode" className="text-xs font-medium cursor-pointer">
+                    Simulator Replay Mode
+                  </label>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Tenant ID (real client)</label>
-                  <input
+                  <label className="text-xs font-medium text-muted-foreground">Testbed Customer</label>
+                  <select
                     className="w-full mt-1 px-3 py-2 text-sm border rounded-md bg-background"
-                    placeholder="e.g. 42"
                     value={testTenantId}
                     onChange={e => setTestTenantId(e.target.value)}
-                  />
+                  >
+                    <option value="">-- Select Testbed Customer --</option>
+                    {testbeds.map(tb => (
+                      <option key={tb.id} value={tb.id}>
+                        {tb.name} {tb.domain ? `(${tb.domain})` : ""} (ID: {tb.id})
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">Sample payload (used when Tenant ID is blank)</label>
-                  <textarea
-                    className="w-full mt-1 px-3 py-2 text-xs font-mono border rounded-md bg-background h-24"
-                    value={testPayload}
-                    onChange={e => setTestPayload(e.target.value)}
-                  />
+
+                {!simulatorMode ? (
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Sample payload (used when Testbed Customer is blank)</label>
+                    <textarea
+                      className="w-full mt-1 px-3 py-2 text-xs font-mono border rounded-md bg-background h-24"
+                      value={testPayload}
+                      onChange={e => setTestPayload(e.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Start Date</label>
+                      <input
+                        type="date"
+                        className="w-full mt-1 px-2 py-1.5 text-xs border rounded-md bg-background"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">End Date</label>
+                      <input
+                        type="date"
+                        className="w-full mt-1 px-2 py-1.5 text-xs border rounded-md bg-background"
+                        value={endDate}
+                        onChange={e => setEndDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Step Days</label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="w-full mt-1 px-2 py-1.5 text-xs border rounded-md bg-background"
+                        value={stepDays}
+                        onChange={e => setStepDays(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!simulatorMode ? (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={runTest} disabled={testRunning}>
+                    {testRunning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
+                    Run test
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={runPreview} disabled={testRunning}>
+                    <Eye className="w-3.5 h-3.5 mr-1.5" />
+                    Run preview
+                  </Button>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={runTest} disabled={testRunning}>
-                  {testRunning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
-                  Run test
-                </Button>
-                <Button size="sm" variant="outline" onClick={runPreview} disabled={testRunning}>
-                  <Eye className="w-3.5 h-3.5 mr-1.5" />
-                  Run preview
-                </Button>
-              </div>
-              {testResult ? (
+              ) : (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={runSimulation} disabled={simulating}>
+                    {simulating ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Play className="w-3.5 h-3.5 mr-1.5" />}
+                    Run Simulation
+                  </Button>
+                </div>
+              )}
+
+              {!simulatorMode && testResult && (
                 <pre className="text-xs bg-muted rounded p-3 overflow-auto max-h-80">{JSON.stringify(testResult, null, 2)}</pre>
-              ) : null}
+              )}
+
+              {simulatorMode && simulationTraces.length > 0 && (
+                <div className="space-y-3 pt-3 border-t">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">Simulation Visual Replay</span>
+                    <span>Step {selectedTraceIndex + 1} of {simulationTraces.length} ({new Date(simulationTraces[selectedTraceIndex].timestamp).toLocaleDateString()})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="px-2 py-1 min-h-0 h-7"
+                      disabled={selectedTraceIndex === 0}
+                      onClick={() => setSelectedTraceIndex(i => Math.max(0, i - 1))}
+                    >
+                      Prev
+                    </Button>
+                    <input
+                      type="range"
+                      min="0"
+                      max={simulationTraces.length - 1}
+                      value={selectedTraceIndex}
+                      onChange={e => setSelectedTraceIndex(Number(e.target.value))}
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="px-2 py-1 min-h-0 h-7"
+                      disabled={selectedTraceIndex === simulationTraces.length - 1}
+                      onClick={() => setSelectedTraceIndex(i => Math.min(simulationTraces.length - 1, i + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                  <pre className="text-xs bg-muted rounded p-3 overflow-auto max-h-80">
+                    {JSON.stringify(simulationTraces[selectedTraceIndex].output, null, 2)}
+                  </pre>
+                </div>
+              )}
             </CardContent>
           </Card>
 

@@ -19,7 +19,7 @@ import { computeNextCronRun } from "./workflow-executor";
 interface SystemWorkflowSeed {
   name: string;
   description: string;
-  triggerType: "startup" | "schedule" | "event";
+  triggerType: "startup" | "schedule" | "event" | "manual";
   cron?: string;
   /** Single event name — inserts one trigger row. */
   eventName?: string;

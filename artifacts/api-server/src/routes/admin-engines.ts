@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable } from "@workspace/db";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
@@ -68,6 +68,83 @@ router.get("/admin/engines", requireAdmin, (_req: Request, res: Response) => {
 
 router.get("/admin/plan-features", requireAdmin, (_req: Request, res: Response) => {
   res.json({ features: PLAN_FEATURE_DEFS });
+});
+
+// ── GET /api/admin/testbeds ──────────────────────────────────────────────────
+// Returns all customers where is_testbed is true.
+
+router.get("/admin/testbeds", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const testbeds = await db
+      .select({
+        id: mspCustomersTable.id,
+        name: mspCustomersTable.name,
+        domain: mspCustomersTable.domain,
+        isTestbed: mspCustomersTable.isTestbed,
+        testbedMetadata: mspCustomersTable.testbedMetadata,
+      })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.isTestbed, true));
+    res.json({ testbeds });
+  } catch (err) {
+    logger.error({ err }, "admin-engines: failed to list testbeds");
+    res.status(500).json({ error: "Failed to list testbeds" });
+  }
+});
+
+// ── POST /api/admin/simulator/run ────────────────────────────────────────────
+// Run a parameterized simulation over a date range for a testbed customer.
+
+router.post("/admin/simulator/run", requireAdmin, async (req: Request, res: Response) => {
+  const { testbedCustomerId, engineKey, startDate, endDate, stepDays } = req.body ?? {};
+  if (!testbedCustomerId) {
+    return res.status(400).json({ error: "Missing testbedCustomerId" });
+  }
+  if (!engineKey) {
+    return res.status(400).json({ error: "Missing engineKey" });
+  }
+
+  const def = getEngineDef(String(engineKey));
+  if (!def) {
+    return res.status(400).json({ error: `Unknown engine: ${engineKey}` });
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const step = Number(stepDays);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || isNaN(step) || step <= 0) {
+    return res.status(400).json({ error: "Invalid date or stepDays parameters" });
+  }
+
+  try {
+    // 2. Ensure we do not touch production customers
+    const [testbedCustomer] = await db
+      .select()
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+
+    if (!testbedCustomer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const traces = [];
+    const current = new Date(start);
+    while (current <= end) {
+      const timestamp = new Date(current);
+      const output = await def.runForTenant(testbedCustomer.id, { evaluationTimestamp: timestamp });
+      traces.push({
+        timestamp: timestamp.toISOString(),
+        output,
+      });
+      current.setDate(current.getDate() + step);
+    }
+    return res.json({ traces });
+  } catch (err) {
+    logger.error({ err, engineKey }, "admin-engines: simulator run failed");
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Simulator run failed" });
+  }
 });
 
 // ── POST /api/admin/engines/:key/test ───────────────────────────────────────

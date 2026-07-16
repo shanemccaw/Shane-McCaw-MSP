@@ -316,7 +316,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     ruleOwnership: "msp",
     runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
     runForPayload: (_input, ctx) => {
-      return computeScopeCreepEngine([], [], ctx);
+      return computeScopeCreepEngine([], [], 0, ctx?.evaluationTimestamp);
     },
   },
   {
@@ -336,7 +336,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "sales_offer",
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, ctx),
+    runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, null, ctx),
     runForPayload: async (input, ctx) => {
       const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
       const [ruleGroups, services, config] = await Promise.all([

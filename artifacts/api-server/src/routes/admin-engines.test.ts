@@ -30,6 +30,7 @@ vi.mock("@workspace/db", () => ({
   engagementProjectsTable: {},
   signalRuleGroupsTable: {},
   signalDerivationRulesTable: {},
+  mspCustomersTable: {},
 }));
 
 vi.mock("../middlewares/requireAuth", () => ({
@@ -137,5 +138,80 @@ describe("registry data integrity", () => {
     for (const fk of featureKeys) {
       expect(engineKeys.has(fk), `key '${fk}' appears in both engines and plan-features`).toBe(false);
     }
+  });
+});
+
+describe("GET /api/admin/testbeds", () => {
+  it("returns 401 without auth", async () => {
+    const res = await request(app).get("/admin/testbeds");
+    expect(res.status).toBe(401);
+  });
+
+  it("lists all testbeds when authorized", async () => {
+    const { db } = await import("@workspace/db");
+    const mockTestbeds = [{ id: 1, name: "Testbed Customer", isTestbed: true }];
+    vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(mockTestbeds),
+      }),
+    } as any);
+
+    const res = await request(app).get("/admin/testbeds").set(authHeader);
+    expect(res.status).toBe(200);
+    expect(res.body.testbeds).toEqual(mockTestbeds);
+  });
+});
+
+describe("POST /api/admin/simulator/run", () => {
+  it("returns 401 without auth", async () => {
+    const res = await request(app).post("/admin/simulator/run").send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("fails with 400 when missing parameters", async () => {
+    const res = await request(app).post("/admin/simulator/run").set(authHeader).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("runs time compression simulation loop and returns traces", async () => {
+    const { db } = await import("@workspace/db");
+    const { getEngineDef } = await import("../lib/engine-registry");
+
+    // Mock DB select to return testbed customer
+    vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: 42, isTestbed: true }]),
+        }),
+      }),
+    } as any);
+
+    // Mock engine runForTenant
+    const runForTenantMock = vi.fn().mockResolvedValue({ score: 99 });
+    vi.mock("../lib/engine-registry", async (importOriginal) => {
+      const original = await importOriginal<typeof import("../lib/engine-registry")>();
+      return {
+        ...original,
+        getEngineDef: vi.fn().mockReturnValue({
+          runForTenant: runForTenantMock,
+        }),
+      };
+    });
+
+    const res = await request(app)
+      .post("/admin/simulator/run")
+      .set(authHeader)
+      .send({
+        testbedCustomerId: 42,
+        engineKey: "priority",
+        startDate: "2026-06-01T00:00:00.000Z",
+        endDate: "2026-06-03T00:00:00.000Z",
+        stepDays: 1,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.traces).toHaveLength(3); // June 1, 2, 3
+    expect(res.body.traces[0].output).toEqual({ score: 99 });
+    expect(runForTenantMock).toHaveBeenCalledTimes(3);
   });
 });
