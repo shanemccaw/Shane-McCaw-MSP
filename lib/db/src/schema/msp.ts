@@ -1929,3 +1929,34 @@ export const mspAlertEventsTable = pgTable("msp_alert_events", {
   index("msp_alert_events_fired_at_idx").on(t.firedAt),
   index("msp_alert_events_severity_idx").on(t.severity),
 ]);
+
+// lib/db/src/schema/msp.ts
+
+// [ ... existing imports and tables ... ]
+
+export const savedSqlScripts = pgTable("saved_sql_scripts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // e.g., "QA Asserts", "Maintenance"
+  query: text("query").notNull(),
+  isDestructive: boolean("is_destructive").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const simulationProfiles = pgTable("simulation_profiles", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => msps.id), // The testbed target
+  name: text("name").notNull(),
+  baselineState: jsonb("baseline_state"), // Snapshot of tenant before run
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const simulationRuns = pgTable("simulation_runs", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id").references(() => simulationProfiles.id),
+  status: text("status").notNull(), // 'running', 'completed', 'failed'
+  logs: jsonb("logs"), // Array of stream events
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});

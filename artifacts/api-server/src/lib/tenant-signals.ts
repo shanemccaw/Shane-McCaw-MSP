@@ -509,6 +509,11 @@ export function computeTenantSignals(
     }
   }
 
+  if (context) {
+    recordSignalTransitions(context.customerId, context.mspId, firedSignals)
+      .catch(err => logger.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget signal transition recording failed"));
+  }
+
   return { firedSignals, trace };
 }
 
@@ -548,6 +553,48 @@ async function triggerSlaTimersForFiredSignals(
         "triggerSlaTimersForFiredSignals: failed to process signal key",
       );
     }
+  }
+}
+
+async function recordSignalTransitions(
+  customerId: number,
+  mspId: number,
+  firedSignals: Set<string>,
+): Promise<void> {
+  try {
+    const openRows = await db.execute(sql`
+      SELECT signal_key AS "signalKey" FROM tenant_signal_history
+      WHERE customer_id = ${customerId} AND resolved_at IS NULL
+    `);
+    const openSignalKeys = new Set((openRows.rows as { signalKey: string }[]).map(r => r.signalKey));
+
+    const newlyFired = [...firedSignals].filter(k => !openSignalKeys.has(k));
+    const newlyResolved = [...openSignalKeys].filter(k => !firedSignals.has(k));
+
+    for (const signalKey of newlyFired) {
+      try {
+        await db.execute(sql`
+          INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
+          VALUES (${customerId}, ${mspId}, ${signalKey}, NOW())
+        `);
+      } catch (err) {
+        logger.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
+      }
+    }
+
+    for (const signalKey of newlyResolved) {
+      try {
+        await db.execute(sql`
+          UPDATE tenant_signal_history
+          SET resolved_at = NOW()
+          WHERE customer_id = ${customerId} AND signal_key = ${signalKey} AND resolved_at IS NULL
+        `);
+      } catch (err) {
+        logger.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, customerId, mspId }, "recordSignalTransitions: failed to fetch open signal rows");
   }
 }
 
