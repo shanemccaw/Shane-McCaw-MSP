@@ -79,11 +79,15 @@ vi.mock("@workspace/db", () => ({
     id: "id", tenantId: "tenant_id", mspId: "msp_id", serviceId: "service_id",
     title: "title", adjustedPriceCents: "adjusted_price_cents", state: "state",
     trialPeriodDays: "trial_period_days",
+    internalCostCents: "internal_cost_cents",
+    priceCents: "price_cents",
   },
   servicesTable: {
     id: "id", name: "name", description: "description", serviceClass: "service_class",
     fulfillmentTypeKey: "fulfillment_type_key", allowFreeCheckout: "allow_free_checkout",
     trialPeriodDays: "trial_period_days",
+    internalCostCents: "internal_cost_cents",
+    priceCents: "price_cents",
   },
   mspSowsTable: {
     sowId: "sow_id", offerId: "offer_id", mspId: "msp_id", customerId: "customer_id",
@@ -98,6 +102,18 @@ vi.mock("@workspace/db", () => ({
   freeCheckoutAttemptsTable: {
     id: "id", offerId: "offer_id", customerEmail: "customer_email",
     ipAddress: "ip_address", mspId: "msp_id", createdAt: "created_at",
+  },
+  platformAgreementsTable: {
+    id: "id", version: "version", title: "title", isCurrentVersion: "is_current_version",
+  },
+  mspAgreementAcceptancesTable: {
+    mspId: "msp_id", userId: "user_id", agreementVersion: "agreement_version",
+  },
+  mspSubscriptionsTable: {
+    id: "id", mspId: "msp_id", stripeCustomerId: "stripe_customer_id",
+  },
+  mspUsersTable: {
+    id: "id", userId: "user_id", mspId: "msp_id",
   },
 }));
 
@@ -133,15 +149,29 @@ vi.mock("../lib/logger", () => ({
 
 vi.mock("../lib/stripe", () => ({
   getStripeKey: vi.fn().mockReturnValue("sk_test_xxx"),
+  getMspDefaultPaymentMethod: vi.fn().mockResolvedValue("pm_test"),
 }));
 
+const mockStripeProductsCreate = vi.fn().mockResolvedValue({ id: "prod_test" });
+const mockStripeSubscriptionsCreate = vi.fn().mockResolvedValue({ id: "sub_test", status: "active" });
+const mockStripePaymentIntentsCreate = vi.fn().mockResolvedValue({ id: "pi_test", status: "succeeded" });
+const mockStripeCustomersRetrieve = vi.fn().mockResolvedValue({
+  invoice_settings: { default_payment_method: "pm_test" }
+});
+const mockStripePaymentMethodsList = vi.fn().mockResolvedValue({
+  data: [{ id: "pm_test" }]
+});
+
 vi.mock("stripe", () => ({
-  // Must use regular function (not arrow) — Stripe is instantiated with `new`
-  // and arrow functions cannot be used as constructors.
   default: vi.fn().mockImplementation(function () {
     return {
       checkout: { sessions: { create: mockStripeSessionCreate } },
       webhooks: { constructEvent: vi.fn() },
+      products: { create: mockStripeProductsCreate },
+      subscriptions: { create: mockStripeSubscriptionsCreate },
+      paymentIntents: { create: mockStripePaymentIntentsCreate },
+      customers: { retrieve: mockStripeCustomersRetrieve },
+      paymentMethods: { list: mockStripePaymentMethodsList },
     };
   }),
 }));
@@ -276,10 +306,12 @@ describe("POST /api/portal/offers/:id/checkout", () => {
 
   // ── Branch 1: add_on ───────────────────────────────────────────────────────
 
-  it("1. add_on: creates Stripe payment checkout session and returns checkoutUrl", async () => {
+  it("1. add_on: processes payment directly against MSP card-on-file", async () => {
     mockDbSelect
-      .mockReturnValueOnce(selectChain([baseSentOffer]))
-      .mockReturnValueOnce(selectChain([addOnService]));
+      .mockReturnValueOnce(selectChain([baseSentOffer])) // offer
+      .mockReturnValueOnce(selectChain([addOnService])) // service
+      .mockReturnValueOnce(selectChain([]))             // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
 
     const app = await makeApp();
@@ -288,20 +320,23 @@ describe("POST /api/portal/offers/:id/checkout", () => {
       .set("Authorization", `Bearer ${customerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.outcome).toBe("checkout_required");
-    expect(res.body.checkoutUrl).toBe("https://checkout.stripe.com/pay/cs_test_001");
-    expect(mockStripeSessionCreate).toHaveBeenCalledOnce();
-    const sessionCall = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(sessionCall["mode"]).toBe("payment");
-    expect(mockResolveFulfillment).not.toHaveBeenCalled();
+    expect(res.body.outcome).toBe("payment_processed");
+    expect(res.body.paymentIntentId).toBe("pi_test");
+    expect(mockStripePaymentIntentsCreate).toHaveBeenCalledOnce();
+    const piCall = mockStripePaymentIntentsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(piCall["amount"]).toBe(105000); // 70% of 150_000
+    expect(piCall["customer"]).toBe("cus_test");
+    expect(mockResolveFulfillment).toHaveBeenCalledOnce();
   });
 
   // ── Branch 2: subscription with trial ─────────────────────────────────────
 
-  it("2a. subscription: creates Stripe subscription checkout with offer-level trial", async () => {
+  it("2a. subscription: creates Stripe subscription directly with offer-level trial", async () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([subscriptionOffer]))   // offer (trialPeriodDays: 14)
-      .mockReturnValueOnce(selectChain([subscriptionService])); // service (trialPeriodDays: 7)
+      .mockReturnValueOnce(selectChain([subscriptionService])) // service (trialPeriodDays: 7)
+      .mockReturnValueOnce(selectChain([]))                    // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
 
     const app = await makeApp();
@@ -310,19 +345,20 @@ describe("POST /api/portal/offers/:id/checkout", () => {
       .set("Authorization", `Bearer ${customerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.outcome).toBe("checkout_required");
-    // Offer-level trial (14) must take precedence over service-level trial (7)
-    expect(res.body.trialPeriodDays).toBe(14);
-    const sessionCall = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(sessionCall["mode"]).toBe("subscription");
-    expect((sessionCall["subscription_data"] as { trial_period_days: number }).trial_period_days).toBe(14);
+    expect(res.body.outcome).toBe("payment_processed");
+    expect(res.body.subscriptionId).toBe("sub_test");
+    const subCall = mockStripeSubscriptionsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(subCall["customer"]).toBe("cus_test");
+    expect(subCall["trial_period_days"]).toBe(14);
   });
 
   it("2b. subscription: falls back to service-level trial when offer has none", async () => {
     const offerNoTrial = { ...subscriptionOffer, trialPeriodDays: null };
     mockDbSelect
       .mockReturnValueOnce(selectChain([offerNoTrial]))
-      .mockReturnValueOnce(selectChain([subscriptionService]));  // service has trialPeriodDays: 7
+      .mockReturnValueOnce(selectChain([subscriptionService]))  // service has trialPeriodDays: 7
+      .mockReturnValueOnce(selectChain([]))                     // platform agreements
+      .mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // msp subscription
     mockDbUpdate.mockReturnValueOnce(updateChain());
 
     const app = await makeApp();
@@ -331,9 +367,10 @@ describe("POST /api/portal/offers/:id/checkout", () => {
       .set("Authorization", `Bearer ${customerToken}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.trialPeriodDays).toBe(7);
-    const sessionCall = mockStripeSessionCreate.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect((sessionCall["subscription_data"] as { trial_period_days: number }).trial_period_days).toBe(7);
+    expect(res.body.outcome).toBe("payment_processed");
+    const subCall = mockStripeSubscriptionsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(subCall["customer"]).toBe("cus_test");
+    expect(subCall["trial_period_days"]).toBe(7);
   });
 
   // ── Branch 3: $0 free assessment ─────────────────────────────────────────
@@ -410,6 +447,7 @@ describe("POST /api/portal/offers/:id/checkout", () => {
     mockDbSelect
       .mockReturnValueOnce(selectChain([projectOffer]))    // offer
       .mockReturnValueOnce(selectChain([projectService]))  // service
+      .mockReturnValueOnce(selectChain([]))                // platform agreements
       .mockReturnValueOnce(selectChain([{ id: 99 }]))      // msp customer lookup
       .mockReturnValueOnce(selectChain([{ customerAgreementTemplate: null }])); // conn config
     mockDbUpdate.mockReturnValueOnce(updateChain());

@@ -187,3 +187,22 @@ export function validateStripeKeyOnStartup(): void {
     }
   }
 }
+
+/** Get the MSP's default payment method from Stripe */
+export async function getMspDefaultPaymentMethod(
+  stripe: import("stripe").Stripe,
+  stripeCustomerId: string,
+): Promise<string | undefined> {
+  try {
+    const customer = await stripe.customers.retrieve(stripeCustomerId) as import("stripe").Stripe.Customer;
+    const defaultPm = customer.invoice_settings?.default_payment_method;
+    if (typeof defaultPm === "string") return defaultPm;
+    if (defaultPm && typeof defaultPm === "object") return defaultPm.id;
+
+    // Fall back to listing payment methods
+    const pms = await stripe.paymentMethods.list({ customer: stripeCustomerId, type: "card", limit: 1 });
+    return pms.data[0]?.id;
+  } catch {
+    return undefined;
+  }
+}

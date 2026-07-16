@@ -37,11 +37,14 @@ import {
   freeCheckoutAttemptsTable,
   platformAgreementsTable,
   mspAgreementAcceptancesTable,
+  mspSubscriptionsTable,
+  mspUsersTable,
 } from "@workspace/db";
 import { eq, and, count, gte, or } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
-import { getStripeKey } from "../lib/stripe.ts";
+import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe.ts";
 import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
+import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { logger } from "../lib/logger.ts";
 import { transitionOfferState } from "../lib/sales-offer-engine.ts";
 import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-broadcast.ts";
@@ -199,6 +202,8 @@ router.post(
         title: salesOffersTable.title,
         adjustedPriceCents: salesOffersTable.adjustedPriceCents,
         trialPeriodDays: salesOffersTable.trialPeriodDays,
+        internalCostCents: salesOffersTable.internalCostCents,
+        priceCents: salesOffersTable.priceCents,
       })
       .from(salesOffersTable)
       .where(and(eq(salesOffersTable.id, offerId), eq(salesOffersTable.tenantId, customerId)))
@@ -220,6 +225,8 @@ router.post(
     let serviceDescription: string | null = null;
     let allowFreeCheckout = true;
     let productTrialDays: number | null = null;
+    let internalCostCents: number | null = null;
+    let priceCents: number | null = null;
 
     if (offerRow.serviceId) {
       const [svc] = await db
@@ -230,6 +237,8 @@ router.post(
           fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
+          internalCostCents: servicesTable.internalCostCents,
+          priceCents: servicesTable.priceCents,
         })
         .from(servicesTable)
         .where(eq(servicesTable.id, offerRow.serviceId))
@@ -242,6 +251,8 @@ router.post(
         serviceDescription = svc.description ?? null;
         allowFreeCheckout = svc.allowFreeCheckout;
         productTrialDays = svc.trialPeriodDays ?? null;
+        internalCostCents = svc.internalCostCents ?? null;
+        priceCents = svc.priceCents ?? null;
       }
     }
 
@@ -528,7 +539,7 @@ router.post(
       return;
     }
 
-    // ── Branch 3: add_on / subscription → Stripe checkout ───────────────────
+    // ── Branch 3: add_on / subscription → Stripe Card-on-File billing ────────
     let stripeKey: string;
     try {
       stripeKey = getStripeKey();
@@ -541,79 +552,156 @@ router.post(
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeKey);
 
-    const baseUrl = process.env["REPLIT_DOMAINS"]
-      ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]?.trim()}`
-      : "http://localhost:3000";
-    const portalBase = `${baseUrl}/portal`;
-
     try {
-      const mode = serviceClass === "subscription" ? "subscription" : "payment";
-      const metadata: Record<string, string> = {
-        offerId: String(offerId),
-        customerId: String(customerId),
-        mspId: String(mspId ?? ""),
-        serviceClass,
-        fulfillment_type: "portal_offer",
-        fulfillmentTypeKey: fulfillmentTypeKey ?? "",
-        serviceName,
-        ...agreementMeta,
-      };
-
-      const sessionParams: Record<string, unknown> = {
-        mode,
-        customer_email: actorEmail || undefined,
-        metadata,
-        success_url: `${portalBase}/customer-home?offer_accepted=1&offer_id=${offerId}`,
-        cancel_url: `${portalBase}/customer-offers?offer_cancelled=1`,
-      };
-
-      if (mode === "payment") {
-        sessionParams["line_items"] = [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: { name: serviceName, description: serviceDescription ?? undefined },
-              unit_amount: amountCents,
-            },
-            quantity: 1,
-          },
-        ];
-      } else {
-        // Subscription mode with optional trial period
-        sessionParams["line_items"] = [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: { name: serviceName, description: serviceDescription ?? undefined },
-              unit_amount: amountCents,
-              recurring: { interval: "month" as const },
-            },
-            quantity: 1,
-          },
-        ];
-        if (trialPeriodDays && trialPeriodDays > 0) {
-          sessionParams["subscription_data"] = { trial_period_days: trialPeriodDays };
+      // 1. Determine target mspId associated with customer or logged-in session
+      let targetMspId = offerRow.mspId;
+      if (!targetMspId && actorId) {
+        const [mspUser] = await db
+          .select({ mspId: mspUsersTable.mspId })
+          .from(mspUsersTable)
+          .where(eq(mspUsersTable.userId, actorId))
+          .limit(1);
+        if (mspUser?.mspId) {
+          targetMspId = mspUser.mspId;
+        }
+      }
+      if (!targetMspId && customerId) {
+        const [cust] = await db
+          .select({ mspId: mspCustomersTable.mspId })
+          .from(mspCustomersTable)
+          .where(eq(mspCustomersTable.id, customerId))
+          .limit(1);
+        if (cust?.mspId) {
+          targetMspId = cust.mspId;
         }
       }
 
-      const session = await stripe.checkout.sessions.create(
-        sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0],
-      );
+      if (!targetMspId) {
+        apiErr(res, 400, "Could not determine target MSP ID for billing");
+        return;
+      }
+
+      // 2. Query target MSP's saved stripeCustomerId and default payment method
+      const [subRow] = await db
+        .select({ stripeCustomerId: mspSubscriptionsTable.stripeCustomerId })
+        .from(mspSubscriptionsTable)
+        .where(eq(mspSubscriptionsTable.mspId, targetMspId))
+        .limit(1);
+
+      const stripeCustomerId = subRow?.stripeCustomerId;
+      if (!stripeCustomerId) {
+        apiErr(res, 400, `No saved Stripe Customer ID found for MSP ID: ${targetMspId}`);
+        return;
+      }
+
+      const defaultPaymentMethod = await getMspDefaultPaymentMethod(stripe, stripeCustomerId);
+      if (!defaultPaymentMethod) {
+        apiErr(res, 400, `No default payment method found for MSP customer ID: ${stripeCustomerId}`);
+        return;
+      }
+
+      // 3. Use resolveCatalogPricing to determine wholesaleCostCents
+      const pricing = resolveCatalogPricing({
+        priceCents: amountCents,
+        internalCostCents: offerRow.internalCostCents ?? internalCostCents,
+      });
+      const wholesaleCostCents = pricing.wholesaleCostCents;
+      const retailPriceCents = pricing.retailPriceCents;
+
+      // 4. Enforce Charge Target: Always charge MSP's saved stripeCustomerId for wholesaleCostCents
+      let subscriptionId: string | null = null;
+      let stripePaymentIntentId: string | null = null;
+
+      if (serviceClass === "subscription") {
+        // Create product for subscription first
+        const product = await stripe.products.create({
+          name: serviceName,
+          description: serviceDescription ?? undefined,
+        });
+
+        const stripeSub = await stripe.subscriptions.create({
+          customer: stripeCustomerId,
+          items: [{
+            price_data: {
+              currency: "usd",
+              product: product.id,
+              recurring: { interval: "month" },
+              unit_amount: wholesaleCostCents,
+            }
+          }],
+          default_payment_method: defaultPaymentMethod,
+          ...(trialPeriodDays && trialPeriodDays > 0 ? { trial_period_days: trialPeriodDays } : {}),
+        });
+
+        if (stripeSub.status !== "active" && stripeSub.status !== "trialing") {
+          apiErr(res, 402, `Direct subscription creation failed with status: ${stripeSub.status}`);
+          return;
+        }
+
+        subscriptionId = stripeSub.id;
+      } else {
+        const pi = await stripe.paymentIntents.create({
+          amount: wholesaleCostCents,
+          currency: "usd",
+          customer: stripeCustomerId,
+          payment_method: defaultPaymentMethod,
+          confirm: true,
+          off_session: true,
+          description: `Wholesale charge: ${serviceName} (MSP: ${targetMspId})`,
+          metadata: {
+            offerId: String(offerId),
+            customerId: String(customerId),
+            mspId: String(targetMspId),
+            serviceClass,
+          },
+        });
+
+        if (pi.status !== "succeeded") {
+          apiErr(res, 402, `Direct PaymentIntent failed with status: ${pi.status}`);
+          return;
+        }
+
+        stripePaymentIntentId = pi.id;
+      }
+
+      // 5. Mark purchase orders / fulfillment queue entries with wholesaleChargedCents and customerQuoteCents
+      // Calling resolveFulfillment directly with the pricing values in the payload
+      const idempotencyKey = `portal_offer_checkout:direct:${offerId}:${subscriptionId ?? stripePaymentIntentId}`;
+      if (fulfillmentTypeKey) {
+        await resolveFulfillment({
+          fulfillmentTypeKey,
+          idempotencyKey,
+          trigger: "purchase",
+          payload: {
+            offerId,
+            customerId,
+            mspId: targetMspId,
+            stripePaymentIntentId,
+            subscriptionId,
+            amountCents: retailPriceCents,
+            wholesaleChargedCents: wholesaleCostCents,
+            customerQuoteCents: retailPriceCents,
+            serviceName,
+            serviceClass,
+            customerEmail: actorEmail,
+          },
+        });
+      }
 
       logger.info(
-        { sessionId: session.id, offerId, customerId, serviceClass, trialPeriodDays },
-        "portal-checkout: Stripe checkout session created",
+        { offerId, customerId, targetMspId, serviceClass, wholesaleCostCents },
+        "portal-checkout: programmatic Card-on-File billing completed successfully",
       );
 
       res.json({
-        outcome: "checkout_required",
-        checkoutUrl: session.url,
-        sessionId: session.id,
-        trialPeriodDays: trialPeriodDays ?? null,
+        outcome: "payment_processed",
+        message: "Your order has been successfully processed and charged to card on file.",
+        subscriptionId,
+        paymentIntentId: stripePaymentIntentId,
       });
     } catch (err) {
-      logger.error({ err, offerId, customerId }, "portal-checkout: Stripe session creation failed");
-      apiErr(res, 500, "Failed to create checkout session. Please try again.");
+      logger.error({ err, offerId, customerId }, "portal-checkout: direct billing failed");
+      apiErr(res, 500, `Failed to process card-on-file charge: ${(err as Error).message}`);
     }
   },
 );
@@ -755,6 +843,11 @@ async function handleCheckoutCompleted(
     return;
   }
 
+  const pricing = resolveCatalogPricing({
+    priceCents: session.amount_total ?? 0,
+  });
+  const wholesaleChargedCents = pricing.wholesaleCostCents;
+
   const result = await resolveFulfillment({
     fulfillmentTypeKey,
     idempotencyKey,
@@ -765,6 +858,8 @@ async function handleCheckoutCompleted(
       mspId,
       stripeSessionId: session.id,
       amountCents: session.amount_total ?? 0,
+      wholesaleChargedCents,
+      customerQuoteCents: session.amount_total ?? 0,
       serviceName,
       serviceClass,
       customerEmail: session.customer_email ?? session.customer_details?.email ?? "",

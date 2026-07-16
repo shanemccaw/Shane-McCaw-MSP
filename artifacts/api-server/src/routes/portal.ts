@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspsTable } from "@workspace/db";
+import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -13952,6 +13953,9 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       const threshold = thresholds["offer"] ?? thresholds["default"] ?? 7;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
       const amountCents = inv.amount ? Math.round(parseFloat(String(inv.amount)) * 100) : null;
+      const pricing = resolveCatalogPricing({ priceCents: amountCents ?? 0 });
+      const wholesaleChargedCents = amountCents !== null ? pricing.wholesaleCostCents : null;
+      const customerQuoteCents = amountCents !== null ? pricing.retailPriceCents : null;
 
       try {
         await db.insert(fulfillmentQueueTable).values({
@@ -13963,6 +13967,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           itemTitle: inv.description ?? inv.invoiceNumber ?? `Invoice #${inv.id}`,
           purchasedAt,
           purchaseAmountCents: amountCents,
+          wholesaleChargedCents,
+          customerQuoteCents,
           projectId: inv.projectId ?? null,
           invoiceId: inv.id,
           slaDueAt,
@@ -13999,6 +14005,9 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       const threshold = thresholds["sow"] ?? thresholds["default"] ?? 14;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
       const clientLabel = pres.signerName ?? client?.name ?? client?.email ?? `Client #${pres.clientUserId}`;
+      const pricing = resolveCatalogPricing({ priceCents: pres.scopedTotalPrice ?? 0 });
+      const wholesaleChargedCents = pres.scopedTotalPrice !== null ? pricing.wholesaleCostCents : null;
+      const customerQuoteCents = pres.scopedTotalPrice !== null ? pricing.retailPriceCents : null;
 
       try {
         await db.insert(fulfillmentQueueTable).values({
@@ -14010,6 +14019,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           itemTitle: `SOW — ${clientLabel}`,
           purchasedAt,
           purchaseAmountCents: pres.scopedTotalPrice ?? null,
+          wholesaleChargedCents,
+          customerQuoteCents,
           projectId: pres.projectId ?? null,
           presentationId: pres.id,
           slaDueAt,
@@ -14041,7 +14052,13 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
             .from(usersTable).where(inArray(usersTable.id, bundleClientIds))
         : Promise.resolve([]),
       bundleServiceIds.length > 0
-        ? db.select({ id: servicesTable.id, name: servicesTable.name, description: servicesTable.description })
+        ? db.select({
+            id: servicesTable.id,
+            name: servicesTable.name,
+            description: servicesTable.description,
+            priceCents: servicesTable.priceCents,
+            internalCostCents: servicesTable.internalCostCents,
+          })
             .from(servicesTable).where(inArray(servicesTable.id, bundleServiceIds))
         : Promise.resolve([]),
     ]);
@@ -14055,6 +14072,12 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       const purchasedAt = svc.purchasedAt ? new Date(String(svc.purchasedAt)) : null;
       const threshold = thresholds["bundle"] ?? thresholds["default"] ?? 10;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
+      const pricing = resolveCatalogPricing({
+        priceCents: service?.priceCents ?? 0,
+        internalCostCents: service?.internalCostCents,
+      });
+      const wholesaleChargedCents = service?.priceCents !== undefined && service?.priceCents !== null ? pricing.wholesaleCostCents : null;
+      const customerQuoteCents = service?.priceCents !== undefined && service?.priceCents !== null ? pricing.retailPriceCents : null;
 
       try {
         await db.insert(fulfillmentQueueTable).values({
@@ -14066,6 +14089,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           itemTitle: service?.name ?? `Service #${svc.serviceId}`,
           itemDescription: service?.description ?? null,
           purchasedAt,
+          wholesaleChargedCents,
+          customerQuoteCents,
           projectId: svc.projectId ?? null,
           slaDueAt,
           slaThresholdDays: threshold,

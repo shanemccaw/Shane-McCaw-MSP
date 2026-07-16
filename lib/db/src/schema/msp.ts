@@ -477,6 +477,8 @@ export const fulfillmentQueueTable = pgTable("fulfillment_queue", {
   itemDescription: text("item_description"),
   purchasedAt: timestamp("purchased_at", { withTimezone: true }),
   purchaseAmountCents: integer("purchase_amount_cents"),
+  wholesaleChargedCents: integer("wholesale_charged_cents"),
+  customerQuoteCents: integer("customer_quote_cents"),
 
   // ── Delivery status ─────────────────────────────────────────────────────────
   deliveryStatus: text("delivery_status", { enum: FULFILLMENT_DELIVERY_STATUSES })
