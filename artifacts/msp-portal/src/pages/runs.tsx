@@ -43,6 +43,7 @@ interface PortalWfRun {
   mspId: number | null;
   customerId: number | null;
   createdAt: string;
+  source?: "system" | "portal";
 }
 
 interface PagedResponse {
@@ -101,7 +102,7 @@ export default function RunsPage() {
   const fetchRuns = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ pageSize: "50", sortBy: "createdAt", sortDir: "desc" });
+      const params = new URLSearchParams({ pageSize: "50", sortBy: "startedAt", sortDir: "desc" });
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (wfFilter.trim()) params.set("workflowKey", wfFilter.trim());
 
@@ -131,6 +132,17 @@ export default function RunsPage() {
       Refresh
     </Button>
   );
+
+  const cancelRun = async (runId: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/v1/portal-wf/runs/${runId}/cancel`, { method: "POST" });
+      if (res.ok) {
+        void fetchRuns();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <AppShell title="Workflow Runs" actions={actions}>
@@ -218,6 +230,11 @@ export default function RunsPage() {
                         >
                           {run.status}
                         </Badge>
+                        {run.source && (
+                          <Badge variant="secondary" className="text-[10px] capitalize">
+                            {run.source}
+                          </Badge>
+                        )}
                       </div>
                       {run.errorMessage && (
                         <p className="text-xs text-destructive-foreground truncate">
@@ -241,12 +258,24 @@ export default function RunsPage() {
                       </div>
                     </div>
                   </div>
-                  <Link href={`/runs/${run.runId}`}>
-                    <Button variant="outline" size="sm" className="h-7 gap-1 text-xs shrink-0">
-                      Details
-                      <ChevronRight className="size-3" />
-                    </Button>
-                  </Link>
+                  <div className="flex flex-col gap-2 items-end">
+                    <Link href={`/runs/${run.runId}`}>
+                      <Button variant="outline" size="sm" className="h-7 gap-1 text-xs shrink-0 w-full justify-center">
+                        Details
+                        <ChevronRight className="size-3" />
+                      </Button>
+                    </Link>
+                    {(run.status === "pending" || run.status === "running") && (
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        className="h-7 gap-1 text-xs shrink-0 w-full justify-center"
+                        onClick={() => cancelRun(run.runId)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               );
             })}

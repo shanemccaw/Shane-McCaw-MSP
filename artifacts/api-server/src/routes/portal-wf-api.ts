@@ -43,6 +43,8 @@ import {
   portalWfNodeOutputsTable,
   portalWfOperatorTasksTable,
   mspDlqStoreTable,
+  wfRunsTable,
+  wfDefinitionsTable,
 } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, like } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
@@ -217,34 +219,98 @@ router.post(
 
 router.get("/runs", async (req: Request, res: Response) => {
   const pg = parsePagination(req.query);
-  const sort = parseSort(req.query, ["createdAt", "status", "workflowKey"], "createdAt");
+  const sort = parseSort(req.query, ["startedAt", "createdAt", "status", "workflowKey"], "startedAt");
   const statusFilter = parseStringFilter(req.query, "status");
   const wfFilter = parseStringFilter(req.query, "workflowKey");
   const mspIdStr = parseStringFilter(req.query, "mspId");
   const customerIdStr = parseStringFilter(req.query, "customerId");
 
-  const conditions: ReturnType<typeof eq>[] = [];
-  if (statusFilter) conditions.push(eq(portalWfRunsTable.status, statusFilter as "pending" | "running" | "completed" | "failed" | "cancelled"));
-  if (wfFilter) conditions.push(eq(portalWfRunsTable.workflowKey, wfFilter));
-  if (mspIdStr) conditions.push(eq(portalWfRunsTable.mspId, parseInt(mspIdStr, 10)));
-  if (customerIdStr) conditions.push(eq(portalWfRunsTable.customerId, parseInt(customerIdStr, 10)));
+  // Portal runs conditions
+  const portalConditions: ReturnType<typeof eq>[] = [];
+  const systemConditions: any[] = [];
 
-  const whereClause = conditions.length ? and(...conditions) : undefined;
+  if (statusFilter) {
+    portalConditions.push(eq(portalWfRunsTable.status, statusFilter as any));
+    systemConditions.push(eq(wfRunsTable.status, statusFilter as any));
+  }
+  if (wfFilter) {
+    portalConditions.push(eq(portalWfRunsTable.workflowKey, wfFilter));
+    systemConditions.push(eq(wfDefinitionsTable.name, wfFilter));
+  }
+  if (mspIdStr) {
+    const mspId = parseInt(mspIdStr, 10);
+    portalConditions.push(eq(portalWfRunsTable.mspId, mspId));
+    systemConditions.push(sql`CAST(${wfRunsTable.payload}->>'mspId' AS INTEGER) = ${mspId}`);
+  }
+  if (customerIdStr) {
+    const custId = parseInt(customerIdStr, 10);
+    portalConditions.push(eq(portalWfRunsTable.customerId, custId));
+    systemConditions.push(sql`CAST(${wfRunsTable.payload}->>'customerId' AS INTEGER) = ${custId}`);
+  }
 
-  const [{ total }] = await db.select({ total: count() }).from(portalWfRunsTable).where(whereClause);
+  const portalWhere = portalConditions.length ? and(...portalConditions) : undefined;
+  const systemWhere = systemConditions.length ? and(...systemConditions) : undefined;
 
-  const orderCol =
-    sort.sortBy === "status" ? portalWfRunsTable.status
-    : sort.sortBy === "workflowKey" ? portalWfRunsTable.workflowKey
-    : portalWfRunsTable.createdAt;
+  // Counts
+  const [{ total: portalTotal }] = await db.select({ total: count() }).from(portalWfRunsTable).where(portalWhere);
+  const [{ total: systemTotal }] = await db.select({ total: count() })
+    .from(wfRunsTable)
+    .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+    .where(systemWhere);
+  const total = portalTotal + systemTotal;
 
-  const rows = await db.select().from(portalWfRunsTable)
-    .where(whereClause)
-    .orderBy(sort.sortDir === "asc" ? asc(orderCol) : desc(orderCol))
-    .limit(pg.pageSize)
-    .offset(pg.offset);
+  // Queries
+  const portalQuery = db.select({
+    id: portalWfRunsTable.id,
+    runId: sql<string>`CAST(${portalWfRunsTable.runId} AS TEXT)`.as("runId"),
+    workflowKey: portalWfRunsTable.workflowKey,
+    tenantContext: portalWfRunsTable.tenantContext,
+    status: portalWfRunsTable.status,
+    triggerEventType: portalWfRunsTable.triggerEventType,
+    errorMessage: portalWfRunsTable.errorMessage,
+    startedAt: portalWfRunsTable.startedAt,
+    completedAt: portalWfRunsTable.completedAt,
+    mspId: portalWfRunsTable.mspId,
+    customerId: portalWfRunsTable.customerId,
+    createdAt: portalWfRunsTable.createdAt,
+    source: sql<string>`'portal'`.as("source"),
+  }).from(portalWfRunsTable).where(portalWhere);
 
-  res.json(paginatedResponse(rows, total, pg));
+  const systemQuery = db.select({
+    id: wfRunsTable.id,
+    runId: sql<string>`CAST(${wfRunsTable.id} AS TEXT)`.as("runId"),
+    workflowKey: sql<string>`COALESCE(${wfDefinitionsTable.name}, 'unknown')`.as("workflowKey"),
+    tenantContext: sql<any>`'{}'::jsonb`.as("tenantContext"),
+    status: wfRunsTable.status,
+    triggerEventType: wfRunsTable.triggerType.as("triggerEventType"),
+    errorMessage: wfRunsTable.errorMessage,
+    startedAt: wfRunsTable.startedAt,
+    completedAt: wfRunsTable.finishedAt.as("completedAt"),
+    mspId: sql<number | null>`CAST(${wfRunsTable.payload}->>'mspId' AS INTEGER)`.as("mspId"),
+    customerId: sql<number | null>`CAST(${wfRunsTable.payload}->>'customerId' AS INTEGER)`.as("customerId"),
+    createdAt: wfRunsTable.createdAt,
+    source: sql<string>`'system'`.as("source"),
+  })
+  .from(wfRunsTable)
+  .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+  .where(systemWhere);
+
+  const orderColStr = sort.sortBy === "status" ? "status" : sort.sortBy === "workflowKey" ? "workflowKey" : sort.sortBy === "createdAt" ? "createdAt" : "startedAt";
+  const sortDirStr = sort.sortDir === "asc" ? "asc" : "desc";
+
+  const result = await db.execute(sql`
+    WITH combined AS (
+      ${portalQuery} UNION ALL ${systemQuery}
+    )
+    SELECT * FROM combined
+    ORDER BY "${sql.raw(orderColStr)}" ${sql.raw(sortDirStr)}
+    LIMIT ${pg.pageSize} OFFSET ${pg.offset}
+  `);
+  
+  // db.execute returns { rows: any[] } for node-postgres
+  const rows = (result as any).rows ?? result;
+
+  res.json(paginatedResponse(rows as any[], total, pg));
 });
 
 router.get("/runs/:runId", async (req: Request, res: Response) => {
@@ -321,16 +387,69 @@ router.post(
 
     const [run] = await db.select().from(portalWfRunsTable)
       .where(eq(portalWfRunsTable.runId, runId)).limit(1);
-    if (!run) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "Run not found"); return; }
-    if (run.status !== "pending") { apiError(res, 409, ApiErrorCode.CONFLICT, `Run is not in a cancellable state (current: ${run.status})`); return; }
+    
+    if (!run) {
+      const numericId = parseInt(runId, 10);
+      if (!isNaN(numericId)) {
+        const [sysRun] = await db.select().from(wfRunsTable)
+          .where(eq(wfRunsTable.id, numericId)).limit(1);
+        if (sysRun) {
+          if (sysRun.status !== "pending" && sysRun.status !== "running") { 
+            apiError(res, 409, ApiErrorCode.CONFLICT, `Run is not in a cancellable state (current: ${sysRun.status})`); 
+            return; 
+          }
+          await db.update(wfRunsTable).set({
+            status: "cancelled",
+            finishedAt: new Date(),
+          }).where(eq(wfRunsTable.id, numericId));
+          res.json({ ok: true, runId, status: "cancelled", source: "system" });
+          return;
+        }
+      }
+      apiError(res, 404, ApiErrorCode.NOT_FOUND, "Run not found");
+      return;
+    }
+
+    if (run.status !== "pending" && run.status !== "running") { 
+      apiError(res, 409, ApiErrorCode.CONFLICT, `Run is not in a cancellable state (current: ${run.status})`); 
+      return; 
+    }
 
     await db.update(portalWfRunsTable).set({
       status: "cancelled",
       completedAt: new Date(),
-    }).where(and(eq(portalWfRunsTable.runId, runId), eq(portalWfRunsTable.status, "pending")));
+    }).where(eq(portalWfRunsTable.runId, runId));
 
-    res.json({ ok: true, runId, status: "cancelled" });
+    res.json({ ok: true, runId, status: "cancelled", source: "portal" });
   },
+);
+
+router.delete(
+  "/runs/:runId",
+  requireRole("MSPAdmin"),
+  mspMutatingRateLimit,
+  async (req: Request, res: Response) => {
+    const runId = p(req.params["runId"]);
+
+    const [pRun] = await db.delete(portalWfRunsTable)
+      .where(eq(portalWfRunsTable.runId, runId)).returning();
+    if (pRun) {
+      res.json({ ok: true, runId, source: "portal" });
+      return;
+    }
+
+    const numericId = parseInt(runId, 10);
+    if (!isNaN(numericId)) {
+      const [sRun] = await db.delete(wfRunsTable)
+        .where(eq(wfRunsTable.id, numericId)).returning();
+      if (sRun) {
+        res.json({ ok: true, runId, source: "system" });
+        return;
+      }
+    }
+
+    apiError(res, 404, ApiErrorCode.NOT_FOUND, "Run not found");
+  }
 );
 
 // ── Operator Tasks ────────────────────────────────────────────────────────────
