@@ -93,7 +93,8 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   }, [engineKey, fetchWithAuth, toast]);
 
-const loadHistoryCustomers = useCallback(async () => {
+
+  const loadHistoryCustomers = useCallback(async () => {
   try {
     const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/history-customers`);
     if (!res.ok) return;
