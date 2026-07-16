@@ -12,7 +12,6 @@ import {
   ENGINE_DEFS,
   getEngineDef,
   buildEngineTestInputForTenant,
-  buildEngineTestInputForPayload,
 } from "../lib/engine-registry";
 import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
 import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
@@ -31,32 +30,25 @@ import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../li
 
 const router: IRouter = Router();
 
-// ── Shared helpers ──────────────────────────────────────────────────────────
-
-function parsePayloadBody(body: Record<string, unknown>): { profileUpdates: Record<string, unknown>; parsedFindings: string[] } {
-  const payload = (body.payload ?? {}) as Record<string, unknown>;
-  const profileUpdates = (payload.profileUpdates ?? {}) as Record<string, unknown>;
-  const parsedFindings = Array.isArray(payload.parsedFindings) ? (payload.parsedFindings as string[]) : [];
-  return { profileUpdates, parsedFindings };
-}
-
 async function runEngine(
   engineKey: string,
   body: Record<string, unknown>,
-): Promise<{ mode: "tenant" | "payload"; tenantId?: number; output: unknown }> {
+): Promise<{ mode: "tenant"; tenantId: number; output: unknown }> {
   const def = getEngineDef(engineKey);
   if (!def) throw new Error(`Unknown engine: ${engineKey}`);
 
   const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
-  if (tenantId != null && !isNaN(tenantId)) {
-    const output = await def.runForTenant(tenantId);
-    return { mode: "tenant", tenantId, output };
+  if (tenantId == null || isNaN(tenantId)) {
+    // Fake-payload testing (runForPayload) is retired platform-wide. Every
+    // engine test/preview call must exercise the real runForTenant() path
+    // against a real (testbed-flagged) customer — no parallel/simulated
+    // evaluation is permitted, even for ad hoc admin testing.
+    throw new Error(
+      "A real tenantId is required. Select a testbed customer — free-text sample payload testing has been retired.",
+    );
   }
-
-  const { profileUpdates, parsedFindings } = parsePayloadBody(body);
-  const input = await buildEngineTestInputForPayload(profileUpdates, parsedFindings);
-  const output = def.runForPayload(input);
-  return { mode: "payload", output };
+  const output = await def.runForTenant(tenantId);
+  return { mode: "tenant", tenantId, output };
 }
 
 // ── GET /api/admin/portfolio-risk ──────────────────────────────────────────
@@ -741,13 +733,12 @@ router.post("/admin/engines/rule-groups/:groupId/test", requireAdmin, async (req
 
     const body = (req.body ?? {}) as Record<string, unknown>;
     const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
-    const payload = (body.payload ?? {}) as Record<string, unknown>;
-    const input = tenantId != null && !isNaN(tenantId)
-      ? await buildEngineTestInputForTenant(tenantId)
-      : await buildEngineTestInputForPayload(
-          (payload.profileUpdates as Record<string, unknown>) ?? {},
-          (payload.parsedFindings as string[]) ?? [],
-        );
+    if (tenantId == null || isNaN(tenantId)) {
+      // Fake-payload testing is retired platform-wide — real tenantId only.
+      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
+      return;
+    }
+    const input = await buildEngineTestInputForTenant(tenantId);
 
     const groupRules = rules.filter(r => r.groupId === groupId);
     const traces = groupRules.map(r => ({ ruleId: r.id, ...evaluateRule(r, input.mergedProfile, input.parsedFindings) }));
@@ -807,12 +798,12 @@ router.post("/admin/engines/signals/:signalKey/test", requireAdmin, async (req: 
   const signalKey = String(req.params.signalKey);
   try {
     const tenantId = (req.body as Record<string, unknown>)?.tenantId != null ? Number((req.body as Record<string, unknown>).tenantId) : undefined;
-    const input = tenantId != null && !isNaN(tenantId)
-      ? await buildEngineTestInputForTenant(tenantId)
-      : await buildEngineTestInputForPayload(
-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.profileUpdates as Record<string, unknown> ?? {},
-          ((req.body as Record<string, unknown>)?.payload as Record<string, unknown> | undefined)?.parsedFindings as string[] ?? [],
-        );
+    if (tenantId == null || isNaN(tenantId)) {
+      // Fake-payload testing is retired platform-wide — real tenantId only.
+      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
+      return;
+    }
+    const input = await buildEngineTestInputForTenant(tenantId);
 
     const scopedRules = input.rules.filter(r => r.signalKey === signalKey);
     const scopedGroups = input.groups.filter(g => g.signalKey === signalKey);
