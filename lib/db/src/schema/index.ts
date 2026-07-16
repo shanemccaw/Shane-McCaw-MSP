@@ -2524,11 +2524,15 @@ export const industryBenchmarkReferenceTable = pgTable("industry_benchmark_refer
 export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
-  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
   engineKey: text("engine_key").notNull(),
   score: integer("score").notNull().default(0),
+  previousScore: integer("previous_score"),
+  delta: integer("delta"),
   trendDirection: text("trend_direction"),
   breakdown: jsonb("breakdown").$type<Record<string, unknown>[]>().notNull().default([]),
+  runId: text("run_id"),
+  ruleVersion: integer("rule_version"),
   capturedAt: timestamp("captured_at").notNull().defaultNow(),
 }, (table) => ({
   customerEngineCapturedIdx: index("tenant_engine_snapshots_customer_engine_captured_idx")
