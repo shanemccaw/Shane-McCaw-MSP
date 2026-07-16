@@ -673,4 +673,168 @@ router.get("/admin/engines/signals/:signalKey/logs", requireAdmin, async (req: R
   }
 });
 
+// artifacts/api-server/src/routes/admin-engines.ts
+import { SIMULATOR_MANIFEST } from "../lib/simulator-events";
+import { savedSqlScripts, msps } from "db/schema";
+import { eq, sql } from "drizzle-orm";
+
+// ---------------------------------------------------------------------------
+// SIMULATOR STUDIO API ROUTES
+// ---------------------------------------------------------------------------
+
+/**
+ * @route GET /api/admin/engines/simulator/manifest
+ * @desc Returns the centralized list of quick-fire events and presets
+ */
+router.get("/simulator/manifest", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const events = SIMULATOR_MANIFEST.map(({ id, name, icon, category, description, demoSpeakerNote }) => ({
+      id,
+      name,
+      icon,
+      category,
+      description,
+      demoSpeakerNote
+    }));
+    return res.json({ events });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route POST /api/admin/engines/simulator/fire-event
+ * @desc Safely triggers a manifest event on an is_testbed MSP/tenant
+ */
+router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { eventId, testbedMspId, params } = req.body;
+
+    if (!eventId || !testbedMspId) {
+      return res.status(400).json({ error: "eventId and testbedMspId are required." });
+    }
+
+    // Verify target MSP is marked as a testbed
+    const targetMsp = await db.query.msps.findFirst({
+      where: eq(msps.id, Number(testbedMspId))
+    });
+
+    if (!targetMsp || !targetMsp.isTestbed) {
+      return res.status(403).json({ error: "Simulator actions can only be executed against designated testbed MSPs (is_testbed = true)." });
+    }
+
+    const eventDef = SIMULATOR_MANIFEST.find(e => e.id === eventId);
+    if (!eventDef) {
+      return res.status(404).json({ error: `Event '${eventId}' not found in simulator manifest.` });
+    }
+
+    const startTime = Date.now();
+    const result = await eventDef.execute(Number(testbedMspId), params);
+    const executionMs = Date.now() - startTime;
+
+    return res.json({
+      ...result,
+      executionMs,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error("[Simulator Event Error]:", err);
+    return res.status(500).json({ error: err.message || "Failed to fire event" });
+  }
+});
+
+/**
+ * @route POST /api/admin/engines/simulator/sql/execute
+ * @desc Executes SQL queries/CRUD scripts with performance timing & safety checks
+ */
+router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { query } = req.body;
+
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({ error: "A valid SQL query string is required." });
+    }
+
+    const startTime = Date.now();
+    const result = await db.execute(sql.raw(query));
+    const executionMs = Date.now() - startTime;
+
+    return res.json({
+      rows: result.rows || [],
+      rowCount: result.rowCount || (result.rows ? result.rows.length : 0),
+      fields: result.fields?.map((f: any) => f.name) ?? (result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []),
+      executionMs
+    });
+  } catch (err: any) {
+    console.error("[SQL Console Error]:", err);
+    return res.status(500).json({ error: err.message || "Failed to execute query" });
+  }
+});
+
+/**
+ * @route GET /api/admin/engines/simulator/sql/scripts
+ * @desc Gets all saved, categorized SQL utility scripts
+ */
+router.get("/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const scripts = await db.select().from(savedSqlScripts);
+    return res.json({ scripts });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route POST /api/admin/engines/simulator/sql/scripts
+ * @desc Saves a new SQL script to the library under a category
+ */
+router.post("/simulator/sql/scripts", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { name, category, query, isDestructive } = req.body;
+
+    if (!name || !category || !query) {
+      return res.status(400).json({ error: "name, category, and query are required." });
+    }
+
+    const [inserted] = await db.insert(savedSqlScripts).values({
+      name,
+      category,
+      query,
+      isDestructive: Boolean(isDestructive)
+    }).returning();
+
+    return res.json({ script: inserted });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @route POST /api/admin/engines/simulator/session-lock
+ * @desc Locks/unlocks a testbed MSP so CRON background tasks bypass it during live demos
+ */
+router.post("/simulator/session-lock", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { testbedMspId, lock } = req.body;
+
+    if (!testbedMspId) {
+      return res.status(400).json({ error: "testbedMspId is required." });
+    }
+
+    const lockSessionId = lock ? `demo-session-${Date.now()}` : null;
+
+    await db.update(msps)
+      .set({ testbedProfileOverrides: sql`jsonb_set(COALESCE(testbed_profile_overrides, '{}'::jsonb), '{sim_lock_session_id}', ${JSON.stringify(lockSessionId)}::jsonb)` })
+      .where(eq(msps.id, Number(testbedMspId)));
+
+    return res.json({ 
+      success: true, 
+      locked: Boolean(lock), 
+      lockSessionId 
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

@@ -13,7 +13,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 import {
@@ -441,7 +441,7 @@ async function writeEngineSnapshot(
     }
 
     const [priorBaseline] = await db
-      .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion })
+      .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion, baselineScore: engineBaselineHistoryTable.baselineScore })
       .from(engineBaselineHistoryTable)
       .where(and(eq(engineBaselineHistoryTable.customerId, customerId), eq(engineBaselineHistoryTable.engineKey, engineKey)))
       .orderBy(desc(engineBaselineHistoryTable.createdAt))
@@ -472,6 +472,43 @@ async function writeEngineSnapshot(
         resetTriggerRef: String(currentRuleVersion),
         ruleVersion: currentRuleVersion,
       });
+    }
+
+    if (engineKey === "drift" && priorBaseline && priorBaseline.baselineScore != null && priorBaseline.baselineScore !== 0) {
+      try {
+        const changePct = ((score - priorBaseline.baselineScore) / priorBaseline.baselineScore) * 100;
+
+        const assignment = await db.execute(sql`
+          SELECT policy_id AS "policyId" FROM scope_creep_assignments
+          WHERE customer_id = ${customerId} LIMIT 1
+        `);
+        const policyId = (assignment.rows[0] as { policyId: number } | undefined)?.policyId;
+
+        if (policyId != null) {
+          const policy = await db.execute(sql`
+            SELECT drift_threshold_pct AS "driftThresholdPct" FROM scope_creep_policies
+            WHERE id = ${policyId} LIMIT 1
+          `);
+          const driftThresholdPct = (policy.rows[0] as { driftThresholdPct: number } | undefined)?.driftThresholdPct;
+
+          if (driftThresholdPct != null && Math.abs(changePct) >= driftThresholdPct) {
+            const { recordScopeCreepDetection } = await import("./scope-creep-engine.ts");
+            await recordScopeCreepDetection({
+              mspId: mspId ?? 0,
+              customerId,
+              policyId,
+              detectionType: "drift",
+              ref: `engine_baseline:${engineKey}`,
+              baselineValue: priorBaseline.baselineScore,
+              currentValue: score,
+              changePct,
+              idempotencyKey: `drift-baseline:${customerId}:${priorBaseline.baselineScore}`,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, customerId, engineKey }, "writeEngineSnapshot: drift-based scope creep detection failed (non-fatal)");
+      }
     }
   } catch (err) {
     logger.warn({ err, engineKey, tenantId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
