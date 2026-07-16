@@ -156,6 +156,7 @@ router.get("/msp/profile", requireRole("CustomerUser"), async (req: Request, res
       primaryColor: mspsTable.primaryColor,
       status: mspsTable.status,
       trialEndsAt: mspsTable.trialEndsAt,
+      customCustomerAgreement: mspsTable.customCustomerAgreement,
       createdAt: mspsTable.createdAt,
     })
     .from(mspsTable)
@@ -182,6 +183,7 @@ router.get("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Request
       primaryColor: mspsTable.primaryColor,
       status: mspsTable.status,
       trialEndsAt: mspsTable.trialEndsAt,
+      customCustomerAgreement: mspsTable.customCustomerAgreement,
       createdAt: mspsTable.createdAt,
     })
     .from(mspsTable)
@@ -197,6 +199,7 @@ const updateProfileSchema = z.object({
   domain: z.string().nullable().optional(),
   logoUrl: z.string().url().nullable().optional(),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  customCustomerAgreement: z.string().max(50000).nullable().optional(),
 });
 
 router.patch("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {

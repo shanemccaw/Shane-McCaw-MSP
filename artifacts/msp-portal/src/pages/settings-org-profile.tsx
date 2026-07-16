@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ interface MspProfile {
   primaryColor: string | null;
   status: string;
   trialEndsAt: string | null;
+  customCustomerAgreement: string | null;
 }
 
 export default function SettingsOrgProfilePage() {
@@ -32,7 +34,7 @@ export default function SettingsOrgProfilePage() {
   const [profile, setProfile] = useState<MspProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", domain: "", logoUrl: "", primaryColor: "" });
+  const [form, setForm] = useState({ name: "", domain: "", logoUrl: "", primaryColor: "", customCustomerAgreement: "" });
 
   useEffect(() => {
     const params = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
@@ -45,6 +47,7 @@ export default function SettingsOrgProfilePage() {
           domain: data.domain ?? "",
           logoUrl: data.logoUrl ?? "",
           primaryColor: data.primaryColor ?? "#0078D4",
+          customCustomerAgreement: data.customCustomerAgreement ?? "",
         });
       })
       .catch(() => toast.error("Failed to load profile"))
@@ -55,7 +58,10 @@ export default function SettingsOrgProfilePage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const body: Record<string, string | null> = { name: form.name };
+      const body: Record<string, string | null> = { 
+        name: form.name,
+        customCustomerAgreement: form.customCustomerAgreement || null
+      };
       if (form.domain) body.domain = form.domain;
       if (form.logoUrl) body.logoUrl = form.logoUrl;
       if (form.primaryColor) body.primaryColor = form.primaryColor;
@@ -185,6 +191,20 @@ export default function SettingsOrgProfilePage() {
                     pattern="^#[0-9a-fA-F]{6}$"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="customCustomerAgreement" className="text-xs">Customer Purchase Agreement</Label>
+                <Textarea
+                  id="customCustomerAgreement"
+                  value={form.customCustomerAgreement}
+                  onChange={(e) => setForm((f) => ({ ...f, customCustomerAgreement: e.target.value }))}
+                  placeholder="Enter custom agreement terms..."
+                  className="min-h-[120px] text-sm"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  If left blank, the platform default billing disclosure will be presented to your clients upon purchase.
+                </p>
               </div>
 
               <div className="flex justify-end pt-2">
