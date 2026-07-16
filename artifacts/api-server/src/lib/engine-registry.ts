@@ -14,7 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc } from "drizzle-orm";
-import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, db } from "@workspace/db";
+import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 import {
   computeTenantSignals,
@@ -396,6 +396,18 @@ async function writeEngineSnapshot(
       breakdown,
       runId: randomUUID(),
     });
+
+    if (previousScore == null) {
+      await db.insert(engineBaselineHistoryTable).values({
+        customerId,
+        mspId,
+        engineKey,
+        baselineScore: score,
+        resetTriggerType: "initial",
+        resetTriggerRef: null,
+        ruleVersion: null,
+      });
+    }
   } catch (err) {
     logger.warn({ err, engineKey, tenantId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
   }
