@@ -18,6 +18,7 @@ import {
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Button } from "@/components/ui/button";
+import { CaptchaGate } from "@/components/CaptchaGate";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -254,6 +255,7 @@ export default function Checkout() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentCanceled, setPaymentCanceled] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const { toast } = useToast();
   const contractIdRef = useRef<number | null>(null);
 
@@ -427,6 +429,7 @@ export default function Checkout() {
             guestEmail: guestInfo.email,
             signerName: guestInfo.name,
             seats: effectiveSeats,
+            captchaToken,
             ...(requiresSignature ? { signatureData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } : {}),
           }),
         });
@@ -463,6 +466,7 @@ export default function Checkout() {
           successUrl,
           cancelUrl,
           seats: effectiveSeats,
+          captchaToken,
         }),
       });
 
@@ -507,6 +511,7 @@ export default function Checkout() {
             guestEmail: guestInfo.email,
             signerName: guestInfo.name,
             seats: effectiveSeats,
+            captchaToken,
           }),
         });
 
@@ -533,6 +538,7 @@ export default function Checkout() {
           serviceIds: [service.id],
           contractIds: [contractId],
           guestEmail: guestInfo.email,
+          captchaToken,
         }),
       });
 
@@ -904,9 +910,13 @@ export default function Checkout() {
                       </span>
                     </div>
 
+                    <div className="my-6">
+                      <CaptchaGate onVerify={setCaptchaToken} />
+                    </div>
+
                     <Button
                       onClick={service.isFree ? handleFreeCheckout : handlePay}
-                      disabled={launching || !termsAccepted}
+                      disabled={launching || !termsAccepted || !captchaToken}
                       className="w-full"
                       size="lg"
                     >

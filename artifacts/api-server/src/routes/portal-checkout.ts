@@ -50,6 +50,7 @@ import { logger } from "../lib/logger.ts";
 import { transitionOfferState } from "../lib/sales-offer-engine.ts";
 import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-broadcast.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
+import { verifyCaptchaToken } from "../lib/captcha.ts";
 
 const router: IRouter = Router();
 
@@ -183,6 +184,18 @@ router.post(
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
       apiErr(res, 403, "No customer identity on token");
+      return;
+    }
+
+    const captchaToken = req.body?.captchaToken;
+    if (!captchaToken) {
+      apiErr(res, 400, "CAPTCHA token is required");
+      return;
+    }
+
+    const captchaRes = await verifyCaptchaToken(captchaToken);
+    if (!captchaRes.success) {
+      apiErr(res, 403, "CAPTCHA verification failed");
       return;
     }
 
