@@ -12,6 +12,10 @@
  * tenant-scoped and payload-scoped entry points to one shared contract.
  */
 
+import { randomUUID } from "crypto";
+import { eq, and, desc } from "drizzle-orm";
+import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, db } from "@workspace/db";
+import { logger } from "./logger.ts";
 import {
   computeTenantSignals,
   getDisabledSignalKeys,
@@ -352,6 +356,59 @@ export const ENGINE_DEFS: EngineDef[] = [
     },
   },
 ];
+
+async function writeEngineSnapshot(
+  engineKey: string,
+  tenantId: number,
+  result: unknown,
+): Promise<void> {
+  try {
+    const [customerRow] = await db
+      .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspUsersTable)
+      .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+      .where(eq(mspUsersTable.userId, tenantId))
+      .limit(1);
+    const customerId = customerRow?.customerId ?? null;
+    const mspId = customerRow?.mspId ?? null;
+    if (customerId == null) return;
+
+    const r = result as { score?: number; breakdown?: unknown } | null | undefined;
+    const score = typeof r?.score === "number" ? r.score : 0;
+    const breakdown = Array.isArray(r?.breakdown) ? r.breakdown : (r?.breakdown ? [r.breakdown] : []);
+
+    const [prior] = await db
+      .select({ score: tenantEngineSnapshotsTable.score })
+      .from(tenantEngineSnapshotsTable)
+      .where(and(eq(tenantEngineSnapshotsTable.customerId, customerId), eq(tenantEngineSnapshotsTable.engineKey, engineKey)))
+      .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
+      .limit(1);
+    const previousScore = prior?.score ?? null;
+    const delta = previousScore != null ? score - previousScore : null;
+
+    await db.insert(tenantEngineSnapshotsTable).values({
+      customerId,
+      mspId,
+      engineKey,
+      score,
+      previousScore,
+      delta,
+      breakdown,
+      runId: randomUUID(),
+    });
+  } catch (err) {
+    logger.warn({ err, engineKey, tenantId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
+  }
+}
+
+for (const def of ENGINE_DEFS) {
+  const originalRunForTenant = def.runForTenant.bind(def);
+  def.runForTenant = async (tenantId: number, ctx?: EngineContext) => {
+    const result = await originalRunForTenant(tenantId, ctx);
+    void writeEngineSnapshot(def.key, tenantId, result);
+    return result;
+  };
+}
 
 export function getEngineDef(key: string): EngineDef | undefined {
   return ENGINE_DEFS.find(e => e.key === key);
