@@ -803,6 +803,108 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
   }
 });
 
+// artifacts/api-server/src/routes/admin-engines.ts
+
+/**
+ * @route GET /api/admin/engines/simulator/db-schema
+ * @desc Inspects live PostgreSQL catalog metadata for user tables, columns, PKs, and FKs.
+ * @access PlatformAdmin Only
+ */
+router.get("/simulator/db-schema", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    // 1. Fetch all user tables and columns
+    const columnsQuery = `
+      SELECT 
+        table_name,
+        column_name,
+        data_type,
+        is_nullable,
+        column_default
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+      ORDER BY table_name, ordinal_position;
+    `;
+
+    // 2. Fetch all foreign key relationships
+    const fkQuery = `
+      SELECT
+        tc.table_name AS table_name,
+        kcu.column_name AS column_name,
+        ccu.table_name AS foreign_table_name,
+        ccu.column_name AS foreign_column_name
+      FROM information_schema.table_constraints AS tc
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+        AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public';
+    `;
+
+    // 3. Fetch primary keys
+    const pkQuery = `
+      SELECT 
+        tc.table_name,
+        kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.constraint_type = 'PRIMARY KEY'
+        AND tc.table_schema = 'public';
+    `;
+
+    const [colsRes, fkRes, pkRes] = await Promise.all([
+      db.execute(sql.raw(columnsQuery)),
+      db.execute(sql.raw(fkQuery)),
+      db.execute(sql.raw(pkQuery)),
+    ]);
+
+    const fkMap = new Map<string, { foreignTable: string; foreignColumn: string }>();
+    (fkRes.rows || []).forEach((row: any) => {
+      fkMap.set(`${row.table_name}.${row.column_name}`, {
+        foreignTable: row.foreign_table_name,
+        foreignColumn: row.foreign_column_name,
+      });
+    });
+
+    const pkSet = new Set<string>();
+    (pkRes.rows || []).forEach((row: any) => {
+      pkSet.add(`${row.table_name}.${row.column_name}`);
+    });
+
+    // Group columns by table
+    const tablesMap: Record<string, any[]> = {};
+    (colsRes.rows || []).forEach((col: any) => {
+      if (!tablesMap[col.table_name]) {
+        tablesMap[col.table_name] = [];
+      }
+      const key = `${col.table_name}.${col.column_name}`;
+      const fkInfo = fkMap.get(key);
+
+      tablesMap[col.table_name].push({
+        name: col.column_name,
+        dataType: col.data_type,
+        isNullable: col.is_nullable === "YES",
+        isPk: pkSet.has(key),
+        foreignKey: fkInfo ? `FK -> ${fkInfo.foreignTable}(${fkInfo.foreignColumn})` : null,
+      });
+    });
+
+    const tables = Object.keys(tablesMap).sort().map((tableName) => ({
+      name: tableName,
+      columns: tablesMap[tableName],
+    }));
+
+    return res.json({ tables });
+  } catch (err: any) {
+    console.error("[DB Schema Inspector Error]:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch DB schema" });
+  }
+});
+
 /**
  * @route POST /api/admin/engines/simulator/sql/execute
  * @desc Executes SQL queries/CRUD scripts with performance timing & safety checks

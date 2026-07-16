@@ -5,6 +5,7 @@ import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
 import { SimulatorRightRail } from "../components/SimulatorRightRail";
 import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
+import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
 
 function SimulationProgressBar() {
   const { isBusy } = useSimulatorActivity();
@@ -33,6 +34,11 @@ export function SimulatorStudioPage() {
               <div className="h-64 border-t border-slate-900 bg-slate-950">
                 <SqlTerminalPanel />
               </div>
+            </div>
+
+            {/* Right Panel: Live DB Schema Table Explorer */}
+            <div className="w-80 border-l border-slate-900 flex flex-col bg-slate-950 shrink-0 min-h-0 overflow-hidden">
+              <LiveDbSchemaTree />
             </div>
 
             {/* Far Right Activity Bar */}
