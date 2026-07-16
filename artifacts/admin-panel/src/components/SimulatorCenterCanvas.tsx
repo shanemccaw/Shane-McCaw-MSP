@@ -33,6 +33,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
+import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
 
 interface Msp {
   id: number;
@@ -48,7 +49,7 @@ export function SimulatorCenterCanvas() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines">("sql");
+  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "schema">("sql");
 
   // SQL Editor state
   const [query, setQuery] = useState("SELECT * FROM msps;\n-- Try running any SQL command here!");
@@ -273,6 +274,16 @@ export function SimulatorCenterCanvas() {
             }`}
           >
             Run Engines
+          </button>
+          <button
+            onClick={() => setActiveTab("schema")}
+            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
+              activeTab === "schema"
+                ? "bg-slate-900 text-indigo-400 border border-slate-800"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Live DB Schema
           </button>
         </div>
       </div>
@@ -606,6 +617,12 @@ export function SimulatorCenterCanvas() {
         {/* Tab 4: Run Engines Panel */}
         {activeTab === "engines" && (
           <SimulatorEnginesPanel />
+        )}
+        {/* Tab 5: Live DB Schema (relocated here from the standalone right panel, which is now the Customer Portal Mirror) */}
+        {activeTab === "schema" && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <LiveDbSchemaTree />
+          </div>
         )}
       </div>
     </div>

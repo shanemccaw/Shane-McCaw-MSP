@@ -1,7 +1,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable } from "@workspace/db";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -306,6 +306,125 @@ router.post("/admin/simulator/run", requireAdmin, async (req: Request, res: Resp
   } catch (err) {
     logger.error({ err, engineKey }, "admin-engines: simulator run failed");
     return res.status(500).json({ error: err instanceof Error ? err.message : "Simulator run failed" });
+  }
+});
+
+// ── POST /api/admin/simulator/replay-all ────────────────────────────────────
+// Compressed-clock replay across ALL registered engines (or a provided
+// subset) for a single testbed customer. Same real runForTenant() path as
+// /admin/simulator/run above — this just fans it out across every engine at
+// each step instead of one engine at a time, which is what the Simulator
+// Studio's score-ring matrix and derivation trace stream need. Capped at
+// MAX_REPLAY_STEPS to prevent an accidental multi-thousand-call request.
+const MAX_REPLAY_STEPS = 200;
+
+router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, res: Response) => {
+  const { testbedCustomerId, startDate, endDate, stepDays, engineKeys } = req.body ?? {};
+  if (!testbedCustomerId) {
+    return res.status(400).json({ error: "Missing testbedCustomerId" });
+  }
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const step = Number(stepDays);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || isNaN(step) || step <= 0) {
+    return res.status(400).json({ error: "Invalid date or stepDays parameters" });
+  }
+
+  const stepCount = Math.floor((end.getTime() - start.getTime()) / (step * 24 * 60 * 60 * 1000)) + 1;
+  if (stepCount > MAX_REPLAY_STEPS) {
+    return res.status(400).json({
+      error: `Requested range produces ${stepCount} steps, which exceeds the ${MAX_REPLAY_STEPS}-step cap. Widen stepDays or narrow the date range.`,
+    });
+  }
+
+  const targetDefs = Array.isArray(engineKeys) && engineKeys.length > 0
+    ? ENGINE_DEFS.filter(d => engineKeys.includes(d.key))
+    : ENGINE_DEFS;
+  if (targetDefs.length === 0) {
+    return res.status(400).json({ error: "No matching engines found for the given engineKeys" });
+  }
+
+  try {
+    const [testbedCustomer] = await db
+      .select()
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+    if (!testbedCustomer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const steps: Array<{ timestamp: string; engines: Record<string, unknown> }> = [];
+    const current = new Date(start);
+    while (current <= end) {
+      const timestamp = new Date(current);
+      const engineResults: Record<string, unknown> = {};
+      for (const def of targetDefs) {
+        try {
+          engineResults[def.key] = await def.runForTenant(testbedCustomer.id, { evaluationTimestamp: timestamp });
+        } catch (err) {
+          logger.warn({ err, engineKey: def.key, timestamp }, "admin-engines: replay-all step failed for one engine — continuing with remaining engines");
+          engineResults[def.key] = { error: err instanceof Error ? err.message : "Engine run failed" };
+        }
+      }
+      steps.push({ timestamp: timestamp.toISOString(), engines: engineResults });
+      current.setDate(current.getDate() + step);
+    }
+
+    return res.json({ steps, engineKeys: targetDefs.map(d => d.key) });
+  } catch (err) {
+    logger.error({ err }, "admin-engines: replay-all failed");
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Replay failed" });
+  }
+});
+
+// ── POST /api/admin/simulator/testbeds/:customerId/portal-mirror-token ──────
+// Issues a single-use impersonation token for the real client-portal user
+// mapped to this testbed customer, so Simulator Studio's Customer Portal
+// Mirror panel can embed the actual customer-facing portal (not a mock).
+// Reuses the same impersonation_tokens table and consumption flow as the
+// existing admin "view as customer" feature (POST /admin/impersonate/:userId,
+// consumed by POST /auth/impersonate-exchange) — no new auth mechanism.
+
+router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = Number(req.params.customerId);
+  if (isNaN(customerId)) {
+    return res.status(400).json({ error: "Invalid customer id" });
+  }
+  try {
+    const [customer] = await db
+      .select()
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+    if (!customer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const [portalUser] = await db
+      .select({ userId: mspUsersTable.userId })
+      .from(mspUsersTable)
+      .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+      .limit(1);
+    if (!portalUser) {
+      return res.status(400).json({ error: "This testbed customer has no active portal user to mirror. Create one first, the same way you would for a real customer." });
+    }
+
+    const { randomBytes } = await import("node:crypto");
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await db.insert(impersonationTokensTable).values({
+      token,
+      clientUserId: portalUser.userId,
+      adminUserId: req.user!.id,
+      expiresAt,
+    });
+
+    return res.json({ token });
+  } catch (err) {
+    logger.error({ err, customerId }, "admin-engines: portal-mirror-token failed");
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Failed to issue portal mirror token" });
   }
 });
 

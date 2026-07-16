@@ -3,9 +3,9 @@ import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider, useSimulatorActivity } from "../contexts/SimulatorActivityContext";
 import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
+import { SimulatorReplayCanvas } from "../components/SimulatorReplayCanvas";
+import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
 import { SimulatorRightRail } from "../components/SimulatorRightRail";
-import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
-import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
 
 function SimulationProgressBar() {
   const { isBusy } = useSimulatorActivity();
@@ -20,25 +20,25 @@ export function SimulatorStudioPage() {
         <div className="flex flex-col h-full bg-slate-950 overflow-hidden">
           <SimulationProgressBar />
           <div className="flex flex-1 min-h-0 text-slate-300 font-sans">
-            {/* Left Tree Explorer */}
+            {/* Left Panel: Testbed Explorer, Overrides & Simulation Scenarios */}
             <div className="w-64 border-r border-slate-900 flex flex-col bg-slate-950 shrink-0">
               <SimulatorLeftTree />
             </div>
 
-            {/* Center Main Work Area */}
+            {/* Center: Live Replay Canvas (top) + Bottom Drawer (SQL Terminal,
+                Testbeds, Overrides, ad-hoc Engine runs, Live DB Schema) */}
             <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
-              <div className="flex-1 flex flex-col min-h-0">
-                <SimulatorCenterCanvas />
+              <div className="flex-[3] min-h-0 border-b border-slate-900">
+                <SimulatorReplayCanvas />
               </div>
-              {/* Bottom Panel Drawer (Log Stream & SQL Terminal) */}
-              <div className="h-64 border-t border-slate-900 bg-slate-950">
-                <SqlTerminalPanel />
+              <div className="flex-[2] min-h-0 border-t border-slate-900">
+                <SimulatorCenterCanvas />
               </div>
             </div>
 
-            {/* Right Panel: Live DB Schema Table Explorer */}
-            <div className="w-80 border-l border-slate-900 flex flex-col bg-slate-950 shrink-0 min-h-0 overflow-hidden">
-              <LiveDbSchemaTree />
+            {/* Right Panel: Customer Portal View Mirror */}
+            <div className="w-96 border-l border-slate-900 flex flex-col bg-slate-950 shrink-0 min-h-0 overflow-hidden">
+              <SimulatorPortalMirror />
             </div>
 
             {/* Far Right Activity Bar */}
