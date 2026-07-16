@@ -22,6 +22,7 @@ import {
 } from "../lib/tenant-signals";
 import { getAllRules, getAllGroups, parseIntelligenceFields, saveSnapshot } from "./admin-signal-rules";
 import { pushEngineTestLog, listEngineTestLogs } from "../lib/engine-test-log-buffer";
+import { calculatePlatformPortfolioRisk, calculateMspPortfolioRisk } from "../lib/msp-engine";
 
 const router: IRouter = Router();
 
@@ -52,6 +53,35 @@ async function runEngine(
   const output = def.runForPayload(input);
   return { mode: "payload", output };
 }
+
+// ── GET /api/admin/portfolio-risk ──────────────────────────────────────────
+
+router.get("/admin/portfolio-risk", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const output = await calculatePlatformPortfolioRisk();
+    res.json(output);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ── GET /api/admin/msps/:mspId/portfolio-risk ──────────────────────────────
+
+router.get("/admin/msps/:mspId/portfolio-risk", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const mspId = parseInt(req.params.mspId, 10);
+    if (isNaN(mspId)) {
+      res.status(400).json({ error: "Invalid mspId" });
+      return;
+    }
+    const output = await calculateMspPortfolioRisk(mspId);
+    res.json(output);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
 
 // ── GET /api/admin/engines ──────────────────────────────────────────────────
 // Lists all seven engine definitions for the nav / picker.

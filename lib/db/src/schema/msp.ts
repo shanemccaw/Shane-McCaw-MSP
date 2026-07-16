@@ -1946,7 +1946,7 @@ export const savedSqlScripts = pgTable("saved_sql_scripts", {
 
 export const simulationProfiles = pgTable("simulation_profiles", {
   id: serial("id").primaryKey(),
-  mspId: integer("msp_id").references(() => msps.id), // The testbed target
+  mspId: integer("msp_id").references(() => mspsTable.id), // The testbed target
   name: text("name").notNull(),
   baselineState: jsonb("baseline_state"), // Snapshot of tenant before run
   createdAt: timestamp("created_at").defaultNow(),

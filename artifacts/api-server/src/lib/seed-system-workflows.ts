@@ -1809,6 +1809,32 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
         { id: "e2", source: "rollup", target: "purge"  },
         { id: "e3", source: "purge",  target: "end"    },
       ],
+  },
+  // ── MSP Portfolio Risk Snapshot ─────────────────────────────────────────────
+  {
+    name: "__system__: MSP Portfolio Risk Snapshot",
+    description: "Runs daily at 01:00 UTC to compute and persist portfolio risk scores for all active MSPs.",
+    triggerType: "schedule",
+    cron: "0 1 * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Start" } },
+        {
+          id: "snapshot",
+          type: "msp_score_snapshot",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "msp_score_snapshot",
+            label: "Compute & Record MSP Portfolio Risk",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "snapshot" },
+        { id: "e2", source: "snapshot", target: "end" },
+      ],
     },
   },
 ];

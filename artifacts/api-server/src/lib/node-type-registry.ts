@@ -648,6 +648,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Meters MSP tenant overage for billing — no AI",
   },
+  {
+    nodeType: "msp_score_snapshot",
+    isAIDependent: false,
+    description: "Daily snapshot of all MSP portfolio risk scores — no AI",
+  },
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

@@ -16,7 +16,7 @@
  * themselves, admin UI (MSP console dashboard), workflow nodes, SOW wiring.
  */
 
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, mspUsersTable, mspCustomersTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
   computeTenantSignals,
@@ -145,9 +145,27 @@ function getSignalWeightsFromRulesAndGroups(
 }
 
 /**
+ * Fetches every active client/tenant record managed by a specific MSP.
+ * The canonical path is: usersTable -> mspUsersTable -> mspCustomersTable
+ */
+async function fetchActiveTenants(mspId: number): Promise<{ id: number; name: string | null }[]> {
+  return db
+    .select({ id: usersTable.id, name: usersTable.name })
+    .from(usersTable)
+    .innerJoin(mspUsersTable, eq(usersTable.id, mspUsersTable.userId))
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .where(
+      and(
+        eq(usersTable.role, "client"),
+        eq(mspCustomersTable.mspId, mspId)
+      )
+    );
+}
+
+/**
  * Fetches every active client/tenant record the platform manages.
  */
-async function fetchActiveTenants(): Promise<{ id: number; name: string | null }[]> {
+async function fetchAllActiveTenantsPlatformWide(): Promise<{ id: number; name: string | null }[]> {
   return db
     .select({ id: usersTable.id, name: usersTable.name })
     .from(usersTable)
@@ -168,9 +186,9 @@ async function fetchActiveTenants(): Promise<{ id: number; name: string | null }
  * batched rules/groups/disabledSignalKeys fetch across the whole portfolio
  * instead of re-fetching per tenant, without duplicating any scoring logic.
  */
-export async function calculateMspPortfolioRisk(ctx?: { evaluationTimestamp?: Date }): Promise<MspEngineOutput> {
+export async function calculateMspPortfolioRisk(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<MspEngineOutput> {
   const [tenants, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    fetchActiveTenants(),
+    fetchActiveTenants(mspId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
@@ -203,4 +221,96 @@ export async function calculateMspPortfolioRisk(ctx?: { evaluationTimestamp?: Da
     workflowVariables,
     timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
+}
+
+/**
+ * Calculates the MSP portfolio-risk view across the entire platform.
+ */
+export async function calculatePlatformPortfolioRisk(ctx?: { evaluationTimestamp?: Date }): Promise<MspEngineOutput> {
+  const [tenants, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    fetchAllActiveTenantsPlatformWide(),
+    fetchSignalRulesAndGroups(),
+    getDisabledSignalKeys(),
+  ]);
+
+  const tenantScores = await Promise.all(
+    tenants.map(async tenant => {
+      const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenant.id);
+      return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
+    }),
+  );
+
+  const { portfolioRisk, rankedTenants } = aggregatePortfolioRisk(tenantScores);
+
+  const rawSignals = [...new Set(tenantScores.flatMap(t => t.firedSignals))];
+
+  const workflowVariables: Record<string, number> = {
+    portfolioRisk,
+    tenantCount: tenantScores.length,
+    topRiskTenantId: rankedTenants[0]?.tenantId ?? 0,
+    topRiskCombinedScore: rankedTenants[0]?.combinedScore ?? 0,
+  };
+
+  return {
+    engine: "msp",
+    score: portfolioRisk,
+    breakdown: tenantScores,
+    rankedTenants,
+    rawSignals,
+    rawRules: rules,
+    workflowVariables,
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
+  };
+}
+
+/**
+ * System workflow node handler: computes calculateMspPortfolioRisk for every active MSP
+ * and records the total portfolio risk score into msp_score_history.
+ */
+export async function handleMspScoreSnapshot(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  void payload;
+  const activeMsps = await db
+    .select({ id: mspsTable.id })
+    .from(mspsTable)
+    .where(eq(mspsTable.status, "active"));
+
+  let mspCount = 0;
+  let successCount = 0;
+
+  for (const msp of activeMsps) {
+    mspCount++;
+    try {
+      const output = await calculateMspPortfolioRisk(msp.id);
+      await db.insert(mspScoreHistoryTable).values({
+        mspId: msp.id,
+        score: output.score,
+        breakdown: output.breakdown as unknown as Record<string, unknown>[],
+        createdAt: new Date(),
+      });
+
+      await db.insert(mspEventStoreTable).values({
+        eventType: "msp.portfolio_risk.snapshot_created",
+        source: "msp-score-snapshot-workflow",
+        actor: { id: "system", role: "system", type: "system" },
+        meta: { tenant: { mspId: msp.id, customerId: null } },
+        payload: {
+          mspId: msp.id,
+          score: output.score,
+        },
+        mspId: msp.id,
+        ownerType: "platform",
+      }).catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`[handleMspScoreSnapshot] Failed to insert canonical event for MSP ${msp.id}: ${errMsg}`);
+      });
+
+      successCount++;
+    } catch (err: unknown) {
+      // Log the error but continue executing for other MSPs
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[handleMspScoreSnapshot] Failed to compute/record risk for MSP ${msp.id}: ${errMsg}`);
+    }
+  }
+
+  return { mspCount, successCount };
 }

@@ -87,6 +87,7 @@ import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
 import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
+import { handleMspScoreSnapshot } from "./msp-engine.js";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -5727,6 +5728,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "msp_overage_meter": {
         // Promoted node type: meters MSP tenant overage for monthly billing.
         output = await handleMspOverageMeter(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "msp_score_snapshot": {
+        // Promoted node type: calculates and snapshots MSP portfolio risk daily.
+        output = await handleMspScoreSnapshot(node.data as Record<string, unknown>);
         break;
       }
 
