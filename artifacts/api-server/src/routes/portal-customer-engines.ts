@@ -21,6 +21,8 @@ import { requireRole } from "../middlewares/requireAuth";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
+import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable } from "@workspace/db";
+import { eq, desc, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -240,6 +242,109 @@ router.get(
     } catch (err) {
       logger.error({ err, customerId }, "portal-customer-engines: scope-status failed");
       res.status(500).json({ error: "Unable to load your project status right now. Please try again shortly." });
+    }
+  },
+);
+
+// ── GET /api/portal/dashboard ─────────────────────────────────────────────────
+
+router.get(
+  "/portal/dashboard",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    try {
+      const snapshots = await db
+        .select({
+          engineKey: tenantEngineSnapshotsTable.engineKey,
+          score: tenantEngineSnapshotsTable.score,
+        })
+        .from(tenantEngineSnapshotsTable)
+        .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
+        .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
+
+      const scores: Record<string, number> = {};
+      for (const snap of snapshots) {
+        if (scores[snap.engineKey] === undefined && snap.score !== null) {
+          scores[snap.engineKey] = snap.score;
+        }
+      }
+
+      const [customer] = await db
+        .select({ status: mspCustomersTable.status })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
+      const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
+
+      res.json({
+        scores: {
+          security: scores.security ?? 0,
+          health: scores.health ?? 0,
+          governance: scores.governance ?? 0,
+          drift: scores.drift ?? 0,
+          sla: scores.sla ?? 0,
+          scope_creep: scores.scope_creep ?? 0,
+          ...scores
+        },
+        telemetryStatus,
+      });
+    } catch (err) {
+      logger.error({ err, customerId }, "portal-customer-engines: dashboard failed");
+      res.status(500).json({ error: "Unable to load dashboard data." });
+    }
+  },
+);
+
+// ── GET /api/portal/assessment-results ────────────────────────────────────────
+
+router.get(
+  "/portal/assessment-results",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    const userId = req.user!.id;
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    try {
+      const activeServices = await db
+        .select({ typeAttributes: servicesTable.typeAttributes })
+        .from(clientServicesTable)
+        .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+        .where(
+          and(
+            eq(clientServicesTable.clientUserId, userId),
+            eq(clientServicesTable.status, "active")
+          )
+        );
+
+      const enabledModules = new Set<string>();
+      for (const service of activeServices) {
+        const attrs = service.typeAttributes as Record<string, unknown> | null;
+        if (attrs && Array.isArray(attrs.enabledModules)) {
+          for (const mod of attrs.enabledModules) {
+            if (typeof mod === "string") {
+              enabledModules.add(mod);
+            }
+          }
+        }
+      }
+
+      res.json({
+        enabledModules: Array.from(enabledModules),
+      });
+    } catch (err) {
+      logger.error({ err, customerId }, "portal-customer-engines: assessment-results failed");
+      res.status(500).json({ error: "Unable to load assessment results." });
     }
   },
 );
