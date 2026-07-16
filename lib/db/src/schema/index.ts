@@ -2542,6 +2542,24 @@ export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
 export type InsertTenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferInsert;
 export type TenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferSelect;
 
+export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  engineKey: text("engine_key").notNull(),
+  baselineScore: integer("baseline_score").notNull(),
+  resetTriggerType: text("reset_trigger_type"),
+  resetTriggerRef: text("reset_trigger_ref"),
+  ruleVersion: integer("rule_version"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  customerEngineCreatedIdx: index("engine_baseline_history_customer_engine_created_idx")
+    .on(table.customerId, table.engineKey, table.createdAt),
+}));
+
+export type InsertEngineBaselineHistory = typeof engineBaselineHistoryTable.$inferInsert;
+export type EngineBaselineHistory = typeof engineBaselineHistoryTable.$inferSelect;
+
 export type IndustryBenchmarkReference = typeof industryBenchmarkReferenceTable.$inferSelect;
 
 export * from "./msp";
