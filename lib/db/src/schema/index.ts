@@ -137,6 +137,8 @@ export const servicesTable = pgTable("services", {
   price: numeric("price", { precision: 10, scale: 2 }),
   basePrice: numeric("base_price", { precision: 10, scale: 2 }),
   maxPrice: numeric("max_price", { precision: 10, scale: 2 }),
+  internalCostCents: integer("internal_cost_cents"),
+  priceCents: integer("price_cents"),
   orderWorkflow: jsonb("order_workflow").$type<WizardStep[]>(),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),
@@ -2326,6 +2328,8 @@ export const salesOffersTable = pgTable("sales_offers", {
   basePriceCents: integer("base_price_cents").notNull().default(0),
   /** Engine-adjusted price in USD cents (after pricing rules). */
   adjustedPriceCents: integer("adjusted_price_cents").notNull().default(0),
+  internalCostCents: integer("internal_cost_cents"),
+  priceCents: integer("price_cents"),
   /** Score [0–100] from the scoring rule group — higher = more relevant. */
   score: integer("score").notNull().default(0),
   /** Lifecycle state. */

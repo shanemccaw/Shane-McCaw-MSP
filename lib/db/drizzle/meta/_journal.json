@@ -1359,6 +1359,13 @@
       "when": 1752883200000,
       "tag": "0184_add_testbed_fields_and_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1784163644554,
+      "tag": "0190_add_wholesale_pricing",
+      "breakpoints": true
     }
   ]
 }
