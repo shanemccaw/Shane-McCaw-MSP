@@ -11,6 +11,7 @@ import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
 import { seedScopeCreepRunbooks } from "./lib/seed-scope-creep-runbooks";
 import { seedMspPlatformAdmin } from "./lib/seed-msp-platform-admin";
 import { ensureScopeCreepTables } from "./lib/scope-creep-engine";
+import { validateEngineManifest } from "./lib/engine-registry";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
@@ -67,6 +68,16 @@ validateStripeKeyOnStartup();
       { missingSecrets: missing },
       "Exchange Online outreach email is not configured — outreach sends will fail until these Replit Secrets are set"
     );
+  }
+})();
+
+(function checkEngineManifest() {
+  try {
+    const order = validateEngineManifest();
+    logger.info({ order }, "Engine manifest validated — execution order computed");
+  } catch (err) {
+    logger.error({ err }, "FATAL: engine dependency manifest is invalid — refusing to start");
+    process.exit(1);
   }
 })();
 

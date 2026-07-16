@@ -491,6 +491,55 @@ export function getEngineDef(key: string): EngineDef | undefined {
   return ENGINE_DEFS.find(e => e.key === key);
 }
 
+/**
+ * Validates ENGINE_DEFS's dependency graph and returns a topological
+ * execution order (engines with no unmet dependencies first). Throws if
+ * any dependsOn key references a nonexistent engine, or if a cycle exists.
+ * This is a synchronous, in-memory check — no DB access, safe to run at
+ * server boot before any request is served.
+ */
+export function validateEngineManifest(): string[] {
+  const keys = new Set(ENGINE_DEFS.map(e => e.key));
+
+  for (const def of ENGINE_DEFS) {
+    for (const dep of def.dependsOn) {
+      if (!keys.has(dep)) {
+        throw new Error(`Engine manifest invalid: "${def.key}" depends on unknown engine "${dep}"`);
+      }
+    }
+  }
+
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<string, number>();
+  for (const def of ENGINE_DEFS) color.set(def.key, WHITE);
+
+  const order: string[] = [];
+  const stack: string[] = [];
+
+  function visit(key: string): void {
+    const c = color.get(key);
+    if (c === BLACK) return;
+    if (c === GRAY) {
+      const cycleStart = stack.indexOf(key);
+      const cycle = stack.slice(cycleStart).concat(key);
+      throw new Error(`Engine manifest invalid: dependency cycle detected: ${cycle.join(" -> ")}`);
+    }
+    color.set(key, GRAY);
+    stack.push(key);
+    const def = ENGINE_DEFS.find(e => e.key === key);
+    if (def) {
+      for (const dep of def.dependsOn) visit(dep);
+    }
+    stack.pop();
+    color.set(key, BLACK);
+    order.push(key);
+  }
+
+  for (const def of ENGINE_DEFS) visit(def.key);
+
+  return order;
+}
+
 export async function buildEngineTestInputForTenant(tenantId: number): Promise<EngineTestInput> {
   const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
