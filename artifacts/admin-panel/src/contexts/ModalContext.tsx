@@ -1,3 +1,4 @@
+import { useSimulatorActivity } from "@/contexts/SimulatorActivityContext";
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   Dialog,
@@ -101,6 +102,7 @@ interface TestbedMsp {
 function ExecuteScenarioModal() {
   const { modalData, closeModal } = useModal();
   const { fetchWithAuth } = useAuth();
+  const { startOperation, endOperation } = useSimulatorActivity();
   const [msps, setMsps] = useState<TestbedMsp[]>([]);
   const [selectedMspId, setSelectedMspId] = useState<string>("");
   const [loadingMsps, setLoadingMsps] = useState(false);
@@ -132,13 +134,14 @@ function ExecuteScenarioModal() {
     loadMsps();
   }, [fetchWithAuth]);
 
-  const handleExecute = async () => {
+ const handleExecute = async () => {
     if (!selectedMspId) {
       toast.error("Please select a target testbed MSP");
       return;
     }
     setExecuting(true);
     setExecutionResult(null);
+    startOperation(event.id);
     try {
       const res = await fetchWithAuth("/api/simulator/fire-event", {
         method: "POST",
@@ -175,8 +178,9 @@ function ExecuteScenarioModal() {
         error: err.message || "Network error",
       });
       toast.error("Network error when firing scenario");
-    } finally {
+   } finally {
       setExecuting(false);
+      endOperation(event.id);
     }
   };
 

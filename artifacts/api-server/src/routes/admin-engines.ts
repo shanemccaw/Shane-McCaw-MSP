@@ -1,6 +1,8 @@
+
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, savedSqlScripts } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable,mspUsersTable, savedSqlScripts } from "@workspace/db";
+import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -765,7 +767,31 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
       return await eventDef.execute(Number(testbedMspId), params);
     });
     const executionMs = Date.now() - startTime;
+// Push a real-time update to anyone connected to this testbed MSP's
+    // portal — reuses the existing notification-center SSE pipeline
+    // (same one the NotificationBell in app-shell.tsx already listens to).
+    // Non-fatal: the scenario itself already ran regardless of this.
+    try {
+      const watchingUsers = await db
+        .select({ id: mspUsersTable.id })
+        .from(mspUsersTable)
+        .where(and(eq(mspUsersTable.mspId, targetMsp.id), eq(mspUsersTable.isActive, true)));
 
+      for (const mu of watchingUsers) {
+        await createNotification({
+          title: eventDef.name,
+          body: result.message,
+          category: "simulator",
+          severity: result.success ? "info" : "warning",
+          feedType: "personal",
+          notifType: "general",
+          recipient: { type: "msp_user", mspUserId: mu.id, mspId: targetMsp.id },
+          mspId: targetMsp.id,
+        });
+      }
+    } catch (notifyErr) {
+      logger.error({ notifyErr }, "admin-engines: simulator fire-event notification broadcast failed");
+    }
     return res.json({
       ...result,
       executionMs,

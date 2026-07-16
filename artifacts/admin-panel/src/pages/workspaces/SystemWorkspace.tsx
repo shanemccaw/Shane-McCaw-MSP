@@ -1,3 +1,4 @@
+import { SimulatorStudioPage } from "@/pages/SimulatorStudioPage";
 import { type ReactNode } from "react";
 import WorkspaceLayout, { type WorkspaceNavItem } from "@/components/WorkspaceLayout";
 import InboxPage from "@/pages/inbox/Inbox";
@@ -99,6 +100,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+  label: "Simulator Studio",
+  path: "/system/simulator",
+  icon: (
+    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5m4.75-11.396c.251-.032.501-.06.75-.082m0 0a24.301 24.301 0 014.5 0m0 0c.251.023.501.05.75.082M19.8 15.3l-1.402-1.402a2.25 2.25 0 00-1.591-.659h-9.614a2.25 2.25 0 00-1.591.659L4.2 15.3M19.8 15.3l1.402 1.402c1.232 1.232.65 3.318-1.067 3.61A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L4.2 15.3" />
+    </svg>
+  ),
+},
 ];
 
 function getContent(section: string): ReactNode {
@@ -109,7 +119,8 @@ function getContent(section: string): ReactNode {
     case "security":              return <AdminSecurityPage />;
     case "signal-mappings":       return <QuizPainConfigPage />;
     case "sow-debug":             return <SowDebugPage />;
-    case "platform-agreements":   return <PlatformAgreementsPage />;
+    case "platform-agreements":   return <PlatformAgreementsPage />
+    case "simulator":             return <SimulatorStudioPage />;;
     default:                      return <InboxPage />;
   }
 }
