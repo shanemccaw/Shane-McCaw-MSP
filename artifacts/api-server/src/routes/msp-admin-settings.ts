@@ -113,6 +113,7 @@ router.get("/admin/msps", requireAdmin, async (req: Request, res: Response) => {
       trialEndsAt: mspsTable.trialEndsAt,
       offboardingState: mspsTable.offboardingState,
       isDirectBusiness: mspsTable.isDirectBusiness,
+      isTestbed: mspsTable.isTestbed,
       createdAt: mspsTable.createdAt,
     })
     .from(mspsTable)
