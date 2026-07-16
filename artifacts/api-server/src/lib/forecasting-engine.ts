@@ -91,6 +91,7 @@ export function computeForecastingEngine(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string> = new Set(),
+  ctx?: { evaluationTimestamp?: Date },
 ): ForecastEngineOutput {
   const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
 
@@ -190,6 +191,6 @@ export function computeForecastingEngine(
       forecastTrendDirection: trendDirection,
       forecastSignalCount: breakdown.length,
     },
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }

@@ -105,6 +105,7 @@ export function computeSalesOfferEngine(
   ruleGroups: SalesOfferRuleGroup[],
   services: Array<{ id: number; name: string; price: string | null; basePrice: string | null }>,
   config: Pick<SalesOfferConfig, "minScore" | "maxOffersPerGenerate" | "defaultExpirationDays" | "bundlingThreshold">,
+  ctx?: { evaluationTimestamp?: Date },
 ): SalesOfferEngineOutput {
   const firedSignalArray = [...firedSignals];
   const serviceMap = new Map(services.map(s => [s.id, s]));
@@ -199,7 +200,7 @@ export function computeSalesOfferEngine(
     firedSignals: firedSignalArray,
     candidates: capped,
     config,
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }
 
@@ -233,6 +234,7 @@ function buildRationale(firedSignals: string[]): string {
 export async function runSalesOfferEngineForTenant(
   tenantId: number,
   mspId: number | null = null,
+  ctx?: { evaluationTimestamp?: Date },
 ): Promise<SalesOfferEngineOutput> {
   const [{ mergedProfile, findings, customerId, mspId: resolvedMspId }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
     await Promise.all([
@@ -253,7 +255,7 @@ export async function runSalesOfferEngineForTenant(
     customerId != null && resolvedMspId != null ? { customerId, mspId: resolvedMspId } : undefined,
   );
 
-  return computeSalesOfferEngine(tenantId, firedSignals, ruleGroups, services, config);
+  return computeSalesOfferEngine(tenantId, firedSignals, ruleGroups, services, config, ctx);
 }
 
 // ── Offer persistence ─────────────────────────────────────────────────────────

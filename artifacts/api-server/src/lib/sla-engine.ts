@@ -256,20 +256,20 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
   return rows.rows as unknown as SlaTimer[];
 }
 
-export async function runSlaEngineForTenant(tenantId: number): Promise<SlaEngineOutput> {
+export async function runSlaEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
   const [timers, policies] = await Promise.all([
     fetchRunningTimers(undefined, tenantId),
     fetchPolicies(),
   ]);
-  return computeSlaEngine(timers, policies);
+  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date());
 }
 
-export async function runSlaEngineForMsp(mspId: number): Promise<SlaEngineOutput> {
+export async function runSlaEngineForMsp(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
   const [timers, policies] = await Promise.all([
     fetchRunningTimers(mspId),
     fetchPolicies(mspId),
   ]);
-  return computeSlaEngine(timers, policies);
+  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date());
 }
 
 // ── Timer lifecycle operations (idempotent) ───────────────────────────────────

@@ -29,6 +29,7 @@ export function computeSecurityEngine(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string> = new Set(),
+  ctx?: { evaluationTimestamp?: Date },
 ): SecurityEngineOutput {
   const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
   const firedSignalKeys = [...firedSignals];
@@ -52,11 +53,11 @@ export function computeSecurityEngine(
       contributions,
     },
     rawSignals: firedSignalKeys,
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }
 
-export async function runSecurityEngineForTenant(tenantId: number): Promise<SecurityEngineOutput> {
+export async function runSecurityEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SecurityEngineOutput> {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -67,5 +68,5 @@ export async function runSecurityEngineForTenant(tenantId: number): Promise<Secu
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
 
-  return computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  return computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }

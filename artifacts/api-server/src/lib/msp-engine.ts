@@ -90,9 +90,10 @@ export function computeTenantEngineScores(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string>,
+  ctx?: { evaluationTimestamp?: Date },
 ): TenantEngineScores {
-  const health = computeHealthEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
-  const drift = computeDriftEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+  const health = computeHealthEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys, ctx);
+  const drift = computeDriftEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys, ctx);
 
   const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
   const firedSignalKeys = [...firedSignals];
@@ -167,7 +168,7 @@ async function fetchActiveTenants(): Promise<{ id: number; name: string | null }
  * batched rules/groups/disabledSignalKeys fetch across the whole portfolio
  * instead of re-fetching per tenant, without duplicating any scoring logic.
  */
-export async function calculateMspPortfolioRisk(): Promise<MspEngineOutput> {
+export async function calculateMspPortfolioRisk(ctx?: { evaluationTimestamp?: Date }): Promise<MspEngineOutput> {
   const [tenants, { rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchActiveTenants(),
     fetchSignalRulesAndGroups(),
@@ -177,7 +178,7 @@ export async function calculateMspPortfolioRisk(): Promise<MspEngineOutput> {
   const tenantScores = await Promise.all(
     tenants.map(async tenant => {
       const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenant.id);
-      return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys);
+      return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
     }),
   );
 
@@ -200,6 +201,6 @@ export async function calculateMspPortfolioRisk(): Promise<MspEngineOutput> {
     rawSignals,
     rawRules: rules,
     workflowVariables,
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }

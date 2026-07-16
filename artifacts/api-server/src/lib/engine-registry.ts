@@ -51,6 +51,10 @@ export interface EngineTestInput {
   disabledSignalKeys: Set<string>;
 }
 
+export interface EngineContext {
+  evaluationTimestamp?: Date;
+}
+
 export interface EngineDef {
   key: string;
   label: string;
@@ -58,9 +62,9 @@ export interface EngineDef {
   /** category prefix used to scope the Configuration tab's rule/group list */
   categoryPrefix: string;
   /** Runs the engine for a real tenant. */
-  runForTenant(tenantId: number): Promise<unknown>;
+  runForTenant(tenantId: number, ctx?: EngineContext): Promise<unknown>;
   /** Runs the engine for a supplied sample payload (test-against-payload). */
-  runForPayload(input: EngineTestInput): unknown;
+  runForPayload(input: EngineTestInput, ctx?: EngineContext): unknown;
   /** true for engines that operate per-tenant (all but MSP, which is portfolio-wide). */
   tenantScoped: boolean;
   /**
@@ -96,6 +100,7 @@ export function computePricingEngine(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string>,
+  ctx?: EngineContext,
 ): PricingEngineOutput {
   const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
   const breakdown: PricingBreakdownEntry[] = [];
@@ -118,11 +123,11 @@ export function computePricingEngine(
     },
     breakdown,
     rawSignals: [...firedSignals],
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }
 
-async function calculatePricingImpact(tenantId: number): Promise<PricingEngineOutput> {
+async function calculatePricingImpact(tenantId: number, ctx?: EngineContext): Promise<PricingEngineOutput> {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -131,12 +136,12 @@ async function calculatePricingImpact(tenantId: number): Promise<PricingEngineOu
   if (customerId != null && mspId != null) {
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
-  return computePricingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  return computePricingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
 // ── shared tenant-scoped payload wrapper for drift/forecasting (no lib wrapper exists) ──
 
-async function calculateDriftForTenant(tenantId: number) {
+async function calculateDriftForTenant(tenantId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -145,10 +150,10 @@ async function calculateDriftForTenant(tenantId: number) {
   if (customerId != null && mspId != null) {
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
-  return computeDriftEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  return computeDriftEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
-async function calculateForecastForTenant(tenantId: number) {
+async function calculateForecastForTenant(tenantId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -157,10 +162,10 @@ async function calculateForecastForTenant(tenantId: number) {
   if (customerId != null && mspId != null) {
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
-  return computeForecastingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  return computeForecastingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
-async function calculateMspForTenant(tenantId: number) {
+async function calculateMspForTenant(tenantId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -169,14 +174,14 @@ async function calculateMspForTenant(tenantId: number) {
   if (customerId != null && mspId != null) {
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
-  return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys);
+  return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
-function crmForPayload(input: EngineTestInput, weights: Array<{ signalKey: string; category: string; crmFitContribution: number; crmPainContribution: number; crmMaturityContribution: number; crmIntentContribution: number; crmUrgencyContribution: number }>) {
+function crmForPayload(input: EngineTestInput, weights: Array<{ signalKey: string; category: string; crmFitContribution: number; crmPainContribution: number; crmMaturityContribution: number; crmIntentContribution: number; crmUrgencyContribution: number }>, ctx?: EngineContext) {
   const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
   const breakdown = filterCrmSignals([...firedSignals], weights);
   const score = sumCrmScore(breakdown);
-  return { engine: "crm" as const, score, breakdown, rawSignals: [...firedSignals], timestamp: new Date().toISOString() };
+  return { engine: "crm" as const, score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
 }
 
 export const ENGINE_DEFS: EngineDef[] = [
@@ -187,8 +192,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "priority",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculatePriorityScore(tenantId),
-    runForPayload: (input) => {
+    runForTenant: (tenantId, ctx) => calculatePriorityScore(tenantId, ctx),
+    runForPayload: (input, ctx) => {
       const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
       // getSignalWeights() is async and DB-backed; for payload tests we derive
       // weights directly from the supplied rules/groups instead, so a sample
@@ -201,7 +206,7 @@ export const ENGINE_DEFS: EngineDef[] = [
       }));
       const ranked = rankFiredSignals([...firedSignals], weights);
       const { score, breakdown } = sumPriorityScore(ranked);
-      return { engine: "priority", score, breakdown, rawSignals: [...firedSignals], timestamp: new Date().toISOString() };
+      return { engine: "priority", score, breakdown, rawSignals: [...firedSignals], timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString() };
     },
   },
   {
@@ -211,8 +216,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "pricing",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculatePricingImpact(tenantId),
-    runForPayload: (input) => computePricingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+    runForTenant: (tenantId, ctx) => calculatePricingImpact(tenantId, ctx),
+    runForPayload: (input, ctx) => computePricingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
   },
   {
     key: "health",
@@ -221,8 +226,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "governance",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculateArchitectureHealthScore(tenantId),
-    runForPayload: (input) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+    runForTenant: (tenantId, ctx) => calculateArchitectureHealthScore(tenantId, ctx),
+    runForPayload: (input, ctx) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
   },
   {
     key: "security",
@@ -231,8 +236,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "security",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => runSecurityEngineForTenant(tenantId),
-    runForPayload: (input) => computeSecurityEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+    runForTenant: (tenantId, ctx) => runSecurityEngineForTenant(tenantId, ctx),
+    runForPayload: (input, ctx) => computeSecurityEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
   },
   {
     key: "drift",
@@ -241,8 +246,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "drift",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculateDriftForTenant(tenantId),
-    runForPayload: (input) => computeDriftEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+    runForTenant: (tenantId, ctx) => calculateDriftForTenant(tenantId, ctx),
+    runForPayload: (input, ctx) => computeDriftEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
   },
   {
     key: "forecasting",
@@ -251,8 +256,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "forecasting",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculateForecastForTenant(tenantId),
-    runForPayload: (input) => computeForecastingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
+    runForTenant: (tenantId, ctx) => calculateForecastForTenant(tenantId, ctx),
+    runForPayload: (input, ctx) => computeForecastingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys, ctx),
   },
   {
     key: "crm",
@@ -261,8 +266,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "crm",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculateCrmScore(tenantId),
-    runForPayload: (input) => {
+    runForTenant: (tenantId, ctx) => calculateCrmScore(tenantId, ctx),
+    runForPayload: (input, ctx) => {
       const weights = [...input.groups, ...input.rules].map(r => ({
         signalKey: r.signalKey,
         category: r.category ?? "",
@@ -272,7 +277,7 @@ export const ENGINE_DEFS: EngineDef[] = [
         crmIntentContribution: r.crmIntentContribution ?? 0,
         crmUrgencyContribution: r.crmUrgencyContribution ?? 0,
       }));
-      return crmForPayload(input, weights);
+      return crmForPayload(input, weights, ctx);
     },
   },
   {
@@ -282,10 +287,10 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "msp",
     tenantScoped: false,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => calculateMspForTenant(tenantId),
-    runForPayload: (input) => {
+    runForTenant: (tenantId, ctx) => calculateMspForTenant(tenantId, ctx),
+    runForPayload: (input, ctx) => {
       const { mergedProfile, parsedFindings, rules, groups, disabledSignalKeys } = input;
-      return computeTenantEngineScores(0, "Sample Payload", mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+      return computeTenantEngineScores(0, "Sample Payload", mergedProfile, parsedFindings, rules, groups, disabledSignalKeys, ctx);
     },
   },
   {
@@ -295,11 +300,11 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "sla",
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId) => runSlaEngineForTenant(tenantId),
-    runForPayload: (_input) => {
+    runForTenant: (tenantId, ctx) => runSlaEngineForTenant(tenantId, ctx),
+    runForPayload: (_input, ctx) => {
       const sampleTimers: SlaTimer[] = [];
       const samplePolicies: SlaPolicy[] = [];
-      return computeSlaEngine(sampleTimers, samplePolicies);
+      return computeSlaEngine(sampleTimers, samplePolicies, ctx?.evaluationTimestamp || new Date());
     },
   },
   {
@@ -309,9 +314,9 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "scope_creep",
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId) => runScopeCreepEngineForTenant(tenantId),
-    runForPayload: (_input) => {
-      return computeScopeCreepEngine([], []);
+    runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
+    runForPayload: (_input, ctx) => {
+      return computeScopeCreepEngine([], [], ctx);
     },
   },
   {
@@ -321,8 +326,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "monitoring",
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId) => computeMonitoringEngine(tenantId),
-    runForPayload: (_input) => computeMonitoringEngineForPayload(),
+    runForTenant: (tenantId, ctx) => computeMonitoringEngine(tenantId),
+    runForPayload: (_input, ctx) => computeMonitoringEngineForPayload(),
   },
   {
     key: "sales_offer",
@@ -331,8 +336,8 @@ export const ENGINE_DEFS: EngineDef[] = [
     categoryPrefix: "sales_offer",
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId) => runSalesOfferEngineForTenant(tenantId),
-    runForPayload: async (input) => {
+    runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, ctx),
+    runForPayload: async (input, ctx) => {
       const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
       const [ruleGroups, services, config] = await Promise.all([
         loadSalesOfferRuleGroups(),
@@ -343,7 +348,7 @@ export const ENGINE_DEFS: EngineDef[] = [
         })(),
         loadSalesOfferConfig(null),
       ]);
-      return computeSalesOfferEngine(null, firedSignals, ruleGroups, services, config);
+      return computeSalesOfferEngine(null, firedSignals, ruleGroups, services, config, ctx);
     },
   },
 ];

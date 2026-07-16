@@ -323,7 +323,7 @@ export async function getRankedSignals(tenantId: number): Promise<RankedSignal[]
  * Nothing else is added, multiplied, or conditionally applied — this is a
  * pure sum over the tenant's ranked signals (see `sumPriorityScore`).
  */
-export async function calculatePriorityScore(tenantId: number): Promise<EngineOutput> {
+export async function calculatePriorityScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<EngineOutput> {
   const { firedSignalKeys, rules } = await getFiredSignalKeysForTenant(tenantId);
   const weights = await getSignalWeights();
   const rankedSignals = rankFiredSignals(firedSignalKeys, weights);
@@ -339,6 +339,6 @@ export async function calculatePriorityScore(tenantId: number): Promise<EngineOu
       priorityScore: score,
       priorityTopSignal: rankedSignals[0]?.signalKey ?? "",
     },
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }

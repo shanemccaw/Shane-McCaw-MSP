@@ -5,7 +5,7 @@
  * per engine (health, drift, priority, etc.) per tenant.
  */
 import { db, tenantEngineSnapshotsTable } from "@workspace/db";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, lte } from "drizzle-orm";
 
 export interface SaveEngineSnapshotInput {
   mspId: number;
@@ -31,6 +31,7 @@ export async function getRecentEngineSnapshots(
   customerId: number,
   engineKey: string,
   limit: number = 2,
+  evaluationTimestamp?: Date,
 ) {
   return db
     .select()
@@ -39,6 +40,7 @@ export async function getRecentEngineSnapshots(
       and(
         eq(tenantEngineSnapshotsTable.customerId, customerId),
         eq(tenantEngineSnapshotsTable.engineKey, engineKey),
+        lte(tenantEngineSnapshotsTable.capturedAt, evaluationTimestamp || new Date()),
       ),
     )
     .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))

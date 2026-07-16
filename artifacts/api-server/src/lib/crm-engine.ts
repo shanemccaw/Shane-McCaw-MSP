@@ -245,7 +245,7 @@ async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
  * tenant's currently-fired, enabled `crm:*` signals. Returns the unified
  * engine output shape shared by every scoring engine in this codebase.
  */
-export async function calculateCrmScore(tenantId: number): Promise<CrmEngineOutput> {
+export async function calculateCrmScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<CrmEngineOutput> {
   const [{ firedSignalKeys, rules }, weights] = await Promise.all([
     getFiredSignalKeysForTenant(tenantId),
     getCrmSignalWeights(),
@@ -268,6 +268,6 @@ export async function calculateCrmScore(tenantId: number): Promise<CrmEngineOutp
       crmScoreIntent: score.intent,
       crmScoreUrgency: score.urgency,
     },
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }

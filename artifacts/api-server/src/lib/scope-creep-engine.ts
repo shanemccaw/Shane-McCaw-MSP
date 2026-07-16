@@ -311,22 +311,22 @@ async function countOpenViolations(customerId?: number, mspId?: number): Promise
   return parseInt((rows.rows[0] as { cnt: string }).cnt, 10) || 0;
 }
 
-export async function runScopeCreepEngineForTenant(tenantId: number): Promise<ScopeCreepEngineOutput> {
+export async function runScopeCreepEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
   const [detections, policies, openViolations] = await Promise.all([
     fetchOpenDetections(undefined, tenantId),
     fetchPolicies(),
     countOpenViolations(tenantId),
   ]);
-  return computeScopeCreepEngine(detections, policies, openViolations);
+  return computeScopeCreepEngine(detections, policies, openViolations, ctx?.evaluationTimestamp);
 }
 
-export async function runScopeCreepEngineForMsp(mspId: number): Promise<ScopeCreepEngineOutput> {
+export async function runScopeCreepEngineForMsp(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
   const [detections, policies, openViolations] = await Promise.all([
     fetchOpenDetections(mspId),
     fetchPolicies(mspId),
     countOpenViolations(undefined, mspId),  // MSP-scoped: only this MSP's violations
   ]);
-  return computeScopeCreepEngine(detections, policies, openViolations);
+  return computeScopeCreepEngine(detections, policies, openViolations, ctx?.evaluationTimestamp);
 }
 
 // ── Detection (idempotent) ────────────────────────────────────────────────────

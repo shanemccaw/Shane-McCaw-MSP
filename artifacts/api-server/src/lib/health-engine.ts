@@ -173,6 +173,7 @@ export function computeHealthEngine(
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
   disabledSignalKeys: Set<string> = new Set(),
+  ctx?: { evaluationTimestamp?: Date },
 ): HealthEngineOutput {
   const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
   const firedSignalKeys = [...firedSignals];
@@ -192,7 +193,7 @@ export function computeHealthEngine(
     rawSignals: firedSignalKeys,
     rawRules: rules,
     workflowVariables,
-    timestamp: new Date().toISOString(),
+    timestamp: (ctx?.evaluationTimestamp || new Date()).toISOString(),
   };
 }
 
@@ -242,7 +243,7 @@ async function buildTenantProfileAndFindings(
  * findings, and the live signal rule/group configuration from the DB, then
  * delegating to the pure `computeHealthEngine`.
  */
-export async function calculateArchitectureHealthScore(tenantId: number): Promise<HealthEngineOutput> {
+export async function calculateArchitectureHealthScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<HealthEngineOutput> {
   const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
     buildTenantProfileAndFindings(tenantId),
     fetchSignalRulesAndGroups(),
@@ -253,8 +254,8 @@ export async function calculateArchitectureHealthScore(tenantId: number): Promis
     computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
   }
 
-  const healthResult = computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
-  const securityResult = computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const healthResult = computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
+  const securityResult = computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 
   return {
     ...healthResult,
