@@ -13,8 +13,8 @@
  *    logged via the server logger for auditability.
  */
 
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import { db, mspUsersTable, mspCustomersTable } from "@workspace/db";
+import { sql, eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 
@@ -102,12 +102,13 @@ export interface SlaTimerEvaluation {
 
 export interface SlaEngineOutput {
   engine: "sla";
-  score: {
-    compliancePct: number;
-    runningTimers: number;
-    activeBreaches: number;
-    warningTimers: number;
-  };
+  score: number;
+  slaSignalScore: number;
+  slaTimerScore: number;
+  compliancePct: number;
+  runningTimers: number;
+  activeBreaches: number;
+  warningTimers: number;
   breakdown: SlaTimerEvaluation[];
   policies: Array<{ id: number; name: string; priority: string }>;
   rawSignals: string[];
@@ -165,37 +166,52 @@ export function computeSlaEngine(
   timers: SlaTimer[],
   policies: SlaPolicy[],
   now: Date = new Date(),
+  weights: { wSignal: number; wTimer: number } = { wSignal: 50, wTimer: 50 },
 ): SlaEngineOutput {
   const policyMap = new Map(policies.map(p => [p.id, p]));
-
   const runningTimers = timers.filter(t => t.status === "running");
-  const evaluations: SlaTimerEvaluation[] = [];
 
+  const evaluations: SlaTimerEvaluation[] = [];
   for (const timer of runningTimers) {
     const policy = policyMap.get(timer.policyId);
     if (!policy) continue;
     evaluations.push(evaluateTimer(timer, policy, now));
   }
 
+  const signalEvaluations = evaluations.filter((e, i) => runningTimers[i]?.ticketType === "signal_compliance");
+  const timerEvaluations = evaluations.filter((e, i) => runningTimers[i]?.ticketType !== "signal_compliance");
+
+  const computeGroupCompliance = (group: SlaTimerEvaluation[]): number => {
+    if (group.length === 0) return 100;
+    const breached = group.filter(e => e.breached).length;
+    return Math.round(((group.length - breached) / group.length) * 100);
+  };
+
+  const slaSignalScore = computeGroupCompliance(signalEvaluations);
+  const slaTimerScore = computeGroupCompliance(timerEvaluations);
+
+  const totalWeight = weights.wSignal + weights.wTimer;
+  const slaScore = totalWeight > 0
+    ? Math.round((weights.wSignal * slaSignalScore + weights.wTimer * slaTimerScore) / totalWeight)
+    : Math.round((slaSignalScore + slaTimerScore) / 2);
+
   const breachedCount = evaluations.filter(e => e.breached).length;
   const warningCount = evaluations.filter(e => e.status === "warning").length;
-  const totalCount = evaluations.length;
-  const compliancePct =
-    totalCount === 0 ? 100 : Math.round(((totalCount - breachedCount) / totalCount) * 100);
 
   const rawSignals: string[] = [];
   if (breachedCount > 0) rawSignals.push("sla:breach_detected");
   if (warningCount > 0) rawSignals.push("sla:warning_detected");
-  if (compliancePct < 80) rawSignals.push("sla:low_compliance");
+  if (slaScore < 80) rawSignals.push("sla:low_compliance");
 
   return {
     engine: "sla",
-    score: {
-      compliancePct,
-      runningTimers: runningTimers.length,
-      activeBreaches: breachedCount,
-      warningTimers: warningCount,
-    },
+    score: slaScore,
+    slaSignalScore,
+    slaTimerScore,
+    compliancePct: slaScore,
+    runningTimers: runningTimers.length,
+    activeBreaches: breachedCount,
+    warningTimers: warningCount,
     breakdown: evaluations,
     policies: policies.map(p => ({ id: p.id, name: p.name, priority: p.priority })),
     rawSignals,
@@ -257,19 +273,40 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
 }
 
 export async function runSlaEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
-  const [timers, policies] = await Promise.all([
-    fetchRunningTimers(undefined, tenantId),
-    fetchPolicies(),
+  const [customerRow] = await db
+    .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+    .from(mspUsersTable)
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .where(eq(mspUsersTable.userId, tenantId))
+    .limit(1);
+  const resolvedCustomerId = customerRow?.customerId ?? null;
+  const resolvedMspId = customerRow?.mspId ?? null;
+
+  if (resolvedCustomerId == null) {
+    return computeSlaEngine([], [], ctx?.evaluationTimestamp || new Date(), { wSignal: 50, wTimer: 50 });
+  }
+
+  const [timers, policies, weightsRow] = await Promise.all([
+    fetchRunningTimers(undefined, resolvedCustomerId),
+    fetchPolicies(resolvedMspId ?? undefined),
+    resolvedMspId != null
+      ? db.execute(sql`SELECT w_signal AS "wSignal", w_timer AS "wTimer" FROM msp_sla_weights WHERE msp_id = ${resolvedMspId} LIMIT 1`)
+      : Promise.resolve({ rows: [] as { wSignal: number; wTimer: number }[] }),
   ]);
-  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date());
+  const weights = (weightsRow.rows[0] as { wSignal: number; wTimer: number } | undefined) ?? { wSignal: 50, wTimer: 50 };
+
+  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date(), weights);
 }
 
 export async function runSlaEngineForMsp(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
-  const [timers, policies] = await Promise.all([
+  const [timers, policies, weightsRow] = await Promise.all([
     fetchRunningTimers(mspId),
     fetchPolicies(mspId),
+    db.execute(sql`SELECT w_signal AS "wSignal", w_timer AS "wTimer" FROM msp_sla_weights WHERE msp_id = ${mspId} LIMIT 1`),
   ]);
-  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date());
+  const weights = (weightsRow.rows[0] as { wSignal: number; wTimer: number } | undefined) ?? { wSignal: 50, wTimer: 50 };
+
+  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date(), weights);
 }
 
 // ── Timer lifecycle operations (idempotent) ───────────────────────────────────

@@ -29,8 +29,8 @@ const router: IRouter = Router();
 type OverallStatus = "on_track" | "attention_needed" | "action_required";
 
 function slaOverall(output: SlaEngineOutput): OverallStatus {
-  if (output.score.activeBreaches > 0) return "action_required";
-  if (output.score.warningTimers > 0) return "attention_needed";
+  if (output.activeBreaches > 0) return "action_required";
+  if (output.warningTimers > 0) return "attention_needed";
   return "on_track";
 }
 
@@ -46,7 +46,7 @@ function slaHeadline(status: OverallStatus): string {
 }
 
 function slaSubtext(output: SlaEngineOutput, status: OverallStatus): string {
-  const { activeBreaches, warningTimers, runningTimers } = output.score;
+  const { activeBreaches, warningTimers, runningTimers } = output;
   if (status === "on_track") {
     if (runningTimers === 0) return "No open requests at the moment. Everything is resolved.";
     return `All ${runningTimers} open request${runningTimers === 1 ? "" : "s"} are being handled within your agreed response times.`;
@@ -58,14 +58,14 @@ function slaSubtext(output: SlaEngineOutput, status: OverallStatus): string {
 }
 
 function slaComplianceLabel(output: SlaEngineOutput): string {
-  const pct = output.score.compliancePct;
-  if (output.score.runningTimers === 0) return "No open requests";
+  const pct = output.compliancePct;
+  if (output.runningTimers === 0) return "No open requests";
   if (pct === 100) return "100% on time";
   return `${pct}% resolved within target this period`;
 }
 
 function responsePerformanceLabel(output: SlaEngineOutput): "well_within" | "approaching_limit" | "overdue" {
-  const { activeBreaches, warningTimers } = output.score;
+  const { activeBreaches, warningTimers } = output;
   if (activeBreaches > 0) return "overdue";
   if (warningTimers > 0) return "approaching_limit";
   return "well_within";
@@ -172,9 +172,9 @@ router.get(
         headline: slaHeadline(overall),
         subtext: slaSubtext(output, overall),
         complianceLabel: slaComplianceLabel(output),
-        activeWarnings: output.score.warningTimers,
-        activeIssues: output.score.activeBreaches,
-        openRequests: output.score.runningTimers,
+        activeWarnings: output.warningTimers,
+        activeIssues: output.activeBreaches,
+        openRequests: output.runningTimers,
         responsePerformance: performance,
         responsePerformanceLabel: friendlySlaPerformance(performance),
         updatedAt: output.timestamp,
