@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson } from "lucide-react";
+import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson, History } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot } from "recharts";
 import LiveMonitorPanel from "@/pages/LiveMonitorPanel";
 import EngineRuleEditor from "@/components/EngineRuleEditor";
 
@@ -51,6 +52,10 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [def, setDef] = useState<EngineDefLite | null>(null);
   const [dashboard, setDashboard] = useState<DashboardResult | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [historyCustomers, setHistoryCustomers] = useState<Array<{ id: number; name: string; mspId: number }>>([]);
+  const [historyCustomerId, setHistoryCustomerId] = useState<number | null>(null);
+  const [historyData, setHistoryData] = useState<{ series: Array<{ date: string; score: number; source: string }>; baselineEvents: Array<{ id: number; baselineScore: number; resetTriggerType: string | null; createdAt: string }>; signalDeltas: Array<{ signalKey: string; label: string; direction: string; date: string }> } | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [testTenantId, setTestTenantId] = useState("");
   const [testPayload, setTestPayload] = useState('{\n  "profileUpdates": {},\n  "parsedFindings": []\n}');
   const [testRunning, setTestRunning] = useState(false);
@@ -88,6 +93,31 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   }, [engineKey, fetchWithAuth, toast]);
 
+  const loadHistoryCustomers = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/history-customers`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setHistoryCustomers(data.customers ?? []);
+      if (!historyCustomerId && data.customers?.length) setHistoryCustomerId(data.customers[0].id);
+    } catch {
+      // best-effort
+    }
+  }, [engineKey, fetchWithAuth, historyCustomerId]);
+
+  const loadHistory = useCallback(async (customerId: number) => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/history?customerId=${customerId}`);
+      if (!res.ok) throw new Error("Failed to load history");
+      setHistoryData(await res.json());
+    } catch (err) {
+      toast({ title: "History load failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [engineKey, fetchWithAuth, toast]);
+
   const loadLogs = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/logs`);
@@ -103,6 +133,16 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     void loadDashboard();
     void loadLogs();
   }, [loadDashboard, loadLogs]);
+
+  useEffect(() => {
+    void loadHistoryCustomers();
+  }, [engineKey, loadHistoryCustomers]);
+
+  useEffect(() => {
+    if (historyCustomerId !== null) {
+      void loadHistory(historyCustomerId);
+    }
+  }, [historyCustomerId, loadHistory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,6 +327,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
           <TabsTrigger value="testing"><FlaskConical className="w-3.5 h-3.5 mr-1.5" />Testing</TabsTrigger>
           <TabsTrigger value="preview"><Eye className="w-3.5 h-3.5 mr-1.5" />Preview</TabsTrigger>
           <TabsTrigger value="configuration"><Settings className="w-3.5 h-3.5 mr-1.5" />Configuration</TabsTrigger>
+          <TabsTrigger value="history"><History className="w-3.5 h-3.5 mr-1.5" />History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-3 mt-4">
@@ -525,6 +566,67 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               engineLabel={def.label}
               importRevision={importRevision}
             />
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-3 mt-4">
+          <div className="flex items-center gap-2">
+            <select
+              className="text-sm border rounded px-2 py-1 bg-background"
+              value={historyCustomerId ?? ""}
+              onChange={e => setHistoryCustomerId(Number(e.target.value))}
+            >
+              {historyCustomers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {historyLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
+          ) : !historyData || historyData.series.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No history yet for this customer.</p>
+          ) : (
+            <>
+              <Card>
+                <CardHeader><CardTitle className="text-sm">Score history</CardTitle></CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={historyData.series}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" tickFormatter={(d: string) => new Date(d).toLocaleDateString()} minTickGap={40} />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip labelFormatter={(d: string) => new Date(d).toLocaleString()} />
+                      <Line type="monotone" dataKey="score" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} />
+                      {historyData.baselineEvents.map(b => {
+                        const point = historyData.series.find(s => s.date >= b.createdAt);
+                        if (!point) return null;
+                        return <ReferenceDot key={b.id} x={point.date} y={b.baselineScore} r={5} fill="orange" stroke="none" />;
+                      })}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="text-sm">Signal changes</CardTitle></CardHeader>
+                <CardContent className="space-y-1 max-h-64 overflow-auto">
+                  {historyData.signalDeltas.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No signal changes in range.</p>
+                  ) : (
+                    historyData.signalDeltas.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm border-b py-1.5 last:border-0">
+                        <span>{d.label}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={d.direction === "fired" ? "destructive" : "secondary"}>{d.direction}</Badge>
+                          <span className="text-xs text-muted-foreground">{new Date(d.date).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </>
           )}
         </TabsContent>
       </Tabs>
