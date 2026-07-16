@@ -14,7 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc } from "drizzle-orm";
-import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, db } from "@workspace/db";
+import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 import {
   computeTenantSignals,
@@ -384,16 +384,21 @@ async function writeEngineSnapshot(
     const score = typeof r?.score === "number" ? r.score : 0;
     const breakdown = Array.isArray(r?.breakdown) ? r.breakdown : (r?.breakdown ? [r.breakdown] : []);
 
+    const rr = result as { rawSignals?: unknown; firedSignals?: unknown } | null | undefined;
+    const rawSignalsSource = Array.isArray(rr?.rawSignals) ? rr.rawSignals : (Array.isArray(rr?.firedSignals) ? rr.firedSignals : []);
+    const rawSignals: string[] = rawSignalsSource.filter((s): s is string => typeof s === "string");
+
     const [prior] = await db
-      .select({ score: tenantEngineSnapshotsTable.score })
+      .select({ score: tenantEngineSnapshotsTable.score, rawSignals: tenantEngineSnapshotsTable.rawSignals })
       .from(tenantEngineSnapshotsTable)
       .where(and(eq(tenantEngineSnapshotsTable.customerId, customerId), eq(tenantEngineSnapshotsTable.engineKey, engineKey)))
       .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
       .limit(1);
     const previousScore = prior?.score ?? null;
+    const priorRawSignals: string[] = Array.isArray(prior?.rawSignals) ? prior.rawSignals : [];
     const delta = previousScore != null ? score - previousScore : null;
 
-    await db.insert(tenantEngineSnapshotsTable).values({
+    const [insertedSnapshot] = await db.insert(tenantEngineSnapshotsTable).values({
       customerId,
       mspId,
       engineKey,
@@ -401,9 +406,25 @@ async function writeEngineSnapshot(
       previousScore,
       delta,
       breakdown,
+      rawSignals,
       runId: randomUUID(),
       ruleVersion: currentRuleVersion,
-    });
+    }).returning({ id: tenantEngineSnapshotsTable.id });
+    const historyId = insertedSnapshot?.id;
+
+    if (historyId != null) {
+      const priorSet = new Set(priorRawSignals);
+      const currentSet = new Set(rawSignals);
+      const newlyFired = rawSignals.filter(s => !priorSet.has(s));
+      const newlyResolved = priorRawSignals.filter(s => !currentSet.has(s));
+      const deltaRows = [
+        ...newlyFired.map(signalKey => ({ historyId, signalKey, direction: "fired" as const })),
+        ...newlyResolved.map(signalKey => ({ historyId, signalKey, direction: "resolved" as const })),
+      ];
+      if (deltaRows.length > 0) {
+        await db.insert(engineScoreSignalDeltasTable).values(deltaRows);
+      }
+    }
 
     const [priorBaseline] = await db
       .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion })
