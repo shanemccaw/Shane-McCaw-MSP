@@ -3,6 +3,14 @@ import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { startSlaTimer } from "./sla-engine";
 
+/**
+ * Flat default stabilization window, applied uniformly to all signals.
+ * NOT time-normalized per signal check frequency — that requires a
+ * signal-to-monitor-check frequency mapping that doesn't exist yet
+ * (tracked separately). This is a deliberate, accepted approximation.
+ */
+const STABILIZATION_WINDOW_HOURS = 4;
+
 // ─── Signal enabled/disabled state ────────────────────────────────────────────
 //
 // Shared lookup used by every computeTenantSignals call site (admin routes,
@@ -595,6 +603,29 @@ async function recordSignalTransitions(
     }
   } catch (err) {
     logger.warn({ err, customerId, mspId }, "recordSignalTransitions: failed to fetch open signal rows");
+  }
+}
+
+/**
+ * Returns the subset of a customer's currently-fired signals that have
+ * been continuously fired for at least STABILIZATION_WINDOW_HOURS —
+ * i.e., excludes signals that only just fired and could still be
+ * flapping/noise. A signal is "currently fired" if it has an open row
+ * (resolved_at IS NULL) in tenant_signal_history; it's "stabilized" if
+ * that row's fired_at is old enough.
+ */
+export async function getStabilizedSignals(customerId: number): Promise<Set<string>> {
+  try {
+    const rows = await db.execute(sql`
+      SELECT signal_key AS "signalKey" FROM tenant_signal_history
+      WHERE customer_id = ${customerId}
+        AND resolved_at IS NULL
+        AND fired_at <= NOW() - INTERVAL '1 hour' * ${STABILIZATION_WINDOW_HOURS}
+    `);
+    return new Set((rows.rows as { signalKey: string }[]).map(r => r.signalKey));
+  } catch (err) {
+    logger.warn({ err, customerId }, "getStabilizedSignals: failed to query stabilized signals");
+    return new Set();
   }
 }
 
