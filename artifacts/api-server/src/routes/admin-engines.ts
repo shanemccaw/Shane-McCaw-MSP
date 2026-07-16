@@ -1,7 +1,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable } from "@workspace/db";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -14,6 +14,7 @@ import {
   buildEngineTestInputForTenant,
   buildEngineTestInputForPayload,
 } from "../lib/engine-registry";
+import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
 import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
 import {
   computeTenantSignals,
@@ -425,6 +426,56 @@ router.get("/admin/engines/:key/dashboard", requireAdmin, async (req: Request, r
   } catch (err) {
     logger.error({ err, engineKey: key }, "admin-engines: dashboard failed");
     res.status(500).json({ error: "Failed to load engine dashboard" });
+  }
+});
+
+// ── Route 1: GET /api/admin/engines/:key/history ────────────────────────────
+router.get("/admin/engines/:key/history", requireAdmin, async (req: Request, res: Response) => {
+  const { key } = req.params;
+  const def = getEngineDef(String(key));
+  if (!def) {
+    res.status(404).json({ error: "Unknown engine" });
+    return;
+  }
+  const customerId = Number(req.query.customerId);
+  if (!customerId || Number.isNaN(customerId)) {
+    res.status(400).json({ error: "customerId query param is required" });
+    return;
+  }
+  const start = req.query.start ? new Date(String(req.query.start)) : undefined;
+  const end = req.query.end ? new Date(String(req.query.end)) : undefined;
+  try {
+    const [series, baselineEvents, signalDeltas] = await Promise.all([
+      getEngineHistoryMerged(customerId, String(key), start, end),
+      getBaselineEvents(customerId, String(key)),
+      getSignalDeltasForRange(customerId, String(key), start, end),
+    ]);
+    res.json({ engineKey: key, customerId, series, baselineEvents, signalDeltas });
+  } catch (err) {
+    logger.error({ err, engineKey: key, customerId }, "admin-engines: history failed");
+    res.status(500).json({ error: "Failed to load engine history" });
+  }
+});
+
+// ── Route 2: GET /api/admin/engines/:key/history-customers ──────────────────
+// Lists only customers who actually have snapshot rows for this engine, so the
+// picker dropdown isn't full of empty customers. Keyed on the REAL customerId
+// (mspCustomersTable.id) — do NOT reuse the dashboard route's `usersTable`
+// client list for this, they are different id spaces.
+router.get("/admin/engines/:key/history-customers", requireAdmin, async (req: Request, res: Response) => {
+  const { key } = req.params;
+  try {
+    const rows = await db
+      .selectDistinct({ id: mspCustomersTable.id, name: mspCustomersTable.name, mspId: mspCustomersTable.mspId })
+      .from(tenantEngineSnapshotsTable)
+      .innerJoin(mspCustomersTable, eq(tenantEngineSnapshotsTable.customerId, mspCustomersTable.id))
+      .where(eq(tenantEngineSnapshotsTable.engineKey, String(key)))
+      .orderBy(mspCustomersTable.name)
+      .limit(200);
+    res.json({ customers: rows });
+  } catch (err) {
+    logger.error({ err, engineKey: key }, "admin-engines: history-customers failed");
+    res.status(500).json({ error: "Failed to load customer list" });
   }
 });
 
