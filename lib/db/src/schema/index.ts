@@ -2531,6 +2531,7 @@ export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
   delta: integer("delta"),
   trendDirection: text("trend_direction"),
   breakdown: jsonb("breakdown").$type<Record<string, unknown>[]>().notNull().default([]),
+  rawSignals: jsonb("raw_signals").$type<string[]>().notNull().default([]),
   runId: text("run_id"),
   ruleVersion: integer("rule_version"),
   capturedAt: timestamp("captured_at").notNull().defaultNow(),
@@ -2541,6 +2542,19 @@ export const tenantEngineSnapshotsTable = pgTable("tenant_engine_snapshots", {
 
 export type InsertTenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferInsert;
 export type TenantEngineSnapshot = typeof tenantEngineSnapshotsTable.$inferSelect;
+
+export const engineScoreSignalDeltasTable = pgTable("engine_score_signal_deltas", {
+  id: serial("id").primaryKey(),
+  historyId: integer("history_id").notNull().references(() => tenantEngineSnapshotsTable.id, { onDelete: "cascade" }),
+  signalKey: text("signal_key").notNull(),
+  direction: text("direction").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  historyIdx: index("engine_score_signal_deltas_history_idx").on(table.historyId),
+}));
+
+export type InsertEngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferInsert;
+export type EngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferSelect;
 
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
