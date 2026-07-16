@@ -48,6 +48,7 @@ export const mspsTable = pgTable("msps", {
   isDirectBusiness: boolean("is_direct_business").notNull().default(false),
   isTestbed: boolean("is_testbed").notNull().default(false),
   testbedMetadata: jsonb("testbed_metadata").notNull().default({}),
+  customCustomerAgreement: text("custom_customer_agreement"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
