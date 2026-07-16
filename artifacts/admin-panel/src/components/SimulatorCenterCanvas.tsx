@@ -587,7 +587,7 @@ export function SimulatorCenterCanvas() {
                 </Table>
               </div>
             )}
-          </div>
+          </div>)}
         {/* Tab 3: Overrides Panel */}
         {activeTab === "overrides" && (
           <SimulatorOverridesPanel />
