@@ -65,6 +65,8 @@ export interface EngineDef {
   description: string;
   /** category prefix used to scope the Configuration tab's rule/group list */
   categoryPrefix: string;
+  /** Keys of other ENGINE_DEFS entries that must complete before this one runs. Empty array = no dependencies beyond get_tenant_signals. */
+  dependsOn: string[];
   /** Runs the engine for a real tenant. */
   runForTenant(tenantId: number, ctx?: EngineContext): Promise<unknown>;
   /** Runs the engine for a supplied sample payload (test-against-payload). */
@@ -194,6 +196,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Priority Engine",
     description: "Ranks tenants by summing priorityScoreContribution across currently-fired, enabled signals.",
     categoryPrefix: "priority",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculatePriorityScore(tenantId, ctx),
@@ -218,6 +221,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Pricing Engine",
     description: "Sums pricingImpact / pricingValueContribution across currently-fired, enabled signals.",
     categoryPrefix: "pricing",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculatePricingImpact(tenantId, ctx),
@@ -228,6 +232,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Architecture Health Engine",
     description: "Sums governance/compliance/adoption/copilot/architecture/licensing impact into an overall health score (security is computed by the standalone Security Engine and combined into the total).",
     categoryPrefix: "governance",
+    dependsOn: ["security"],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculateArchitectureHealthScore(tenantId, ctx),
@@ -238,6 +243,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Security Engine",
     description: "Sums securityImpact across currently-fired, enabled signals into a standalone security posture score.",
     categoryPrefix: "security",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => runSecurityEngineForTenant(tenantId, ctx),
@@ -248,6 +254,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Drift Engine",
     description: "Reduces drift-tagged rules/groups that evaluated true into a driftScore + trendDirection.",
     categoryPrefix: "drift",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculateDriftForTenant(tenantId, ctx),
@@ -258,6 +265,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Forecasting Engine",
     description: "Sums trendValue * decayFactor across fired signals with a non-zero trend.",
     categoryPrefix: "forecasting",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculateForecastForTenant(tenantId, ctx),
@@ -268,6 +276,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "CRM Engine",
     description: "Sums the five CRM contribution fields (fit/pain/maturity/intent/urgency) across fired crm:* signals.",
     categoryPrefix: "crm",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculateCrmScore(tenantId, ctx),
@@ -289,6 +298,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "MSP Portfolio Engine",
     description: "Aggregates health + drift + priority scores per tenant into a portfolio-wide risk roll-up.",
     categoryPrefix: "msp",
+    dependsOn: ["health", "drift", "priority"],
     tenantScoped: false,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => calculateMspForTenant(tenantId, ctx),
@@ -302,6 +312,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "SLA Engine",
     description: "Tracks SLA timers per customer, detects warnings and breaches, and computes compliance scores across MSP-managed tenants.",
     categoryPrefix: "sla",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
     runForTenant: (tenantId, ctx) => runSlaEngineForTenant(tenantId, ctx),
@@ -316,6 +327,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Scope Creep Engine",
     description: "Detects deliverable/requirement/ticket/timeline drift and SOW expansion, scores scope-creep risk, raises violations, escalates with SOW amendment and pricing review recommendations, and tracks monthly compliance.",
     categoryPrefix: "scope_creep",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
     runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
@@ -328,6 +340,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Monitoring Engine",
     description: "Executes platform-authored Monitor Checks against customer tenants via Graph API, writes tenant_monitor_profile rows, and classifies severity. Output: {results, breakdown: coverage/failures, logs, debug}.",
     categoryPrefix: "monitoring",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
     runForTenant: (tenantId, ctx) => computeMonitoringEngine(tenantId),
@@ -338,6 +351,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     label: "Sales Offer Engine",
     description: "Converts diagnostics findings (fired signals + product catalog) into priced, scored, lifecycle-managed candidate offers via configurable rule groups. Outputs offer candidates ranked by relevance score.",
     categoryPrefix: "sales_offer",
+    dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
     runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, null, ctx),
