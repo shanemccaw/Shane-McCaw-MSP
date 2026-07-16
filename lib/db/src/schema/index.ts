@@ -2557,6 +2557,22 @@ export const engineScoreSignalDeltasTable = pgTable("engine_score_signal_deltas"
 export type InsertEngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferInsert;
 export type EngineScoreSignalDelta = typeof engineScoreSignalDeltasTable.$inferSelect;
 
+export const engineScoreDailyRollupTable = pgTable("engine_score_daily_rollup", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  engineKey: text("engine_key").notNull(),
+  day: date("day").notNull(),
+  score: integer("score").notNull(),
+  changedSignalKeys: jsonb("changed_signal_keys").$type<{ signalKey: string; direction: string }[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  uniqueRollupIdx: uniqueIndex("engine_score_daily_rollup_unique_idx").on(table.customerId, table.engineKey, table.day),
+}));
+
+export type InsertEngineScoreDailyRollup = typeof engineScoreDailyRollupTable.$inferInsert;
+export type EngineScoreDailyRollup = typeof engineScoreDailyRollupTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
