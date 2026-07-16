@@ -223,5 +223,6 @@ export default function SimulatorStudioPage() {
         </footer>
 
       </div>
-      );
+    </div>
+  );
 }
