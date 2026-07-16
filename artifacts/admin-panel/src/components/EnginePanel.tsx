@@ -93,17 +93,17 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   }, [engineKey, fetchWithAuth, toast]);
 
-  const loadHistoryCustomers = useCallback(async () => {
-    try {
-      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/history-customers`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setHistoryCustomers(data.customers ?? []);
-      if (!historyCustomerId && data.customers?.length) setHistoryCustomerId(data.customers[0].id);
-    } catch {
-      // best-effort
-    }
-  }, [engineKey, fetchWithAuth, historyCustomerId]);
+const loadHistoryCustomers = useCallback(async () => {
+  try {
+    const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/history-customers`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setHistoryCustomers(data.customers ?? []);
+    setHistoryCustomerId(prev => prev ?? data.customers?.[0]?.id ?? null);
+  } catch {
+    // best-effort
+  }
+}, [engineKey, fetchWithAuth]);
 
   const loadHistory = useCallback(async (customerId: number) => {
     setHistoryLoading(true);
