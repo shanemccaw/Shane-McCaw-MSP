@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { SqlRunnerModal } from "@/components/SqlRunnerModal";
+import { GraphProbeModal } from "@/components/GraphProbeModal";
+import { Database, Globe } from "lucide-react";
 
 interface ServiceHealth {
   jobQueue: { pending: number; running: number; completed: number; failed: number; cancelled: number };
@@ -60,6 +63,10 @@ export default function ObservabilityDashboard() {
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState<number | null>(null);
 
+  // Modal open states
+  const [isSqlRunnerOpen, setIsSqlRunnerOpen] = useState(false);
+  const [isGraphProbeOpen, setIsGraphProbeOpen] = useState(false);
+
   const load = useCallback(async () => {
     try {
       const [h, e, a] = await Promise.all([
@@ -106,10 +113,29 @@ export default function ObservabilityDashboard() {
   return (
     <div className="p-6 space-y-8 max-w-6xl">
       {/* Header */}
-      <div>
-        <h1 className="text-[#E6EDF3] text-xl font-semibold">Service Health</h1>
-        <p className="text-[#7D8590] text-sm mt-1">Live platform health across jobs, DLQ, webhooks, and portal workflows.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-[#E6EDF3] text-xl font-semibold">Service Health</h1>
+          <p className="text-[#7D8590] text-sm mt-1">Live platform health across jobs, DLQ, webhooks, and portal workflows.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSqlRunnerOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] text-xs font-semibold text-white transition-colors"
+          >
+            <Database className="w-4 h-4 text-blue-400" />
+            SQL Runner
+          </button>
+          <button
+            onClick={() => setIsGraphProbeOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] text-xs font-semibold text-white transition-colors"
+          >
+            <Globe className="w-4 h-4 text-purple-400" />
+            API Graph Probe
+          </button>
+        </div>
       </div>
+
 
       {/* Top status row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -232,6 +258,9 @@ export default function ObservabilityDashboard() {
           </div>
         )}
       </div>
+
+      <SqlRunnerModal isOpen={isSqlRunnerOpen} onClose={() => setIsSqlRunnerOpen(false)} />
+      <GraphProbeModal isOpen={isGraphProbeOpen} onClose={() => setIsGraphProbeOpen(false)} />
     </div>
   );
 }
