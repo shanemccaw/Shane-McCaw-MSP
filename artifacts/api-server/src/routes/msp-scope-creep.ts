@@ -53,6 +53,211 @@ router.get("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: 
   }
 });
 
+// ── GET /api/msp/scope-creep/policies/:id ──────────────────────────────────────
+
+router.get("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             drift_threshold_pct AS "driftThresholdPct",
+             expansion_threshold_pct AS "expansionThresholdPct",
+             timeline_slip_days AS "timelineSlipDays",
+             drift_weight AS "driftWeight",
+             expansion_weight AS "expansionWeight",
+             timeline_slip_weight AS "timelineSlipWeight",
+             violation_score_threshold AS "violationScoreThreshold",
+             escalation_rules AS "escalationRules",
+             is_active AS "isActive",
+             created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM scope_creep_policies
+      WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    res.json({ policy: rows.rows[0] });
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-scope-creep: get policy failed");
+    res.status(500).json({ error: "Failed to get policy" });
+  }
+});
+
+// ── POST /api/msp/scope-creep/policies ─────────────────────────────────────────
+
+router.post("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const b = req.body as Record<string, unknown>;
+  try {
+    const result = await db.execute(sql`
+      INSERT INTO scope_creep_policies (
+        msp_id, name, description,
+        drift_threshold_pct, expansion_threshold_pct, timeline_slip_days,
+        drift_weight, expansion_weight, timeline_slip_weight,
+        violation_score_threshold, escalation_rules, is_active
+      ) VALUES (
+        ${mspId},
+        ${b.name as string},
+        ${(b.description ?? null) as string | null},
+        ${(b.driftThresholdPct ?? 20) as number},
+        ${(b.expansionThresholdPct ?? 15) as number},
+        ${(b.timelineSlipDays ?? 7) as number},
+        ${(b.driftWeight ?? 33) as number},
+        ${(b.expansionWeight ?? 33) as number},
+        ${(b.timelineSlipWeight ?? 34) as number},
+        ${(b.violationScoreThreshold ?? 60) as number},
+        ${JSON.stringify(b.escalationRules ?? [])},
+        ${(b.isActive ?? true) as boolean}
+      ) RETURNING id
+    `);
+    const newId = (result.rows[0] as { id: number }).id;
+    logger.info({ id: newId, mspId }, "msp-scope-creep: policy created");
+    res.status(201).json({ id: newId });
+  } catch (err) {
+    logger.error({ err, mspId }, "msp-scope-creep: create policy failed");
+    res.status(500).json({ error: "Failed to create policy" });
+  }
+});
+
+// ── PATCH /api/msp/scope-creep/policies/:id ─────────────────────────────────────
+
+router.patch("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  const b = req.body as Record<string, unknown>;
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             drift_threshold_pct AS "driftThresholdPct",
+             expansion_threshold_pct AS "expansionThresholdPct",
+             timeline_slip_days AS "timelineSlipDays",
+             drift_weight AS "driftWeight",
+             expansion_weight AS "expansionWeight",
+             timeline_slip_weight AS "timelineSlipWeight",
+             violation_score_threshold AS "violationScoreThreshold",
+             escalation_rules AS "escalationRules",
+             is_active AS "isActive"
+      FROM scope_creep_policies
+      WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    const original = rows.rows[0] as Record<string, any>;
+    if (original.mspId === null || original.mspId === 0) {
+      const name = b.name !== undefined ? b.name : original.name;
+      const description = b.description !== undefined ? b.description : original.description;
+      const driftThresholdPct = b.driftThresholdPct !== undefined ? b.driftThresholdPct : original.driftThresholdPct;
+      const expansionThresholdPct = b.expansionThresholdPct !== undefined ? b.expansionThresholdPct : original.expansionThresholdPct;
+      const timelineSlipDays = b.timelineSlipDays !== undefined ? b.timelineSlipDays : original.timelineSlipDays;
+      const driftWeight = b.driftWeight !== undefined ? b.driftWeight : original.driftWeight;
+      const expansionWeight = b.expansionWeight !== undefined ? b.expansionWeight : original.expansionWeight;
+      const timelineSlipWeight = b.timelineSlipWeight !== undefined ? b.timelineSlipWeight : original.timelineSlipWeight;
+      const violationScoreThreshold = b.violationScoreThreshold !== undefined ? b.violationScoreThreshold : original.violationScoreThreshold;
+      const escalationRules = b.escalationRules !== undefined ? JSON.stringify(b.escalationRules) : JSON.stringify(original.escalationRules);
+      const isActive = b.isActive !== undefined ? b.isActive : original.isActive;
+
+      const result = await db.execute(sql`
+        INSERT INTO scope_creep_policies (
+          msp_id, name, description,
+          drift_threshold_pct, expansion_threshold_pct, timeline_slip_days,
+          drift_weight, expansion_weight, timeline_slip_weight,
+          violation_score_threshold, escalation_rules, is_active
+        ) VALUES (
+          ${mspId}, ${name}, ${description},
+          ${driftThresholdPct}, ${expansionThresholdPct}, ${timelineSlipDays},
+          ${driftWeight}, ${expansionWeight}, ${timelineSlipWeight},
+          ${violationScoreThreshold}, ${escalationRules}, ${isActive}
+        ) RETURNING id
+      `);
+      const newId = (result.rows[0] as { id: number }).id;
+      logger.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created");
+      res.status(201).json({ id: newId, override: true });
+    } else {
+      await db.execute(sql`
+        UPDATE scope_creep_policies SET
+          name = COALESCE(${(b.name ?? null) as string | null}, name),
+          description = COALESCE(${(b.description ?? null) as string | null}, description),
+          drift_threshold_pct = COALESCE(${(b.driftThresholdPct ?? null) as number | null}, drift_threshold_pct),
+          expansion_threshold_pct = COALESCE(${(b.expansionThresholdPct ?? null) as number | null}, expansion_threshold_pct),
+          timeline_slip_days = COALESCE(${(b.timelineSlipDays ?? null) as number | null}, timeline_slip_days),
+          drift_weight = COALESCE(${(b.driftWeight ?? null) as number | null}, drift_weight),
+          expansion_weight = COALESCE(${(b.expansionWeight ?? null) as number | null}, expansion_weight),
+          timeline_slip_weight = COALESCE(${(b.timelineSlipWeight ?? null) as number | null}, timeline_slip_weight),
+          violation_score_threshold = COALESCE(${(b.violationScoreThreshold ?? null) as number | null}, violation_score_threshold),
+          escalation_rules = COALESCE(${b.escalationRules != null ? JSON.stringify(b.escalationRules) : null}, escalation_rules::text)::jsonb,
+          is_active = COALESCE(${(b.isActive ?? null) as boolean | null}, is_active),
+          updated_at = NOW()
+        WHERE id = ${id} AND msp_id = ${mspId}
+      `);
+      res.json({ ok: true });
+    }
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-scope-creep: update policy failed");
+    res.status(500).json({ error: "Failed to update policy" });
+  }
+});
+
+// ── DELETE /api/msp/scope-creep/policies/:id ───────────────────────────────────
+
+router.delete("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             drift_threshold_pct AS "driftThresholdPct",
+             expansion_threshold_pct AS "expansionThresholdPct",
+             timeline_slip_days AS "timelineSlipDays",
+             drift_weight AS "driftWeight",
+             expansion_weight AS "expansionWeight",
+             timeline_slip_weight AS "timelineSlipWeight",
+             violation_score_threshold AS "violationScoreThreshold",
+             escalation_rules AS "escalationRules",
+             is_active AS "isActive"
+      FROM scope_creep_policies WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    const original = rows.rows[0] as Record<string, any>;
+    if (original.mspId === null || original.mspId === 0) {
+      const result = await db.execute(sql`
+        INSERT INTO scope_creep_policies (
+          msp_id, name, description,
+          drift_threshold_pct, expansion_threshold_pct, timeline_slip_days,
+          drift_weight, expansion_weight, timeline_slip_weight,
+          violation_score_threshold, escalation_rules, is_active
+        ) VALUES (
+          ${mspId}, ${original.name}, ${original.description},
+          ${original.driftThresholdPct}, ${original.expansionThresholdPct}, ${original.timelineSlipDays},
+          ${original.driftWeight}, ${original.expansionWeight}, ${original.timelineSlipWeight},
+          ${original.violationScoreThreshold}, ${JSON.stringify(original.escalationRules)}, false
+        ) RETURNING id
+      `);
+      const newId = (result.rows[0] as { id: number }).id;
+      logger.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created (deactivated)");
+      res.status(201).json({ id: newId, override: true });
+    } else {
+      await db.execute(sql`
+        UPDATE scope_creep_policies SET is_active = false, updated_at = NOW() WHERE id = ${id} AND msp_id = ${mspId}
+      `);
+      res.json({ ok: true });
+    }
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-scope-creep: delete policy failed");
+    res.status(500).json({ error: "Failed to deactivate policy" });
+  }
+});
+
 // ── GET /api/msp/scope-creep/detections ───────────────────────────────────────
 // Open detections for this MSP's customers. Optional ?customerId filter.
 
@@ -209,7 +414,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
         // Fetch full policy to get threshold + escalation_rules
         const policyRows = await db.execute(sql`
           SELECT id, escalation_rules AS "escalationRules", violation_score_threshold AS "violationScoreThreshold"
-          FROM scope_creep_policies WHERE id = ${policyMeta.id} LIMIT 1
+          FROM scope_creep_policies WHERE id = ${policyMeta.id} AND (msp_id = ${mspId} OR msp_id IS NULL) LIMIT 1
         `);
         if (policyRows.rows.length === 0) continue;
         const policy = policyRows.rows[0] as Pick<ScopeCreepPolicy, "id" | "escalationRules" | "violationScoreThreshold">;

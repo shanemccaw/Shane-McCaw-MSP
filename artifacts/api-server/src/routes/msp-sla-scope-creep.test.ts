@@ -441,3 +441,135 @@ describe("GET /api/msp/sla/events/stream", () => {
     // If it timed out, that means the SSE stream opened correctly (no auth rejection)
   });
 });
+
+// ── Multi-tenant Isolation and Template Interception Tests ──────────────────────
+
+describe("MSP SLA & Scope Creep Policies - Isolation and Interception", () => {
+  beforeEach(() => {
+    mockExecute.mockReset();
+  });
+
+  it("POST /api/msp/sla/policies - assigns rule to request mspId", async () => {
+    const { default: router } = await import("./msp-sla.ts");
+    const app = PatternApp(router);
+
+    mockExecute.mockResolvedValueOnce({ rows: [{ id: 42 }] });
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .post("/api/msp/sla/policies")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Custom Policy" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(42);
+    const sqlCall = mockExecute.mock.calls[0][0];
+    expect(sqlCall.values[0]).toBe(7);
+  });
+
+  it("PATCH /api/msp/sla/policies/:id - intercepts platform templates (null mspId)", async () => {
+    const { default: router } = await import("./msp-sla.ts");
+    const app = PatternApp(router);
+
+    mockExecute.mockResolvedValueOnce({
+      rows: [{
+        id: 10,
+        mspId: null,
+        name: "Platform SLA Default",
+        description: "Test description",
+        responseTimeMinutes: 60,
+        warningThresholdPct: 80,
+        resolutionTimeMinutes: 480,
+        resolutionWarningThresholdPct: 80,
+        escalationRules: [],
+        priority: "high",
+        isActive: true,
+      }],
+    });
+    mockExecute.mockResolvedValueOnce({ rows: [{ id: 99 }] });
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .patch("/api/msp/sla/policies/10")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Customized SLA Default", responseTimeMinutes: 45 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.override).toBe(true);
+    expect(res.body.id).toBe(99);
+
+    const insertCall = mockExecute.mock.calls[1][0];
+    expect(insertCall.values[0]).toBe(7);
+    expect(insertCall.values[1]).toBe("Customized SLA Default");
+    expect(insertCall.values[3]).toBe(45);
+  });
+
+  it("PATCH /api/msp/sla/policies/:id - updates in-place for owned rules", async () => {
+    const { default: router } = await import("./msp-sla.ts");
+    const app = PatternApp(router);
+
+    mockExecute.mockResolvedValueOnce({
+      rows: [{
+        id: 10,
+        mspId: 7,
+        name: "My Policy",
+        isActive: true,
+      }],
+    });
+    mockExecute.mockResolvedValueOnce({ rows: [] });
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .patch("/api/msp/sla/policies/10")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Updated Policy" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("PATCH /api/msp/scope-creep/policies/:id - intercepts platform templates and clones", async () => {
+    const { default: router } = await import("./msp-scope-creep.ts");
+    const app = PatternApp(router);
+
+    mockExecute.mockResolvedValueOnce({
+      rows: [{
+        id: 20,
+        mspId: null,
+        name: "Global Scope Creep",
+        driftThresholdPct: 20,
+        expansionThresholdPct: 15,
+        timelineSlipDays: 7,
+        driftWeight: 33,
+        expansionWeight: 33,
+        timelineSlipWeight: 34,
+        violationScoreThreshold: 60,
+        escalationRules: [],
+        isActive: true,
+      }],
+    });
+    mockExecute.mockResolvedValueOnce({ rows: [{ id: 88 }] });
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .patch("/api/msp/scope-creep/policies/20")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "MSP Scope Creep Overridden", violationScoreThreshold: 50 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.override).toBe(true);
+    expect(res.body.id).toBe(88);
+
+    const insertCall = mockExecute.mock.calls[1][0];
+    expect(insertCall.values[0]).toBe(7);
+    expect(insertCall.values[1]).toBe("MSP Scope Creep Overridden");
+    expect(insertCall.values[9]).toBe(50);
+  });
+});
+
+function PatternApp(router: any) {
+  const app = express();
+  app.use(express.json());
+  app.use("/api", router);
+  return app;
+}

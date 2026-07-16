@@ -46,6 +46,185 @@ router.get("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request,
   }
 });
 
+// ── GET /api/msp/sla/policies/:id ──────────────────────────────────────────────
+
+router.get("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             response_time_minutes AS "responseTimeMinutes",
+             warning_threshold_pct AS "warningThresholdPct",
+             resolution_time_minutes AS "resolutionTimeMinutes",
+             resolution_warning_threshold_pct AS "resolutionWarningThresholdPct",
+             escalation_rules AS "escalationRules", priority,
+             is_active AS "isActive",
+             created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM sla_policies
+      WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    res.json({ policy: rows.rows[0] });
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-sla: get policy failed");
+    res.status(500).json({ error: "Failed to get SLA policy" });
+  }
+});
+
+// ── POST /api/msp/sla/policies ─────────────────────────────────────────────────
+
+router.post("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const b = req.body as Record<string, unknown>;
+  try {
+    const result = await db.execute(sql`
+      INSERT INTO sla_policies (
+        msp_id, name, description, response_time_minutes, warning_threshold_pct,
+        resolution_time_minutes, resolution_warning_threshold_pct, escalation_rules, priority, is_active
+      ) VALUES (
+        ${mspId},
+        ${b.name as string},
+        ${(b.description ?? null) as string | null},
+        ${(b.responseTimeMinutes ?? 60) as number},
+        ${(b.warningThresholdPct ?? 75) as number},
+        ${(b.resolutionTimeMinutes ?? 480) as number},
+        ${(b.resolutionWarningThresholdPct ?? 75) as number},
+        ${JSON.stringify(b.escalationRules ?? [])},
+        ${(b.priority ?? "standard") as string},
+        ${(b.isActive ?? true) as boolean}
+      ) RETURNING id
+    `);
+    const newId = (result.rows[0] as { id: number }).id;
+    logger.info({ id: newId, mspId }, "msp-sla: policy created");
+    res.status(201).json({ id: newId });
+  } catch (err) {
+    logger.error({ err, mspId }, "msp-sla: create policy failed");
+    res.status(500).json({ error: "Failed to create SLA policy" });
+  }
+});
+
+// ── PATCH /api/msp/sla/policies/:id ─────────────────────────────────────────────
+
+router.patch("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  const b = req.body as Record<string, unknown>;
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             response_time_minutes AS "responseTimeMinutes",
+             warning_threshold_pct AS "warningThresholdPct",
+             resolution_time_minutes AS "resolutionTimeMinutes",
+             resolution_warning_threshold_pct AS "resolutionWarningThresholdPct",
+             escalation_rules AS "escalationRules", priority,
+             is_active AS "isActive"
+      FROM sla_policies WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    const original = rows.rows[0] as Record<string, any>;
+    if (original.mspId === null || original.mspId === 0) {
+      const name = b.name !== undefined ? b.name : original.name;
+      const description = b.description !== undefined ? b.description : original.description;
+      const responseTimeMinutes = b.responseTimeMinutes !== undefined ? b.responseTimeMinutes : original.responseTimeMinutes;
+      const warningThresholdPct = b.warningThresholdPct !== undefined ? b.warningThresholdPct : original.warningThresholdPct;
+      const resolutionTimeMinutes = b.resolutionTimeMinutes !== undefined ? b.resolutionTimeMinutes : original.resolutionTimeMinutes;
+      const resolutionWarningThresholdPct = b.resolutionWarningThresholdPct !== undefined ? b.resolutionWarningThresholdPct : original.resolutionWarningThresholdPct;
+      const escalationRules = b.escalationRules !== undefined ? JSON.stringify(b.escalationRules) : JSON.stringify(original.escalationRules);
+      const priority = b.priority !== undefined ? b.priority : original.priority;
+      const isActive = b.isActive !== undefined ? b.isActive : original.isActive;
+
+      const result = await db.execute(sql`
+        INSERT INTO sla_policies (
+          msp_id, name, description, response_time_minutes, warning_threshold_pct,
+          resolution_time_minutes, resolution_warning_threshold_pct, escalation_rules, priority, is_active
+        ) VALUES (
+          ${mspId}, ${name}, ${description}, ${responseTimeMinutes}, ${warningThresholdPct},
+          ${resolutionTimeMinutes}, ${resolutionWarningThresholdPct}, ${escalationRules}, ${priority}, ${isActive}
+        ) RETURNING id
+      `);
+      const newId = (result.rows[0] as { id: number }).id;
+      logger.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created");
+      res.status(201).json({ id: newId, override: true });
+    } else {
+      await db.execute(sql`
+        UPDATE sla_policies SET
+          name = COALESCE(${(b.name ?? null) as string | null}, name),
+          description = COALESCE(${(b.description ?? null) as string | null}, description),
+          response_time_minutes = COALESCE(${(b.responseTimeMinutes ?? null) as number | null}, response_time_minutes),
+          warning_threshold_pct = COALESCE(${(b.warningThresholdPct ?? null) as number | null}, warning_threshold_pct),
+          resolution_time_minutes = COALESCE(${(b.resolutionTimeMinutes ?? null) as number | null}, resolution_time_minutes),
+          resolution_warning_threshold_pct = COALESCE(${(b.resolutionWarningThresholdPct ?? null) as number | null}, resolution_warning_threshold_pct),
+          escalation_rules = COALESCE(${b.escalationRules != null ? JSON.stringify(b.escalationRules) : null}, escalation_rules::text)::jsonb,
+          priority = COALESCE(${(b.priority ?? null) as string | null}, priority),
+          is_active = COALESCE(${(b.isActive ?? null) as boolean | null}, is_active),
+          updated_at = NOW()
+        WHERE id = ${id} AND msp_id = ${mspId}
+      `);
+      res.json({ ok: true });
+    }
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-sla: update policy failed");
+    res.status(500).json({ error: "Failed to update SLA policy" });
+  }
+});
+
+// ── DELETE /api/msp/sla/policies/:id ───────────────────────────────────────────
+
+router.delete("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  const mspId = req.user!.mspId;
+  if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
+  const id = Number(req.params.id);
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, msp_id AS "mspId", name, description,
+             response_time_minutes AS "responseTimeMinutes",
+             warning_threshold_pct AS "warningThresholdPct",
+             resolution_time_minutes AS "resolutionTimeMinutes",
+             resolution_warning_threshold_pct AS "resolutionWarningThresholdPct",
+             escalation_rules AS "escalationRules", priority,
+             is_active AS "isActive"
+      FROM sla_policies WHERE id = ${id} AND (msp_id = ${mspId} OR msp_id IS NULL)
+    `);
+    if (rows.rows.length === 0) {
+      res.status(404).json({ error: "Policy not found" });
+      return;
+    }
+    const original = rows.rows[0] as Record<string, any>;
+    if (original.mspId === null || original.mspId === 0) {
+      const result = await db.execute(sql`
+        INSERT INTO sla_policies (
+          msp_id, name, description, response_time_minutes, warning_threshold_pct,
+          resolution_time_minutes, resolution_warning_threshold_pct, escalation_rules, priority, is_active
+        ) VALUES (
+          ${mspId}, ${original.name}, ${original.description}, ${original.responseTimeMinutes}, ${original.warningThresholdPct},
+          ${original.resolutionTimeMinutes}, ${original.resolutionWarningThresholdPct}, ${JSON.stringify(original.escalationRules)}, ${original.priority}, false
+        ) RETURNING id
+      `);
+      const newId = (result.rows[0] as { id: number }).id;
+      logger.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created (deactivated)");
+      res.status(201).json({ id: newId, override: true });
+    } else {
+      await db.execute(sql`
+        UPDATE sla_policies SET is_active = false, updated_at = NOW() WHERE id = ${id} AND msp_id = ${mspId}
+      `);
+      res.json({ ok: true });
+    }
+  } catch (err) {
+    logger.error({ err, mspId, id }, "msp-sla: delete policy failed");
+    res.status(500).json({ error: "Failed to deactivate SLA policy" });
+  }
+});
+
 // ── GET /api/msp/sla/timers ────────────────────────────────────────────────────
 // Active timers for this MSP's customers. Optional ?customerId and ?status filters.
 
