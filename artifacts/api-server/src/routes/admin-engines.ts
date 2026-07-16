@@ -1,10 +1,11 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable,mspUsersTable, savedSqlScripts } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable } from "@workspace/db";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { executeMonitorCheck } from "../lib/monitor-executor";
 import { logger } from "../lib/logger";
 import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
@@ -73,7 +74,7 @@ router.get("/admin/portfolio-risk", requireAdmin, async (_req: Request, res: Res
 
 router.get("/admin/msps/:mspId/portfolio-risk", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const mspId = parseInt(req.params.mspId, 10);
+    const mspId = parseInt(String(req.params.mspId), 10);
     if (isNaN(mspId)) {
       res.status(400).json({ error: "Invalid mspId" });
       return;
@@ -122,6 +123,141 @@ router.get("/admin/testbeds", requireAdmin, async (_req: Request, res: Response)
   } catch (err) {
     logger.error({ err }, "admin-engines: failed to list testbeds");
     res.status(500).json({ error: "Failed to list testbeds" });
+  }
+});
+
+// ── Testbed Override Injection ──────────────────────────────────────────────
+
+router.post("/admin/simulator/overrides", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const parsed = insertTenantEngineOverrideSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    const { testbedCustomerId } = parsed.data;
+    const [testbedCustomer] = await db
+      .select()
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+
+    if (!testbedCustomer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const [created] = await db
+      .insert(tenantEngineOverridesTable)
+      .values(parsed.data)
+      .returning();
+
+    return res.json(created);
+  } catch (err) {
+    logger.error({ err }, "admin-engines: failed to create simulator override");
+    return res.status(500).json({ error: "Failed to create simulator override" });
+  }
+});
+
+router.get("/admin/simulator/overrides", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const testbedCustomerIdStr = typeof req.query.testbedCustomerId === "string" ? req.query.testbedCustomerId : undefined;
+    if (!testbedCustomerIdStr) {
+      return res.status(400).json({ error: "Missing testbedCustomerId" });
+    }
+    const testbedCustomerId = Number(testbedCustomerIdStr);
+    if (isNaN(testbedCustomerId)) {
+      return res.status(400).json({ error: "Invalid testbedCustomerId" });
+    }
+
+    const rows = await db
+      .select()
+      .from(tenantEngineOverridesTable)
+      .where(eq(tenantEngineOverridesTable.testbedCustomerId, testbedCustomerId))
+      .orderBy(desc(tenantEngineOverridesTable.createdAt));
+
+    const now = new Date();
+    const overrides = rows.map(row => {
+      const isActive = row.expiresAt === null || new Date(row.expiresAt) > now;
+      return {
+        ...row,
+        isActive,
+      };
+    });
+
+    return res.json({ overrides });
+  } catch (err) {
+    logger.error({ err }, "admin-engines: failed to list simulator overrides");
+    return res.status(500).json({ error: "Failed to list simulator overrides" });
+  }
+});
+
+router.delete("/admin/simulator/overrides/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(String(req.params.id));
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    const result = await db
+      .delete(tenantEngineOverridesTable)
+      .where(eq(tenantEngineOverridesTable.id, id));
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Override not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "admin-engines: failed to delete simulator override");
+    return res.status(500).json({ error: "Failed to delete simulator override" });
+  }
+});
+
+router.post("/admin/simulator/monitor-checks/:key/run-now", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { testbedCustomerId } = req.body ?? {};
+    if (!testbedCustomerId) {
+      return res.status(400).json({ error: "Missing testbedCustomerId" });
+    }
+    const [customer] = await db
+      .select({
+        id: mspCustomersTable.id,
+        isTestbed: mspCustomersTable.isTestbed,
+        tenantId: mspCustomersTable.tenantId,
+      })
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+
+    if (!customer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+    if (!customer.tenantId) {
+      return res.status(400).json({ error: "Customer has no tenantId set" });
+    }
+
+    const key = String(req.params.key);
+    const [check] = await db
+      .select()
+      .from(monitorChecksTable)
+      .where(eq(monitorChecksTable.key, key))
+      .limit(1);
+
+    if (!check) {
+      return res.status(404).json({ error: "Monitor check not found" });
+    }
+
+    const checkResult = await executeMonitorCheck({
+      check,
+      tenantId: customer.tenantId,
+      triggerId: randomUUID(),
+      skipIdempotency: true,
+    });
+
+    return res.json(checkResult);
+  } catch (err) {
+    logger.error({ err }, "admin-engines: failed to run monitor check now");
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

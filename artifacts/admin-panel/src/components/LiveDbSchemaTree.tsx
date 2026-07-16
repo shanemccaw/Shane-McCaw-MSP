@@ -27,7 +27,7 @@ export function LiveDbSchemaTree() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/engines/simulator/db-schema");
+      const res = await fetch("/api/simulator/db-schema");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load schema");
       setTables(data.tables || []);
