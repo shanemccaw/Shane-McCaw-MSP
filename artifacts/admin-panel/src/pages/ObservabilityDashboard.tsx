@@ -104,7 +104,21 @@ export default function ObservabilityDashboard() {
     );
   }
 
-  const h = health!;
+  if (!health) {
+    return (
+      <div className="flex items-center justify-center h-64 text-red-400 text-sm">
+        Failed to load observability data.
+      </div>
+    );
+  }
+
+  const h: ServiceHealth = {
+    jobQueue: health.jobQueue || { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 },
+    dlq: health.dlq || { unresolved: 0, resolvedLast7d: 0 },
+    webhooks: health.webhooks || { succeeded: 0, failed: 0, pending: 0 },
+    portalWorkflows: health.portalWorkflows || { running: 0, completed: 0, failed: 0 }
+  };
+
   const dlqHealthy = h.dlq.unresolved === 0;
   const jobHealthy = h.jobQueue.failed === 0;
   const webhookHealthy = h.webhooks.failed === 0;
