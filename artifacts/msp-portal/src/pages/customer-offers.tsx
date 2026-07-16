@@ -85,6 +85,7 @@ type CheckoutOutcome =
   | { outcome: "checkout_required"; checkoutUrl: string; trialPeriodDays: number | null }
   | { outcome: "free_activated"; message: string }
   | { outcome: "sow_created"; sowId: string; shareUrl: string; message: string }
+  | { outcome: "payment_processed"; transactionId?: string; processedAt?: string; message?: string }
   | { error: string; code?: string; requiredVersion?: string };
 
 interface AgreementGateState {
@@ -305,6 +306,101 @@ function RejectDialog({ open, offerTitle, onConfirm, onCancel, submitting }: Rej
   );
 }
 
+// ── MSP Consent Dialog ────────────────────────────────────────────────────────
+
+interface MspConsentDialogProps {
+  open: boolean;
+  offerTitle: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  submitting: boolean;
+}
+
+function MspConsentDialog({ open, offerTitle, onConfirm, onCancel, submitting }: MspConsentDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <CreditCard className="size-5 text-primary shrink-0" />
+            <DialogTitle>Managed Service Billing</DialogTitle>
+          </div>
+          <DialogDescription>
+            You are about to accept the offer "{offerTitle}".
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2 text-sm text-muted-foreground">
+          Any charges associated with this offer will be billed directly through your Managed Service Provider (MSP). You will not be charged directly here.
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={submitting}>
+            {submitting && <Loader2 className="size-4 animate-spin mr-2" />}
+            I Agree
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Receipt Dialog ────────────────────────────────────────────────────────────
+
+interface ReceiptDialogProps {
+  open: boolean;
+  state: { title: string; amountCents: number; date: string; transactionId: string } | null;
+  onClose: () => void;
+}
+
+function ReceiptDialog({ open, state, onClose }: ReceiptDialogProps) {
+  if (!state) return null;
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 className="size-5 text-green-500 shrink-0" />
+            <DialogTitle>Payment Processed</DialogTitle>
+          </div>
+          <DialogDescription>
+            Your payment was successfully processed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Service:</span>
+            <span className="font-medium text-right max-w-[200px] truncate" title={state.title}>{state.title}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Amount:</span>
+            <span className="font-medium">{formatCents(state.amountCents)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Date:</span>
+            <span className="font-medium">{new Date(state.date).toLocaleDateString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Transaction ID:</span>
+            <span className="font-medium text-right break-all">{state.transactionId}</span>
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
+            window.location.href = "/customer/billing";
+          }}>
+            View Receipts
+          </Button>
+          <Button className="w-full sm:w-auto" onClick={onClose}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Offer card (sent / pending) ───────────────────────────────────────────────
 
 interface SentOfferCardProps {
@@ -433,13 +529,15 @@ function HistoryCard({ offer }: { offer: CustomerOffer }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerOffersPage() {
-  const { fetchWithAuth, accessToken } = useAuth();
+  const { user, fetchWithAuth, accessToken } = useAuth();
   const [offers, setOffers] = useState<CustomerOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<CustomerOffer | null>(null);
   const [agreementGateState, setAgreementGateState] = useState<AgreementGateState | null>(null);
+  const [consentModal, setConsentModal] = useState<{ isOpen: boolean; offer: CustomerOffer | null }>({ isOpen: false, offer: null });
+  const [receiptModal, setReceiptModal] = useState<{ isOpen: boolean; title: string; amountCents: number; date: string; transactionId: string } | null>(null);
   const [agreementLoading, setAgreementLoading] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
@@ -511,7 +609,15 @@ export default function CustomerOffersPage() {
       return;
     }
 
-    // Paid offer — fetch the current agreement and show the clickwrap gate
+    const isMspUser = (user as any)?.role === "CustomerUser" || user?.mspRole === "CustomerUser" || (user as any)?.isManagedTenant;
+    if (isMspUser) {
+      setConsentModal({ isOpen: true, offer });
+    } else {
+      await showAgreementGate(offer);
+    }
+  }
+
+  async function showAgreementGate(offer: CustomerOffer) {
     setAgreementLoading(true);
     try {
       const res = await fetchWithAuth("/api/platform/agreement/current");
@@ -582,6 +688,18 @@ export default function CustomerOffersPage() {
           }, 1500);
           return;
         }
+
+        if (data.outcome === "payment_processed") {
+          setReceiptModal({
+            isOpen: true,
+            title: offer.title,
+            amountCents: offer.adjustedPriceCents,
+            date: data.processedAt || new Date().toISOString(),
+            transactionId: data.transactionId || "N/A"
+          });
+          await loadOffers(true);
+          return;
+        }
       }
 
       toast.success("Offer accepted — your service team has been notified.");
@@ -591,6 +709,7 @@ export default function CustomerOffersPage() {
     } finally {
       setSubmitting(false);
       setAgreementGateState(null);
+      setConsentModal({ isOpen: false, offer: null });
     }
   }
 
@@ -712,6 +831,26 @@ export default function CustomerOffersPage() {
         onConfirm={(reason) => rejectTarget && void handleReject(rejectTarget, reason)}
         onCancel={() => setRejectTarget(null)}
         submitting={submitting}
+      />
+
+      {/* MSP Consent Dialog */}
+      <MspConsentDialog
+        open={consentModal.isOpen}
+        offerTitle={consentModal.offer?.title ?? ""}
+        onConfirm={() => {
+          if (consentModal.offer) {
+            void doCheckout(consentModal.offer, null);
+          }
+        }}
+        onCancel={() => setConsentModal({ isOpen: false, offer: null })}
+        submitting={submitting}
+      />
+
+      {/* Receipt Dialog */}
+      <ReceiptDialog
+        open={receiptModal?.isOpen ?? false}
+        state={receiptModal}
+        onClose={() => setReceiptModal(null)}
       />
     </AppShell>
   );
