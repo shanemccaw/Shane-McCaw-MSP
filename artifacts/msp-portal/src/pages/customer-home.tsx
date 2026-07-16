@@ -24,6 +24,7 @@ import {
   MessageSquare,
   ShieldCheck,
   Zap,
+  Loader2,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -61,6 +62,8 @@ interface Report {
   period: string | null;
   createdAt: string | null;
 }
+import AssessmentModulePanel from "@/components/assessment-modules/AssessmentModulePanel";
+import { type AssessmentResultsPayload } from "@/components/assessment-modules/module-registry";
 
 interface DashboardData {
   projects: EnrichedProject[];
@@ -69,6 +72,9 @@ interface DashboardData {
   reports: Report[];
   unreadNotifications: number;
   unreadMessages: number;
+  telemetryStatus?: "in_progress" | "completed";
+  type_attributes?: string[];
+  results?: AssessmentResultsPayload;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -219,8 +225,41 @@ export default function CustomerHomePage() {
           </Card>
         </div>
 
+        {/* Telemetry & Assessment Modules */}
+        {data?.telemetryStatus === "in_progress" && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-4">
+              <Loader2 className="size-8 text-primary animate-spin" />
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Analysis In Progress</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                  We are actively generating telemetry and mapping your Microsoft 365 environment.
+                  This process analyzes signals across identity, devices, and data.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {data?.telemetryStatus === "completed" && data?.type_attributes && data.type_attributes.length > 0 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-foreground">Assessment Results</h3>
+            </div>
+            {data.type_attributes.map((moduleKey) => (
+              <AssessmentModulePanel
+                key={moduleKey}
+                moduleKey={moduleKey}
+                serviceSlug="dashboard"
+                results={data.results ?? null}
+                loading={false}
+                error={null}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Active projects */}
-        <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">Active Projects</h3>
             <Link href="/customer-documents">

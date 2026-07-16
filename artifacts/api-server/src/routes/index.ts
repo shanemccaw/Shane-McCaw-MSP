@@ -133,6 +133,7 @@ router.use(publicServicesRouter);
 router.use(publicEngagementProjectsRouter);
 router.use(publicServicePageTriggersRouter);
 router.use(adminClientsRouter);
+router.use(portalCustomerEnginesRouter);
 router.use(portalRouter);
 router.use(auditLogsRouter);
 router.use(adminSharepointRouter);

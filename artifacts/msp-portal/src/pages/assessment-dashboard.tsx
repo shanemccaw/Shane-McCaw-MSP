@@ -1,4 +1,4 @@
-﻿/**
+/**
  * assessment-dashboard.tsx
  *
  * Assessment Results Dashboard — msp-portal customer-facing page.
@@ -30,7 +30,8 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Download, RefreshCw } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { AlertCircle, Download, RefreshCw, Loader2 } from "lucide-react";
 import AssessmentModulePanel from "@/components/assessment-modules/AssessmentModulePanel";
 import { ASSESSMENT_MODULE_DEFS } from "@/components/assessment-modules/module-registry";
 import type { AssessmentResultsPayload } from "@/components/assessment-modules/module-registry";
@@ -139,6 +140,21 @@ export default function AssessmentDashboardPage() {
       ? (rawModules as string[])
       : DEFAULT_MODULE_ORDER;
 
+  // ── Fetch telemetry state from dashboard ──────────────────────────────────
+  const [telemetryStatus, setTelemetryStatus] = useState<"in_progress" | "completed" | null>(null);
+  
+  useEffect(() => {
+    let mounted = true;
+    fetchWithAuth("/api/portal/dashboard")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted) setTelemetryStatus(data.telemetryStatus);
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, [fetchWithAuth]);
+
   const title = serviceLoading ? "Assessment Results" : (service?.name ?? serviceSlug ?? "Assessment Results");
 
   return (
@@ -213,8 +229,24 @@ export default function AssessmentDashboardPage() {
           </div>
         )}
 
+        {/* ── Telemetry Status ── */}
+        {telemetryStatus === "in_progress" && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-4">
+              <Loader2 className="size-8 text-primary animate-spin" />
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Analysis In Progress</h3>
+                <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                  We are actively generating telemetry and mapping your Microsoft 365 environment.
+                  This process analyzes signals across identity, devices, and data.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ── Module grid ── */}
-        {(!serviceError) && (
+        {(!serviceError && telemetryStatus !== "in_progress") && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {moduleKeys.map((key) => (
               <AssessmentModulePanel

@@ -21,8 +21,8 @@ import { requireRole } from "../middlewares/requireAuth";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
-import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable } from "@workspace/db";
+import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -263,17 +263,88 @@ router.get(
         .select({
           engineKey: tenantEngineSnapshotsTable.engineKey,
           score: tenantEngineSnapshotsTable.score,
+          breakdown: tenantEngineSnapshotsTable.breakdown,
+          runId: tenantEngineSnapshotsTable.runId,
+          capturedAt: tenantEngineSnapshotsTable.capturedAt,
         })
         .from(tenantEngineSnapshotsTable)
         .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
         .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
 
       const scores: Record<string, number> = {};
+      const pillars: Record<string, any> = {};
+      let compositeScore = 0;
+      let compositeCount = 0;
+      let runId: string | null = null;
+      let generatedAt: string | null = null;
+
       for (const snap of snapshots) {
         if (scores[snap.engineKey] === undefined && snap.score !== null) {
           scores[snap.engineKey] = snap.score;
+          compositeScore += snap.score;
+          compositeCount++;
+          
+          if (!runId && snap.runId) runId = snap.runId;
+          if (!generatedAt && snap.capturedAt) generatedAt = snap.capturedAt.toISOString();
+
+          // Extract findings/recommendations from breakdown
+          const breakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
+          const findings: string[] = [];
+          const recommendations: string[] = [];
+          
+          for (const item of breakdown) {
+            if (typeof item === "object" && item !== null) {
+              const b = item as Record<string, any>;
+              if (b.finding) findings.push(String(b.finding));
+              else if (b.message) findings.push(String(b.message));
+              else if (b.label) findings.push(String(b.label));
+
+              if (b.recommendation) recommendations.push(String(b.recommendation));
+              else if (b.action) recommendations.push(String(b.action));
+            }
+          }
+
+          pillars[snap.engineKey] = {
+            score: snap.score,
+            status: "complete",
+            findings,
+            recommendations,
+          };
         }
       }
+
+      // Determine type_attributes / modules to mount
+      const activeServices = await db
+        .select({ typeAttributes: servicesTable.typeAttributes })
+        .from(clientServicesTable)
+        .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+        .where(
+          and(
+            eq(clientServicesTable.clientUserId, req.user!.id),
+            eq(clientServicesTable.status, "active")
+          )
+        );
+
+      const dashboardModules = new Set<string>();
+      const enabledModules = new Set<string>();
+      
+      for (const service of activeServices) {
+        const attrs = service.typeAttributes as Record<string, unknown> | null;
+        if (attrs && Array.isArray(attrs.dashboardModules)) {
+          for (const mod of attrs.dashboardModules) {
+            if (typeof mod === "string") dashboardModules.add(mod);
+          }
+        }
+        if (attrs && Array.isArray(attrs.enabledModules)) {
+          for (const mod of attrs.enabledModules) {
+            if (typeof mod === "string") enabledModules.add(mod);
+          }
+        }
+      }
+      
+      const type_attributes = dashboardModules.size > 0 
+        ? Array.from(dashboardModules) 
+        : (enabledModules.size > 0 ? Array.from(enabledModules) : ["priority-health", "security", "copilot", "cost"]);
 
       const [customer] = await db
         .select({ status: mspCustomersTable.status })
@@ -282,6 +353,73 @@ router.get(
         .limit(1);
 
       const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
+
+      // ── Merge existing dashboard fields for customer-home.tsx ──
+      const userId = req.user!.id;
+      const projects = await db.select().from(projectsTable)
+        .where(and(eq(projectsTable.clientUserId, userId), eq(projectsTable.status, "active")))
+        .orderBy(desc(projectsTable.updatedAt)).limit(5);
+
+      type EnrichedProject = typeof projects[0] & {
+        currentTask: { stepNumber: number; totalSteps: number; title: string } | null;
+      };
+      let enrichedProjects: EnrichedProject[];
+
+      if (projects.length > 0) {
+        const projectIds = projects.map(p => p.id);
+        const allTasks = await db.select({
+          id: kanbanTasksTable.id,
+          title: kanbanTasksTable.title,
+          order: kanbanTasksTable.order,
+          column: kanbanTasksTable.column,
+          projectId: kanbanTasksTable.projectId,
+        }).from(kanbanTasksTable)
+          .where(inArray(kanbanTasksTable.projectId, projectIds))
+          .orderBy(asc(kanbanTasksTable.order));
+
+        const tasksByProject = new Map<number, typeof allTasks>();
+        for (const task of allTasks) {
+          if (!task.projectId) continue;
+          const arr = tasksByProject.get(task.projectId) ?? [];
+          arr.push(task);
+          tasksByProject.set(task.projectId, arr);
+        }
+
+        enrichedProjects = projects.map(p => {
+          const tasks = tasksByProject.get(p.id) ?? [];
+          const inProgressTask = tasks.find(t => t.column === "in_progress");
+          if (!inProgressTask) return { ...p, currentTask: null };
+          const stepNumber = tasks.indexOf(inProgressTask) + 1;
+          return {
+            ...p,
+            currentTask: { stepNumber, totalSteps: tasks.length, title: inProgressTask.title },
+          };
+        });
+      } else {
+        enrichedProjects = [];
+      }
+
+      const clientServicesResult = await db.select({
+        cs: clientServicesTable,
+        service: servicesTable,
+      }).from(clientServicesTable)
+        .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+        .where(and(eq(clientServicesTable.clientUserId, userId), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
+        .orderBy(desc(clientServicesTable.purchasedAt)).limit(6);
+
+      const invoices = await db.select().from(invoicesTable)
+        .where(eq(invoicesTable.clientUserId, userId))
+        .orderBy(desc(invoicesTable.createdAt)).limit(5);
+
+      const reports = await db.select().from(reportsTable)
+        .where(eq(reportsTable.clientUserId, userId))
+        .orderBy(desc(reportsTable.createdAt)).limit(3);
+
+      const [{ unread }] = await db.select({ unread: count() }).from(notificationsTable)
+        .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.read, false)));
+
+      const [{ unreadMessages }] = await db.select({ unreadMessages: count() }).from(messagesTable)
+        .where(and(eq(messagesTable.clientUserId, userId), eq(messagesTable.readByClient, false)));
 
       res.json({
         scores: {
@@ -294,6 +432,23 @@ router.get(
           ...scores
         },
         telemetryStatus,
+        type_attributes,
+        results: {
+          status: telemetryStatus === "in_progress" ? "running" : "complete",
+          runId,
+          generatedAt,
+          summary: {
+            compositeScore: compositeCount > 0 ? Math.round(compositeScore / compositeCount) : null,
+            priorityItems: [],
+          },
+          pillars
+        },
+        projects: enrichedProjects,
+        clientServices: clientServicesResult,
+        invoices,
+        reports,
+        unreadNotifications: unread,
+        unreadMessages
       });
     } catch (err) {
       logger.error({ err, customerId }, "portal-customer-engines: dashboard failed");
