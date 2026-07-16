@@ -6,6 +6,7 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
+import { resolveCatalogPricing } from "../lib/catalog-pricing";
 import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig";
 
 const UPLOADS_BASE = process.env.UPLOADS_DIR
@@ -43,7 +44,13 @@ const router: IRouter = Router();
 router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const services = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder, servicesTable.createdAt);
-    res.json(services);
+    res.json(services.map(s => ({
+      ...s,
+      ...resolveCatalogPricing({
+        priceCents: s.priceCents ?? 0,
+        internalCostCents: s.internalCostCents,
+      })
+    })));
   } catch {
     res.status(500).json({ error: "Failed to fetch services" });
   }
@@ -55,7 +62,13 @@ router.get("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, id)).limit(1);
     if (!service) { res.status(404).json({ error: "Service not found" }); return; }
-    res.json(service);
+    res.json({
+      ...service,
+      ...resolveCatalogPricing({
+        priceCents: service.priceCents ?? 0,
+        internalCostCents: service.internalCostCents,
+      })
+    });
   } catch {
     res.status(500).json({ error: "Failed to fetch service" });
   }
@@ -76,6 +89,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       fulfillmentTypeKey, triggeringSignalKeys,
       serviceClass, deliveryType, fulfillmentType,
       typeAttributes,
+      priceCents, internalCostCents,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -139,12 +153,20 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         deliveryType: resolvedDeliveryType,
         ...(resolvedFulfillmentType !== undefined ? { fulfillmentType: resolvedFulfillmentType } : {}),
         typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
+        priceCents: priceCents != null ? Number(priceCents) : null,
+        internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
       .returning();
     if (!updated) { res.status(404).json({ error: "Service not found" }); return; }
-    res.json(updated);
+    res.json({
+      ...updated,
+      ...resolveCatalogPricing({
+        priceCents: updated.priceCents ?? 0,
+        internalCostCents: updated.internalCostCents,
+      })
+    });
   } catch (err: unknown) {
     req.log?.error(err);
     res.status(500).json({ error: "Failed to update service" });
@@ -154,7 +176,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey, priceCents, internalCostCents } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -199,9 +221,17 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         typeAttributes: (typeAttributes != null && typeof typeAttributes === "object" && !Array.isArray(typeAttributes))
           ? (typeAttributes as Record<string, unknown>)
           : undefined,
+        priceCents: priceCents != null ? Number(priceCents) : null,
+        internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
       })
       .returning();
-    res.status(201).json(created);
+    res.status(201).json({
+      ...created,
+      ...resolveCatalogPricing({
+        priceCents: created.priceCents ?? 0,
+        internalCostCents: created.internalCostCents,
+      })
+    });
   } catch (err: unknown) {
     req.log?.error(err);
     const e = err as { code?: string; cause?: { code?: string }; message?: string };

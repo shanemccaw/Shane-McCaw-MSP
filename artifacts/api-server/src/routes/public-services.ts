@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
+import { resolveCatalogPricing } from "../lib/catalog-pricing";
 
 const router: IRouter = Router();
 
@@ -66,6 +67,10 @@ router.get("/services", async (req: Request, res: Response) => {
           hasPdf: s.overviewPdfKey != null,
           workflowTasks: wfSteps,
           workflowSummary: wfSteps.map(({ title, description }) => ({ title, description })),
+          ...resolveCatalogPricing({
+            priceCents: s.priceCents ?? 0,
+            internalCostCents: s.internalCostCents,
+          }),
         };
       })
     );
@@ -216,6 +221,8 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
         fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
         isPublic: servicesTable.isPublic,
         isFreeOffering: servicesTable.isFreeOffering,
+        priceCents: servicesTable.priceCents,
+        internalCostCents: servicesTable.internalCostCents,
       })
       .from(servicesTable)
       .where(
@@ -232,6 +239,10 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
       return {
         ...r,
         isFree,
+        ...resolveCatalogPricing({
+          priceCents: r.priceCents ?? 0,
+          internalCostCents: r.internalCostCents,
+        }),
       };
     });
 
