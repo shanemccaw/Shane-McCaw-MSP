@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable } from "@workspace/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
 import fs from "fs";
@@ -24,9 +24,9 @@ function storePdfToDisk(serviceId: number, pdfBuffer: Buffer): string {
   if (!fs.existsSync(SERVICE_PDF_DIR)) {
     fs.mkdirSync(SERVICE_PDF_DIR, { recursive: true });
   }
-  const filename = `${serviceId}.pdf`;
-  const filePath = path.join(SERVICE_PDF_DIR, filename);
-  fs.writeFileSync(filePath, pdfBuffer);
+  const filename = `service-${serviceId}-${Date.now()}.pdf`;
+  const fullPath = path.join(SERVICE_PDF_DIR, filename);
+  fs.writeFileSync(fullPath, pdfBuffer);
   return `service-pdfs/${filename}`;
 }
 
@@ -43,7 +43,7 @@ const router: IRouter = Router();
 
 router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const services = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder, servicesTable.createdAt);
+    const services = await db.select().from(servicesTable).orderBy(asc(servicesTable.sortOrder), asc(servicesTable.createdAt));
     res.json(services.map(s => ({
       ...s,
       ...resolveCatalogPricing({
@@ -51,7 +51,8 @@ router.get("/admin/services", requireAdmin, async (_req: Request, res: Response)
         internalCostCents: s.internalCostCents,
       })
     })));
-  } catch {
+  } catch (err) {
+    console.error("Error fetching services:", err);
     res.status(500).json({ error: "Failed to fetch services" });
   }
 });
