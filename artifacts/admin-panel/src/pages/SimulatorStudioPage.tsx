@@ -22,7 +22,7 @@ import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
 import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
 
-export default function SimulatorStudioPage() {
+export function SimulatorStudioPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
