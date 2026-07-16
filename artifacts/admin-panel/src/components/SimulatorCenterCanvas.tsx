@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 
 interface Msp {
   id: number;
@@ -46,7 +47,7 @@ export function SimulatorCenterCanvas() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds">("sql");
+  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides">("sql");
 
   // SQL Editor state
   const [query, setQuery] = useState("SELECT * FROM msps;\n-- Try running any SQL command here!");
@@ -251,6 +252,16 @@ export function SimulatorCenterCanvas() {
             }`}
           >
             Testbeds Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab("overrides")}
+            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
+              activeTab === "overrides"
+                ? "bg-slate-900 text-indigo-400 border border-slate-800"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Overrides Engine
           </button>
         </div>
       </div>
@@ -577,6 +588,9 @@ export function SimulatorCenterCanvas() {
               </div>
             )}
           </div>
+        {/* Tab 3: Overrides Panel */}
+        {activeTab === "overrides" && (
+          <SimulatorOverridesPanel />
         )}
       </div>
     </div>
