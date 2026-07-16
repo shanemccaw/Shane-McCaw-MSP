@@ -263,7 +263,7 @@ describe("POST /simulator/fire-event", () => {
     vi.spyOn(db, "select").mockReturnValue({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ id: 10, isTestbed: true }]),
+          limit: vi.fn().mockResolvedValue([{ id: 10, isTestbed: true, mspId: 10 }]),
         }),
       }),
     } as any);
