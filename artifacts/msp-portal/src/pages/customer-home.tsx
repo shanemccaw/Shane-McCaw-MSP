@@ -260,6 +260,7 @@ export default function CustomerHomePage() {
         )}
 
         {/* Active projects */}
+        <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">Active Projects</h3>
             <Link href="/customer-documents">
