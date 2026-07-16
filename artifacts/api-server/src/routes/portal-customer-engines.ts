@@ -401,7 +401,11 @@ router.get(
 
       const clientServicesResult = await db.select({
         cs: clientServicesTable,
-        service: servicesTable,
+        service: {
+          name: servicesTable.name,
+          billingType: servicesTable.billingType,
+          price: servicesTable.price,
+        },
       }).from(clientServicesTable)
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
         .where(and(eq(clientServicesTable.clientUserId, userId), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
