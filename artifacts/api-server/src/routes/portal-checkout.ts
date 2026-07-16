@@ -277,6 +277,21 @@ router.post(
     const actorEmail = (req.user as { email?: string } | undefined)?.email ?? "";
     const mspId = offerRow.mspId;
 
+    // Fetch current agreement for legal snapshot logging
+    const [currentAgreement] = await db
+      .select({
+        id: platformAgreementsTable.id,
+        version: platformAgreementsTable.version,
+        title: platformAgreementsTable.title,
+        body: platformAgreementsTable.body,
+      })
+      .from(platformAgreementsTable)
+      .where(eq(platformAgreementsTable.isCurrentVersion, true))
+      .limit(1);
+
+    const legalAgreementText = currentAgreement?.body ?? "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
+    const agreementVersionStr = currentAgreement?.version ?? "1.0";
+
     // ── Branch 1: price === 0 (free assessment) ───────────────────────────────
     if (amountCents === 0 && allowFreeCheckout) {
       const ip = getClientIp(req);
@@ -366,6 +381,8 @@ router.post(
             serviceName,
             customerEmail: actorEmail,
             serviceClass: "free",
+            legalAgreementText,
+            agreementVersion: agreementVersionStr,
           },
         });
       } else {
@@ -385,16 +402,6 @@ router.post(
       checkboxConfirmed?: boolean;
       acceptedAt?: string;
     };
-
-    const [currentAgreement] = await db
-      .select({
-        id: platformAgreementsTable.id,
-        version: platformAgreementsTable.version,
-        title: platformAgreementsTable.title,
-      })
-      .from(platformAgreementsTable)
-      .where(eq(platformAgreementsTable.isCurrentVersion, true))
-      .limit(1);
 
     if (currentAgreement) {
       if (body.checkboxConfirmed !== true) {
@@ -684,6 +691,8 @@ router.post(
             serviceName,
             serviceClass,
             customerEmail: actorEmail,
+            legalAgreementText,
+            agreementVersion: agreementVersionStr,
           },
         });
       }
@@ -848,6 +857,18 @@ async function handleCheckoutCompleted(
   });
   const wholesaleChargedCents = pricing.wholesaleCostCents;
 
+  const [currentAgreement] = await db
+    .select({
+      version: platformAgreementsTable.version,
+      body: platformAgreementsTable.body,
+    })
+    .from(platformAgreementsTable)
+    .where(eq(platformAgreementsTable.isCurrentVersion, true))
+    .limit(1);
+
+  const legalAgreementText = currentAgreement?.body ?? "Customer agrees they will be billed directly by their Managed Service Provider (MSP) for this service.";
+  const agreementVersionToPass = currentAgreement?.version ?? "1.0";
+
   const result = await resolveFulfillment({
     fulfillmentTypeKey,
     idempotencyKey,
@@ -864,6 +885,8 @@ async function handleCheckoutCompleted(
       serviceClass,
       customerEmail: session.customer_email ?? session.customer_details?.email ?? "",
       subscriptionId: (session as { subscription?: string | null }).subscription ?? null,
+      legalAgreementText,
+      agreementVersion: agreementVersionToPass,
     },
   });
 
