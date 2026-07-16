@@ -240,12 +240,12 @@ describe("GET /simulator/manifest", () => {
 });
 
 describe("POST /simulator/fire-event", () => {
-  it("fails if target MSP is not a testbed", async () => {
+  it("fails if target customer is not a testbed customer or not found", async () => {
     const { db } = await import("@workspace/db");
     vi.spyOn(db, "select").mockReturnValue({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([{ id: 10, isTestbed: false }]),
+          limit: vi.fn().mockResolvedValue([]),
         }),
       }),
     } as any);
@@ -253,12 +253,12 @@ describe("POST /simulator/fire-event", () => {
     const res = await request(app)
       .post("/simulator/fire-event")
       .set(authHeader)
-      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedMspId: 10 });
-    expect(res.status).toBe(403);
-    expect(res.body.error).toContain("is_testbed = true");
+      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedCustomerId: 10 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("Testbed customer not found");
   });
 
-  it("fires a manifest event successfully when target is testbed", async () => {
+  it("fires a manifest event successfully when target is testbed customer", async () => {
     const { db } = await import("@workspace/db");
     vi.spyOn(db, "select").mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -277,7 +277,7 @@ describe("POST /simulator/fire-event", () => {
     const res = await request(app)
       .post("/simulator/fire-event")
       .set(authHeader)
-      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedMspId: 10 });
+      .send({ eventId: "MSP_SUSPEND_7_DAYS", testbedCustomerId: 10 });
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
   });

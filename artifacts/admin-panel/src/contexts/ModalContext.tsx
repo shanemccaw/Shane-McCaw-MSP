@@ -92,51 +92,51 @@ function ModalContainer() {
 }
 
 // ─── Modal 1: ExecuteScenarioModal ───────────────────────────────────────────
-interface TestbedMsp {
+interface TestbedCustomer {
   id: number;
   name: string;
+  domain?: string;
   isTestbed: boolean;
-  status: string;
+  testbedMetadata: any;
 }
 
 function ExecuteScenarioModal() {
   const { modalData, closeModal } = useModal();
   const { fetchWithAuth } = useAuth();
   const { startOperation, endOperation } = useSimulatorActivity();
-  const [msps, setMsps] = useState<TestbedMsp[]>([]);
-  const [selectedMspId, setSelectedMspId] = useState<string>("");
-  const [loadingMsps, setLoadingMsps] = useState(false);
+  const [testbeds, setTestbeds] = useState<TestbedCustomer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [loadingTestbeds, setLoadingTestbeds] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
 
   const event = modalData?.event;
 
   useEffect(() => {
-    async function loadMsps() {
-      setLoadingMsps(true);
+    async function loadTestbeds() {
+      setLoadingTestbeds(true);
       try {
-        const res = await fetchWithAuth("/api/admin/msps?limit=100");
+        const res = await fetchWithAuth("/api/admin/testbeds");
         if (res.ok) {
           const data = await res.json();
-          // Filter for isTestbed = true on frontend as backup, or show all testbeds
-          const testbeds = (data.msps || []).filter((m: any) => m.isTestbed);
-          setMsps(testbeds);
-          if (testbeds.length > 0) {
-            setSelectedMspId(String(testbeds[0].id));
+          const list = data.testbeds || [];
+          setTestbeds(list);
+          if (list.length > 0) {
+            setSelectedCustomerId(String(list[0].id));
           }
         }
       } catch (err) {
         console.error("Failed to load testbeds", err);
       } finally {
-        setLoadingMsps(false);
+        setLoadingTestbeds(false);
       }
     }
-    loadMsps();
+    loadTestbeds();
   }, [fetchWithAuth]);
 
- const handleExecute = async () => {
-    if (!selectedMspId) {
-      toast.error("Please select a target testbed MSP");
+  const handleExecute = async () => {
+    if (!selectedCustomerId) {
+      toast.error("Please select a target testbed customer");
       return;
     }
     setExecuting(true);
@@ -148,7 +148,7 @@ function ExecuteScenarioModal() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: event.id,
-          testbedMspId: Number(selectedMspId),
+          testbedCustomerId: Number(selectedCustomerId),
           params: {}
         }),
       });
@@ -178,7 +178,7 @@ function ExecuteScenarioModal() {
         error: err.message || "Network error",
       });
       toast.error("Network error when firing scenario");
-   } finally {
+    } finally {
       setExecuting(false);
       endOperation(event.id);
     }
@@ -232,25 +232,25 @@ function ExecuteScenarioModal() {
       </div>
 
       <div className="space-y-3">
-        <Label className="text-xs font-medium text-slate-400">Select Target Testbed MSP</Label>
-        {loadingMsps ? (
+        <Label className="text-xs font-medium text-slate-400">Select Target Testbed Customer</Label>
+        {loadingTestbeds ? (
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading testbeds...
           </div>
-        ) : msps.length === 0 ? (
+        ) : testbeds.length === 0 ? (
           <div className="bg-red-950/20 border border-red-900/30 rounded-lg p-3.5 text-xs text-red-400 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            No testbed MSPs (is_testbed = true) exist in the system. Go to platform settings to flag one.
+            No testbed customers (is_testbed = true) exist in the system. Go to platform settings to flag one.
           </div>
         ) : (
-          <Select value={selectedMspId} onValueChange={setSelectedMspId}>
+          <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
             <SelectTrigger className="w-full bg-slate-900 border-slate-800 text-slate-200 text-xs h-10">
-              <SelectValue placeholder="Select target testbed" />
+              <SelectValue placeholder="Select target testbed customer" />
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-800 text-slate-200 text-xs">
-              {msps.map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  {m.name} (MSP ID: {m.id})
+              {testbeds.map((tb) => (
+                <SelectItem key={tb.id} value={String(tb.id)}>
+                  {tb.name} {tb.domain ? `(${tb.domain})` : ""} (Customer ID: {tb.id})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -295,7 +295,7 @@ function ExecuteScenarioModal() {
         </Button>
         <Button 
           onClick={handleExecute}
-          disabled={executing || msps.length === 0}
+          disabled={executing || testbeds.length === 0}
           className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center gap-2 px-4 shadow-lg shadow-indigo-600/10"
         >
           {executing ? (

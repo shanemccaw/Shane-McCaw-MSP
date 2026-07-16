@@ -872,24 +872,20 @@ router.get("/simulator/manifest", requireAdmin, async (_req: Request, res: Respo
  */
 router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { eventId, testbedMspId, params } = req.body;
+    const { eventId, testbedCustomerId, params } = req.body;
 
-    if (!eventId || !testbedMspId) {
-      return res.status(400).json({ error: "eventId and testbedMspId are required." });
+    if (!eventId || !testbedCustomerId) {
+      return res.status(400).json({ error: "eventId and testbedCustomerId are required." });
     }
 
-    // Verify target MSP is marked as a testbed
-    const [targetMsp] = await db
-      .select({
-        id: mspsTable.id,
-        isTestbed: mspsTable.isTestbed,
-      })
-      .from(mspsTable)
-      .where(eq(mspsTable.id, Number(testbedMspId)))
+    const [customer] = await db
+      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
       .limit(1);
 
-    if (!targetMsp || !targetMsp.isTestbed) {
-      return res.status(403).json({ error: "Simulator actions can only be executed against designated testbed MSPs (is_testbed = true)." });
+    if (!customer) {
+      return res.status(400).json({ error: "Testbed customer not found or is not flagged is_testbed." });
     }
 
     const eventDef = SIMULATOR_MANIFEST.find(e => e.id === eventId);
@@ -897,24 +893,14 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
       return res.status(404).json({ error: `Event '${eventId}' not found in simulator manifest.` });
     }
 
-    // Resolve the testbed customer corresponding to this testbed MSP
-    const [customer] = await db
-      .select({ id: mspCustomersTable.id })
-      .from(mspCustomersTable)
-      .where(and(eq(mspCustomersTable.mspId, targetMsp.id), eq(mspCustomersTable.isTestbed, true)))
-      .limit(1);
-
-    if (!customer) {
-      return res.status(400).json({ error: "No testbed customer found for this MSP." });
-    }
-
     const startTime = Date.now();
-    const context = { isTestbed: true, testbedMspId: targetMsp.id, testbedCustomerId: customer.id };
+    const context = { isTestbed: true, testbedMspId: customer.mspId, testbedCustomerId: customer.id };
     const result = await simulatorStorage.run(context, async () => {
       return await eventDef.execute(customer.id, params);
     });
     const executionMs = Date.now() - startTime;
-// Push a real-time update to anyone connected to this testbed MSP's
+
+    // Push a real-time update to anyone connected to this testbed MSP's
     // portal — reuses the existing notification-center SSE pipeline
     // (same one the NotificationBell in app-shell.tsx already listens to).
     // Non-fatal: the scenario itself already ran regardless of this.
@@ -922,7 +908,7 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
       const watchingUsers = await db
         .select({ id: mspUsersTable.id })
         .from(mspUsersTable)
-        .where(and(eq(mspUsersTable.mspId, targetMsp.id), eq(mspUsersTable.isActive, true)));
+        .where(and(eq(mspUsersTable.mspId, customer.mspId), eq(mspUsersTable.isActive, true)));
 
       for (const mu of watchingUsers) {
         await createNotification({
@@ -932,8 +918,8 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
           severity: result.success ? "info" : "warning",
           feedType: "personal",
           notifType: "general",
-          recipient: { type: "msp_user", mspUserId: mu.id, mspId: targetMsp.id },
-          mspId: targetMsp.id,
+          recipient: { type: "msp_user", mspUserId: mu.id, mspId: customer.mspId },
+          mspId: customer.mspId,
         });
       }
     } catch (notifyErr) {
