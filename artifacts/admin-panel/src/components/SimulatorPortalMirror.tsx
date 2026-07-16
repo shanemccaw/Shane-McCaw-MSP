@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { RefreshCw, ExternalLink, Loader2, MonitorSmartphone } from "lucide-react";
 
 interface Testbed {
@@ -10,10 +11,15 @@ interface Testbed {
   domain?: string;
 }
 
+const PORTAL_URL_STORAGE_KEY = "simulator-portal-mirror-base-url";
+
 export function SimulatorPortalMirror() {
   const { fetchWithAuth } = useAuth();
   const [testbeds, setTestbeds] = useState<Testbed[]>([]);
   const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
+  const [portalBaseUrl, setPortalBaseUrl] = useState(
+    () => localStorage.getItem(PORTAL_URL_STORAGE_KEY) ?? ""
+  );
   const [loading, setLoading] = useState(false);
   const [iframeSrc, setIframeSrc] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
@@ -25,9 +31,17 @@ export function SimulatorPortalMirror() {
       .catch(() => toast.error("Failed to load testbeds"));
   }, [fetchWithAuth]);
 
+  useEffect(() => {
+    localStorage.setItem(PORTAL_URL_STORAGE_KEY, portalBaseUrl);
+  }, [portalBaseUrl]);
+
   const loadMirror = async () => {
     if (selectedTestbedId === "") {
       toast.error("Select a testbed customer first");
+      return;
+    }
+    if (!portalBaseUrl.trim()) {
+      toast.error("Enter the msp-portal base URL first — admin-panel and msp-portal are separate deployments and this isn't auto-detectable.");
       return;
     }
     setLoading(true);
@@ -37,7 +51,7 @@ export function SimulatorPortalMirror() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to issue portal mirror token");
-      const base = `${window.location.origin}/portal`;
+      const base = portalBaseUrl.replace(/\/$/, "");
       setIframeSrc(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`);
       setIframeKey(k => k + 1);
     } catch (err: any) {
@@ -65,6 +79,12 @@ export function SimulatorPortalMirror() {
             <option key={tb.id} value={tb.id}>{tb.name}</option>
           ))}
         </select>
+        <Input
+          value={portalBaseUrl}
+          onChange={e => setPortalBaseUrl(e.target.value)}
+          placeholder="https://your-msp-portal-deployment.example"
+          className="h-7 bg-slate-900 border-slate-800 text-slate-200 text-[10px] font-mono"
+        />
         <div className="flex gap-1.5">
           <Button size="sm" onClick={loadMirror} disabled={loading} className="h-7 flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px]">
             {loading ? <Loader2 className="w-3 h-3 animate-spin mr-1.5" /> : null}
@@ -97,7 +117,7 @@ export function SimulatorPortalMirror() {
           />
         ) : (
           <div className="h-full flex items-center justify-center p-6 text-center text-xs text-slate-600">
-            Select a testbed customer and click Load Mirror to embed
+            Select a testbed customer, confirm the portal base URL, and click Load Mirror to embed
             the real customer-facing portal here.
           </div>
         )}
