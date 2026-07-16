@@ -546,4 +546,115 @@ router.get(
   },
 );
 
+// ── GET /api/portal/assessment-results/:serviceSlug ───────────────────────────
+// Customer-facing: returns the assessment run data formatted for the dashboard.
+
+router.get(
+  "/portal/assessment-results/:serviceSlug",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const serviceSlug = req.params["serviceSlug"] as string;
+
+      let customerId = user.customerId ?? null;
+      if (!customerId) {
+        const { mspUsersTable: muTable } = await import("@workspace/db");
+        const [freshMu] = await db
+          .select({ customerId: muTable.customerId })
+          .from(muTable)
+          .where(eq(muTable.userId, user.id))
+          .limit(1);
+        customerId = freshMu?.customerId ?? null;
+      }
+
+      if (!customerId) {
+        res.json({
+          serviceSlug,
+          score: 0,
+          status: "not_evaluated",
+          findings: [],
+          evaluatedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const [latestRun] = await db
+        .select()
+        .from(mspDiagnosticRunsTable)
+        .where(
+          and(
+            eq(mspDiagnosticRunsTable.customerId, customerId),
+            eq(mspDiagnosticRunsTable.packageKey, serviceSlug),
+            or(
+              eq(mspDiagnosticRunsTable.status, "completed"),
+              eq(mspDiagnosticRunsTable.status, "partial")
+            )
+          )
+        )
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      if (!latestRun) {
+        res.json({
+          serviceSlug,
+          score: 0,
+          status: "not_evaluated",
+          findings: [],
+          evaluatedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const findingsRows = await db
+        .select({
+          findingId: mspDiagnosticFindingsTable.findingId,
+          title: mspDiagnosticFindingsTable.title,
+          severity: mspDiagnosticFindingsTable.severity,
+          recommendation: mspDiagnosticFindingsTable.recommendation,
+        })
+        .from(mspDiagnosticFindingsTable)
+        .where(eq(mspDiagnosticFindingsTable.runId, latestRun.runId))
+        .orderBy(mspDiagnosticFindingsTable.severity);
+
+      let status = "healthy";
+      let hasWarning = false;
+      let hasCritical = false;
+
+      const findings = findingsRows.map((f) => {
+        if (f.severity === "critical") hasCritical = true;
+        if (f.severity === "warning") hasWarning = true;
+        return {
+          id: f.findingId,
+          title: f.title,
+          severity: f.severity,
+          recommendation: f.recommendation,
+        };
+      });
+
+      if (hasCritical) status = "critical";
+      else if (hasWarning) status = "warning";
+
+      let score = 100;
+      const summaryObj = latestRun.summary as Record<string, unknown> | null;
+      if (summaryObj && typeof summaryObj.compositeScore === "number") {
+        score = summaryObj.compositeScore;
+      } else if (latestRun.checksTotal > 0) {
+        score = Math.round((latestRun.checksOk / latestRun.checksTotal) * 100);
+      }
+
+      res.json({
+        serviceSlug,
+        score,
+        status,
+        findings,
+        evaluatedAt: latestRun.completedAt?.toISOString() ?? latestRun.createdAt.toISOString(),
+      });
+    } catch (err) {
+      logger.error({ err }, "GET /portal/assessment-results/:serviceSlug error");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
 export default router;
