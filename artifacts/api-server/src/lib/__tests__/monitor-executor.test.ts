@@ -326,6 +326,49 @@ describe("applyMapping", () => {
     expect(result.displayName_count).toBe(0);
     expect(result._itemCount).toBe(0);
   });
+
+  it("applies groupByCount transform with array-valued and scalar-valued sourceField", () => {
+    const mixedItems = [
+      { id: "u1", skuPartNumber: "SPE_E3" },
+      { id: "u2", skuPartNumber: ["SPE_E3", "SPE_E5"] },
+      { id: "u3", skuPartNumber: "SPE_E5" },
+      { id: "u4", skuPartNumber: null },
+      { id: "u5", skuPartNumber: ["SPE_E5", "SPE_E5", null] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "skuPartNumber", targetField: "skusGrouped", transform: "groupByCount" }
+    ];
+    const result = applyMapping(mixedItems, mapping, []);
+    expect(result.skusGrouped).toEqual({
+      SPE_E3: 2,
+      SPE_E5: 4,
+    });
+  });
+
+  it("applies countDuplicates transform with a mix of duplicate and unique values", () => {
+    const itemsWithDupes = [
+      { id: "u1", assignedLicenses: ["E3", "E5"] },
+      { id: "u2", assignedLicenses: ["E3"] },
+      { id: "u3", assignedLicenses: ["Business Premium"] },
+      { id: "u4", assignedLicenses: null },
+      { id: "u5", assignedLicenses: ["E5", "E5"] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "assignedLicenses", targetField: "duplicateCount", transform: "countDuplicates" }
+    ];
+    const result = applyMapping(itemsWithDupes, mapping, []);
+    expect(result.duplicateCount).toBe(5);
+  });
+
+  it("handles groupByCount and countDuplicates with an empty items array", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "skuPartNumber", targetField: "skusGrouped", transform: "groupByCount" },
+      { sourceField: "assignedLicenses", targetField: "duplicateCount", transform: "countDuplicates" }
+    ];
+    const result = applyMapping([], mapping, []);
+    expect(result.skusGrouped).toEqual({});
+    expect(result.duplicateCount).toBe(0);
+  });
 });
 
 // ── graphFetchPaginated — pagination exhaustion ────────────────────────────────

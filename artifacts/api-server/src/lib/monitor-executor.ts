@@ -314,6 +314,34 @@ export function applyMapping(
         }
         break;
       }
+      case "groupByCount": {
+        const grouped: Record<string, number> = {};
+        for (const val of vals) {
+          if (val == null) continue;
+          const flatVals = Array.isArray(val) ? val : [val];
+          for (const v of flatVals) {
+            if (v == null) continue;
+            const key = String(v);
+            grouped[key] = (grouped[key] ?? 0) + 1;
+          }
+        }
+        result[targetField] = grouped;
+        break;
+      }
+      case "countDuplicates": {
+        const flatVals: string[] = [];
+        for (const val of vals) {
+          if (val == null) continue;
+          const items2 = Array.isArray(val) ? val : [val];
+          for (const v of items2) {
+            if (v != null) flatVals.push(String(v));
+          }
+        }
+        const seen: Record<string, number> = {};
+        for (const v of flatVals) seen[v] = (seen[v] ?? 0) + 1;
+        result[targetField] = flatVals.filter(v => seen[v] > 1).length;
+        break;
+      }
       default:
         result[targetField] = vals.filter(v => v != null);
     }
