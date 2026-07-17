@@ -17,6 +17,7 @@ import {
   executeMonitoringPackage,
 } from "../monitor-executor";
 import type { SeverityRule, MappingRule } from "../monitor-executor";
+import { logger } from "../logger";
 
 // ── Mock external dependencies ─────────────────────────────────────────────────
 
@@ -275,6 +276,49 @@ describe("applyMapping", () => {
     const mapping: MappingRule[] = [{ sourceField: "status.errorCode", targetField: "errorCodesCount", transform: "countEquals('50012')" }];
     const result = applyMapping(itemsWithNest, mapping, []);
     expect(result.errorCodesCount).toBe(2);
+  });
+
+  it("applies countIfLastSignInOlderThan transform", () => {
+    const staleDays = 30;
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    const itemsForSignIn = [
+      { id: "u1", assignedLicenses: ["E3"], signInActivity: { lastSignInDateTime: new Date(now - 10 * oneDayMs).toISOString() } },
+      { id: "u2", assignedLicenses: ["E5"], signInActivity: { lastSignInDateTime: new Date(now - 40 * oneDayMs).toISOString() } },
+      { id: "u3", assignedLicenses: ["Business Premium"], signInActivity: { lastSignInDateTime: null } },
+      { id: "u4", assignedLicenses: ["Business Premium"] },
+      { id: "u5", assignedLicenses: [], signInActivity: { lastSignInDateTime: new Date(now - 40 * oneDayMs).toISOString() } },
+      { id: "u6", assignedLicenses: null, signInActivity: { lastSignInDateTime: new Date(now - 40 * oneDayMs).toISOString() } },
+    ];
+
+    const mapping: MappingRule[] = [
+      { sourceField: "assignedLicenses", targetField: "staleUserCount", transform: `countIfLastSignInOlderThan(${staleDays})` }
+    ];
+
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(itemsForSignIn, mapping, []);
+    expect(result.staleUserCount).toBe(3);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("warns if countIfLastSignInOlderThan runs but no signInActivity exists on any item", () => {
+    const itemsWithoutActivity = [
+      { id: "u1", assignedLicenses: ["E3"] },
+      { id: "u2", assignedLicenses: ["E5"] },
+    ];
+
+    const mapping: MappingRule[] = [
+      { sourceField: "assignedLicenses", targetField: "staleUserCount", transform: "countIfLastSignInOlderThan(30)" }
+    ];
+
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(itemsWithoutActivity, mapping, []);
+    expect(result.staleUserCount).toBe(2);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      { targetField: "staleUserCount", sourceField: "assignedLicenses" },
+      expect.stringContaining("countIfLastSignInOlderThan found no signInActivity data on any item")
+    );
   });
 
   it("handles empty items array", () => {

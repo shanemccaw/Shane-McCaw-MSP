@@ -260,8 +260,12 @@ export function applyMapping(
     const { sourceField, targetField } = rule;
     const rawTransform = rule.transform ?? "none";
     const countEqualsMatch = /^countEquals\(\s*['"](.*)['"]\s*\)$/.exec(rawTransform);
-    const transform = countEqualsMatch ? "countEquals" : rawTransform;
+    const staleSignInMatch = /^countIfLastSignInOlderThan\(\s*(\d+)\s*\)$/.exec(rawTransform);
+    const transform = countEqualsMatch ? "countEquals"
+      : staleSignInMatch ? "countIfLastSignInOlderThan"
+      : rawTransform;
     const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
+    const staleDays = staleSignInMatch ? Number(staleSignInMatch[1]) : undefined;
 
     // Resolve sourceField via the existing dot-path resolver (already used by
     // the condition grammar) instead of flat bracket access, so nested Graph
@@ -292,6 +296,24 @@ export function applyMapping(
       case "countEquals":
         result[targetField] = vals.filter(v => String(v) === compareValue).length;
         break;
+      case "countIfLastSignInOlderThan": {
+        const cutoff = Date.now() - (staleDays! * 24 * 60 * 60 * 1000);
+        let sawSignInActivity = false;
+        result[targetField] = items.filter(item => {
+          if (typeof item !== "object" || item === null) return false;
+          const licenseVal = resolvePathInData(sourceField, item as Record<string, unknown>);
+          if (licenseVal == null || (Array.isArray(licenseVal) && licenseVal.length === 0)) return false;
+          const lastSignIn = resolvePathInData("signInActivity.lastSignInDateTime", item as Record<string, unknown>);
+          if (lastSignIn != null) sawSignInActivity = true;
+          if (lastSignIn == null) return true; // never signed in counts as stale
+          const signInTime = new Date(lastSignIn as string).getTime();
+          return !Number.isNaN(signInTime) && signInTime < cutoff;
+        }).length;
+        if (!sawSignInActivity) {
+          logger.warn({ targetField, sourceField }, "monitor-executor: countIfLastSignInOlderThan found no signInActivity data on any item — check may be missing $select=signInActivity on its Graph endpoint");
+        }
+        break;
+      }
       default:
         result[targetField] = vals.filter(v => v != null);
     }
