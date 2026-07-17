@@ -352,8 +352,8 @@ router.patch(
       const updated = await transitionOfferState(id, newState as SalesOfferState, actorId, { rejectionReason });
 
       broadcastMspOfferChange(mspId, { offerId: id, state: newState });
-      if (existing.tenantId) {
-        broadcastCustomerOfferChange(existing.tenantId, { offerId: id, state: newState });
+      if (existing.customerId) {
+        broadcastCustomerOfferChange(existing.customerId, { offerId: id, state: newState });
       }
 
       res.json({ offer: updated });
