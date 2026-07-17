@@ -883,4 +883,61 @@ router.post(
   },
 );
 
+router.put(
+  "/msp/reports/schedules/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const scheduleId = String(req.params.id);
+      const { cadence, recipientEmails, enabled } = req.body as {
+        cadence?: "daily" | "weekly" | "monthly";
+        recipientEmails?: string[];
+        enabled?: boolean;
+      };
+
+      const [updated] = await db
+        .update(mspReportSchedulesTable)
+        .set({
+          ...(cadence !== undefined && { cadence }),
+          ...(recipientEmails !== undefined && { recipientEmails }),
+          ...(enabled !== undefined && { enabled }),
+        })
+        .where(and(eq(mspReportSchedulesTable.id, scheduleId), eq(mspReportSchedulesTable.mspId, mspId)))
+        .returning();
+
+      if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
+      res.json(updated);
+    } catch (err) {
+      logger.error({ err }, "msp-reports: PUT schedules failed");
+      res.status(500).json({ error: "Failed to update schedule" });
+    }
+  },
+);
+
+router.delete(
+  "/msp/reports/schedules/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const scheduleId = String(req.params.id);
+      const [deleted] = await db
+        .delete(mspReportSchedulesTable)
+        .where(and(eq(mspReportSchedulesTable.id, scheduleId), eq(mspReportSchedulesTable.mspId, mspId)))
+        .returning();
+
+      if (!deleted) { res.status(404).json({ error: "Schedule not found" }); return; }
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err }, "msp-reports: DELETE schedules failed");
+      res.status(500).json({ error: "Failed to delete schedule" });
+    }
+  },
+);
+
 export default router;
