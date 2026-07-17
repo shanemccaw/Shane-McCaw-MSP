@@ -66,6 +66,10 @@ describe("GET /api/admin/observability/service-health", () => {
       [],
       // portal workflows
       [],
+      // db size
+      [{ size: "1 GB", bytes: "1073741824" }],
+      // db conn
+      [{ saturation: 0.1, active: "10", max: "100" }],
     );
 
     const res = await request(app).get("/admin/observability/service-health");
@@ -130,6 +134,10 @@ describe("GET /api/admin/observability/platform-revenue", () => {
       [{ n: "1" }],
       // 4) per-MSP list
       [{ msp_name: "Acme IT", plan_name: "Pro", status: "active", price_cents: "9900" }],
+      // 5) daily AI spend
+      [{ day: "2026-07-01", cost_cents: "5000" }],
+      // 6) monthly AI spend
+      [{ month: "2026-07-01", cost_cents: "15000" }],
     );
 
     const res = await request(app).get("/admin/observability/platform-revenue");

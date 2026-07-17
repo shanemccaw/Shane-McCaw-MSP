@@ -25,7 +25,7 @@ const router: IRouter = Router();
 
 router.get("/admin/observability/service-health", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const [jobStats, dlqStats, webhookStats, portalWfStats] = await Promise.all([
+    const [jobStats, dlqStats, webhookStats, portalWfStats, dbSizeStats, dbConnStats] = await Promise.all([
       // Background job queue stats
       pool.query<{ status: string; n: string }>(`
         SELECT status, COUNT(*)::text AS n
@@ -54,6 +54,19 @@ router.get("/admin/observability/service-health", requireAdmin, async (req: Requ
         WHERE created_at > NOW() - INTERVAL '24 hours'
         GROUP BY status
       `).catch(() => ({ rows: [] })),
+      // DB Size
+      pool.query<{ size: string; bytes: string }>(`
+        SELECT pg_size_pretty(pg_database_size(current_database())) as size,
+               pg_database_size(current_database())::text as bytes
+      `),
+      // DB Connections
+      pool.query<{ saturation: number; active: string; max: string }>(`
+        SELECT 
+          (count(*)::float / NULLIF((SELECT setting::int FROM pg_settings WHERE name = 'max_connections'), 0)) as saturation,
+          count(*)::text as active,
+          (SELECT setting FROM pg_settings WHERE name = 'max_connections')::text as max
+        FROM pg_stat_activity
+      `),
     ]);
 
     const jobMap: Record<string, number> = {};
@@ -97,6 +110,21 @@ router.get("/admin/observability/service-health", requireAdmin, async (req: Requ
         running:   portalMap["running"]   ?? 0,
         completed: portalMap["completed"] ?? 0,
         failed:    portalMap["failed"]    ?? 0,
+      },
+      system: {
+        database: {
+          sizePretty: dbSizeStats.rows[0]?.size ?? "0 B",
+          sizeBytes: parseInt(dbSizeStats.rows[0]?.bytes ?? "0", 10),
+          connections: {
+            saturation: dbConnStats.rows[0]?.saturation ?? 0,
+            active: parseInt(dbConnStats.rows[0]?.active ?? "0", 10),
+            max: parseInt(dbConnStats.rows[0]?.max ?? "100", 10),
+          },
+        },
+        process: {
+          uptimeSeconds: process.uptime(),
+          memoryUsage: process.memoryUsage(),
+        },
       },
     });
   } catch (err) {
@@ -157,7 +185,7 @@ router.get("/admin/observability/event-bus", requireAdmin, async (req: Request, 
 
 router.get("/admin/observability/platform-revenue", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const [subStatsRes, mspCountRes, churned30dRes, mspRevenueRes] = await Promise.all([
+    const [subStatsRes, mspCountRes, churned30dRes, mspRevenueRes, dailyAiRes, monthlyAiRes] = await Promise.all([
       // Subscription status breakdown
       pool.query<{ status: string; n: string; total_cents: string }>(`
         SELECT
@@ -197,6 +225,24 @@ router.get("/admin/observability/platform-revenue", requireAdmin, async (req: Re
         ORDER BY COALESCE(s.price_cents, 0) DESC
         LIMIT 50
       `).catch(() => ({ rows: [] })),
+
+      // Daily AI spend (last 30 days)
+      pool.query<{ day: string; cost_cents: string }>(`
+        SELECT DATE_TRUNC('day', occurred_at) AS day, COALESCE(SUM(cost_cents), 0)::text AS cost_cents
+        FROM ai_usage_events
+        WHERE occurred_at > NOW() - INTERVAL '30 days'
+        GROUP BY day
+        ORDER BY day ASC
+      `).catch(() => ({ rows: [] })),
+
+      // Monthly AI spend (last 12 months)
+      pool.query<{ month: string; cost_cents: string }>(`
+        SELECT DATE_TRUNC('month', occurred_at) AS month, COALESCE(SUM(cost_cents), 0)::text AS cost_cents
+        FROM ai_usage_events
+        WHERE occurred_at > NOW() - INTERVAL '12 months'
+        GROUP BY month
+        ORDER BY month ASC
+      `).catch(() => ({ rows: [] })),
     ]);
 
     // Compute MRR as sum of active subscription prices
@@ -224,6 +270,16 @@ router.get("/admin/observability/platform-revenue", requireAdmin, async (req: Re
         status: r.status,
         priceCents: parseInt(r.price_cents, 10),
       })),
+      aiSpend: {
+        daily: (dailyAiRes as any).rows.map((r: any) => ({
+          day: r.day,
+          costCents: parseInt(r.cost_cents, 10),
+        })),
+        monthly: (monthlyAiRes as any).rows.map((r: any) => ({
+          month: r.month,
+          costCents: parseInt(r.cost_cents, 10),
+        })),
+      },
     });
   } catch (err) {
     logger.error({ err }, "GET /admin/observability/platform-revenue failed");
@@ -534,5 +590,82 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
     res.status(500).json({ error: "Failed to send test alert" });
   }
 });
+
+// ── Internal Synthetic Heartbeats & Alert Routing ──────────────────────────────
+
+let heartbeatInterval: NodeJS.Timeout | null = null;
+
+function startInternalHeartbeat() {
+  if (heartbeatInterval) return;
+
+  heartbeatInterval = setInterval(async () => {
+    try {
+      // 1. DB Ping & Connection Saturation
+      const dbStats = await pool.query<{ saturation: number }>(`
+        SELECT 
+          (count(*)::float / NULLIF((SELECT setting::int FROM pg_settings WHERE name = 'max_connections'), 0)) as saturation
+        FROM pg_stat_activity
+      `).catch(() => null);
+
+      const dbSaturation = dbStats?.rows[0]?.saturation ?? 0;
+      
+      // 2. Node.js Heap
+      const memory = process.memoryUsage();
+      const heapSaturation = memory.heapUsed / memory.heapTotal;
+
+      // 3. Queue Health (Max delay in pending jobs)
+      const queueStats = await pool.query<{ max_delay_seconds: number }>(`
+        SELECT EXTRACT(EPOCH FROM (NOW() - created_at)) as max_delay_seconds
+        FROM msp_job_queue
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `).catch(() => null);
+
+      const maxQueueDelay = queueStats?.rows[0]?.max_delay_seconds ?? 0;
+
+      // 4. AI Cost Spike (Last 1 hour spend vs Average hourly spend)
+      const aiStats = await pool.query<{ hourly_cost: number }>(`
+        SELECT COALESCE(SUM(cost_cents), 0) as hourly_cost
+        FROM ai_usage_events
+        WHERE occurred_at > NOW() - INTERVAL '1 hour'
+      `).catch(() => null);
+
+      const aiCost1h = aiStats?.rows[0]?.hourly_cost ?? 0;
+
+      // Evaluate Thresholds
+      const alerts: string[] = [];
+
+      if (dbStats === null) alerts.push("Database ping failed.");
+      if (dbSaturation > 0.8) alerts.push(`Database connection saturation is high: ${(dbSaturation * 100).toFixed(1)}%`);
+      if (heapSaturation > 0.9) alerts.push(`Node.js heap saturation is high: ${(heapSaturation * 100).toFixed(1)}%`);
+      if (maxQueueDelay > 300) alerts.push(`Background queue delay is high: ${maxQueueDelay.toFixed(0)} seconds`);
+      if (aiCost1h > 100000) alerts.push(`High AI cost spike detected: ${(aiCost1h / 100).toFixed(2)} USD in the last hour`);
+
+      if (alerts.length > 0) {
+        logger.warn({ alerts }, "Heartbeat alerts triggered");
+        
+        const mailUserId = process.env.GRAPH_MAIL_USER_ID;
+        if (mailUserId) {
+          const { sendMailViaGraph, graphCredentialsPresent } = await import("../lib/graph");
+          if (graphCredentialsPresent()) {
+            await sendMailViaGraph({
+              fromUserId: mailUserId,
+              to: mailUserId,
+              subject: `[SYSTEM ALERT] Platform Threshold Breach`,
+              htmlBody: `<p>The following synthetic heartbeat checks failed or breached thresholds:</p>
+                        <ul>${alerts.map(a => `<li>${a}</li>`).join("")}</ul>`,
+            }).catch(e => logger.error({ err: e }, "Failed to route heartbeat alert via Graph"));
+          }
+        }
+      }
+    } catch (err) {
+      logger.error({ err }, "Internal synthetic heartbeat failed");
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+}
+
+// Start heartbeat worker on module load
+startInternalHeartbeat();
 
 export default router;
