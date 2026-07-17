@@ -42,6 +42,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowLeft,
   Award,
   BarChart3,
   Bell,
@@ -59,6 +60,7 @@ import {
   FolderSync,
   Gift,
   GitBranch,
+  History,
   Home,
   LayoutDashboard,
   ListTodo,
@@ -70,12 +72,14 @@ import {
   MessageSquare,
   Package,
   Play,
+  Plus,
   Search,
   Send,
   Shield,
   ShieldCheck,
   Sparkles,
   Timer,
+  Trash2,
   User,
   Users,
   Webhook,
@@ -185,17 +189,110 @@ function DockedSupportPanel() {
     sending,
     escalating,
     everEscalated,
+    savedChats,
+    activeChatId,
     sendMessage,
     handleExplicitEscalate,
+    loadChat,
+    startNewChat,
+    deleteChat,
   } = useSupportChat();
 
+  const [view, setView] = useState<"chat" | "history">("chat");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (view === "chat") {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, view]);
 
   const isEmpty = messages.filter((m) => m.role === "user").length === 0;
+
+  if (view === "history") {
+    return (
+      <aside className="w-80 md:w-96 shrink-0 border-l border-border bg-background flex flex-col h-screen sticky top-0 z-20 shadow-xl transition-all duration-300">
+        {/* Header */}
+        <div className="p-3.5 border-b border-border flex items-center justify-between shrink-0 bg-muted/20">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setView("chat")}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors mr-1 shrink-0"
+              title="Back to chat"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+            <h2 className="text-sm font-semibold text-foreground truncate">Chat History</h2>
+          </div>
+          <button
+            onClick={() => setSupportOpen(false)}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            title="Close chat panel"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* History List */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+          {savedChats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+              <History className="size-8 text-muted-foreground/45 mb-2" />
+              <p className="text-xs font-medium text-muted-foreground">No saved chats</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1 max-w-[200px]">
+                Your support chats will appear here once you send a message.
+              </p>
+            </div>
+          ) : (
+            savedChats.map((chat) => (
+              <div
+                key={chat.id}
+                className={`group flex items-start justify-between gap-2 p-3 rounded-lg border text-left cursor-pointer transition-all hover:bg-muted/50 ${
+                  activeChatId === chat.id
+                    ? "border-primary bg-primary/5"
+                    : "border-border/60 hover:border-border"
+                }`}
+                onClick={() => {
+                  loadChat(chat.id);
+                  setView("chat");
+                }}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                    {chat.title || "Support Query"}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/75 mt-1">
+                    {new Date(chat.timestamp).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                  {chat.everEscalated && (
+                    <span className="inline-flex items-center gap-1 text-[9px] text-amber-500 mt-1 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                      Escalated
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteChat(chat.id);
+                  }}
+                  className="p-1 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                  title="Delete chat"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-80 md:w-96 shrink-0 border-l border-border bg-background flex flex-col h-screen sticky top-0 z-20 shadow-xl transition-all duration-300">
@@ -213,10 +310,27 @@ function DockedSupportPanel() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-2">
-          <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0.5 hidden sm:inline-flex">
-            <Bot className="size-2.5" />
-            AI Support
-          </Badge>
+          {/* New Chat Button */}
+          <button
+            onClick={() => {
+              startNewChat();
+              toast.success("Started a new chat session");
+            }}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors animate-in fade-in"
+            title="Start new chat"
+          >
+            <Plus className="size-4" />
+          </button>
+          
+          {/* History Button */}
+          <button
+            onClick={() => setView("history")}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="View chat history"
+          >
+            <History className="size-4" />
+          </button>
+
           <button
             onClick={() => setSupportOpen(false)}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"

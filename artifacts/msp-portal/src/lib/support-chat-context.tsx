@@ -10,6 +10,14 @@ export interface SupportChatMessage {
   timestamp: Date;
 }
 
+export interface SavedChat {
+  id: string;
+  title: string;
+  messages: SupportChatMessage[];
+  everEscalated: boolean;
+  timestamp: number;
+}
+
 interface SupportChatContextValue {
   supportOpen: boolean;
   setSupportOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -19,8 +27,13 @@ interface SupportChatContextValue {
   sending: boolean;
   escalating: boolean;
   everEscalated: boolean;
+  activeChatId: string | null;
+  savedChats: SavedChat[];
   sendMessage: (text: string) => Promise<void>;
   handleExplicitEscalate: () => Promise<void>;
+  loadChat: (chatId: string) => void;
+  startNewChat: () => void;
+  deleteChat: (chatId: string) => void;
 }
 
 const SupportChatContext = createContext<SupportChatContextValue | null>(null);
@@ -33,10 +46,32 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
   const [sending, setSending] = useState(false);
   const [escalating, setEscalating] = useState(false);
   const [everEscalated, setEverEscalated] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [savedChats, setSavedChats] = useState<SavedChat[]>([]);
 
-  // Initial greeting when opened for the first time
+  // Load from localStorage on mount
   useEffect(() => {
-    if (supportOpen && messages.length === 0) {
+    try {
+      const stored = localStorage.getItem("msp_support_chats");
+      if (stored) {
+        const parsed = JSON.parse(stored) as any[];
+        const loaded: SavedChat[] = parsed.map(c => ({
+          ...c,
+          messages: c.messages.map((m: any) => ({
+            ...m,
+            timestamp: new Date(m.timestamp)
+          }))
+        }));
+        setSavedChats(loaded);
+      }
+    } catch (e) {
+      console.error("Failed to load saved chats", e);
+    }
+  }, []);
+
+  // Initial greeting when opened for the first time with no active session
+  useEffect(() => {
+    if (supportOpen && messages.length === 0 && !activeChatId) {
       setMessages([
         {
           id: "init",
@@ -46,7 +81,42 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
         },
       ]);
     }
-  }, [supportOpen, user?.name, messages.length]);
+  }, [supportOpen, user?.name, messages.length, activeChatId]);
+
+  // Sync active chat state to localStorage savedChats list
+  useEffect(() => {
+    const hasUser = messages.some(m => m.role === "user");
+    if (!hasUser) return;
+
+    setSavedChats(prev => {
+      let nextId = activeChatId;
+      let isNew = false;
+      if (!nextId) {
+        nextId = `chat-${Date.now()}`;
+        isNew = true;
+      }
+
+      const firstUserMsg = messages.find(m => m.role === "user")?.content || "Support Query";
+      const updatedChat: SavedChat = {
+        id: nextId,
+        title: firstUserMsg.substring(0, 60),
+        messages,
+        everEscalated,
+        timestamp: Date.now(),
+      };
+
+      let updatedList: SavedChat[];
+      if (isNew) {
+        updatedList = [updatedChat, ...prev];
+        setTimeout(() => setActiveChatId(nextId), 0);
+      } else {
+        updatedList = prev.map(c => c.id === nextId ? updatedChat : c);
+      }
+
+      localStorage.setItem("msp_support_chats", JSON.stringify(updatedList));
+      return updatedList;
+    });
+  }, [messages, everEscalated, activeChatId]);
 
   const apiMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -128,6 +198,39 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const loadChat = useCallback((chatId: string) => {
+    const chat = savedChats.find(c => c.id === chatId);
+    if (chat) {
+      setActiveChatId(chat.id);
+      setEverEscalated(chat.everEscalated);
+      setMessages(chat.messages);
+    }
+  }, [savedChats]);
+
+  const startNewChat = useCallback(() => {
+    setActiveChatId(null);
+    setEverEscalated(false);
+    setMessages([
+      {
+        id: "init",
+        role: "assistant",
+        content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+        timestamp: new Date(),
+      },
+    ]);
+  }, [user?.name]);
+
+  const deleteChat = useCallback((chatId: string) => {
+    setSavedChats(prev => {
+      const next = prev.filter(c => c.id !== chatId);
+      localStorage.setItem("msp_support_chats", JSON.stringify(next));
+      return next;
+    });
+    if (activeChatId === chatId) {
+      startNewChat();
+    }
+  }, [activeChatId, startNewChat]);
+
   return (
     <SupportChatContext.Provider
       value={{
@@ -139,8 +242,13 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
         sending,
         escalating,
         everEscalated,
+        activeChatId,
+        savedChats,
         sendMessage,
         handleExplicitEscalate,
+        loadChat,
+        startNewChat,
+        deleteChat,
       }}
     >
       {children}
@@ -157,8 +265,13 @@ const defaultContextValue: SupportChatContextValue = {
   sending: false,
   escalating: false,
   everEscalated: false,
+  activeChatId: null,
+  savedChats: [],
   sendMessage: async () => {},
   handleExplicitEscalate: async () => {},
+  loadChat: () => {},
+  startNewChat: () => {},
+  deleteChat: () => {},
 };
 
 export function useSupportChat() {
