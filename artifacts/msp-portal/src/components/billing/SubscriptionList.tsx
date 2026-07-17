@@ -255,6 +255,8 @@ export function SubscriptionList({
   onUndo: () => void;
   undoLoading: boolean;
 }) {
+  const subsArray = Array.isArray(subscriptions) ? subscriptions : [];
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -265,7 +267,7 @@ export function SubscriptionList({
     );
   }
 
-  if (subscriptions.length === 0) {
+  if (subsArray.length === 0) {
     return (
       <div className="bg-white/5 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-2xl p-12 text-center flex flex-col items-center justify-center">
         <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
@@ -281,7 +283,7 @@ export function SubscriptionList({
 
   return (
     <div className="space-y-4">
-      {subscriptions.map((sub) => (
+      {subsArray.map((sub) => (
         <SubscriptionCard
           key={sub.id}
           sub={sub}

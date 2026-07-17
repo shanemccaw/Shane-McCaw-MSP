@@ -7,11 +7,13 @@ function formatCurrency(amount: string | number, currency: string): string {
 }
 
 export function BillingSummaryCards({ invoices }: { invoices: Invoice[] }) {
-  const totalDue = invoices
+  const invoicesArray = Array.isArray(invoices) ? invoices : [];
+  
+  const totalDue = invoicesArray
     .filter((i) => i.status === "due" || i.status === "overdue")
     .reduce((sum, i) => sum + parseFloat(i.amount), 0);
-  const totalPaid = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + parseFloat(i.amount), 0);
-  const totalInvoiced = invoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalPaid = invoicesArray.filter((i) => i.status === "paid").reduce((sum, i) => sum + parseFloat(i.amount), 0);
+  const totalInvoiced = invoicesArray.reduce((s, i) => s + parseFloat(i.amount), 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

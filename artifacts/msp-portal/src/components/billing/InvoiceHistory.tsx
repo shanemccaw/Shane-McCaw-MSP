@@ -34,7 +34,9 @@ export function InvoiceHistory({
   onPay: (inv: Invoice) => void;
   payingId: number | null;
 }) {
-  const showReceipts = isPlatformBilled && stripeReceipts.length > 0;
+  const invoicesArray = Array.isArray(invoices) ? invoices : [];
+  const receiptsArray = Array.isArray(stripeReceipts) ? stripeReceipts : [];
+  const showReceipts = isPlatformBilled && receiptsArray.length > 0;
   
   if (loading && receiptsLoading) {
     return (
@@ -46,7 +48,7 @@ export function InvoiceHistory({
     );
   }
 
-  if (invoices.length === 0 && (!isPlatformBilled || stripeReceipts.length === 0)) {
+  if (invoicesArray.length === 0 && (!isPlatformBilled || receiptsArray.length === 0)) {
     return (
       <div className="bg-white/5 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-2xl p-12 text-center flex flex-col items-center justify-center">
         <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
@@ -65,7 +67,7 @@ export function InvoiceHistory({
       <div className="divide-y divide-slate-200 dark:divide-slate-800/50">
         
         {/* Render Invoices */}
-        {invoices.map((inv) => {
+        {invoicesArray.map((inv) => {
           const config = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.draft;
           const canPay = inv.status === "due" || inv.status === "overdue";
           
@@ -150,7 +152,7 @@ export function InvoiceHistory({
         })}
 
         {/* Render Stripe Receipts if applicable */}
-        {showReceipts && stripeReceipts.map((receipt) => {
+        {showReceipts && receiptsArray.map((receipt) => {
           const isPaid = receipt.status === "paid";
           const bg = isPaid ? "bg-emerald-500/10" : receipt.status === "open" ? "bg-amber-500/10" : "bg-slate-500/10";
           const text = isPaid ? "text-emerald-600 dark:text-emerald-400" : receipt.status === "open" ? "text-amber-600 dark:text-amber-500" : "text-slate-600 dark:text-slate-400";
