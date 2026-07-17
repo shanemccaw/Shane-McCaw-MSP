@@ -229,6 +229,54 @@ describe("applyMapping", () => {
     expect(result.allIds).toBe("u1, u2, u3");
   });
 
+  it("applies countTruthy transform", () => {
+    const itemsWithEmpty = [
+      { id: "u1", active: true },
+      { id: "u2", active: false },
+      { id: "u3", active: "" },
+      { id: "u4", active: "yes" }
+    ];
+    const mapping: MappingRule[] = [{ sourceField: "active", targetField: "truthyCount", transform: "countTruthy" }];
+    const result = applyMapping(itemsWithEmpty, mapping, []);
+    expect(result.truthyCount).toBe(2); // true and "yes" are truthy; false and "" are falsy
+  });
+
+  it("applies countFalse transform", () => {
+    const itemsWithBools = [
+      { id: "u1", val: true },
+      { id: "u2", val: false },
+      { id: "u3", val: null },
+      { id: "u4", val: false }
+    ];
+    const mapping: MappingRule[] = [{ sourceField: "val", targetField: "falseCount", transform: "countFalse" }];
+    const result = applyMapping(itemsWithBools, mapping, []);
+    expect(result.falseCount).toBe(2);
+  });
+
+  it("applies countEquals transform", () => {
+    const itemsWithLevels = [
+      { id: "u1", level: "high" },
+      { id: "u2", level: "medium" },
+      { id: "u3", level: "high" },
+      { id: "u4", level: "low" }
+    ];
+    const mapping: MappingRule[] = [{ sourceField: "level", targetField: "highCount", transform: "countEquals('high')" }];
+    const result = applyMapping(itemsWithLevels, mapping, []);
+    expect(result.highCount).toBe(2);
+  });
+
+  it("resolves nested dot-path source fields", () => {
+    const itemsWithNest = [
+      { id: "u1", status: { errorCode: 50012 } },
+      { id: "u2", status: { errorCode: 50012 } },
+      { id: "u3", status: { errorCode: 0 } },
+      { id: "u4", status: null }
+    ];
+    const mapping: MappingRule[] = [{ sourceField: "status.errorCode", targetField: "errorCodesCount", transform: "countEquals('50012')" }];
+    const result = applyMapping(itemsWithNest, mapping, []);
+    expect(result.errorCodesCount).toBe(2);
+  });
+
   it("handles empty items array", () => {
     const result = applyMapping([], [], ["displayName"]);
     expect(result.displayName_count).toBe(0);
@@ -313,6 +361,47 @@ describe("graphFetchPaginated", () => {
     mockFetch.mockRejectedValue(err);
 
     await expect(graphFetchPaginated("tenant1", "/users", "GET")).rejects.toThrow("Consent revoked");
+  });
+
+  it("resolves date placeholders in endpoints", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: [] }),
+    });
+
+    await graphFetchPaginated("tenant1", "/users?$filter=createdDateTime ge {30DaysAgo}", "GET");
+    
+    expect(mockFetch).toHaveBeenCalled();
+    const calledUrl = mockFetch.mock.calls[0][1];
+    // Check that the URL resolved {30DaysAgo} to a date string matching standard ISO pattern
+    expect(calledUrl).toMatch(/\/users\?\$filter=createdDateTime ge \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("applies ConsistencyLevel: eventual header when URL has $filter= on GET", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: [] }),
+    });
+
+    await graphFetchPaginated("tenant1", "/users?$filter=displayName eq 'Test'", "GET");
+
+    expect(mockFetch).toHaveBeenCalled();
+    const options = mockFetch.mock.calls[0][2];
+    expect(options.headers).toBeDefined();
+    expect(options.headers.ConsistencyLevel).toBe("eventual");
+  });
+
+  it("does not apply ConsistencyLevel: eventual header when URL has no filter", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: [] }),
+    });
+
+    await graphFetchPaginated("tenant1", "/users", "GET");
+
+    expect(mockFetch).toHaveBeenCalled();
+    const options = mockFetch.mock.calls[0][2];
+    expect(options.headers?.ConsistencyLevel).toBeUndefined();
   });
 });
 

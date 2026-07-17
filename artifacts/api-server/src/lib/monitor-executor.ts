@@ -42,7 +42,12 @@ export interface SeverityRule {
 export interface MappingRule {
   sourceField: string;
   targetField: string;
-  transform?: "count" | "exists" | "first" | "join" | "none";
+  /**
+   * "count" | "exists" | "first" | "join" | "none" | "countTruthy" | "countFalse"
+   * | "countEquals('value')" — the countEquals form carries its comparison value
+   * inline in the string since MappingRule is stored as jsonb; parsed at runtime.
+   */
+  transform?: string;
 }
 
 export interface CheckResult {
@@ -89,6 +94,20 @@ function resolvePathInData(p: string, data: Record<string, unknown>): unknown {
     cur = (cur as Record<string, unknown>)[part];
   }
   return cur;
+}
+
+// ── Relative date placeholder resolution ────────────────────────────────────
+// Resolves {NDaysAgo} tokens in Graph endpoint strings to literal ISO 8601 UTC
+// datetimes. Graph's $filter requires literal dates, not relative expressions,
+// so this substitution was always structurally necessary.
+const DATE_PLACEHOLDER_RE = /\{(\d+)DaysAgo\}/g;
+
+export function resolveEndpointPlaceholders(endpoint: string): string {
+  return endpoint.replace(DATE_PLACEHOLDER_RE, (_match, days: string) => {
+    const n = Number(days);
+    const d = new Date(Date.now() - n * 24 * 60 * 60 * 1000);
+    return d.toISOString();
+  });
 }
 
 function parseExprValue(s: string, data: Record<string, unknown>): unknown {
@@ -238,12 +257,20 @@ export function applyMapping(
 
   // Mapping rules
   for (const rule of mapping) {
-    const { sourceField, targetField, transform } = rule;
+    const { sourceField, targetField } = rule;
+    const rawTransform = rule.transform ?? "none";
+    const countEqualsMatch = /^countEquals\(\s*['"](.*)['"]\s*\)$/.exec(rawTransform);
+    const transform = countEqualsMatch ? "countEquals" : rawTransform;
+    const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
+
+    // Resolve sourceField via the existing dot-path resolver (already used by
+    // the condition grammar) instead of flat bracket access, so nested Graph
+    // fields like "status.errorCode" resolve correctly.
     const vals = items.map(item => (typeof item === "object" && item !== null
-      ? (item as Record<string, unknown>)[sourceField]
+      ? resolvePathInData(sourceField, item as Record<string, unknown>)
       : undefined));
 
-    switch (transform ?? "none") {
+    switch (transform) {
       case "count":
         result[targetField] = vals.filter(v => v != null).length;
         break;
@@ -255,6 +282,15 @@ export function applyMapping(
         break;
       case "join":
         result[targetField] = vals.filter(v => v != null).join(", ");
+        break;
+      case "countTruthy":
+        result[targetField] = vals.filter(v => v != null && v !== false && v !== "").length;
+        break;
+      case "countFalse":
+        result[targetField] = vals.filter(v => v === false).length;
+        break;
+      case "countEquals":
+        result[targetField] = vals.filter(v => String(v) === compareValue).length;
         break;
       default:
         result[targetField] = vals.filter(v => v != null);
@@ -284,10 +320,15 @@ export async function graphFetchPaginated(
   let pageCount = 0;
   let rawResponse: unknown = null;
 
+  // Resolve relative-date placeholders (e.g. {30DaysAgo}) before building the
+  // URL — Graph's $filter requires a literal ISO 8601 date, not a relative
+  // expression.
+  const resolvedEndpoint = resolveEndpointPlaceholders(endpoint);
+
   // Build full URL if endpoint is a path
-  let url: string = endpoint.startsWith("http")
-    ? endpoint
-    : `${GRAPH_BASE}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  let url: string = resolvedEndpoint.startsWith("http")
+    ? resolvedEndpoint
+    : `${GRAPH_BASE}${resolvedEndpoint.startsWith("/") ? "" : "/"}${resolvedEndpoint}`;
 
   while (url && pageCount < NEXT_LINK_MAX_PAGES) {
     const options: RequestInit = {
@@ -296,6 +337,11 @@ export async function graphFetchPaginated(
     if (method.toUpperCase() !== "GET" && requestBody != null) {
       options.body = JSON.stringify(requestBody);
       options.headers = { "Content-Type": "application/json" };
+    }
+    // Advanced Graph queries (e.g. $filter against signInActivity) require this
+    // header. Safe to always include on filtered GETs; Graph ignores it otherwise.
+    if (method.toUpperCase() === "GET" && url.includes("$filter=")) {
+      options.headers = { ...(options.headers ?? {}), ConsistencyLevel: "eventual" };
     }
 
     // graphFetchForTenant handles auth and consent-revoked detection
