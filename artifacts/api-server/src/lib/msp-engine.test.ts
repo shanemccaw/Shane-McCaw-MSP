@@ -62,7 +62,7 @@ function rule(overrides: Partial<SignalDerivationRule> & Pick<SignalDerivationRu
 
 function tenant(id: number, combinedScore: number, overrides: Partial<TenantEngineScores> = {}): TenantEngineScores {
   return {
-    tenantId: id,
+    customerId: id,
     tenantName: `Tenant ${id}`,
     architectureHealthScore: 0,
     driftScore: 0,
@@ -89,13 +89,13 @@ describe("aggregatePortfolioRisk", () => {
   it("sorts rankedTenants descending by combinedScore", () => {
     const tenants = [tenant(1, 10), tenant(2, 90), tenant(3, 50)];
     const { rankedTenants } = aggregatePortfolioRisk(tenants);
-    expect(rankedTenants.map(t => t.tenantId)).toEqual([2, 3, 1]);
+    expect(rankedTenants.map(t => t.customerId)).toEqual([2, 3, 1]);
   });
 
   it("does not mutate the input array (returns a sorted copy)", () => {
     const tenants = [tenant(1, 10), tenant(2, 90)];
     aggregatePortfolioRisk(tenants);
-    expect(tenants.map(t => t.tenantId)).toEqual([1, 2]);
+    expect(tenants.map(t => t.customerId)).toEqual([1, 2]);
   });
 
   it("returns portfolioRisk 0 and empty rankedTenants for an empty portfolio", () => {
