@@ -380,6 +380,7 @@ export default function UserManagementPage() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [mfaFilter, setMfaFilter] = useState<string>("all");
+  const [orgFilter, setOrgFilter] = useState<string>("all");
 
   // Selection & Bulk state
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
@@ -486,9 +487,17 @@ export default function UserManagementPage() {
         (mfaFilter === "Disabled" && user.mfaStatus === "Disabled") ||
         user.mfaStatus === mfaFilter;
 
-      return matchesSearch && matchesRole && matchesStatus && matchesMfa;
+      // Organization filter — scopes by MSP staff vs customer users
+      const matchesOrg =
+        orgFilter === "all" ||
+        (orgFilter === "msp-staff" && (user.mspRole === "MSPAdmin" || user.mspRole === "MSPOperator" || user.mspRole === "PlatformAdmin")) ||
+        (orgFilter === "customer-users" && user.mspRole === "CustomerUser") ||
+        // If a specific customer email domain is selected, match by domain
+        (orgFilter.startsWith("domain:") && user.email.endsWith("@" + orgFilter.replace("domain:", "")));
+
+      return matchesSearch && matchesRole && matchesStatus && matchesMfa && matchesOrg;
     });
-  }, [users, searchQuery, roleFilter, statusFilter, mfaFilter]);
+  }, [users, searchQuery, roleFilter, statusFilter, mfaFilter, orgFilter]);
 
   // Statistics Summary
   const stats = useMemo(() => {
@@ -1036,6 +1045,34 @@ export default function UserManagementPage() {
                   </Select>
                 </div>
 
+                <div className="w-[160px]">
+                  <Select value={orgFilter} onValueChange={setOrgFilter}>
+                    <SelectTrigger className="h-9 text-xs bg-background">
+                      <SelectValue placeholder="All Organizations" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Organizations</SelectItem>
+                      <SelectItem value="msp-staff">MSP Staff Only</SelectItem>
+                      <SelectItem value="customer-users">Customer Users Only</SelectItem>
+                      {/* Dynamically extract unique customer email domains */}
+                      {Array.from(
+                        new Set(
+                          users
+                            .filter((u) => u.mspRole === "CustomerUser")
+                            .map((u) => u.email.split("@")[1])
+                            .filter(Boolean)
+                        )
+                      )
+                        .sort()
+                        .map((domain) => (
+                          <SelectItem key={domain} value={`domain:${domain}`}>
+                            @{domain}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1044,6 +1081,7 @@ export default function UserManagementPage() {
                     setRoleFilter("all");
                     setStatusFilter("all");
                     setMfaFilter("all");
+                    setOrgFilter("all");
                   }}
                   className="h-9 text-xs text-muted-foreground"
                 >

@@ -499,6 +499,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
+        icon: Users,
+        label: "Team Members",
+        href: "/customer-team",
+        roles: ["CustomerUser"],
+      },
+      {
         icon: CreditCard,
         label: "Billing",
         href: "/customer-billing",
