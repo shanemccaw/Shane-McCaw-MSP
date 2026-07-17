@@ -49,6 +49,12 @@ interface BaselineTemplate {
   status: "active" | "archived";
   createdAt: string;
   updatedAt: string;
+  packs?: Array<{
+    packKey: string;
+    packLabel: string;
+    sortOrder: number;
+    totalInPack: number;
+  }>;
 }
 
 interface ConfigPack {
@@ -262,16 +268,28 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
               {items.map(t => {
                 const isSelected = selectedId === t.templateId && !isNew;
                 const isArchived = t.status === "archived";
+                const packs = t.packs ?? [];
                 return (
                   <button
                     key={t.templateId}
                     onClick={() => openEdit(t)}
-                    className={`w-full flex items-center gap-2 pl-4 pr-3 py-1.5 text-left transition-colors border-l-2 ${
+                    className={`w-full flex flex-col gap-1 pl-4 pr-3 py-1.5 text-left transition-colors border-l-2 ${
                       isSelected ? "bg-[#0078D4]/10 border-l-[#0078D4]" : "border-l-transparent hover:bg-[#161B22]"
                     }`}
                   >
-                    <span className={`font-mono text-xs flex-1 truncate ${isArchived ? "text-gray-600 italic" : "text-gray-300"}`}>{t.templateId}</span>
-                    {t.requiresVerificationGate && <span className="text-[9px] text-amber-400 shrink-0" title="Requires verification gate">🔒</span>}
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono text-xs flex-1 truncate ${isArchived ? "text-gray-600 italic" : "text-gray-300"}`}>{t.templateId}</span>
+                      {t.requiresVerificationGate && <span className="text-[9px] text-amber-400 shrink-0" title="Requires verification gate">🔒</span>}
+                    </div>
+                    {packs.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {packs.map(p => (
+                          <span key={p.packKey} className="inline-block px-1.5 py-0.5 rounded text-[9px] bg-[#0078D4]/20 text-[#2E9EFF] border border-[#0078D4]/30 whitespace-nowrap">
+                            {p.packKey} · step {p.sortOrder + 1} of {p.totalInPack}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </button>
                 );
               })}

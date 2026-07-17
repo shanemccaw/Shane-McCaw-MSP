@@ -36,7 +36,7 @@ import {
   configPackTemplatesTable,
   mspCustomersTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -76,7 +76,53 @@ router.get("/admin/baseline-templates", requireAdmin, async (_req: Request, res:
       .select()
       .from(baselineActionTemplatesTable)
       .orderBy(baselineActionTemplatesTable.templateId);
-    res.json({ templates });
+
+    // Fetch pack memberships for all templates (including archived packs)
+    const packLinks = await db
+      .select({
+        templateId: configPackTemplatesTable.templateId,
+        packId: configPackTemplatesTable.packId,
+        sortOrder: configPackTemplatesTable.sortOrder,
+        packKey: configPacksTable.packKey,
+        packLabel: configPacksTable.label,
+      })
+      .from(configPackTemplatesTable)
+      .leftJoin(configPacksTable, eq(configPacksTable.id, configPackTemplatesTable.packId));
+
+    // Count templates per pack for total in pack
+    const packTemplateCounts = await db
+      .select({
+        packId: configPackTemplatesTable.packId,
+        count: count().as("count"),
+      })
+      .from(configPackTemplatesTable)
+      .groupBy(configPackTemplatesTable.packId);
+
+    const countMap = new Map(packTemplateCounts.map(p => [p.packId, p.count]));
+
+    // Group pack links by templateId
+    const packsByTemplate = new Map<string, Array<{ packKey: string; packLabel: string; sortOrder: number; totalInPack: number }>>();
+    for (const link of packLinks) {
+      if (!packsByTemplate.has(link.templateId)) {
+        packsByTemplate.set(link.templateId, []);
+      }
+      packsByTemplate
+        .get(link.templateId)!
+        .push({
+          packKey: link.packKey!,
+          packLabel: link.packLabel!,
+          sortOrder: link.sortOrder,
+          totalInPack: countMap.get(link.packId) || 0,
+        });
+    }
+
+    // Attach packs array to each template
+    const templatesWithPacks = templates.map(t => ({
+      ...t,
+      packs: packsByTemplate.get(t.templateId) || [],
+    }));
+
+    res.json({ templates: templatesWithPacks });
   } catch (err) {
     logger.error({ err }, "admin-baseline-templates: list failed");
     res.status(500).json({ error: "Failed to list baseline templates" });
