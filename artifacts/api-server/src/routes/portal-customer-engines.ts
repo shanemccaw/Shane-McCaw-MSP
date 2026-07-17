@@ -18,6 +18,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireRole } from "../middlewares/requireAuth";
+import { randomUUID } from "crypto";
+import { getRequestContext } from "../lib/request-context.ts";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
@@ -620,6 +622,7 @@ router.post(
         actionType: "customer.offboarding.deactivate",
         entityType: "customer",
         entityId: String(customerId),
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
         outcome: "success",
         metadata: { deactivatedAt: new Date().toISOString() },
       });

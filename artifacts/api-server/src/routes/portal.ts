@@ -3,6 +3,7 @@ import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTab
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
@@ -6371,7 +6372,7 @@ router.post(
         entityType: "customer",
         entityId: String(customerId),
         entityLabel: customer.name,
-        correlationId: randomUUID(),
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
         ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
         userAgent: req.headers["user-agent"] ?? null,
         outcome: "success",

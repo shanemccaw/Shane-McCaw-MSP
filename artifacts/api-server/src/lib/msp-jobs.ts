@@ -24,6 +24,9 @@ import { randomUUID } from "crypto";
 import { db, mspJobQueueTable, mspDlqStoreTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { runWithRequestContext } from "./request-context.ts";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Handler registry ──────────────────────────────────────────────────────────
 
@@ -120,6 +123,24 @@ export async function processJobs(batchSize = 5): Promise<void> {
       if (!jobs.rows.length) return;
 
       for (const row of jobs.rows) {
+        // One AsyncLocalStorage correlation context PER JOB (never one shared
+        // across the batch) so a single job's dispatches share a correlationId
+        // while unrelated jobs stay independent. Inherit the job's stored
+        // correlation_id when it's a bare UUID (ties the job's events back to
+        // the request/event that enqueued it); otherwise generate a fresh id.
+        const jobTraceId =
+          row.correlation_id && UUID_RE.test(row.correlation_id)
+            ? row.correlation_id
+            : randomUUID();
+
+        await runWithRequestContext(
+          {
+            traceId: jobTraceId,
+            mspId: row.msp_id ?? null,
+            customerId: row.customer_id ?? null,
+            actor: null,
+          },
+          async () => {
         // Mark as running
         await tx.execute(sql`
           UPDATE msp_job_queue
@@ -147,7 +168,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
             customerId: row.customer_id ?? undefined,
           });
           logger.warn({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: no handler — parked in DLQ");
-          continue;
+          return;
         }
 
         try {
@@ -205,6 +226,8 @@ export async function processJobs(batchSize = 5): Promise<void> {
             logger.warn({ jobId: row.job_id, jobType: row.job_type, backoffSec }, "msp-jobs: failed — scheduling retry");
           }
         }
+          },
+        );
       }
     });
   } catch (err) {

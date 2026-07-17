@@ -64,6 +64,7 @@ import {
   type PsScriptPermissions,
   type WfGraph,
   type WfNode,
+  type WfRun,
 } from "@workspace/db";
 
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation";
@@ -85,6 +86,7 @@ import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
@@ -8397,6 +8399,29 @@ export async function executeWorkflowRun(
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
   if (!run) { logger.warn({ runId }, "wf-executor: run not found"); return; }
+
+  // Establish one AsyncLocalStorage correlation context per RUN so every event
+  // dispatched while this run executes shares a single correlationId. An
+  // event-triggered run whose triggerRef is a bare event UUID inherits it as
+  // the correlation; free-form refs (e.g. "run_workflow:parent:123") don't
+  // match the UUID shape and fall back to a fresh id. wf_runs carries no tenant
+  // columns, so mspId/customerId stay null here.
+  const traceId =
+    run.triggerRef && RUNBOOK_UUID_RE.test(run.triggerRef)
+      ? run.triggerRef
+      : randomUUID();
+
+  return runWithRequestContext(
+    { traceId, mspId: null, customerId: null, actor: null },
+    () => executeWorkflowRunInner(run, opts),
+  );
+}
+
+async function executeWorkflowRunInner(
+  run: WfRun,
+  opts: { inlineGraph?: WfGraph; dryRun?: boolean; inputValues?: Record<string, string | string[]> } = {},
+): Promise<void> {
+  const runId = run.id;
 
   const versionRows = await db.select().from(wfVersionsTable).where(eq(wfVersionsTable.id, run.versionId)).limit(1);
   const version = versionRows[0];

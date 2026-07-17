@@ -16,6 +16,8 @@ import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "d
 import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { randomUUID } from "crypto";
+import { getRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
@@ -379,6 +381,7 @@ router.post(
         actionType: "msp.offboarding.request",
         entityType: "msp",
         entityId: String(mspId),
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
         outcome: "success",
         metadata: { requestedAt: now.toISOString() },
       });
@@ -516,6 +519,7 @@ router.post(
           actionType: "msp.offboarding.export",
           entityType: "msp",
           entityId: String(mspId),
+          correlationId: getRequestContext()?.traceId ?? randomUUID(),
           outcome: "success",
           metadata: { customerCount: customers.length, exportedAt: exportPackage.exportedAt },
         });
@@ -602,6 +606,7 @@ router.post(
         entityType: "msp",
         entityId: String(targetMspId),
         entityLabel: msp.name,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
         outcome: "success",
         metadata: { archivedAt: now.toISOString() },
       });
@@ -964,6 +969,7 @@ router.post(
         entityType: "customer",
         entityId: String(customer!.id),
         entityLabel: customer!.name,
+        correlationId: getRequestContext()?.traceId ?? randomUUID(),
         outcome: "success",
         metadata: { domain: data.domain, industry: data.industry, status: data.status },
       });
@@ -1173,6 +1179,7 @@ router.patch(
           entityType: "customer",
           entityId: String(customerId),
           entityLabel: updated.name,
+          correlationId: getRequestContext()?.traceId ?? randomUUID(),
           outcome: "success",
           metadata: updateData,
         });

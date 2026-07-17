@@ -36,9 +36,11 @@ import {
   portalWfIdempotencyTable,
   mspDlqStoreTable,
 } from "@workspace/db";
+import type { PortalWfRun } from "@workspace/db";
 import { eq, and, inArray, sql as drizzleSql } from "drizzle-orm";
 import { logger } from "./logger";
 import { addEventListener, dispatchEvent, systemActor } from "./event-bus";
+import { runWithRequestContext } from "./request-context.ts";
 import type { DispatchedEvent } from "./event-bus";
 import { isAIDependent, getAiCostOwner } from "./node-type-registry.js";
 import { checkAiAdmission, recordAiUsage } from "./ai-billing.js";
@@ -512,6 +514,8 @@ async function routeToDlq(opts: {
 
 // ── Run execution ─────────────────────────────────────────────────────────────
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function executeRun(runId: string): Promise<void> {
   // Load run record
   const [run] = await db.select()
@@ -523,6 +527,31 @@ export async function executeRun(runId: string): Promise<void> {
     logger.error({ runId }, "portal-wf: run not found");
     return;
   }
+
+  // Establish one AsyncLocalStorage correlation context per RUN (not per
+  // dispatch) so every event emitted while this run executes shares a single
+  // correlationId. A run triggered BY an event inherits that event's id as the
+  // correlation, tying the workflow's events back to their originating event.
+  const tenantContext = run.tenantContext as unknown as TenantContext;
+  const traceId =
+    run.triggerEventId && UUID_RE.test(run.triggerEventId)
+      ? run.triggerEventId
+      : randomUUID();
+
+  return runWithRequestContext(
+    {
+      traceId,
+      mspId: tenantContext.mspId ?? null,
+      customerId: tenantContext.customerId ?? null,
+      actor: null,
+    },
+    () => executeRunInner(run),
+  );
+}
+
+async function executeRunInner(run: PortalWfRun): Promise<void> {
+  const runId = run.runId;
+
   if (run.status === "completed" || run.status === "cancelled") {
     logger.info({ runId, status: run.status }, "portal-wf: run already in terminal state — skipping");
     return;

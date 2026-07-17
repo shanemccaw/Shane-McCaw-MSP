@@ -17,7 +17,8 @@ import { db, mspsTable, mspCustomDomainsTable, mspAuditLogsTable } from "@worksp
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
+import { getRequestContext } from "../lib/request-context.ts";
 import { resolveTxt } from "dns/promises";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
@@ -237,6 +238,7 @@ router.post("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: 
     entityType: "msp_custom_domain",
     entityId: String(row.id),
     entityLabel: domain,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: req.ip,
     userAgent: req.get("user-agent"),
     outcome: "success",
@@ -321,6 +323,7 @@ router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async
     entityType: "msp_custom_domain",
     entityId: String(row.id),
     entityLabel: row.domain,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: req.ip,
     userAgent: req.get("user-agent"),
     outcome: verified ? "success" : "failure",
@@ -362,6 +365,7 @@ router.delete("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req
     entityType: "msp_custom_domain",
     entityId: String(row.id),
     entityLabel: row.domain,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: req.ip,
     userAgent: req.get("user-agent"),
     outcome: "success",

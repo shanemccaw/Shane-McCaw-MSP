@@ -68,7 +68,8 @@ import {
 import { eq, and, desc, isNull, inArray, gte, lt } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
-import { randomBytes, createHash } from "crypto";
+import { randomBytes, createHash, randomUUID } from "crypto";
+import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
@@ -104,6 +105,7 @@ function writeAuditLog(params: {
     actionType: params.actionType,
     entityType: params.entityType,
     entityId: params.entityId,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: params.req.ip,
     userAgent: params.req.get("user-agent"),
     outcome: "success",

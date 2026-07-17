@@ -38,7 +38,9 @@ import {
 import { eq, and, desc, asc, count, sql, ilike, or, isNull, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
+import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 
 const router: IRouter = Router();
 
@@ -69,6 +71,7 @@ function writeAuditLog(params: {
     entityType: params.entityType,
     entityId: params.entityId,
     entityLabel: params.entityLabel,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: params.req.ip,
     userAgent: params.req.get("user-agent"),
     outcome: params.outcome ?? "success",

@@ -34,7 +34,9 @@ import {
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { requirePlanFeature } from "../lib/msp-entitlement.ts";
+import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 import { z } from "zod";
 
 const router = Router();
@@ -107,6 +109,7 @@ async function writeAudit(req: Request, params: {
     actionType: params.actionType,
     entityType: params.entityType,
     entityId: params.entityId,
+    correlationId: getRequestContext()?.traceId ?? randomUUID(),
     ipAddress: req.ip,
     userAgent: req.get("user-agent"),
     outcome: "success",
