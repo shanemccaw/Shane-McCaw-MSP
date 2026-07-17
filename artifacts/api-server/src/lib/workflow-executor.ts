@@ -3722,7 +3722,7 @@ async function executeNode(
               soDb.select({ id: soSvcTable.id, name: soSvcTable.name, price: soSvcTable.price, basePrice: soSvcTable.basePrice }).from(soSvcTable),
               soLoadCfg(soOffer.mspId),
             ]);
-            const soEngineOut = soCompute(soOffer.tenantId, new Set(soOffer.firedSignalKeys ?? []), soRgs, soSvcs, soCfg);
+            const soEngineOut = soCompute(soOffer.customerId, new Set(soOffer.firedSignalKeys ?? []), soRgs, soSvcs, soCfg);
             const soCandidate = soEngineOut.candidates.find(c => c.serviceId === soOffer.serviceId);
             const soNewScore = soCandidate?.score ?? 0;
             const soPrevScore = soOffer.score;
