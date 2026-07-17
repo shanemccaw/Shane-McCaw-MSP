@@ -58,6 +58,8 @@ import CustomerBillingPage from "@/pages/customer-billing";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
+import BreakGlassVerifyPage from "@/pages/break-glass-verify";
+import BreakGlassStatusPage from "@/pages/break-glass-status";
 import AccountSetupPage from "@/pages/account-setup";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
@@ -279,6 +281,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/pending-approvals">
         <ProtectedRoute component={PendingApprovalsPage} />
+      </Route>
+      <Route path="/break-glass/:runId">
+        <ProtectedRoute component={BreakGlassStatusPage} />
       </Route>
       <Route path="/dlq">
         <ProtectedRoute component={DlqPage} />
@@ -550,6 +555,12 @@ function Router() {
       {/* Public invite accept — no auth required */}
       <Route path="/invite/:token">
         <AcceptInvitePage />
+      </Route>
+
+      {/* Public break-glass verify landing — no auth required, the recipient may
+          not have Portal access at all. See break-glass-verify.tsx. */}
+      <Route path="/break-glass/verify/:token">
+        <BreakGlassVerifyPage />
       </Route>
 
       {/* Account setup — public, no auth required.

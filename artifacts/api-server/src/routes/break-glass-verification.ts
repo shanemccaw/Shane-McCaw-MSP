@@ -34,7 +34,7 @@ import {
   mspsTable,
   wfRunsTable,
 } from "@workspace/db";
-import { and, eq, ne, gte } from "drizzle-orm";
+import { and, eq, ne, gte, desc } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { decryptSecret, encryptSecret } from "../lib/secret-crypto";
@@ -203,7 +203,11 @@ async function sendBreakGlassInvites(
       linkStatus: "pending",
       failedAttemptCount: 0,
     });
-    const link = `${siteUrl()}/api/public/break-glass/verify/${linkToken}`;
+    // Points at the msp-portal landing page (Prompt 6), NOT the backend redirect
+    // endpoint directly — the recipient sees context copy + a "Sign in with
+    // Microsoft" button before the OAuth redirect fires, rather than landing on
+    // Microsoft's login screen with zero context.
+    const link = `${siteUrl()}/portal/break-glass/verify/${linkToken}`;
     const html =
       `<p>You have been asked to verify control of your organization's Microsoft 365 tenant in order to receive a break-glass administrator credential.</p>` +
       `<p>This link is single-use and expires in ${Math.round(BREAK_GLASS_LINK_TTL_MS / 3_600_000)} hours. You will be asked to sign in with your Microsoft account; you must hold an active Global Administrator role.</p>` +
@@ -336,6 +340,70 @@ router.post("/portal/break-glass/:pendingSecretId/invite", requireAuth, async (r
   } catch (err) {
     req.log.error({ err, pendingSecretId }, "break-glass: invite failed");
     return res.status(500).json({ error: "Failed to send invites" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /portal/break-glass/by-run/:runId — pending-action status for the Portal's
+// pack-execution surface. Scoped by runId (not customerId): the caller is a view
+// that's already looking at one specific run, so there's no "which run" ambiguity
+// to resolve. Never returns linkToken or the encrypted secret — this is a status
+// read for the initiator, not a delivery surface.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request, res: Response) => {
+  const runId = parseInt(req.params.runId as string, 10);
+  if (isNaN(runId)) return res.status(404).json({ error: "Not found" });
+
+  try {
+    const [run] = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+    if (!run) return res.status(404).json({ error: "Not found" });
+
+    // The gate node preserves payload.customerId (only the secret field itself and
+    // any secretTemplate-referenced keys are stripped — see the redactedPayload
+    // snapshot written by break_glass_verification_gate in workflow-executor.ts).
+    const customerIdRaw = (run.payload as Record<string, unknown> | null)?.customerId;
+    const customerId = customerIdRaw != null ? parseInt(String(customerIdRaw), 10) : NaN;
+    // Return 404 for both "not found" and "not yours" — never confirm the run exists.
+    if (isNaN(customerId) || !(await assertCustomerAccess(req.user!, customerId))) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    const [secret] = await db
+      .select()
+      .from(breakGlassPendingSecretsTable)
+      .where(eq(breakGlassPendingSecretsTable.runId, runId))
+      .orderBy(desc(breakGlassPendingSecretsTable.createdAt))
+      .limit(1);
+
+    // Only "pending" when the run is actually paused at a (non-terminal) break-glass
+    // gate right now — a break_glass_pending_secrets row with status "pending_delivery"
+    // is sufficient evidence of that; no need to inspect the workflow definition's
+    // node types directly.
+    if (run.status !== "awaiting_approval" || !secret || secret.status !== "pending_delivery") {
+      return res.json({ pending: false });
+    }
+
+    const attempts = await db
+      .select({
+        id: breakGlassVerificationAttemptsTable.id,
+        invitedEmail: breakGlassVerificationAttemptsTable.invitedEmail,
+        linkStatus: breakGlassVerificationAttemptsTable.linkStatus,
+        verificationOutcome: breakGlassVerificationAttemptsTable.verificationOutcome,
+        attemptedAt: breakGlassVerificationAttemptsTable.attemptedAt,
+      })
+      .from(breakGlassVerificationAttemptsTable)
+      .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, secret.id))
+      .orderBy(desc(breakGlassVerificationAttemptsTable.createdAt));
+
+    return res.json({
+      pending: true,
+      pendingSecretId: secret.id,
+      status: secret.status,
+      attempts,
+    });
+  } catch (err) {
+    req.log.error({ err, runId }, "break-glass: by-run status lookup failed");
+    return res.status(500).json({ error: "Failed to load status" });
   }
 });
 
@@ -605,7 +673,7 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
     // Log ONLY non-sensitive delivery metadata — never the value.
     logger.info({ revealed: true, deliveredToEmail: attempt.invitedEmail, timestamp: new Date().toISOString() }, "break-glass: secret delivered");
 
-    return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. You can close this window.</p>`, branding));
+    return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. The paused automation has resumed and is continuing on its own — you can close this window.</p>`, branding));
   } catch (err) {
     logger.error({ err, pendingSecretId }, "break-glass: acknowledge failed");
     return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1>`, branding));
