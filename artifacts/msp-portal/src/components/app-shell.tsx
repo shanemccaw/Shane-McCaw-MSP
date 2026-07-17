@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,6 +85,20 @@ interface MspProfile {
   logoUrl?: string;
   primaryColor?: string;
   status: string;
+}
+
+function getInitials(name?: string | null, email?: string): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0].substring(0, 2).toUpperCase();
+  }
+  if (email && email.trim()) {
+    return email.substring(0, 2).toUpperCase();
+  }
+  return "U";
 }
 
 // ── Navigation config ─────────────────────────────────────────────────────────
@@ -555,6 +570,7 @@ interface MspSuspensionState {
 
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
   const slug = useMspSlug();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -833,6 +849,88 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               <span>Search</span>
               <kbd className="text-[10px] bg-border px-1 rounded">⌘K</kbd>
             </button>
+
+            {/* User Profile Head & Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-2 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-transform active:scale-95 ml-1"
+                  aria-label="User profile menu"
+                  title={user?.name ?? user?.email ?? "User profile"}
+                >
+                  <Avatar className="size-8 border border-border/60 shadow-sm">
+                    <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">
+                      {getInitials(user?.name, user?.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64 p-2">
+                <DropdownMenuLabel className="font-normal p-2">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-semibold leading-none text-foreground truncate">
+                      {user?.name ?? user?.email ?? "User Account"}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">
+                      {user?.email}
+                    </p>
+                    {mspRole && (
+                      <div className="pt-1">
+                        <Badge
+                          className={`text-[10px] px-1.5 py-0 h-4 ${
+                            ROLE_COLORS[mspRole] ?? "bg-muted"
+                          }`}
+                        >
+                          {mspRole}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 py-2"
+                  onSelect={() =>
+                    navigate(
+                      mspRole === "CustomerUser"
+                        ? "/customer-privacy"
+                        : "/settings"
+                    )
+                  }
+                >
+                  <Cog className="size-4 text-muted-foreground" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 py-2"
+                  onSelect={() =>
+                    navigate(
+                      mspRole === "CustomerUser"
+                        ? "/customer-billing"
+                        : "/settings/billing"
+                    )
+                  }
+                >
+                  <CreditCard className="size-4 text-muted-foreground" />
+                  <span>Billing</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 py-2"
+                  onSelect={() => navigate("/customer-privacy")}
+                >
+                  <Lock className="size-4 text-muted-foreground" />
+                  <span>Privacy &amp; Data</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer gap-2 py-2 text-rose-600 dark:text-rose-400 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-950/40"
+                  onSelect={() => void logout()}
+                >
+                  <LogOut className="size-4" />
+                  <span>Log Out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
