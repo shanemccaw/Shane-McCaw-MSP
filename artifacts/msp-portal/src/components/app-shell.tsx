@@ -516,6 +516,12 @@ const NAV_SECTIONS: NavSection[] = [
     label: "Management",
     items: [
       {
+        icon: Users,
+        label: "User Management",
+        href: "/users",
+        roles: ["PlatformAdmin", "MSPAdmin"],
+      },
+      {
         icon: Building2,
         label: "MSPs",
         href: "/msps",

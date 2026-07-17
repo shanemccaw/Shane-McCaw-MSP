@@ -647,6 +647,120 @@ router.delete("/msp/settings/users/:userId", requireRole("MSPAdmin"), async (req
   res.json({ ok: true });
 });
 
+router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "user.password.reset_email_sent",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+  });
+
+  res.json({ ok: true, message: "Password reset email sent" });
+});
+
+router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const tempPassword = `Temp-${randomBytes(6).toString("hex")}`;
+
+  await writeAuditLog({
+    req,
+    actionType: "user.password.temp_set",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+  });
+
+  res.json({ ok: true, tempPassword, requireChange: true });
+});
+
+router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "user.mfa.reset",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+  });
+
+  res.json({ ok: true, message: "MFA credentials cleared for re-enrollment" });
+});
+
+router.patch("/msp/settings/users/:userId/mfa-enforcement", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const { enforced } = req.body as { enforced?: boolean };
+
+  await writeAuditLog({
+    req,
+    actionType: "user.mfa.enforcement_toggle",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+    metadata: { enforced: !!enforced },
+  });
+
+  res.json({ ok: true, enforced: !!enforced });
+});
+
+router.patch("/msp/settings/users/:userId/status", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const { isActive } = req.body as { isActive?: boolean };
+  if (typeof isActive !== "boolean") { apiError(res, 400, "isActive must be boolean"); return; }
+
+  if (!isActive && userId === req.user!.id) {
+    apiError(res, 400, "Cannot suspend your own account");
+    return;
+  }
+
+  await db
+    .update(mspUsersTable)
+    .set({ isActive, updatedAt: new Date() })
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)));
+
+  await writeAuditLog({
+    req,
+    actionType: isActive ? "user.activate" : "user.suspend",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+  });
+
+  res.json({ ok: true, isActive });
+});
+
+router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "user.sessions.revoke_all",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+  });
+
+  res.json({ ok: true, message: "All sessions revoked" });
+});
+
 // ── Billing ───────────────────────────────────────────────────────────────────
 
 router.get("/msp/settings/billing", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
