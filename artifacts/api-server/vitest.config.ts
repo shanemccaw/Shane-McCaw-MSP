@@ -53,6 +53,7 @@ export default defineConfig({
       "src/lib/productTypeConfig.test.ts",
       "src/lib/msp-entitlement.test.ts",
       "src/routes/admin-engines.test.ts",
+      "src/routes/portal-customer-offboard.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -75,6 +75,8 @@ interface DashboardData {
   telemetryStatus?: "in_progress" | "completed";
   type_attributes?: string[];
   results?: AssessmentResultsPayload;
+  customerStatus?: string;
+  mspId?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -147,6 +149,37 @@ export default function CustomerHomePage() {
             </div>
           )}
         </div>
+
+        {/* Re-activation promo campaign banner for offboarded customers */}
+        {data?.customerStatus === "inactive" && data?.mspId === 1 && (
+          <Card className="border-primary/45 bg-gradient-to-r from-primary/10 via-primary/5 to-background overflow-hidden relative shadow-lg">
+            <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full blur-2xl" />
+            <CardContent className="p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 max-w-2xl">
+                <Badge className="bg-primary/20 text-primary border-primary/30 hover:bg-primary/20">Special Offer</Badge>
+                <h3 className="text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">
+                  Take Your M365 Modernisation to the Next Level
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Your cloud modernisation, security, and compliance shouldn&apos;t be left to chance. Re-activate your modernisation and monitoring retainer with <strong>Shane McCaw</strong> (NASA M365 Architect & 30-year veteran) today and secure <strong>15% off your first month</strong>.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0">
+                <Link href="/offboarding" className="w-full sm:w-auto">
+                  <Button className="w-full sm:w-auto gap-2 shadow-md">
+                    <Zap className="size-4" />
+                    Re-activate Retainer
+                  </Button>
+                </Link>
+                <Link href="/support" className="w-full sm:w-auto">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    Talk to Shane
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Quick-action cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -77,7 +77,7 @@ const NAV_ENTRIES: NavEntry[] = [
     icon: FileText,
     label: "Offboarding",
     href: "/offboarding",
-    roles: ["PlatformAdmin", "MSPAdmin"],
+    roles: ["MSPAdmin", "CustomerUser"],
   },
   {
     icon: Settings,

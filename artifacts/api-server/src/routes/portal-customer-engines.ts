@@ -21,8 +21,10 @@ import { requireRole } from "../middlewares/requireAuth";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
-import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
+import { createAuditLog } from "../lib/audit";
+import { getStripeKey } from "../lib/stripe";
 
 const router: IRouter = Router();
 
@@ -452,7 +454,9 @@ router.get(
         invoices,
         reports,
         unreadNotifications: unread,
-        unreadMessages
+        unreadMessages,
+        customerStatus: customer?.status,
+        mspId: req.user!.mspId
       });
     } catch (err) {
       logger.error({ err, customerId }, "portal-customer-engines: dashboard failed");
@@ -506,6 +510,213 @@ router.get(
       res.status(500).json({ error: "Unable to load assessment results." });
     }
   },
+);
+
+// ── POST /api/portal/customer/offboard ────────────────────────────────────────
+// Deactivate services, cancel subscriptions immediately in Stripe, revoke monitoring assignments, and set status to inactive.
+
+router.post(
+  "/portal/customer/offboard",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    const mspId = req.user!.mspId;
+    const userId = req.user!.id;
+
+    if (!customerId || !mspId) {
+      res.status(400).json({ error: "Missing customer or MSP association on session" });
+      return;
+    }
+
+    if (mspId !== 1) {
+      res.status(403).json({ error: "Customer offboarding is only available for Shane McCaw Consulting customers." });
+      return;
+    }
+
+    try {
+      // 1. Find all active or paused client services for this user
+      const userServices = await db
+        .select()
+        .from(clientServicesTable)
+        .where(
+          and(
+            eq(clientServicesTable.clientUserId, userId),
+            or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))
+          )
+        );
+
+      let stripeKey: string | null = null;
+      try {
+        stripeKey = getStripeKey();
+      } catch (err) {
+        logger.warn({ err }, "Stripe not configured during customer offboarding");
+      }
+
+      // 2. Cancel Stripe subscriptions
+      if (stripeKey && userServices.length > 0) {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(stripeKey);
+
+        for (const cs of userServices) {
+          if (cs.stripeSubscriptionId) {
+            try {
+              await stripe.subscriptions.cancel(cs.stripeSubscriptionId);
+              logger.info({ stripeSubscriptionId: cs.stripeSubscriptionId }, "Cancelled stripe subscription during customer offboarding");
+            } catch (err) {
+              logger.error({ err, stripeSubscriptionId: cs.stripeSubscriptionId }, "Failed to cancel Stripe subscription");
+            }
+          }
+        }
+      }
+
+      // 3. Mark client services status to "paused"
+      if (userServices.length > 0) {
+        await db
+          .update(clientServicesTable)
+          .set({ status: "paused" })
+          .where(
+            and(
+              eq(clientServicesTable.clientUserId, userId),
+              or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))
+            )
+          );
+      }
+
+      // 4. Disable all monitoring: revoke assignments
+      await db
+        .update(mspSalesBundleAssignmentsTable)
+        .set({
+          status: "revoked",
+          revokedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(mspSalesBundleAssignmentsTable.customerId, customerId));
+
+      // 5. Set customer status to inactive
+      await db
+        .update(mspCustomersTable)
+        .set({
+          status: "inactive",
+          updatedAt: new Date(),
+        })
+        .where(eq(mspCustomersTable.id, customerId));
+
+      // 6. Write Audit logs
+      void createAuditLog({
+        actorUserId: userId,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "client",
+        actionType: "retainer_cancelled",
+        entityType: "customer",
+        entityId: customerId,
+        entityLabel: String(customerId),
+        clientId: userId,
+      });
+
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: userId,
+        actorRole: "CustomerUser",
+        mspId: mspId,
+        actionType: "customer.offboarding.deactivate",
+        entityType: "customer",
+        entityId: String(customerId),
+        outcome: "success",
+        metadata: { deactivatedAt: new Date().toISOString() },
+      });
+
+      res.json({ ok: true, customerStatus: "inactive" });
+    } catch (err) {
+      logger.error({ err, customerId }, "portal-customer-engines: offboard failed");
+      res.status(500).json({ error: "Failed to complete offboarding process" });
+    }
+  }
+);
+
+// ── GET /api/portal/customer/export ──────────────────────────────────────────
+// Customer downloads JSON data export package
+
+router.get(
+  "/portal/customer/export",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = req.user!.customerId;
+    const userId = req.user!.id;
+
+    if (!customerId) {
+      res.status(400).json({ error: "No customer account associated with this user" });
+      return;
+    }
+
+    try {
+      const [customer] = await db
+        .select()
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
+      const clientServices = await db
+        .select({
+          id: clientServicesTable.id,
+          status: clientServicesTable.status,
+          purchasedAt: clientServicesTable.purchasedAt,
+          serviceName: servicesTable.name,
+          billingType: servicesTable.billingType,
+          price: servicesTable.price,
+        })
+        .from(clientServicesTable)
+        .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+        .where(eq(clientServicesTable.clientUserId, userId));
+
+      const projects = await db
+        .select()
+        .from(projectsTable)
+        .where(eq(projectsTable.clientUserId, userId));
+
+      const reports = await db
+        .select()
+        .from(reportsTable)
+        .where(eq(reportsTable.clientUserId, userId));
+
+      const snapshots = await db
+        .select({
+          engineKey: tenantEngineSnapshotsTable.engineKey,
+          score: tenantEngineSnapshotsTable.score,
+          breakdown: tenantEngineSnapshotsTable.breakdown,
+          capturedAt: tenantEngineSnapshotsTable.capturedAt,
+        })
+        .from(tenantEngineSnapshotsTable)
+        .where(eq(tenantEngineSnapshotsTable.customerId, customerId));
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        customer: {
+          name: customer?.name,
+          domain: customer?.domain,
+          industry: customer?.industry,
+          tenantId: customer?.tenantId,
+          status: customer?.status,
+        },
+        services: clientServices,
+        projects: projects.map(p => ({
+          title: p.title,
+          status: p.status,
+          progress: p.progress,
+          createdAt: p.createdAt,
+        })),
+        reports: reports.map(r => ({
+          title: r.title,
+          period: r.period,
+          createdAt: r.createdAt,
+        })),
+        diagnostics: snapshots,
+      };
+
+      res.json(exportData);
+    } catch (err) {
+      logger.error({ err, customerId }, "portal-customer-engines: customer-export failed");
+      res.status(500).json({ error: "Failed to generate data export" });
+    }
+  }
 );
 
 export default router;

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useLocation, Link } from "wouter";
 import { AppShell } from "@/components/app-shell";
 import {
   Card,
@@ -10,12 +11,15 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle,
   CheckCircle2,
   Download,
   Shield,
   XCircle,
+  Loader2,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -88,10 +92,39 @@ function OffboardingStep({
 }
 
 export default function OffboardingPage() {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
+  const [, navigate] = useLocation();
   const [info, setInfo] = useState<OffboardingInfo | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [loading, setLoading] = useState(user?.mspRole === "CustomerUser");
+  const [customerStatus, setCustomerStatus] = useState<string>("active");
+
+  useEffect(() => {
+    if (user?.mspRole === "MSPAdmin") {
+      fetchWithAuth("/api/msp/dashboard")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.msp) {
+            setInfo({
+              offboardingState: d.msp.offboardingState,
+              offboardingRequestedAt: d.msp.offboardingRequestedAt,
+              exportReadyAt: d.msp.exportReadyAt,
+            });
+          }
+        })
+        .catch(() => null);
+    } else if (user?.mspRole === "CustomerUser" && user?.mspId === 1) {
+      setLoading(true);
+      fetchWithAuth("/api/portal/dashboard")
+        .then((r) => r.json())
+        .then((d) => {
+          setCustomerStatus(d?.customerStatus ?? "active");
+        })
+        .catch(() => null)
+        .finally(() => setLoading(false));
+    }
+  }, [fetchWithAuth, user?.mspRole, user?.mspId]);
 
   const currentState: OffboardingState = info?.offboardingState ?? null;
 
@@ -150,6 +183,177 @@ export default function OffboardingPage() {
     a.download = `msp-export-${info.export.msp.slug}-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  if (user?.mspRole === "CustomerUser") {
+    if (user.mspId !== 1) {
+      return (
+        <AppShell title="Offboarding">
+          <div className="max-w-md mx-auto p-6 mt-10">
+            <Card className="border-red-200 bg-red-50/50">
+              <CardHeader className="pb-3 text-center">
+                <AlertTriangle className="size-8 text-red-600 mx-auto mb-2" />
+                <CardTitle className="text-lg text-red-900">
+                  Contact Your Service Provider
+                </CardTitle>
+                <CardDescription className="text-red-700 mt-1">
+                  Your account is managed by an external Managed Service Provider (MSP). To cancel or modify your subscriptions and monitoring services, please contact your MSP coordinator directly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center pb-6">
+                <Button onClick={() => navigate("/customer-home")} variant="outline">
+                  Back to Portal
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </AppShell>
+      );
+    }
+
+    if (loading) {
+      return (
+        <AppShell title="Offboarding">
+          <div className="min-h-[50vh] flex items-center justify-center">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        </AppShell>
+      );
+    }
+
+    const downloadCustomerData = async () => {
+      try {
+        const res = await fetchWithAuth("/api/portal/customer/export");
+        if (!res.ok) throw new Error("Failed to export data");
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `customer-data-export-${new Date().toISOString().split("T")[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success("Data export downloaded successfully");
+      } catch (err) {
+        toast.error("Failed to download data export");
+      }
+    };
+
+    const handleCustomerOffboard = async () => {
+      setRequesting(true);
+      try {
+        const res = await fetchWithAuth("/api/portal/customer/offboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+        if (!res.ok) throw new Error("Offboarding failed");
+        setCustomerStatus("inactive");
+        toast.success("Successfully offboarded. Your services and monitoring have been deactivated.");
+      } catch (err) {
+        toast.error("Failed to complete offboarding");
+      } finally {
+        setRequesting(false);
+      }
+    };
+
+    const isCustomerInactive = customerStatus === "inactive" || customerStatus === "archived";
+
+    return (
+      <AppShell title="Offboarding">
+        <div className="max-w-2xl mx-auto p-6 space-y-6">
+          {isCustomerInactive ? (
+            <>
+              <Card className="border-green-200 bg-green-50/50">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="size-5 text-green-600 mt-0.5 shrink-0" />
+                    <div>
+                      <CardTitle className="text-base text-green-900">
+                        Services & Monitoring Deactivated
+                      </CardTitle>
+                      <CardDescription className="text-green-700 mt-1">
+                        All active modernisation retainers have been paused and security/compliance monitoring has been disabled. You still have access to download your historical data package below.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-semibold">Download Your Workspace Data</CardTitle>
+                  <CardDescription>Get a full package of your modernization logs, documents, and reports.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={() => void downloadCustomerData()} className="gap-2" variant="outline">
+                    <Download className="size-4" />
+                    Download JSON Data Package
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="border-primary/45 bg-gradient-to-r from-primary/10 via-primary/5 to-background overflow-hidden relative shadow-lg">
+                <div className="absolute top-0 right-0 size-32 bg-primary/5 rounded-full blur-2xl" />
+                <CardContent className="p-6 sm:p-8 flex flex-col items-start gap-6">
+                  <div className="space-y-2">
+                    <Badge className="bg-primary/20 text-primary border-primary/30 hover:bg-primary/20">Welcome Back Offer</Badge>
+                    <h3 className="text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">
+                      Ready to modernise your cloud workplace again?
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Your cloud modernisation journey is backed by a 30-year Microsoft veteran and M365 Architect for NASA. Don&apos;t leave your organisation&apos;s security, licensing, and compliance to chance. Re-activate your modern workplace retainer today and get <strong>15% off your first month</strong>.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto mt-2">
+                    <Link href="/customer-diagnostics">
+                      <Button className="w-full sm:w-auto gap-2 shadow-md">
+                        <Zap className="size-4" />
+                        Explore Re-activation Plans
+                      </Button>
+                    </Link>
+                    <Link href="/support">
+                      <Button variant="outline" className="w-full sm:w-auto">
+                        Talk to Shane
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="border-amber-200 bg-amber-50/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="size-5 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <CardTitle className="text-base text-amber-900">
+                      Deactivate Services & Monitoring
+                    </CardTitle>
+                    <CardDescription className="text-amber-700 mt-1">
+                      Proceeding will cancel your active modernisation subscriptions and disable all modern workplace monitoring checks immediately.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 flex flex-col gap-4">
+                <p className="text-sm text-muted-foreground">
+                  Your subscriptions will end and monitoring will be disabled. You will still retain access to the portal to download your historical data package.
+                </p>
+                <Button
+                  variant="destructive"
+                  onClick={() => void handleCustomerOffboard()}
+                  disabled={requesting}
+                  className="gap-2 w-fit"
+                >
+                  <XCircle className="size-4" />
+                  {requesting ? "Deactivating…" : "Deactivate services & monitoring"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </AppShell>
+    );
   }
 
   return (

@@ -269,7 +269,7 @@ const NAV_SECTIONS: NavSection[] = [
         icon: FileText,
         label: "Offboarding",
         href: "/offboarding",
-        roles: ["PlatformAdmin", "MSPAdmin"],
+        roles: ["MSPAdmin", "CustomerUser"],
       },
       {
         icon: Webhook,
