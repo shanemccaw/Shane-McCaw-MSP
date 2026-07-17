@@ -48,6 +48,7 @@ function p(val: string | string[] | undefined): string {
   return Array.isArray(val) ? (val[0] ?? "") : (val ?? "");
 }
 
+const log = logger.child({ channel: "system.core" });
 const router: IRouter = Router();
 
 // ── Apply observability + rate limiting to all /msp/v1/* routes ───────────────
@@ -370,7 +371,7 @@ router.post(
 
         setImmediate(() => {
           resumeWorkflowRun(approval.runId, approval.nodeId, resumePayload, decisionNote).catch(err => {
-            logger.warn({ err, runId: approval.runId }, "pending-approvals (msp): resume failed (non-fatal)");
+            log.warn({ err, runId: approval.runId }, "pending-approvals (msp): resume failed (non-fatal)");
           });
         });
         req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals (msp): approved, resuming run");

@@ -20,6 +20,7 @@ import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { resolveFulfillment } from "../lib/resolve-fulfillment";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "billing" });
 import { z } from "zod";
 import { randomUUID } from "crypto";
 
@@ -69,7 +70,7 @@ async function auditLog(
       metadata: metadata ?? {},
     });
   } catch (err) {
-    logger.warn({ err, actionType, entityId }, "admin-fulfillment-types: audit log insert failed (non-fatal)");
+    log.warn({ err, actionType, entityId }, "admin-fulfillment-types: audit log insert failed (non-fatal)");
   }
 }
 
@@ -83,7 +84,7 @@ router.get("/admin/fulfillment-types", requireAdmin, async (_req: Request, res: 
       .orderBy(desc(fulfillmentTypesTable.createdAt));
     res.json(rows);
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: list failed");
+    log.error({ err }, "admin-fulfillment-types: list failed");
     res.status(500).json({ error: "Failed to fetch fulfillment types" });
   }
 });
@@ -111,7 +112,7 @@ router.get("/admin/fulfillment-types/export", requireAdmin, async (_req: Request
     res.setHeader("Content-Disposition", 'attachment; filename="fulfillment-types-export.json"');
     res.json(payload);
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: export failed");
+    log.error({ err }, "admin-fulfillment-types: export failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
   }
 });
@@ -150,7 +151,7 @@ router.get("/admin/fulfillment-types/:key", requireAdmin, async (req: Request, r
     if (!row) { res.status(404).json({ error: "Not found" }); return; }
     res.json(row);
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: get failed");
+    log.error({ err }, "admin-fulfillment-types: get failed");
     res.status(500).json({ error: "Failed to fetch fulfillment type" });
   }
 });
@@ -178,7 +179,7 @@ router.post("/admin/fulfillment-types", requireAdmin, async (req: Request, res: 
       res.status(409).json({ error: `A fulfillment type with key "${parsed.data.key}" already exists` });
       return;
     }
-    logger.error({ err }, "admin-fulfillment-types: create failed");
+    log.error({ err }, "admin-fulfillment-types: create failed");
     res.status(500).json({ error: "Failed to create fulfillment type" });
   }
 });
@@ -213,7 +214,7 @@ router.put("/admin/fulfillment-types/:key", requireAdmin, async (req: Request, r
     });
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: update failed");
+    log.error({ err }, "admin-fulfillment-types: update failed");
     res.status(500).json({ error: "Failed to update fulfillment type" });
   }
 });
@@ -237,7 +238,7 @@ router.delete("/admin/fulfillment-types/:key", requireAdmin, async (req: Request
     await auditLog(req, "delete", typeKey, existing.label, { deleted: existing });
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: delete failed");
+    log.error({ err }, "admin-fulfillment-types: delete failed");
     res.status(500).json({ error: "Failed to delete fulfillment type" });
   }
 });
@@ -318,7 +319,7 @@ router.post("/admin/fulfillment-types/import", requireAdmin, async (req: Request
     }
     res.json({ imported, skipped, errors });
   } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: import failed");
+    log.error({ err }, "admin-fulfillment-types: import failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
 });

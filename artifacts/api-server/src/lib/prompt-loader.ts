@@ -12,6 +12,7 @@
 import { db, aiPromptsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "admin.content" });
 
 /**
  * Fetch a prompt body from the DB, falling back to `fallback` if missing.
@@ -35,21 +36,21 @@ export async function getPrompt(
       .limit(1);
     if (row) {
       if (deprecatedTokens?.some((token) => row.promptBody.includes(token))) {
-        logger.warn(
+        log.warn(
           { key, deprecatedTokens },
           "prompt-loader: DB prompt contains deprecated tokens — deleting stale row and using fallback",
         );
         try {
           await db.delete(aiPromptsTable).where(eq(aiPromptsTable.key, key));
         } catch (delErr) {
-          logger.warn({ delErr, key }, "prompt-loader: failed to delete stale prompt row");
+          log.warn({ delErr, key }, "prompt-loader: failed to delete stale prompt row");
         }
         return fallback;
       }
       return row.promptBody;
     }
   } catch (err) {
-    logger.warn({ err, key }, "prompt-loader: DB lookup failed, using fallback");
+    log.warn({ err, key }, "prompt-loader: DB lookup failed, using fallback");
   }
   return fallback;
 }
@@ -70,7 +71,7 @@ export async function getDocumentStylePrefix(): Promise<string> {
       .limit(1);
     if (row?.promptBody) return row.promptBody + "\n\n";
   } catch (err) {
-    logger.warn({ err }, "prompt-loader: style-guide lookup failed, skipping prefix");
+    log.warn({ err }, "prompt-loader: style-guide lookup failed, skipping prefix");
   }
   return "";
 }
@@ -1479,14 +1480,14 @@ export async function seedAiPrompts(): Promise<void> {
             },
           });
       }
-      logger.info(
+      log.info(
         { keys: forceRows.map((r) => r.key) },
         "prompt-loader: force-updated metric-critical prompts",
       );
     }
 
-    logger.info({ count: rows.length }, "prompt-loader: AI prompt seed complete");
+    log.info({ count: rows.length }, "prompt-loader: AI prompt seed complete");
   } catch (err) {
-    logger.warn({ err }, "prompt-loader: seed failed (non-fatal)");
+    log.warn({ err }, "prompt-loader: seed failed (non-fatal)");
   }
 }

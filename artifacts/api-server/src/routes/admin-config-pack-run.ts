@@ -30,6 +30,7 @@ import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
 import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.config-pack" });
 
 const router: IRouter = Router();
 
@@ -91,7 +92,7 @@ router.post(
         });
         return;
       }
-      logger.error({ err, packKey }, "config-pack run failed");
+      log.error({ err, packKey }, "config-pack run failed");
       res.status(500).json({ error: "Failed to run config pack" });
     }
   },

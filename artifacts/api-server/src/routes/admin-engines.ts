@@ -7,6 +7,7 @@ import { eq, desc, sql, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { executeMonitorCheck } from "../lib/monitor-executor";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.signals" });
 import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
   ENGINE_DEFS,
@@ -114,7 +115,7 @@ router.get("/admin/testbeds", requireAdmin, async (_req: Request, res: Response)
       .where(eq(mspCustomersTable.isTestbed, true));
     res.json({ testbeds });
   } catch (err) {
-    logger.error({ err }, "admin-engines: failed to list testbeds");
+    log.error({ err }, "admin-engines: failed to list testbeds");
     res.status(500).json({ error: "Failed to list testbeds" });
   }
 });
@@ -146,7 +147,7 @@ router.post("/admin/simulator/overrides", requireAdmin, async (req: Request, res
 
     return res.json(created);
   } catch (err) {
-    logger.error({ err }, "admin-engines: failed to create simulator override");
+    log.error({ err }, "admin-engines: failed to create simulator override");
     return res.status(500).json({ error: "Failed to create simulator override" });
   }
 });
@@ -179,7 +180,7 @@ router.get("/admin/simulator/overrides", requireAdmin, async (req: Request, res:
 
     return res.json({ overrides });
   } catch (err) {
-    logger.error({ err }, "admin-engines: failed to list simulator overrides");
+    log.error({ err }, "admin-engines: failed to list simulator overrides");
     return res.status(500).json({ error: "Failed to list simulator overrides" });
   }
 });
@@ -201,7 +202,7 @@ router.delete("/admin/simulator/overrides/:id", requireAdmin, async (req: Reques
 
     return res.json({ success: true });
   } catch (err) {
-    logger.error({ err }, "admin-engines: failed to delete simulator override");
+    log.error({ err }, "admin-engines: failed to delete simulator override");
     return res.status(500).json({ error: "Failed to delete simulator override" });
   }
 });
@@ -249,7 +250,7 @@ router.post("/admin/simulator/monitor-checks/:key/run-now", requireAdmin, async 
 
     return res.json(checkResult);
   } catch (err) {
-    logger.error({ err }, "admin-engines: failed to run monitor check now");
+    log.error({ err }, "admin-engines: failed to run monitor check now");
     return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
@@ -304,7 +305,7 @@ router.post("/admin/simulator/run", requireAdmin, async (req: Request, res: Resp
     }
     return res.json({ traces });
   } catch (err) {
-    logger.error({ err, engineKey }, "admin-engines: simulator run failed");
+    log.error({ err, engineKey }, "admin-engines: simulator run failed");
     return res.status(500).json({ error: err instanceof Error ? err.message : "Simulator run failed" });
   }
 });
@@ -363,7 +364,7 @@ router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, re
         try {
           engineResults[def.key] = await def.runForTenant(testbedCustomer.id, { evaluationTimestamp: timestamp });
         } catch (err) {
-          logger.warn({ err, engineKey: def.key, timestamp }, "admin-engines: replay-all step failed for one engine — continuing with remaining engines");
+          log.warn({ err, engineKey: def.key, timestamp }, "admin-engines: replay-all step failed for one engine — continuing with remaining engines");
           engineResults[def.key] = { error: err instanceof Error ? err.message : "Engine run failed" };
         }
       }
@@ -373,7 +374,7 @@ router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, re
 
     return res.json({ steps, engineKeys: targetDefs.map(d => d.key) });
   } catch (err) {
-    logger.error({ err }, "admin-engines: replay-all failed");
+    log.error({ err }, "admin-engines: replay-all failed");
     return res.status(500).json({ error: err instanceof Error ? err.message : "Replay failed" });
   }
 });
@@ -423,7 +424,7 @@ router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", require
 
     return res.json({ token });
   } catch (err) {
-    logger.error({ err, customerId }, "admin-engines: portal-mirror-token failed");
+    log.error({ err, customerId }, "admin-engines: portal-mirror-token failed");
     return res.status(500).json({ error: err instanceof Error ? err.message : "Failed to issue portal mirror token" });
   }
 });
@@ -441,7 +442,7 @@ router.post("/admin/engines/:key/test", requireAdmin, async (req: Request, res: 
     pushEngineTestLog({ id: randomUUID(), engineKey: String(key), createdAt: new Date().toISOString(), mode, customerId, debug, output });
     res.json({ mode, customerId, output });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: test run failed");
+    log.error({ err, engineKey: key }, "admin-engines: test run failed");
     const message = err instanceof Error ? err.message : "Engine test failed";
     pushEngineTestLog({ id: randomUUID(), engineKey: String(key), createdAt: new Date().toISOString(), mode: "payload", debug, output: null, error: message });
     res.status(400).json({ error: message });
@@ -485,7 +486,7 @@ router.post("/admin/engines/:key/preview", requireAdmin, async (req: Request, re
 
     res.json({ mode, customerId, output, workflowOutputPreview, sowImpactPreview, mspImpactPreview });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: preview failed");
+    log.error({ err, engineKey: key }, "admin-engines: preview failed");
     res.status(400).json({ error: err instanceof Error ? err.message : "Engine preview failed" });
   }
 });
@@ -535,7 +536,7 @@ router.get("/admin/engines/:key/dashboard", requireAdmin, async (req: Request, r
 
     res.json({ portfolio: false, results });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: dashboard failed");
+    log.error({ err, engineKey: key }, "admin-engines: dashboard failed");
     res.status(500).json({ error: "Failed to load engine dashboard" });
   }
 });
@@ -563,7 +564,7 @@ router.get("/admin/engines/:key/history", requireAdmin, async (req: Request, res
     ]);
     res.json({ engineKey: key, customerId, series, baselineEvents, signalDeltas });
   } catch (err) {
-    logger.error({ err, engineKey: key, customerId }, "admin-engines: history failed");
+    log.error({ err, engineKey: key, customerId }, "admin-engines: history failed");
     res.status(500).json({ error: "Failed to load engine history" });
   }
 });
@@ -585,7 +586,7 @@ router.get("/admin/engines/:key/history-customers", requireAdmin, async (req: Re
       .limit(200);
     res.json({ customers: rows });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: history-customers failed");
+    log.error({ err, engineKey: key }, "admin-engines: history-customers failed");
     res.status(500).json({ error: "Failed to load customer list" });
   }
 });
@@ -609,7 +610,7 @@ router.get("/admin/engines/:key/configuration", requireAdmin, async (req: Reques
       groups: groups.filter(g => (g.category ?? "").startsWith(prefix)),
     });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: configuration fetch failed");
+    log.error({ err, engineKey: key }, "admin-engines: configuration fetch failed");
     res.status(500).json({ error: "Failed to load engine configuration" });
   }
 });
@@ -640,7 +641,7 @@ router.get("/admin/engines/:key/export", requireAdmin, async (req: Request, res:
       rules: scopedRules,
     });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: export failed");
+    log.error({ err, engineKey: key }, "admin-engines: export failed");
     res.status(500).json({ error: "Failed to export engine rules" });
   }
 });
@@ -831,10 +832,10 @@ router.post("/admin/engines/:key/import", requireAdmin, async (req: Request, res
       `);
     });
 
-    logger.info({ engineKey: key, ruleCount, groupCount, snapshotId }, "admin-engines: engine-scoped import complete");
+    log.info({ engineKey: key, ruleCount, groupCount, snapshotId }, "admin-engines: engine-scoped import complete");
     res.json({ engine: def.key, imported: ruleCount, groupsImported: groupCount, snapshotId });
   } catch (err) {
-    logger.error({ err, engineKey: key }, "admin-engines: engine-scoped import failed");
+    log.error({ err, engineKey: key }, "admin-engines: engine-scoped import failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
 });
@@ -865,7 +866,7 @@ router.post("/admin/engines/rule-groups/:groupId/test", requireAdmin, async (req
 
     res.json({ groupId, logic: group.logic, result: groupResult, ruleTraces: traces });
   } catch (err) {
-    logger.error({ err, groupId }, "admin-engines: rule-group test failed");
+    log.error({ err, groupId }, "admin-engines: rule-group test failed");
     res.status(400).json({ error: err instanceof Error ? err.message : "Rule group test failed" });
   }
 });
@@ -886,7 +887,7 @@ router.get("/admin/engines/rule-groups/:groupId/preview", requireAdmin, async (r
 
     res.json({ groupId, signalKey: group.signalKey, affectedProjects });
   } catch (err) {
-    logger.error({ err, groupId }, "admin-engines: rule-group preview failed");
+    log.error({ err, groupId }, "admin-engines: rule-group preview failed");
     res.status(500).json({ error: "Failed to preview rule group" });
   }
 });
@@ -906,7 +907,7 @@ router.get("/admin/engines/rule-groups/:groupId/activation-logs", requireAdmin, 
     `);
     res.json({ logs: rows.rows });
   } catch (err) {
-    logger.error({ err, groupId }, "admin-engines: rule-group activation logs failed");
+    log.error({ err, groupId }, "admin-engines: rule-group activation logs failed");
     res.status(500).json({ error: "Failed to load activation logs" });
   }
 });
@@ -929,7 +930,7 @@ router.post("/admin/engines/signals/:signalKey/test", requireAdmin, async (req: 
     const { firedSignals, trace } = computeTenantSignals(input.mergedProfile, input.parsedFindings, scopedRules, scopedGroups, input.disabledSignalKeys);
     res.json({ signalKey, fired: firedSignals.has(signalKey), trace });
   } catch (err) {
-    logger.error({ err, signalKey }, "admin-engines: signal test failed");
+    log.error({ err, signalKey }, "admin-engines: signal test failed");
     res.status(400).json({ error: err instanceof Error ? err.message : "Signal test failed" });
   }
 });
@@ -945,7 +946,7 @@ router.get("/admin/engines/signals/:signalKey/preview", requireAdmin, async (req
       .map(p => ({ id: p.id, title: p.title }));
     res.json({ signalKey, affectedProjects });
   } catch (err) {
-    logger.error({ err, signalKey }, "admin-engines: signal preview failed");
+    log.error({ err, signalKey }, "admin-engines: signal preview failed");
     res.status(500).json({ error: "Failed to preview signal" });
   }
 });
@@ -981,7 +982,7 @@ router.get("/admin/engines/signals/:signalKey/contribution-preview", requireAdmi
       },
     });
   } catch (err) {
-    logger.error({ err, signalKey }, "admin-engines: contribution preview failed");
+    log.error({ err, signalKey }, "admin-engines: contribution preview failed");
     res.status(500).json({ error: "Failed to compute contribution preview" });
   }
 });
@@ -998,7 +999,7 @@ router.get("/admin/engines/signals/:signalKey/logs", requireAdmin, async (req: R
     `);
     res.json({ logs: rows.rows });
   } catch (err) {
-    logger.error({ err, signalKey }, "admin-engines: signal logs failed");
+    log.error({ err, signalKey }, "admin-engines: signal logs failed");
     res.status(500).json({ error: "Failed to load signal logs" });
   }
 });
@@ -1084,7 +1085,7 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
         });
       }
     } catch (notifyErr) {
-      logger.error({ notifyErr }, "admin-engines: simulator fire-event notification broadcast failed");
+      log.error({ notifyErr }, "admin-engines: simulator fire-event notification broadcast failed");
     }
     return res.json({
       ...result,

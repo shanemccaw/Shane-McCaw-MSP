@@ -43,6 +43,7 @@ import {
 import { getSecretValue } from "./azure-keyvault";
 import { sendEmail, sendEmailFromTemplate } from "./mailer";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.script" });
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { createAuditLog } from "./audit";
@@ -152,7 +153,7 @@ Rules:
       nextSteps: string[];
     };
   } catch (err) {
-    logger.warn({ err }, "client-script-sequence: auto AI analysis failed (non-fatal)");
+    log.warn({ err }, "client-script-sequence: auto AI analysis failed (non-fatal)");
     return null;
   }
 }
@@ -178,7 +179,7 @@ async function saveKanbanOutput(options: {
       .limit(1);
 
     if (!task) {
-      logger.warn({ kanbanTaskId }, "client-script-sequence: kanban task not found — skipping output save");
+      log.warn({ kanbanTaskId }, "client-script-sequence: kanban task not found — skipping output save");
       return;
     }
 
@@ -201,12 +202,12 @@ async function saveKanbanOutput(options: {
       })
       .where(eq(kanbanTasksTable.id, kanbanTaskId));
 
-    logger.info({ kanbanTaskId, success }, "client-script-sequence: scriptOutput saved to kanban card");
+    log.info({ kanbanTaskId, success }, "client-script-sequence: scriptOutput saved to kanban card");
 
     const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, kanbanTaskId)).limit(1).catch(() => [null]);
     if (updated) broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   } catch (err) {
-    logger.warn({ err, kanbanTaskId }, "client-script-sequence: failed to save scriptOutput to kanban card (non-fatal)");
+    log.warn({ err, kanbanTaskId }, "client-script-sequence: failed to save scriptOutput to kanban card (non-fatal)");
   }
 }
 
@@ -237,12 +238,12 @@ async function patchKanbanAiAnalysis(
       })
       .where(eq(kanbanTasksTable.id, kanbanTaskId));
 
-    logger.info({ kanbanTaskId }, "client-script-sequence: aiAnalysis patched onto kanban card");
+    log.info({ kanbanTaskId }, "client-script-sequence: aiAnalysis patched onto kanban card");
 
     const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, kanbanTaskId)).limit(1).catch(() => [null]);
     if (updated) broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   } catch (err) {
-    logger.warn({ err, kanbanTaskId }, "client-script-sequence: failed to patch aiAnalysis (non-fatal — raw output already saved)");
+    log.warn({ err, kanbanTaskId }, "client-script-sequence: failed to patch aiAnalysis (non-fatal — raw output already saved)");
   }
 }
 
@@ -252,7 +253,7 @@ export async function runClientScriptSequence(
   kanbanTaskId?: number,
 ): Promise<void> {
   if (!isAzureConfigured()) {
-    logger.warn({ clientUserId, runId }, "client-script-sequence: Azure not configured — marking run failed");
+    log.warn({ clientUserId, runId }, "client-script-sequence: Azure not configured — marking run failed");
     await markFailed(runId, "Azure Automation is not configured on this server.");
     return;
   }
@@ -274,7 +275,7 @@ export async function runClientScriptSequence(
       );
 
     if (!appReg) {
-      logger.warn({ clientUserId, runId }, "client-script-sequence: no verified App Registration — marking failed");
+      log.warn({ clientUserId, runId }, "client-script-sequence: no verified App Registration — marking failed");
       await markFailed(runId, "No verified Azure App Registration found for this client.");
       return;
     }
@@ -284,7 +285,7 @@ export async function runClientScriptSequence(
       clientSecret = await getSecretValue(appReg.keyVaultSecretName);
     } catch (kvErr) {
       const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
-      logger.error({ kvErr, runId, clientUserId }, "client-script-sequence: Key Vault fetch failed");
+      log.error({ kvErr, runId, clientUserId }, "client-script-sequence: Key Vault fetch failed");
       await markFailed(runId, `Key Vault error: ${msg}`);
       return;
     }
@@ -300,7 +301,7 @@ export async function runClientScriptSequence(
       );
 
     if (activeServices.length === 0) {
-      logger.info({ clientUserId, runId }, "client-script-sequence: no active services — nothing to run");
+      log.info({ clientUserId, runId }, "client-script-sequence: no active services — nothing to run");
       await db.update(clientAutomationRunsTable)
         .set({
           status: "completed",
@@ -397,7 +398,7 @@ export async function runClientScriptSequence(
           .where(eq(clientAutomationRunsTable.id, runId));
 
         const scriptPushName = `client-${clientUserId}-${mod.id}`;
-        logger.info({ runId, clientUserId, scriptPushName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
+        log.info({ runId, clientUserId, scriptPushName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
         await pushScriptToAzure(scriptPushName, mod.content);
         await db
           .update(scriptModulesTable)
@@ -414,7 +415,7 @@ export async function runClientScriptSequence(
         });
 
         lastJobId = jobId;
-        logger.info({ runId, clientUserId, jobId, scriptName: scriptPushName }, "client-script-sequence: job created, polling");
+        log.info({ runId, clientUserId, jobId, scriptName: scriptPushName }, "client-script-sequence: job created, polling");
 
         const result = await pollJobToCompletion(jobId);
 
@@ -425,7 +426,7 @@ export async function runClientScriptSequence(
 
         if (!result.success) {
           const errMsg = `Module "${mod.filename}" (package "${pkg.title}") job ended with status: ${result.lastStatus}`;
-          logger.error({ runId, clientUserId, jobId, status: result.lastStatus }, "client-script-sequence: job failed");
+          log.error({ runId, clientUserId, jobId, status: result.lastStatus }, "client-script-sequence: job failed");
           await markFailed(runId, errMsg);
 
           // Write system audit event: automation run failed
@@ -486,12 +487,12 @@ export async function runClientScriptSequence(
 
         completedCount++;
         await advanceProgress(runId, completedCount, pkg.id, mod.id, `Completed: ${mod.filename} (${pkg.title})`);
-        logger.info({ runId, clientUserId, completedCount, totalModules }, "client-script-sequence: module done");
+        log.info({ runId, clientUserId, completedCount, totalModules }, "client-script-sequence: module done");
       }
     }
 
     await markCompleted(runId, totalModules);
-    logger.info({ runId, clientUserId, totalModules }, "client-script-sequence: all modules completed");
+    log.info({ runId, clientUserId, totalModules }, "client-script-sequence: all modules completed");
 
     // Write system audit event: automation run completed
     const lastPkgForAudit = orderedPackages[orderedPackages.length - 1];
@@ -535,7 +536,7 @@ export async function runClientScriptSequence(
       }
     }
   } catch (err) {
-    logger.error({ err, runId, clientUserId }, "client-script-sequence: unexpected error");
+    log.error({ err, runId, clientUserId }, "client-script-sequence: unexpected error");
     const message = err instanceof Error ? err.message : String(err);
     await markFailed(runId, message).catch(() => {});
   }

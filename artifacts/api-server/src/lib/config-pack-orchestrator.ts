@@ -28,6 +28,7 @@ import { generateStrongPassword } from "../routes/break-glass-verification";
 import { fireWorkflowForDefinition } from "./workflow-executor";
 import { graphFetchForTenant } from "./graph";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.config-pack" });
 import {
   buildConfigPackGraph,
   configPackDefinitionName,
@@ -169,7 +170,7 @@ export async function persistConfigPackWorkflow(
     return inserted.id;
   });
 
-  logger.info(
+  log.info(
     { packKey, definitionId: definition.id, versionId, versionNumber: nextVersionNumber },
     "config-pack-orchestrator: published materialized workflow version",
   );
@@ -184,7 +185,7 @@ async function resolveDefaultDomainViaGraph(tenantId: string): Promise<string | 
   try {
     const res = await graphFetchForTenant(tenantId, "/domains?$select=id,isDefault");
     if (!res.ok) {
-      logger.warn({ tenantId, status: res.status }, "config-pack-orchestrator: /domains lookup failed");
+      log.warn({ tenantId, status: res.status }, "config-pack-orchestrator: /domains lookup failed");
       return null;
     }
     const body = (await res.json()) as { value?: Array<{ id?: string; isDefault?: boolean }> };
@@ -192,7 +193,7 @@ async function resolveDefaultDomainViaGraph(tenantId: string): Promise<string | 
     const preferred = domains.find((d) => d.isDefault) ?? domains[0];
     return preferred?.id ?? null;
   } catch (err) {
-    logger.warn({ err, tenantId }, "config-pack-orchestrator: /domains lookup threw");
+    log.warn({ err, tenantId }, "config-pack-orchestrator: /domains lookup threw");
     return null;
   }
 }
@@ -246,7 +247,7 @@ export async function runConfigPackForCustomer(opts: {
 
   const { graph, ordered, gatedTemplateId, coalescedGateTemplateIds } = buildConfigPackGraph(templates);
   if (coalescedGateTemplateIds.length > 0) {
-    logger.info(
+    log.info(
       { packKey, gatedTemplateId, coalescedGateTemplateIds },
       "config-pack-orchestrator: verification-gate flags coalesced into the pack's single gate (they run post-verification)",
     );
@@ -319,7 +320,7 @@ export async function runConfigPackForCustomer(opts: {
     );
   }
 
-  logger.info(
+  log.info(
     { packKey, customerId, runId, definitionId, versionId, gated: gatedTemplateId !== null },
     "config-pack-orchestrator: run fired",
   );

@@ -29,6 +29,7 @@ import {
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.monitor" });
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
 import { broadcastKanbanChange } from "../lib/sse-broadcast";
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
@@ -284,7 +285,7 @@ async function processRunInBackground(
   try {
     ({ status: jobStatus, output: jobOutput } = await waitForJobCompletion(jobId));
   } catch (err) {
-    logger.error({ err, jobId }, "admin-m365-run: background job polling timed out or failed");
+    log.error({ err, jobId }, "admin-m365-run: background job polling timed out or failed");
     await db
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
@@ -309,7 +310,7 @@ async function processRunInBackground(
             .where(eq(kanbanTasksTable.id, row.id));
         }
       } catch (patchErr) {
-        logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to update kanban tasks on timeout (non-fatal)");
+        log.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to update kanban tasks on timeout (non-fatal)");
       }
     }
     return;
@@ -331,7 +332,7 @@ async function processRunInBackground(
         customerId,
       });
     } catch (err) {
-      logger.warn({ err, libraryScriptId, jobId }, "admin-m365-run: AI analysis failed (non-fatal)");
+      log.warn({ err, libraryScriptId, jobId }, "admin-m365-run: AI analysis failed (non-fatal)");
     }
   }
 
@@ -380,13 +381,13 @@ async function processRunInBackground(
           .limit(1);
         if (project?.clientUserId) {
           effectiveCustomerId = project.clientUserId;
-          logger.info(
+          log.info(
             { kanbanTaskId: triggeringRow.id, projectId: triggeringRow.projectId, derivedCustomerId: effectiveCustomerId },
             "admin-m365-run: derived customerId from kanban project (triggersHealthScore=true)",
           );
         }
       } catch (lookupErr) {
-        logger.warn({ lookupErr, triggeringRow }, "admin-m365-run: failed to derive customerId from project (non-fatal)");
+        log.warn({ lookupErr, triggeringRow }, "admin-m365-run: failed to derive customerId from project (non-fatal)");
       }
     }
   }
@@ -395,12 +396,12 @@ async function processRunInBackground(
     try {
       await applyScoreImpact(effectiveCustomerId, aiResult.scoreImpact);
     } catch (err) {
-      logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
+      log.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
     }
     try {
       await applyProfileUpdates(effectiveCustomerId, mergedProfileUpdates);
     } catch (err) {
-      logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
+      log.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
     }
     // Always snapshot health scores after applying profile updates when the job completed
     // successfully. Both standard and triggersHealthScore runs use the same path — the profile
@@ -409,10 +410,10 @@ async function processRunInBackground(
       try {
         await snapshotHealthFromProfile(effectiveCustomerId);
       } catch (err) {
-        logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+        log.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
       }
     } else {
-      logger.warn({ effectiveCustomerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
+      log.warn({ effectiveCustomerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
     }
   }
 
@@ -422,7 +423,7 @@ async function processRunInBackground(
       let healthScoreTriggered = false;
       if (kanbanHealthScoreTrigger && effectiveCustomerId) {
         healthScoreTriggered = true;
-        logger.info({ effectiveCustomerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
+        log.info({ effectiveCustomerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
         void createAuditLog({
           actorName: "System",
           actorRole: "admin",
@@ -462,7 +463,7 @@ async function processRunInBackground(
         const clearedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
         for (const t of clearedRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
       }
-      logger.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
+      log.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
 
       // Phase advance: if script succeeded, check whether this step is fully done
       // and activate the next phase. Works for each unique workflowStepId across the cards.
@@ -485,11 +486,11 @@ async function processRunInBackground(
             await syncProjectProgress(projId);
           }
         } catch (phaseErr) {
-          logger.warn({ phaseErr, kanbanIds }, "admin-m365-run: phase advance check failed (non-fatal)");
+          log.warn({ phaseErr, kanbanIds }, "admin-m365-run: phase advance check failed (non-fatal)");
         }
       }
     } catch (patchErr) {
-      logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
+      log.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
     }
   }
 
@@ -506,11 +507,11 @@ async function processRunInBackground(
         })
         .where(eq(clientAutomationRunsTable.id, automationRunId));
     } catch (err) {
-      logger.warn({ err, automationRunId }, "admin-m365-run: failed to finalize automation run row (non-fatal)");
+      log.warn({ err, automationRunId }, "admin-m365-run: failed to finalize automation run row (non-fatal)");
     }
   }
 
-  logger.info({ runResultId, jobId, finalStatus }, "admin-m365-run: background job processing complete");
+  log.info({ runResultId, jobId, finalStatus }, "admin-m365-run: background job processing complete");
 }
 
 // ── POST /api/admin/run-script ────────────────────────────────────────────────
@@ -546,7 +547,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     try {
       clientSecret = await getSecretValue(cred.keyVaultSecretName);
     } catch (err) {
-      logger.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
+      log.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
       res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
       return;
     }
@@ -568,7 +569,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     try {
       clientSecret = await getSecretValue(appReg.keyVaultSecretName);
     } catch (err) {
-      logger.error({ err, appRegistrationId: parsed.data.appRegistrationId }, "admin-m365-run: failed to fetch secret from Key Vault");
+      log.error({ err, appRegistrationId: parsed.data.appRegistrationId }, "admin-m365-run: failed to fetch secret from Key Vault");
       res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
       return;
     }
@@ -644,7 +645,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .returning({ id: scriptRunResultsTable.id });
     runResultId = row.id;
   } catch (err) {
-    logger.error({ err, resolvedLibraryScriptId }, "admin-m365-run: failed to create run result placeholder");
+    log.error({ err, resolvedLibraryScriptId }, "admin-m365-run: failed to create run result placeholder");
     res.status(500).json({ error: "Failed to initialize run result" });
     return;
   }
@@ -662,7 +663,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     });
     jobId = job.jobId;
   } catch (err) {
-    logger.error({ err, runbookName: resolvedRunbookName }, "admin-m365-run: runbook job creation failed");
+    log.error({ err, runbookName: resolvedRunbookName }, "admin-m365-run: runbook job creation failed");
     await db
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
@@ -690,7 +691,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       }).returning({ id: clientAutomationRunsTable.id });
       automationRunId = autoRun?.id;
     } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to create automation run row (non-fatal)");
+      log.warn({ err, customerId }, "admin-m365-run: failed to create automation run row (non-fatal)");
     }
   }
 
@@ -707,10 +708,10 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
           .where(inArray(kanbanTasksTable.id, siblingTaskIds));
         const inProgressRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingTaskIds)).catch(() => []);
         for (const t of inProgressRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
-        logger.info({ siblingTaskIds, kanbanTaskId }, "admin-m365-run: bulk moved sibling tasks to in_progress");
+        log.info({ siblingTaskIds, kanbanTaskId }, "admin-m365-run: bulk moved sibling tasks to in_progress");
       }
     } catch (err) {
-      logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to resolve/move sibling tasks (non-fatal)");
+      log.warn({ err, kanbanTaskId }, "admin-m365-run: failed to resolve/move sibling tasks (non-fatal)");
       siblingTaskIds = undefined;
     }
   }
@@ -733,7 +734,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       const stampedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, idsToMark)).catch(() => []);
       for (const t of stampedRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
     } catch (err) {
-      logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to set runningJobRef (non-fatal)");
+      log.warn({ err, kanbanTaskId }, "admin-m365-run: failed to set runningJobRef (non-fatal)");
     }
   }
 
@@ -789,7 +790,7 @@ router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request
         const lines = await getJobOutput(jobRef);
         outputLines = lines.map(l => l.text).filter(Boolean);
       } catch (err) {
-        logger.warn({ err, jobRef }, "admin-m365-run: failed to fetch job output during polling (non-fatal)");
+        log.warn({ err, jobRef }, "admin-m365-run: failed to fetch job output during polling (non-fatal)");
       }
     } else {
       const raw = row.rawOutput as Record<string, unknown> | null;
@@ -811,7 +812,7 @@ router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request
       scoreImpact: row.scoreImpact ?? {},
     });
   } catch (err) {
-    logger.error({ err, jobRef }, "admin-m365-run: failed to get job status");
+    log.error({ err, jobRef }, "admin-m365-run: failed to get job status");
     res.status(500).json({ error: "Failed to get job status" });
   }
 });
@@ -840,7 +841,7 @@ router.get("/admin/clients/:id/scores", requireAdmin, async (req: Request, res: 
       copilotReadiness: row?.copilotReadiness ?? 0,
     });
   } catch (err) {
-    logger.error({ err, clientId: id }, "admin-m365-run: failed to fetch client scores");
+    log.error({ err, clientId: id }, "admin-m365-run: failed to fetch client scores");
     res.status(500).json({ error: "Failed to fetch client scores" });
   }
 });
@@ -883,7 +884,7 @@ router.get("/admin/script-run-results", requireAdmin, async (req: Request, res: 
 
     res.json(rows);
   } catch (err) {
-    logger.error({ err }, "admin-m365-run: failed to list script run results");
+    log.error({ err }, "admin-m365-run: failed to list script run results");
     res.status(500).json({ error: "Failed to list script run results" });
   }
 });
@@ -911,7 +912,7 @@ router.patch("/admin/script-run-results/:id/mark-reviewed", requireAdmin, async 
 
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "admin-m365-run: failed to mark script run result reviewed");
+    log.error({ err }, "admin-m365-run: failed to mark script run result reviewed");
     res.status(500).json({ error: "Failed to mark as reviewed" });
   }
 });
@@ -958,7 +959,7 @@ router.post("/admin/script-run-results/:id/apply-to-client", requireAdmin, async
       appliedProfileFields: Object.keys(profileUpdates).length,
     });
   } catch (err) {
-    logger.error({ err }, "admin-m365-run: failed to apply run result to client");
+    log.error({ err }, "admin-m365-run: failed to apply run result to client");
     res.status(500).json({ error: "Failed to apply result to client" });
   }
 });
@@ -1034,7 +1035,7 @@ router.post("/admin/script-run-results/:id/apply-raw-to-profile", requireAdmin, 
       fields: Object.keys(profileData),
     });
   } catch (err) {
-    logger.error({ err }, "admin-m365-run: failed to apply raw output to profile");
+    log.error({ err }, "admin-m365-run: failed to apply raw output to profile");
     res.status(500).json({ error: "Failed to apply raw output to profile" });
   }
 });
@@ -1085,7 +1086,7 @@ router.post("/admin/scores/update", requireAdmin, async (req: Request, res: Resp
 
     res.json(row);
   } catch (err) {
-    logger.error({ err, clientId }, "admin-m365-run: failed to update client scores");
+    log.error({ err, clientId }, "admin-m365-run: failed to update client scores");
     res.status(500).json({ error: "Failed to update client scores" });
   }
 });
@@ -1132,12 +1133,12 @@ router.post("/admin/profile/update", requireAdmin, async (req: Request, res: Res
     try {
       await snapshotHealthFromProfile(clientId);
     } catch (snapErr) {
-      logger.warn({ snapErr, clientId }, "admin-m365-run: failed to snapshot health after profile update (non-fatal)");
+      log.warn({ snapErr, clientId }, "admin-m365-run: failed to snapshot health after profile update (non-fatal)");
     }
 
     res.json(row);
   } catch (err) {
-    logger.error({ err, clientId }, "admin-m365-run: failed to update M365 profile");
+    log.error({ err, clientId }, "admin-m365-run: failed to update M365 profile");
     res.status(500).json({ error: "Failed to update M365 profile" });
   }
 });
