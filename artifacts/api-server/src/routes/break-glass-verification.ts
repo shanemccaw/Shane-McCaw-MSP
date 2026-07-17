@@ -274,7 +274,10 @@ async function maybeFireOverrideAlert(customerId: number, tenantDomain: string |
   }
 }
 
-function generateStrongPassword(): string {
+// Exported for reuse by the Config Pack orchestrator (config-pack-orchestrator.ts),
+// which stamps the break-glass account password into the run payload — one
+// password generator for every break-glass credential on the platform.
+export function generateStrongPassword(): string {
   // 4 char classes guaranteed + entropy from random bytes.
   const rand = randomBytes(24).toString("base64").replace(/[^a-zA-Z0-9]/g, "");
   return `Bg9!${rand}`.slice(0, 28);

@@ -58,6 +58,7 @@ export default defineConfig({
       "src/routes/admin-engines.test.ts",
       "src/routes/portal-customer-offboard.test.ts",
       "src/routes/pcc.test.ts",
+      "src/lib/config-pack-graph.test.ts",
     ],
     coverage: {
       provider: "v8",

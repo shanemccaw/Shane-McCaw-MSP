@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import GridLayout, { Layout } from "react-grid-layout";
+import { WidthProvider } from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
@@ -437,7 +438,6 @@ const DEFAULT_RICH_TEXT_CONTENT = `<div style="font-family: 'Segoe UI', Arial, s
 </div>`;
 
 // @ts-ignore
-const WidthProvider = (GridLayout as any).WidthProvider;
 const ResponsiveGridLayout = WidthProvider(GridLayout) as any;
 
 function CanvasCard({

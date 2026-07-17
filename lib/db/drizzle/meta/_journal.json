@@ -1394,6 +1394,13 @@
       "when": 1784163644558,
       "tag": "0195_baseline_templates_quickstart_data",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1784163644559,
+      "tag": "0196_fix_baseline_template_placeholder_braces",
+      "breakpoints": true
     }
   ]
 }
