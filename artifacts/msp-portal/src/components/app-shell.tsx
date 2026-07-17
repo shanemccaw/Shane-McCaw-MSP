@@ -78,6 +78,7 @@ import {
   User,
   Users,
   Webhook,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -182,9 +183,8 @@ function SupportMessageBubble({ message }: { message: SupportChatMessage }) {
   );
 }
 
-function SupportChatSheet() {
+function DockedSupportPanel({ onClose }: { onClose: () => void }) {
   const { user, fetchWithAuth } = useAuth();
-  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -193,7 +193,7 @@ function SupportChatSheet() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open && messages.length === 0) {
+    if (messages.length === 0) {
       setMessages([
         {
           id: "init",
@@ -203,13 +203,11 @@ function SupportChatSheet() {
         },
       ]);
     }
-  }, [open, user?.name, messages.length]);
+  }, [user?.name, messages.length]);
 
   useEffect(() => {
-    if (open) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, open]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const apiMessages = messages
     .filter((m) => m.role === "user" || m.role === "assistant")
@@ -294,121 +292,124 @@ function SupportChatSheet() {
   const isEmpty = messages.filter((m) => m.role === "user").length === 0;
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <button
-          className="relative rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          title="Support Chat"
-          aria-label="Support Chat"
-        >
-          <MessageSquare className="size-4" />
-        </button>
-      </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col h-full z-[100] bg-background">
-        <SheetHeader className="p-4 border-b border-border text-left">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
-              <MessageSquare className="size-4" />
-            </div>
-            <div>
-              <SheetTitle className="text-sm font-semibold">Support Chat</SheetTitle>
-              <SheetDescription className="text-xs text-muted-foreground">
-                AI-assisted • Grounded in platform data
-              </SheetDescription>
-            </div>
-            <Badge variant="secondary" className="ml-auto text-[10px] gap-1 px-2 py-0.5">
-              <Bot className="size-2.5" />
-              AI Support
-            </Badge>
+    <aside className="w-80 md:w-96 shrink-0 border-l border-border bg-background flex flex-col h-screen sticky top-0 z-20 shadow-xl transition-all duration-300">
+      {/* Header */}
+      <div className="p-3.5 border-b border-border flex items-center justify-between shrink-0 bg-muted/20">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center text-primary shrink-0">
+            <MessageSquare className="size-4" />
           </div>
-        </SheetHeader>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-          {messages.map((msg) => (
-            <SupportMessageBubble key={msg.id} message={msg} />
-          ))}
-          {sending && (
-            <div className="flex gap-2.5">
-              <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-                <Bot className="size-3.5 text-muted-foreground" />
-              </div>
-              <div className="bg-muted rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-2">
-                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Thinking…</span>
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground truncate">Support Chat</h2>
+            <p className="text-[11px] text-muted-foreground truncate">
+              AI-assisted • Grounded in platform data
+            </p>
+          </div>
         </div>
-
-        {isEmpty && !sending && (
-          <div className="p-3 border-t border-border/60 bg-muted/20">
-            <p className="text-[11px] text-muted-foreground mb-2 font-medium">Suggested questions:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {SUPPORT_STARTER_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => void sendMessage(p)}
-                  className="text-[11px] px-2.5 py-1 rounded-full border border-border/70 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-left"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {everEscalated && (
-          <div className="px-4 py-2 bg-green-500/10 border-t border-green-500/20 flex items-center gap-2 text-xs text-green-500">
-            <CheckCircle2 className="size-3.5 shrink-0" />
-            Support team has been notified and will follow up.
-          </div>
-        )}
-
-        <div className="p-3 border-t border-border bg-background">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void sendMessage(input);
-            }}
-            className="flex gap-2 items-center"
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <Badge variant="secondary" className="text-[10px] gap-1 px-1.5 py-0.5 hidden sm:inline-flex">
+            <Bot className="size-2.5" />
+            AI Support
+          </Badge>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            title="Close chat panel"
           >
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void sendMessage(input);
-                }
-              }}
-              placeholder="Ask a question..."
-              rows={1}
-              className="min-h-[40px] max-h-[120px] resize-none text-xs py-2 px-3"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || sending}
-              className="size-9 shrink-0"
-            >
-              <Send className="size-4" />
-            </Button>
-          </form>
-          <div className="flex items-center justify-between mt-2 px-1 text-[10px] text-muted-foreground">
-            <span>Press Enter to send</span>
-            <button
-              type="button"
-              onClick={() => void handleExplicitEscalate()}
-              disabled={escalating}
-              className="hover:underline text-amber-500/80 hover:text-amber-500 transition-colors"
-            >
-              {escalating ? "Escalating..." : "Talk to human support"}
-            </button>
+            <X className="size-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+        {messages.map((msg) => (
+          <SupportMessageBubble key={msg.id} message={msg} />
+        ))}
+        {sending && (
+          <div className="flex gap-2.5">
+            <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+              <Bot className="size-3.5 text-muted-foreground" />
+            </div>
+            <div className="bg-muted rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-2">
+              <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Thinking…</span>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Starter Prompts */}
+      {isEmpty && !sending && (
+        <div className="p-3 border-t border-border/60 bg-muted/20 shrink-0">
+          <p className="text-[11px] text-muted-foreground mb-2 font-medium">Suggested questions:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {SUPPORT_STARTER_PROMPTS.map((p) => (
+              <button
+                key={p}
+                onClick={() => void sendMessage(p)}
+                className="text-[11px] px-2.5 py-1 rounded-full border border-border/70 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-left"
+              >
+                {p}
+              </button>
+            ))}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      )}
+
+      {/* Escalation notification */}
+      {everEscalated && (
+        <div className="px-4 py-2 bg-green-500/10 border-t border-green-500/20 flex items-center gap-2 text-xs text-green-500 shrink-0">
+          <CheckCircle2 className="size-3.5 shrink-0" />
+          Support team has been notified and will follow up.
+        </div>
+      )}
+
+      {/* Footer / Input */}
+      <div className="p-3 border-t border-border bg-background shrink-0">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void sendMessage(input);
+          }}
+          className="flex gap-2 items-center"
+        >
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void sendMessage(input);
+              }
+            }}
+            placeholder="Ask a question..."
+            rows={1}
+            className="min-h-[40px] max-h-[120px] resize-none text-xs py-2 px-3"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={!input.trim() || sending}
+            className="size-9 shrink-0"
+          >
+            <Send className="size-4" />
+          </Button>
+        </form>
+        <div className="flex items-center justify-between mt-2 px-1 text-[10px] text-muted-foreground">
+          <span>Press Enter to send</span>
+          <button
+            type="button"
+            onClick={() => void handleExplicitEscalate()}
+            disabled={escalating}
+            className="hover:underline text-amber-500/80 hover:text-amber-500 transition-colors"
+          >
+            {escalating ? "Escalating..." : "Talk to human support"}
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }
 
@@ -886,6 +887,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [profile, setProfile] = useState<MspProfile | null>(null);
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
@@ -1165,8 +1167,19 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             {/* 2. Bell */}
             <NotificationBell />
 
-            {/* 3. Chat (Slide-out panel) */}
-            <SupportChatSheet />
+            {/* 3. Chat (Non-blocking docked panel trigger) */}
+            <button
+              className={`relative rounded-md p-2 transition-colors ${
+                supportOpen
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+              onClick={() => setSupportOpen((v) => !v)}
+              title={supportOpen ? "Close Support Chat" : "Open Support Chat"}
+              aria-label="Support Chat"
+            >
+              <MessageSquare className="size-4" />
+            </button>
 
             {/* 4. Profile Card */}
             <DropdownMenu>
@@ -1322,6 +1335,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
           </div>
         </footer>
       </div>
+
+      {/* Non-blocking Docked Support Panel on the Right */}
+      {supportOpen && (
+        <DockedSupportPanel onClose={() => setSupportOpen(false)} />
+      )}
 
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
     </div>
