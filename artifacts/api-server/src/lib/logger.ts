@@ -10,13 +10,36 @@ const isProduction = process.env.NODE_ENV === "production";
 // to the wrong name (info → "warn").
 const LEVEL_NAMES = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
 
+// Shared with pino's own `redact` option below — pino reads this array once at
+// construction time and doesn't mutate it, so one array can safely back both
+// pino's internal serialization redaction AND the manual walk the mirror hook
+// does below (the mirror captures bindings/mergingObject BEFORE pino's own
+// redaction runs, so it needs its own pass over the same paths).
+const REDACT_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "res.headers['set-cookie']",
+];
+
+function redactForMirror(obj: Record<string, unknown>): Record<string, unknown> {
+  const clone = structuredClone(obj);
+  for (const path of REDACT_PATHS) {
+    const parts = path.replace(/\['([^']+)'\]/g, ".$1").split(".");
+    let cursor: any = clone;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (cursor?.[parts[i]] == null) { cursor = null; break; }
+      cursor = cursor[parts[i]];
+    }
+    if (cursor && parts[parts.length - 1] in cursor) {
+      cursor[parts[parts.length - 1]] = "[Redacted]";
+    }
+  }
+  return clone;
+}
+
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
-  redact: [
-    "req.headers.authorization",
-    "req.headers.cookie",
-    "res.headers['set-cookie']",
-  ],
+  redact: REDACT_PATHS,
   hooks: {
     // Fires synchronously on every `logger.*()` / child-logger `.error()` call.
     // Mirrors the call into platform_log_stream via the batched writer, then
@@ -41,7 +64,7 @@ export const logger = pino({
           channel,
           level: LEVEL_NAMES[Math.floor(level / 10) - 1] ?? "info",
           message,
-          meta: { ...bindings, ...mergingObject },
+          meta: redactForMirror({ ...bindings, ...mergingObject }),
           correlationId: ctx?.traceId ?? null,
           mspId: (bindings.mspId as number | undefined) ?? ctx?.mspId ?? null,
           customerId:
