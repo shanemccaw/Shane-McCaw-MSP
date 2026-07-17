@@ -148,10 +148,20 @@ export function SupportChatProvider({ children }: { children: ReactNode }) {
   );
 }
 
+const defaultContextValue: SupportChatContextValue = {
+  supportOpen: false,
+  setSupportOpen: () => {},
+  messages: [],
+  input: "",
+  setInput: () => {},
+  sending: false,
+  escalating: false,
+  everEscalated: false,
+  sendMessage: async () => {},
+  handleExplicitEscalate: async () => {},
+};
+
 export function useSupportChat() {
   const ctx = useContext(SupportChatContext);
-  if (!ctx) {
-    throw new Error("useSupportChat must be used within SupportChatProvider");
-  }
-  return ctx;
+  return ctx ?? defaultContextValue;
 }
