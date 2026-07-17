@@ -6026,9 +6026,31 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
       .where(eq(projectsTable.clientUserId, id));
     const projectIds = clientProjectRows.map(p => p.id);
 
-    const clientSvcRows = await db.select({ id: clientServicesTable.id }).from(clientServicesTable)
+    const clientSvcRows = await db.select({ id: clientServicesTable.id, stripeSubscriptionId: clientServicesTable.stripeSubscriptionId }).from(clientServicesTable)
       .where(eq(clientServicesTable.clientUserId, id));
     const clientSvcIds = clientSvcRows.map(s => s.id);
+
+    const stripeSubIds = clientSvcRows.map(s => s.stripeSubscriptionId).filter((sid): sid is string => sid != null);
+    if (stripeSubIds.length > 0) {
+      let stripeKey: string | null = null;
+      try {
+        stripeKey = getStripeKey();
+      } catch (err) {
+        req.log.warn(err, "Stripe not configured during client delete — skipping subscription cancellation");
+      }
+      if (stripeKey) {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(stripeKey);
+        for (const subId of stripeSubIds) {
+          try {
+            await stripe.subscriptions.cancel(subId);
+            req.log.info({ stripeSubscriptionId: subId }, "Cancelled stripe subscription during client delete");
+          } catch (err) {
+            req.log.error(err, `Failed to cancel Stripe subscription ${subId} during client delete`);
+          }
+        }
+      }
+    }
 
     if (projectIds.length > 0) {
       await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.projectId, projectIds));

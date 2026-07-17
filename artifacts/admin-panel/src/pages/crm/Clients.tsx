@@ -168,7 +168,7 @@ function DeleteConfirmDialog({
         ) : preview ? (
           <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400 space-y-1">
             {preview.hasActiveStripeSubscription && (
-              <p className="font-bold">⚠ Client has an active Stripe subscription — cancel it first.</p>
+              <p className="font-bold">⚠ Will also cancel this client's active Stripe subscription(s).</p>
             )}
             {preview.unpaidInvoices > 0 && (
               <p>{preview.unpaidInvoices} unpaid invoice{preview.unpaidInvoices !== 1 ? "s" : ""}</p>
@@ -196,7 +196,7 @@ function DeleteConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            disabled={deleting || preview?.hasActiveStripeSubscription === true}
+            disabled={deleting}
             className="bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
           >
             {deleting ? "Deleting…" : "Delete Client"}
