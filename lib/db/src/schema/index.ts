@@ -2613,4 +2613,30 @@ export type EngineBaselineHistory = typeof engineBaselineHistoryTable.$inferSele
 
 export type IndustryBenchmarkReference = typeof industryBenchmarkReferenceTable.$inferSelect;
 
+// ── Platform Log Stream ─────────────────────────────────────────────────────
+// DB mirror of pino log output (Phase 1a). Every `logger.*()` call is queued by
+// lib/log-stream-writer.ts and batch-inserted here, so operators can query
+// structured logs (by channel / correlationId / mspId / time) without shipping
+// to an external log sink. `message`/`level`/`time` are broken out into columns;
+// `meta` holds the remaining log object (bindings + merged object).
+export const platformLogStreamTable = pgTable("platform_log_stream", {
+  id: serial("id").primaryKey(),
+  channel: text("channel").notNull(),
+  level: text("level").notNull(),
+  message: text("message").notNull(),
+  meta: jsonb("meta").$type<Record<string, unknown>>(),
+  correlationId: uuid("correlation_id"),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("platform_log_stream_channel_idx").on(t.channel),
+  index("platform_log_stream_correlation_id_idx").on(t.correlationId),
+  index("platform_log_stream_msp_id_idx").on(t.mspId),
+  index("platform_log_stream_occurred_at_idx").on(t.occurredAt),
+]);
+
+export type InsertPlatformLogStream = typeof platformLogStreamTable.$inferInsert;
+export type PlatformLogStream = typeof platformLogStreamTable.$inferSelect;
+
 export * from "./msp";

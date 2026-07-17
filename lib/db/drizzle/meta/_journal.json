@@ -1404,6 +1404,13 @@
 
 
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1784163644560,
+      "tag": "0197_add_platform_log_stream",
+      "breakpoints": true
     }
   ]
 }
