@@ -11,6 +11,7 @@ import DashboardPage from "@/pages/dashboard";
 import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
 import MspsPage from "@/pages/msps";
+import MspDetailPage from "@/pages/msp-detail";
 import SettingsPage from "@/pages/settings";
 import SettingsOrgProfilePage from "@/pages/settings-org-profile";
 import SettingsConnectorPage from "@/pages/settings-connector";
@@ -209,6 +210,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/customers">
         <ProtectedRoute component={CustomersPage} />
+      </Route>
+      <Route path="/msps/:id">
+        <ProtectedRoute component={MspDetailPage} />
       </Route>
       <Route path="/msps">
         <ProtectedRoute component={MspsPage} />
