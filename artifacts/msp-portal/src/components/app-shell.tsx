@@ -295,7 +295,7 @@ function DockedSupportPanel() {
   }
 
   return (
-    <aside className="w-80 md:w-96 shrink-0 border-l border-border bg-background flex flex-col h-screen sticky top-0 z-20 shadow-xl transition-all duration-300">
+    <aside className="w-80 md:w-96 shrink-0 border-l border-border bg-background flex flex-col h-full z-20 shadow-xl transition-all duration-300">
       {/* Header */}
       <div className="p-3.5 border-b border-border flex items-center justify-between shrink-0 bg-muted/20">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -1137,9 +1137,9 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   return (
     <>
       {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
-      <div className={`flex min-h-screen bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+      <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
         {/* Desktop sidebar */}
-        <div className="hidden md:flex flex-col">{sidebarContent}</div>
+        <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
 
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
@@ -1157,7 +1157,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
       )}
 
       {/* Main area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
         {/* Topbar */}
         <header className="h-14 shrink-0 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4 md:px-6 sticky top-0 z-10">
           <button
@@ -1334,10 +1334,10 @@ export function AppShell({ children, title, actions }: AppShellProps) {
           )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
 
-        {/* Credibility footer — persistent, non-removable */}
-        <footer className="shrink-0 border-t border-border bg-background/60 px-6 py-3">
+        {/* Credibility footer — persistent, non-removable, fixed at bottom */}
+        <footer className="shrink-0 border-t border-border bg-background/60 px-6 py-3 z-10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <Award className="size-3.5 text-primary shrink-0" />
