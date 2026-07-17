@@ -49,8 +49,8 @@ export async function getEngineHistoryMerged(
         and(
           eq(engineScoreDailyRollupTable.customerId, customerId),
           eq(engineScoreDailyRollupTable.engineKey, engineKey),
-          gte(engineScoreDailyRollupTable.day, rangeStart),
-          lt(engineScoreDailyRollupTable.day, ninetyDaysAgo)
+          gte(engineScoreDailyRollupTable.day, rangeStart.toISOString().split("T")[0]),
+          lt(engineScoreDailyRollupTable.day, ninetyDaysAgo.toISOString().split("T")[0])
         )
       )
       .orderBy(asc(engineScoreDailyRollupTable.day));

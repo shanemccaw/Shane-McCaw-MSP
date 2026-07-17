@@ -45,13 +45,13 @@ describe("aggregateMspTelemetry", () => {
     const openTasksMock = [{ count: 4 }];
 
     vi.mocked(db.select)
-      .mockReturnValueOnce(createChain(subsMock))
-      .mockReturnValueOnce(createChain(invoicesMock))
-      .mockReturnValueOnce(createChain(tasksMock))
-      .mockReturnValueOnce(createChain(offersMock))
-      .mockReturnValueOnce(createChain(activeSignalsMock))
-      .mockReturnValueOnce(createChain(offerStatsMock))
-      .mockReturnValueOnce(createChain(openTasksMock));
+      .mockReturnValueOnce(createChain(subsMock) as any)
+      .mockReturnValueOnce(createChain(invoicesMock) as any)
+      .mockReturnValueOnce(createChain(tasksMock) as any)
+      .mockReturnValueOnce(createChain(offersMock) as any)
+      .mockReturnValueOnce(createChain(activeSignalsMock) as any)
+      .mockReturnValueOnce(createChain(offerStatsMock) as any)
+      .mockReturnValueOnce(createChain(openTasksMock) as any);
 
     const result = await aggregateMspTelemetry(42, new Date("2026-07-01"));
 

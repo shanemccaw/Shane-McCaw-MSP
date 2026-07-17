@@ -32,9 +32,9 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("org");
 
-  if (user?.role === "PlatformAdmin") {
+  if (user?.mspRole === "PlatformAdmin") {
     return (
-      <DashboardShell title="Settings" description="Manage your MSP organization and platform preferences">
+      <DashboardShell>
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="pt-6 text-center">
             <Lock className="h-10 w-10 mx-auto text-destructive mb-3" />
@@ -55,7 +55,7 @@ export default function SettingsPage() {
 
   if (!isAuthorized) {
     return (
-      <DashboardShell title="Settings" description="Manage your MSP organization and platform preferences">
+      <DashboardShell>
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="pt-6 text-center">
             <Lock className="h-10 w-10 mx-auto text-destructive mb-3" />
@@ -70,10 +70,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <DashboardShell 
-      title="Organization Settings" 
-      description="Configure organization profile, billing card on file, M365 integrations, custom domain, and team access."
-    >
+    <DashboardShell>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="bg-muted/50 p-1 flex flex-wrap gap-1 h-auto">
           <TabsTrigger value="org" className="flex items-center gap-2">

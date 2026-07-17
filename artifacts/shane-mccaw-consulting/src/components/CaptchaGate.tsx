@@ -1,5 +1,14 @@
 import { useEffect, useRef } from "react";
 
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: { sitekey: string; callback: (token: string) => void }) => string;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
+
 interface CaptchaGateProps {
   onVerify: (token: string) => void;
 }
