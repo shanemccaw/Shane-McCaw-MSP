@@ -6,6 +6,8 @@ export interface GraphRegistryEntry {
   requiredScopes: string[];
   entityType: string;
   fields: Record<string, { type: string; required: boolean }>;
+  packagesUsingIt: string[];
+  signalsDependingOnIt: string[];
 }
 
 export class PccGraphValidator {
@@ -21,7 +23,9 @@ export class PccGraphValidator {
           id: { type: 'string', required: true },
           displayName: { type: 'string', required: true },
           mail: { type: 'string', required: true }
-        }
+        },
+        packagesUsingIt: ['@workspace/api-server'],
+        signalsDependingOnIt: ['user_active_count']
       }
     ],
     [
@@ -34,13 +38,49 @@ export class PccGraphValidator {
         fields: {
           skuId: { type: 'string', required: true },
           skuPartNumber: { type: 'string', required: true }
-        }
+        },
+        packagesUsingIt: ['@workspace/api-server', '@workspace/activity-tracker'],
+        signalsDependingOnIt: ['license_inactivity_check']
       }
     ]
   ]);
 
   public getRegistryEntry(endpointId: string): GraphRegistryEntry | undefined {
     return this.registry.get(endpointId);
+  }
+
+  // Resolve nested dot-notation paths (e.g., "signInActivity.lastSignInDateTime")
+  public getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+  }
+
+  public mapResponseToContextModel(endpointId: string, responsePayload: any): Record<string, any> {
+    const entry = this.getRegistryEntry(endpointId);
+    if (!entry || !responsePayload) return {};
+
+    const contextModel: Record<string, any> = {};
+    for (const field of Object.keys(entry.fields)) {
+      const val = this.getNestedValue(responsePayload, field);
+      if (val !== undefined) {
+        contextModel[field.replace(/\./g, '_')] = val;
+      }
+    }
+    return contextModel;
+  }
+
+  public validateGraphSignal(signalName: string, contextModel: Record<string, any>): { passed: boolean; why?: string } {
+    if (signalName === 'license_inactivity_check') {
+      const lastSignIn = contextModel['signInActivity_lastSignInDateTime'] || contextModel['lastSignInDateTime'];
+      if (!lastSignIn) {
+        return { passed: false, why: `Signal '${signalName}' validation failed: Missing lastSignInDateTime mapping` };
+      }
+      
+      const timeMs = Date.parse(lastSignIn);
+      if (isNaN(timeMs)) {
+        return { passed: false, why: `Signal '${signalName}' validation failed: invalid date structure '${lastSignIn}'` };
+      }
+    }
+    return { passed: true };
   }
 
   public validate(endpointId: string, actualResponse: any): { passed: boolean; why?: string; diffs: PccDiff[] } {
@@ -62,8 +102,9 @@ export class PccGraphValidator {
     const sanitizedActual: Record<string, any> = {};
     if (actualResponse && typeof actualResponse === 'object') {
       for (const field of Object.keys(entry.fields)) {
-        if (field in actualResponse) {
-          sanitizedActual[field] = actualResponse[field];
+        const actualVal = this.getNestedValue(actualResponse, field);
+        if (actualVal !== undefined) {
+          sanitizedActual[field] = actualVal;
         }
       }
     }
@@ -82,8 +123,9 @@ export class PccGraphValidator {
 
     // Verify types
     for (const [field, rule] of Object.entries(entry.fields)) {
-      if (field in actualResponse) {
-        const actualType = typeof actualResponse[field];
+      const actualVal = this.getNestedValue(actualResponse, field);
+      if (actualVal !== undefined) {
+        const actualType = typeof actualVal;
         if (actualType !== rule.type) {
           return {
             passed: false,

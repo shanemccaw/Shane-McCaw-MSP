@@ -4,6 +4,7 @@ import express from 'express';
 import pccRouter from './pcc.js';
 import { PccStateManager } from '../lib/pcc/state-manager.js';
 import { PccStreamingServer } from '../lib/pcc/streaming-server.js';
+import { PccGraphValidator } from '../lib/pcc/graph-validator.js';
 
 // Setup local test express application mounting only the PCC router
 const testApp = express();
@@ -102,5 +103,21 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     const stripeResult = res.body.results.find((r: any) => r.testId === 'event-stripe-checkout');
     expect(stripeResult).toBeDefined();
     expect(stripeResult.status).toBe('PASS');
+  });
+
+  it('should validate Graph nested dot-notation fields and map payload inputs', () => {
+    const validator = new PccGraphValidator();
+
+    // Map nested fields
+    const mockResponse = { id: 'usr-11', displayName: 'Shane McCaw', mail: 'shane@mccaw.org' };
+    const mapped = validator.mapResponseToContextModel('graph-user-read', mockResponse);
+    expect(mapped.displayName).toBe('Shane McCaw');
+    expect(mapped.id).toBe('usr-11');
+
+    // Detect missing fields (drift)
+    const invalidMock = { id: 'usr-11' }; // missing displayName, mail
+    const valResult = validator.validate('graph-user-read', invalidMock);
+    expect(valResult.passed).toBe(false);
+    expect(valResult.why).toContain('Schema Drift: Missing required Graph field(s)');
   });
 });
