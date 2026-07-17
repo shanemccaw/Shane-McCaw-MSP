@@ -50,8 +50,8 @@ const STATE_LABELS: Record<NonNullable<OffboardingState>, string> = {
 };
 
 const STATE_COLORS: Record<NonNullable<OffboardingState>, string> = {
-  cancellation_requested: "bg-amber-500/10 text-amber-700 border-amber-200",
-  export_ready: "bg-blue-500/10 text-blue-700 border-blue-200",
+  cancellation_requested: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  export_ready: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   archival_flagged: "bg-muted text-muted-foreground border-border",
 };
 
@@ -190,18 +190,21 @@ export default function OffboardingPage() {
       return (
         <AppShell title="Offboarding">
           <div className="max-w-md mx-auto p-6 mt-10">
-            <Card className="border-red-200 bg-red-50/50">
+            <Card className="border-red-500/30 bg-red-500/10 backdrop-blur-sm shadow-lg overflow-hidden relative">
+              <div className="absolute top-0 right-0 size-32 bg-red-500/10 rounded-full blur-2xl pointer-events-none" />
               <CardHeader className="pb-3 text-center">
-                <AlertTriangle className="size-8 text-red-600 mx-auto mb-2" />
-                <CardTitle className="text-lg text-red-900">
+                <div className="size-12 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="size-6" />
+                </div>
+                <CardTitle className="text-lg font-bold text-red-300">
                   Contact Your Service Provider
                 </CardTitle>
-                <CardDescription className="text-red-700 mt-1">
+                <CardDescription className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto leading-relaxed">
                   Your account is managed by an external Managed Service Provider (MSP). To cancel or modify your subscriptions and monitoring services, please contact your MSP coordinator directly.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex justify-center pb-6">
-                <Button onClick={() => navigate("/customer-home")} variant="outline">
+              <CardContent className="flex justify-center pb-6 pt-2">
+                <Button onClick={() => navigate("/customer-home")} variant="outline" className="border-red-500/30 text-red-300 hover:bg-red-500/10">
                   Back to Portal
                 </Button>
               </CardContent>
@@ -263,15 +266,21 @@ export default function OffboardingPage() {
         <div className="max-w-2xl mx-auto p-6 space-y-6">
           {isCustomerInactive ? (
             <>
-              <Card className="border-green-200 bg-green-50/50">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle2 className="size-5 text-green-600 mt-0.5 shrink-0" />
+              <Card className="border-emerald-500/30 bg-emerald-500/10 backdrop-blur-sm shadow-md overflow-hidden relative">
+                <div className="absolute top-0 right-0 size-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
+                <CardHeader className="pb-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0 border border-emerald-500/30">
+                      <CheckCircle2 className="size-5" />
+                    </div>
                     <div>
-                      <CardTitle className="text-base text-green-900">
-                        Services & Monitoring Deactivated
-                      </CardTitle>
-                      <CardDescription className="text-green-700 mt-1">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base font-bold text-emerald-300">
+                          Services & Monitoring Deactivated
+                        </CardTitle>
+                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px]">Deactivated</Badge>
+                      </div>
+                      <CardDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                         All active modernisation retainers have been paused and security/compliance monitoring has been disabled. You still have access to download your historical data package below.
                       </CardDescription>
                     </div>
@@ -321,29 +330,32 @@ export default function OffboardingPage() {
               </Card>
             </>
           ) : (
-            <Card className="border-amber-200 bg-amber-50/50">
+            <Card className="border-amber-500/30 bg-amber-500/10 backdrop-blur-sm shadow-md overflow-hidden relative">
+              <div className="absolute top-0 right-0 size-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
               <CardHeader className="pb-3">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="size-5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex items-start gap-3.5">
+                  <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0 border border-amber-500/30">
+                    <AlertTriangle className="size-5" />
+                  </div>
                   <div>
-                    <CardTitle className="text-base text-amber-900">
+                    <CardTitle className="text-base font-bold text-amber-300">
                       Deactivate Services & Monitoring
                     </CardTitle>
-                    <CardDescription className="text-amber-700 mt-1">
+                    <CardDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                       Proceeding will cancel your active modernisation subscriptions and disable all modern workplace monitoring checks immediately.
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="pt-4 flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
+              <CardContent className="pt-2 flex flex-col gap-4">
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   Your subscriptions will end and monitoring will be disabled. You will still retain access to the portal to download your historical data package.
                 </p>
                 <Button
                   variant="destructive"
                   onClick={() => void handleCustomerOffboard()}
                   disabled={requesting}
-                  className="gap-2 w-fit"
+                  className="gap-2 w-fit shadow-sm bg-destructive/90 hover:bg-destructive"
                 >
                   <XCircle className="size-4" />
                   {requesting ? "Deactivating…" : "Deactivate services & monitoring"}
@@ -360,15 +372,18 @@ export default function OffboardingPage() {
     <AppShell title="Offboarding">
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Warning banner */}
-        <Card className="border-amber-200 bg-amber-50/50">
+        <Card className="border-amber-500/30 bg-amber-500/10 backdrop-blur-sm shadow-md overflow-hidden relative">
+          <div className="absolute top-0 right-0 size-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
           <CardHeader className="pb-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="size-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="flex items-start gap-3.5">
+              <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0 border border-amber-500/30">
+                <AlertTriangle className="size-5" />
+              </div>
               <div>
-                <CardTitle className="text-base text-amber-900">
+                <CardTitle className="text-base font-bold text-amber-300">
                   Offboarding is irreversible once archived
                 </CardTitle>
-                <CardDescription className="text-amber-700 mt-1">
+                <CardDescription className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                   Your customer data will never be silently deleted. Export your data package before
                   archival — customers re-onboard under a new MSP independently.
                 </CardDescription>
