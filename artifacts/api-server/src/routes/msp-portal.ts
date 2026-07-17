@@ -16,6 +16,7 @@ import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "d
 import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
@@ -55,14 +56,14 @@ router.get(
     try {
       const mspId = await resolveMspIdOrZero(req);
       if (!mspId) {
-        res.status(404).json(apiError(ApiErrorCode.NOT_FOUND, "No active MSP found"));
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "No active MSP found");
         return;
       }
       const output = await calculateMspPortfolioRisk(mspId);
       res.json(output);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      res.status(500).json(apiError(ApiErrorCode.INTERNAL_SERVER_ERROR, msg));
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }
   },
 );

@@ -62,7 +62,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import GridLayout, { Layout } from "react-grid-layout";
-import { WidthProvider } from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
@@ -537,7 +536,7 @@ export default function ReportsPage() {
   // Editor Workspace states
   const [editingCanvas, setEditingCanvas] = useState<MspReportCanvas | null>(null);
   const [isCreatingCanvas, setIsCreatingCanvas] = useState(false);
-  const [layouts, setLayouts] = useState<Layout>([]);
+  const [layouts, setLayouts] = useState<LayoutItem[]>([]);
   const [widgets, setWidgets] = useState<Record<string, any>>({});
   const [sendAsHtmlEmail, setSendAsHtmlEmail] = useState(false);
   const [attachPdf, setAttachPdf] = useState(true);
@@ -735,7 +734,7 @@ export default function ReportsPage() {
     // Parse canvasLayout
     const parsedLayout = canvas.canvasLayout?.layout || [];
     const parsedWidgets = canvas.canvasLayout?.widgets || {};
-    setLayouts(parsedLayout);
+    setLayouts(parsedLayout as LayoutItem[]);
     setWidgets(parsedWidgets);
 
     // Set delivery config
@@ -878,7 +877,7 @@ export default function ReportsPage() {
 
   // ── Canvas Builder Layout Methods ──────────────────────────────────────────
   const handleLayoutChange = (newLayout: Layout) => {
-    setLayouts(newLayout);
+    setLayouts([...newLayout]);
   };
 
   const addPaletteItem = (type: string) => {

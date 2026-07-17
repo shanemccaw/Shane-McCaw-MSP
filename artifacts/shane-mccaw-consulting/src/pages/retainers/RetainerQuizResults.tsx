@@ -16,8 +16,8 @@ import { type TierKey, TIER_CONFIG, determineTier } from "@/components/RetainerS
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  scores: Record<TierKey, number>;
-  onRetake: () => void;
+  scores?: Record<TierKey, number>;
+  onRetake?: () => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,7 +116,9 @@ function TierIcon({ tier }: { tier: TierKey }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function RetainerQuizResults({ scores, onRetake }: Props) {
+const DEFAULT_SCORES: Record<TierKey, number> = { Essentials: 0, Growth: 0, Enterprise: 0 };
+
+export default function RetainerQuizResults({ scores = DEFAULT_SCORES, onRetake = () => {} }: Props) {
   const recommended = determineTier(scores);
   const config = TIER_CONFIG[recommended];
   const ranked = getRankedTiers(scores);

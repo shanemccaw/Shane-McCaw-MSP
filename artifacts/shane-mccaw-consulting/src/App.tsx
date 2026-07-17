@@ -88,7 +88,7 @@ export default function App() {
       <Route path="/sharepoint-quiz" component={SharePointQuiz} />
       <Route path="/teams-quiz" component={TeamsQuiz} />
       <Route path="/retainer-quiz" component={RetainerQuiz} />
-      <Route path="/retainer-quiz-results" component={RetainerQuizResults} />
+      <Route path="/retainer-quiz-results" component={() => <RetainerQuizResults />} />
       <Route path="/quick-win-quiz" component={QuickWinQuiz} />
       <Route path="/quick-win-results" component={QuickWinResultsPage} />
       <Route path="/quiz-results" component={QuizResultsPage} />

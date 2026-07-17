@@ -13,7 +13,7 @@ export async function verifyCaptchaToken(token: string) {
       body: `secret=${encodeURIComponent(process.env.TURNSTILE_SECRET_KEY)}&response=${encodeURIComponent(token)}`,
     });
 
-    const data = await res.json();
+    const data = await res.json() as { success: boolean };
     return { success: data.success, bypassed: false, raw: data };
   } catch (error) {
     console.error("Failed to verify CAPTCHA token:", error);

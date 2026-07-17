@@ -153,7 +153,7 @@ export default function PendingApprovalsPage() {
   };
 
   const isMspAdmin = user?.mspRole === "MSPAdmin" || user?.role === "admin";
-  const canDecide = isMspAdmin || user?.canApprovePurchases;
+  const canDecide = isMspAdmin;
 
   const actions = (
     <Button

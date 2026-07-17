@@ -675,7 +675,7 @@ export default function CustomerDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {customer.status !== "inactive" && customer.status !== "disabled" && (
+            {customer.status !== "inactive" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -696,7 +696,7 @@ export default function CustomerDetailPage() {
               size="sm"
               className="gap-1.5 rounded-lg shadow-sm"
               onClick={() => setActiveTab("diagnostics")}
-              disabled={customer.status === "inactive" || customer.status === "disabled"}
+              disabled={customer.status === "inactive"}
             >
               <Play className="size-3.5" />
               Run Diagnostics
@@ -921,8 +921,8 @@ export default function CustomerDetailPage() {
             <DiagnosticsTab
               customerId={customer.id}
               fetchWithAuth={fetchWithAuth}
-              accessToken={accessToken}
-              isInactive={customer.status === "inactive" || customer.status === "disabled"}
+              accessToken={accessToken ?? undefined}
+              isInactive={customer.status === "inactive"}
             />
           </TabsContent>
 
