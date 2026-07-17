@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Users,
   Zap,
+  ClipboardList,
 } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -44,6 +45,28 @@ const OFFBOARDING_LABELS: Record<string, string> = {
   export_ready: "Export Ready",
   archival_flagged: "Archived",
 };
+
+interface FinancialBreakdown {
+  grossRevenueUsd: string;
+  wholesaleCostUsd: string;
+  mspMarginUsd: string;
+  mspMarginPct: string;
+}
+
+interface TelemetryPayload {
+  financials: {
+    monitoringMrr: FinancialBreakdown;
+    projectRevenue: FinancialBreakdown;
+    remediationRevenue: FinancialBreakdown;
+    offerRevenue: FinancialBreakdown;
+    total: FinancialBreakdown;
+  };
+  metrics: {
+    activeSignalsCount: number;
+    offerAcceptanceRate: number;
+    openFulfillmentTasksCount: number;
+  };
+}
 
 interface DashboardData {
   msp: {
@@ -70,6 +93,7 @@ interface DashboardData {
   idleBundles: Array<{ bundleId: string; name: string; daysIdle: number }>;
   aiAlertThreshold: number | null;
   aiPeriodUsagePct: number | null;
+  telemetry?: TelemetryPayload;
 }
 
 interface LicenseWasteData {
@@ -169,6 +193,32 @@ export default function DashboardPage() {
   // Determine if PlatformAdmin is viewing without an MSP context
   const isPlatformAdminNoMsp = !loading && !error && user?.role === "admin" && !data?.msp;
 
+  const hasErrorOrNoMsp = error || isPlatformAdminNoMsp;
+
+  const totalVal = parseFloat(data?.telemetry?.financials?.total?.grossRevenueUsd ?? "0");
+  const mrrVal = parseFloat(data?.telemetry?.financials?.monitoringMrr?.grossRevenueUsd ?? "0");
+  const projectVal = parseFloat(data?.telemetry?.financials?.projectRevenue?.grossRevenueUsd ?? "0");
+  const remediationVal = parseFloat(data?.telemetry?.financials?.remediationRevenue?.grossRevenueUsd ?? "0");
+  const offerVal = parseFloat(data?.telemetry?.financials?.offerRevenue?.grossRevenueUsd ?? "0");
+
+  const oneTimeVal = projectVal + remediationVal + offerVal;
+  const mrrPct = totalVal > 0 ? (mrrVal / totalVal) * 100 : 0;
+  const oneTimePct = totalVal > 0 ? (oneTimeVal / totalVal) * 100 : 0;
+
+  const signalCount = data?.telemetry?.metrics?.activeSignalsCount ?? data?.signalsFiredThisMonth ?? 0;
+  const maxSignals = 100;
+  const signalPct = Math.min(100, Math.round((signalCount / maxSignals) * 100));
+
+  const acceptanceRate = data?.telemetry?.metrics?.offerAcceptanceRate ?? data?.offerAcceptanceRate ?? 0;
+  const openTasks = data?.telemetry?.metrics?.openFulfillmentTasksCount ?? 0;
+
+  const formatUsd = (valStr?: string) => {
+    if (!valStr) return "—";
+    const val = parseFloat(valStr);
+    if (isNaN(val)) return "—";
+    return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
   return (
     <AppShell title="Dashboard">
       <div className="p-6 space-y-6">
@@ -250,50 +300,232 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Signals Fired"
-            value={error || isPlatformAdminNoMsp ? "—" : (data?.signalsFiredThisMonth ?? 0)}
-            sub={periodLabel}
-            icon={Activity}
-            loading={loading}
-          />
-          <StatCard
-            title="Offer Acceptance"
-            value={error || isPlatformAdminNoMsp ? "—" : `${data?.offerAcceptanceRate ?? 0}%`}
-            sub="Active customer rate"
-            icon={PercentCircle}
-            loading={loading}
-          />
-          <StatCard
-            title="Monitoring Revenue"
-            value={error || isPlatformAdminNoMsp ? "—" : `$${data?.revenueUsdThisMonth ?? "0.00"}`}
-            sub={periodLabel}
-            icon={DollarSign}
-            loading={loading}
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Total Gross Revenue Card */}
+          <Card className="col-span-1 md:col-span-2 border-primary/20 bg-gradient-to-br from-card to-primary/5 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <div>
+                <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Gross Revenue</CardTitle>
+                <CardDescription className="text-xs mt-1">{periodLabel}</CardDescription>
+              </div>
+              <DollarSign className="size-5 text-primary" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {loading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-36" />
+                  <Skeleton className="h-2.5 w-full" />
+                  <Skeleton className="h-4 w-48" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-4xl font-extrabold tracking-tight">
+                      {hasErrorOrNoMsp ? "—" : formatUsd(data?.telemetry?.financials?.total?.grossRevenueUsd)}
+                    </span>
+                    <Badge variant="outline" className="text-emerald-400 border-emerald-500/20 bg-emerald-500/10 animate-pulse">
+                      {hasErrorOrNoMsp ? "—" : `${data?.telemetry?.financials?.total?.mspMarginPct ?? "0.0%"} Est. Margin`}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Full-Catalog Breakdown</span>
+                      <span className="font-semibold text-emerald-400">
+                        {hasErrorOrNoMsp ? "" : `Profit: ${formatUsd(data?.telemetry?.financials?.total?.mspMarginUsd)}`}
+                      </span>
+                    </div>
+                    
+                    <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden flex">
+                      {hasErrorOrNoMsp || totalVal === 0 ? (
+                        <div className="h-full w-full bg-muted-foreground/10" />
+                      ) : (
+                        <>
+                          <div
+                            className="h-full bg-primary transition-all duration-500"
+                            style={{ width: `${mrrPct}%` }}
+                            title={`MRR: ${mrrPct.toFixed(1)}%`}
+                          />
+                          <div
+                            className="h-full bg-sky-500 transition-all duration-500"
+                            style={{ width: `${oneTimePct}%` }}
+                            title={`One-Time/Project: ${oneTimePct.toFixed(1)}%`}
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-4 text-xs pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 bg-primary rounded-full" />
+                        <span className="text-muted-foreground">MRR:</span>
+                        <span className="font-bold">
+                          {hasErrorOrNoMsp ? "—" : formatUsd(data?.telemetry?.financials?.monitoringMrr?.grossRevenueUsd)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 bg-sky-500 rounded-full" />
+                        <span className="text-muted-foreground">One-Time/Project:</span>
+                        <span className="font-bold">
+                          {hasErrorOrNoMsp ? "—" : `$${oneTimeVal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Signal Volume Gauge Card */}
+          <Card className="flex flex-col justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Signal Volume</CardTitle>
+              <Activity className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col justify-center py-2">
+              {loading ? (
+                <div className="flex items-center justify-center h-24">
+                  <Skeleton className="size-20 rounded-full animate-pulse" />
+                </div>
+              ) : (
+                <div className="relative size-24 mx-auto flex items-center justify-center">
+                  <svg viewBox="0 0 96 96" className="w-full h-full transform -rotate-90">
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="36"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      fill="transparent"
+                      className="text-muted-foreground/10"
+                    />
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="36"
+                      stroke="currentColor"
+                      strokeWidth="6"
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 36}
+                      strokeDashoffset={2 * Math.PI * 36 * (1 - signalPct / 100)}
+                      className="text-primary transition-all duration-700 ease-out"
+                    />
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center text-center">
+                    <span className="text-xl font-extrabold tracking-tight">
+                      {hasErrorOrNoMsp ? "—" : signalCount}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wider">fired</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+            <CardDescription className="px-6 pb-4 text-xs text-muted-foreground text-center">
+              {hasErrorOrNoMsp ? "No activity logged" : `${signalCount} event signals processed this month`}
+            </CardDescription>
+          </Card>
+
+          {/* Offer Acceptance Rate Card */}
+          <Card className="flex flex-col justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Offer Acceptance</CardTitle>
+              <PercentCircle className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="pt-2">
+              {loading ? (
+                <Skeleton className="h-8 w-20 animate-pulse" />
+              ) : (
+                <div className="text-3xl font-extrabold tracking-tight">
+                  {hasErrorOrNoMsp ? "—" : `${acceptanceRate}%`}
+                </div>
+              )}
+              
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Pipeline Conversion</span>
+                {loading ? (
+                  <Skeleton className="h-5 w-24" />
+                ) : (
+                  <Badge className={
+                    hasErrorOrNoMsp
+                      ? "bg-muted text-muted-foreground border-muted"
+                      : acceptanceRate >= 70
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/15"
+                      : acceptanceRate >= 40
+                      ? "bg-sky-500/10 text-sky-400 border-sky-500/20 hover:bg-sky-500/15"
+                      : "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/15"
+                  }>
+                    {hasErrorOrNoMsp ? "No Data" : acceptanceRate >= 60 ? "High Conversion" : "Optimal"}
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+            <CardDescription className="px-6 pb-4 text-xs text-muted-foreground">
+              {hasErrorOrNoMsp ? "No offers sent" : "Percentage of generated offers accepted"}
+            </CardDescription>
+          </Card>
+
+          {/* Active Fulfillment Tasks Card */}
+          <Card className="flex flex-col justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium">Active Fulfillment</CardTitle>
+              <ClipboardList className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="pt-2">
+              {loading ? (
+                <Skeleton className="h-8 w-20 animate-pulse" />
+              ) : (
+                <div className="text-3xl font-extrabold tracking-tight">
+                  {hasErrorOrNoMsp ? "—" : openTasks}
+                </div>
+              )}
+
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Queue Status</span>
+                {loading ? (
+                  <Skeleton className="h-5 w-24" />
+                ) : (
+                  <Badge className={
+                    hasErrorOrNoMsp || openTasks === 0
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  }>
+                    {hasErrorOrNoMsp || openTasks === 0 ? "Complete" : "Attention Needed"}
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+            <CardDescription className="px-6 pb-4 text-xs text-muted-foreground">
+              {hasErrorOrNoMsp ? "No active queue" : "Tasks pending in fulfillment kanban"}
+            </CardDescription>
+          </Card>
+
           {/* License Waste tile */}
           <Link href="/reports">
-            <Card className="cursor-pointer hover:border-primary/40 transition-colors group">
+            <Card className="cursor-pointer hover:border-primary/40 transition-colors group h-full flex flex-col justify-between">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-sm font-medium">License Waste</CardTitle>
                 <TrendingDown className="size-4 text-amber-400" />
               </CardHeader>
-              <CardContent>
+              <CardContent className="pt-2">
                 {loading || wasteData === null ? (
-                  <Skeleton className="h-8 w-20 mt-1" />
+                  <Skeleton className="h-8 w-20 animate-pulse" />
                 ) : (
-                  <div className="text-2xl font-bold text-amber-400">
+                  <div className="text-3xl font-extrabold tracking-tight text-amber-400">
                     {wasteData.estimatedAnnualSavingsFormatted}
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                  {wasteData
-                    ? `${wasteData.customersWithWaste} of ${wasteData.totalCustomers} customers`
-                    : "Identifiable annual savings"}
-                  <FileBarChart2 className="size-3 ml-auto text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                </p>
+                
+                <div className="mt-4 flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Savings Found</span>
+                  <FileBarChart2 className="size-3 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                </div>
               </CardContent>
+              <CardDescription className="px-6 pb-4 text-xs text-muted-foreground">
+                {wasteData
+                  ? `${wasteData.customersWithWaste} of ${wasteData.totalCustomers} customers`
+                  : "Identifiable annual savings"}
+              </CardDescription>
             </Card>
           </Link>
         </div>
