@@ -61,9 +61,8 @@ import {
   Send,
 } from "lucide-react";
 import { toast } from "sonner";
-import GridLayout, { Layout } from "react-grid-layout";
-import { WidthProvider } from "react-grid-layout/legacy";
 import GridLayout, { Layout, LayoutItem } from "react-grid-layout";
+import { WidthProvider } from "react-grid-layout/legacy";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
