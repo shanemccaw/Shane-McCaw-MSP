@@ -19,8 +19,10 @@ import {
   uuid,
   uniqueIndex,
   index,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { wfRunsTable } from "./index";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -1970,4 +1972,128 @@ export type InsertSimulationProfile = typeof simulationProfiles.$inferInsert;
 
 export type SimulationRun = typeof simulationRuns.$inferSelect;
 export type InsertSimulationRun = typeof simulationRuns.$inferInsert;
+
+// ── Baseline Action Templates ──────────────────────────────────────────────────
+
+export const baselineActionTemplatesTable = pgTable("baseline_action_templates", {
+  id: serial("id").primaryKey(),
+  templateId: text("template_id").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  category: text("category").notNull(),
+  endpoint: text("endpoint").notNull(),
+  method: text("method", { enum: ["POST", "PATCH", "PUT"] }).notNull(),
+  bodyTemplate: jsonb("body_template").$type<Record<string, unknown>>().notNull().default({}),
+  requiredVariables: jsonb("required_variables").$type<string[]>().notNull().default([]),
+  successCriteria: jsonb("success_criteria").$type<Record<string, unknown>>().notNull().default({}),
+  dependsOn: jsonb("depends_on").$type<string[]>().notNull().default([]),
+  requiresVerificationGate: boolean("requires_verification_gate").notNull().default(false),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  createdByAdminId: integer("created_by_admin_id"),
+  updatedByAdminId: integer("updated_by_admin_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("baseline_action_templates_template_id_idx").on(t.templateId),
+]);
+
+export const insertBaselineActionTemplateSchema = createInsertSchema(baselineActionTemplatesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type BaselineActionTemplate = typeof baselineActionTemplatesTable.$inferSelect;
+export type InsertBaselineActionTemplate = typeof baselineActionTemplatesTable.$inferInsert;
+
+// ── Baseline Action Template Audit Log ──────────────────────────────────────────
+
+export const baselineActionTemplateAuditLogTable = pgTable("baseline_action_template_audit_log", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  templateId: text("template_id"),
+  adminId: integer("admin_id"),
+  beforeSnapshot: jsonb("before_snapshot").$type<Record<string, unknown>>(),
+  afterSnapshot: jsonb("after_snapshot").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("baseline_action_template_audit_log_template_id_idx").on(t.templateId),
+  index("baseline_action_template_audit_log_created_at_idx").on(t.createdAt),
+]);
+
+export const insertBaselineActionTemplateAuditLogSchema = createInsertSchema(baselineActionTemplateAuditLogTable).omit({ id: true, createdAt: true });
+export type BaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferSelect;
+export type InsertBaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferInsert;
+
+// ── Config Packs ───────────────────────────────────────────────────────────────
+
+export const configPacksTable = pgTable("config_packs", {
+  id: serial("id").primaryKey(),
+  packKey: text("pack_key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  categories: text("categories").array().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("config_packs_pack_key_idx").on(t.packKey),
+]);
+
+export const insertConfigPackSchema = createInsertSchema(configPacksTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ConfigPack = typeof configPacksTable.$inferSelect;
+export type InsertConfigPack = typeof configPacksTable.$inferInsert;
+
+// ── Config Pack Templates ──────────────────────────────────────────────────────
+
+export const configPackTemplatesTable = pgTable("config_pack_templates", {
+  id: serial("id").primaryKey(),
+  packId: integer("pack_id").notNull().references(() => configPacksTable.id, { onDelete: "cascade" }),
+  templateId: text("template_id").notNull().references(() => baselineActionTemplatesTable.templateId),
+  sortOrder: integer("sort_order").notNull(),
+  dependsOnOverride: jsonb("depends_on_override").$type<string[]>(),
+}, (t) => [
+  index("config_pack_templates_pack_id_idx").on(t.packId),
+  index("config_pack_templates_template_id_idx").on(t.templateId),
+]);
+
+export const insertConfigPackTemplateSchema = createInsertSchema(configPackTemplatesTable).omit({ id: true });
+export type ConfigPackTemplate = typeof configPackTemplatesTable.$inferSelect;
+export type InsertConfigPackTemplate = typeof configPackTemplatesTable.$inferInsert;
+
+// ── Break Glass Pending Secrets ─────────────────────────────────────────────────
+
+export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secrets", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id),
+  encryptedValue: text("encrypted_value").notNull(),
+  status: text("status", { enum: ["pending_delivery", "delivered_purged"] }).notNull().default("pending_delivery"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  deliveredToEmail: text("delivered_to_email"),
+}, (t) => [
+  index("break_glass_pending_secrets_run_id_idx").on(t.runId),
+  index("break_glass_pending_secrets_customer_id_idx").on(t.customerId),
+]);
+
+export const insertBreakGlassPendingSecretSchema = createInsertSchema(breakGlassPendingSecretsTable).omit({ id: true, createdAt: true });
+export type BreakGlassPendingSecret = typeof breakGlassPendingSecretsTable.$inferSelect;
+export type InsertBreakGlassPendingSecret = typeof breakGlassPendingSecretsTable.$inferInsert;
+
+// ── Break Glass Verification Attempts ──────────────────────────────────────────
+
+export const breakGlassVerificationAttemptsTable = pgTable("break_glass_verification_attempts", {
+  id: serial("id").primaryKey(),
+  pendingSecretId: integer("pending_secret_id").notNull().references(() => breakGlassPendingSecretsTable.id, { onDelete: "cascade" }),
+  initiatedByPortalUserId: integer("initiated_by_portal_user_id").notNull(),
+  invitedEmail: text("invited_email").notNull(),
+  linkToken: text("link_token").notNull().unique(),
+  linkStatus: text("link_status", { enum: ["pending", "consumed", "expired", "superseded"] }).notNull().default("pending"),
+  verificationOutcome: text("verification_outcome", { enum: ["success", "role_not_active_pim_eligible", "role_absent", "expired", "superseded"] }),
+  entraUserPrincipalName: text("entra_user_principal_name"),
+  attemptedAt: timestamp("attempted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("break_glass_verification_attempts_link_token_idx").on(t.linkToken),
+  index("break_glass_verification_attempts_pending_secret_id_idx").on(t.pendingSecretId),
+]);
+
+export const insertBreakGlassVerificationAttemptSchema = createInsertSchema(breakGlassVerificationAttemptsTable).omit({ id: true, createdAt: true });
+export type BreakGlassVerificationAttempt = typeof breakGlassVerificationAttemptsTable.$inferSelect;
+export type InsertBreakGlassVerificationAttempt = typeof breakGlassVerificationAttemptsTable.$inferInsert;
 
