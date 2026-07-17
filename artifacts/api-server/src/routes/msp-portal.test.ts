@@ -46,6 +46,23 @@ vi.mock("../lib/ai-billing.ts", () => ({
   }),
 }));
 
+vi.mock("../lib/msp-financial-aggregator.ts", () => ({
+  aggregateMspTelemetry: vi.fn().mockResolvedValue({
+    financials: {
+      monitoringMrr: { grossRevenueUsd: "150.00", wholesaleCostUsd: "105.00", mspMarginUsd: "45.00", mspMarginPct: "30.0%" },
+      projectRevenue: { grossRevenueUsd: "200.00", wholesaleCostUsd: "140.00", mspMarginUsd: "60.00", mspMarginPct: "30.0%" },
+      remediationRevenue: { grossRevenueUsd: "50.00", wholesaleCostUsd: "35.00", mspMarginUsd: "15.00", mspMarginPct: "30.0%" },
+      offerRevenue: { grossRevenueUsd: "300.00", wholesaleCostUsd: "210.00", mspMarginUsd: "90.00", mspMarginPct: "30.0%" },
+      total: { grossRevenueUsd: "700.00", wholesaleCostUsd: "490.00", mspMarginUsd: "210.00", mspMarginPct: "30.0%" }
+    },
+    metrics: {
+      activeSignalsCount: 12,
+      offerAcceptanceRate: 75,
+      openFulfillmentTasksCount: 4
+    }
+  })
+}));
+
 vi.mock("../lib/logger.ts", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));

@@ -19,6 +19,7 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
+import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
 
 const router: IRouter = Router();
 
@@ -271,6 +272,23 @@ router.get(
       const aiAlertThreshold = (aiBalance as { alertThreshold?: number | null } | null)?.alertThreshold ?? null;
       const aiPeriodUsagePct = (aiBalance as { periodUsagePct?: number | null } | null)?.periodUsagePct ?? null;
 
+      const telemetry = mspId
+        ? await aggregateMspTelemetry(mspId, monthStart)
+        : {
+            financials: {
+              monitoringMrr: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              projectRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              remediationRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              offerRevenue: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" },
+              total: { grossRevenueUsd: "0.00", wholesaleCostUsd: "0.00", mspMarginUsd: "0.00", mspMarginPct: "0.0%" }
+            },
+            metrics: {
+              activeSignalsCount: 0,
+              offerAcceptanceRate: 0,
+              openFulfillmentTasksCount: 0
+            }
+          };
+
       res.json({
         msp,
         customers: customerCounts,
@@ -286,6 +304,7 @@ router.get(
         idleBundles,
         aiAlertThreshold,
         aiPeriodUsagePct,
+        telemetry,
       });
     } catch (err) {
       req.log.error({ err }, "msp-portal: dashboard query failed");
