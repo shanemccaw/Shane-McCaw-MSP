@@ -1373,6 +1373,13 @@
       "when": 1784163644555,
       "tag": "0191_update_monitor_checks_transforms",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1784163644556,
+      "tag": "0193_add_break_glass_verification",
+      "breakpoints": true
     }
   ]
 }

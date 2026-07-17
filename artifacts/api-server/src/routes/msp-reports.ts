@@ -29,6 +29,8 @@ import {
   clientM365ProfilesTable,
   REPORT_DOC_TYPES,
   REPORT_DELIVERY_METHODS,
+  mspReportCanvasesTable,
+  mspReportSchedulesTable,
 } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
@@ -37,6 +39,7 @@ import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine";
 import { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } from "../lib/report-nodes";
+import { compileReportToHtml } from "../lib/compileReportToHtml";
 
 const router: IRouter = Router();
 
@@ -635,6 +638,247 @@ router.get(
     } catch (err) {
       logger.error({ err }, "msp-reports: license-waste failed");
       res.status(500).json({ error: "Failed to fetch license waste data" });
+    }
+  },
+);
+
+// ── Custom Canvases ──────────────────────────────────────────────────────────
+
+router.get(
+  "/msp/reports/canvases",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const canvases = await db
+        .select()
+        .from(mspReportCanvasesTable)
+        .where(eq(mspReportCanvasesTable.mspId, mspId))
+        .orderBy(desc(mspReportCanvasesTable.createdAt));
+
+      res.json({ canvases, total: canvases.length });
+    } catch (err) {
+      logger.error({ err }, "msp-reports: GET canvases failed");
+      res.status(500).json({ error: "Failed to fetch canvases" });
+    }
+  },
+);
+
+router.post(
+  "/msp/reports/canvases",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const { name, description, canvasLayout, deliveryConfig } = req.body as {
+        name: string; description?: string; canvasLayout?: Record<string, unknown>; deliveryConfig?: any;
+      };
+
+      if (!name) { res.status(400).json({ error: "name is required" }); return; }
+
+      const [canvas] = await db
+        .insert(mspReportCanvasesTable)
+        .values({
+          mspId,
+          name,
+          description,
+          canvasLayout: canvasLayout ?? {},
+          deliveryConfig: deliveryConfig ?? { sendAsHtmlEmail: false, attachPdf: true, recipientType: "msp_admin" },
+        })
+        .returning();
+
+      res.status(201).json(canvas);
+    } catch (err) {
+      logger.error({ err }, "msp-reports: POST canvases failed");
+      res.status(500).json({ error: "Failed to create canvas" });
+    }
+  },
+);
+
+router.put(
+  "/msp/reports/canvases/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const canvasId = String(req.params.id);
+      const { name, description, canvasLayout, deliveryConfig } = req.body as any;
+
+      const [updated] = await db
+        .update(mspReportCanvasesTable)
+        .set({
+          ...(name !== undefined && { name }),
+          ...(description !== undefined && { description }),
+          ...(canvasLayout !== undefined && { canvasLayout }),
+          ...(deliveryConfig !== undefined && { deliveryConfig }),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(mspReportCanvasesTable.id, canvasId), eq(mspReportCanvasesTable.mspId, mspId)))
+        .returning();
+
+      if (!updated) { res.status(404).json({ error: "Canvas not found" }); return; }
+      res.json(updated);
+    } catch (err) {
+      logger.error({ err }, "msp-reports: PUT canvases failed");
+      res.status(500).json({ error: "Failed to update canvas" });
+    }
+  },
+);
+
+router.delete(
+  "/msp/reports/canvases/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const canvasId = String(req.params.id);
+      const [deleted] = await db
+        .delete(mspReportCanvasesTable)
+        .where(and(eq(mspReportCanvasesTable.id, canvasId), eq(mspReportCanvasesTable.mspId, mspId)))
+        .returning();
+
+      if (!deleted) { res.status(404).json({ error: "Canvas not found" }); return; }
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err }, "msp-reports: DELETE canvases failed");
+      res.status(500).json({ error: "Failed to delete canvas" });
+    }
+  },
+);
+
+router.post(
+  "/msp/reports/canvases/:id/send-test",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const canvasId = String(req.params.id);
+      const [canvas] = await db
+        .select()
+        .from(mspReportCanvasesTable)
+        .where(and(eq(mspReportCanvasesTable.id, canvasId), eq(mspReportCanvasesTable.mspId, mspId)))
+        .limit(1);
+
+      if (!canvas) { res.status(404).json({ error: "Canvas not found" }); return; }
+
+      // Get target customer ID (from request body/query, or fall back to first active customer of the MSP)
+      let targetCustomerId = req.body.customerId ? Number(req.body.customerId) : undefined;
+      if (!targetCustomerId && req.query.customerId) {
+        targetCustomerId = Number(req.query.customerId);
+      }
+      if (!targetCustomerId) {
+        const [firstCust] = await db
+          .select({ id: mspCustomersTable.id })
+          .from(mspCustomersTable)
+          .where(and(eq(mspCustomersTable.mspId, mspId), eq(mspCustomersTable.status, "active")))
+          .limit(1);
+        if (firstCust) {
+          targetCustomerId = firstCust.id;
+        }
+      }
+
+      if (!targetCustomerId) {
+        res.status(400).json({ error: "No active customer context found to run report against. Provide customerId in request." });
+        return;
+      }
+
+      // Get recipient email (from request body/query, or fall back to current user's email)
+      const recipientEmail = req.body.recipientEmail || req.body.email || req.query.recipientEmail || req.user?.email;
+      if (!recipientEmail) {
+        res.status(400).json({ error: "recipientEmail is required" });
+        return;
+      }
+
+      // Compile canvas layout to HTML
+      const htmlContent = await compileReportToHtml(canvas.canvasLayout, mspId, targetCustomerId, canvas.name);
+
+      // Dispatch the test email via Microsoft Graph / Exchange Online
+      const fromUserId = process.env.GRAPH_MAIL_USER_ID;
+      if (!fromUserId) {
+        res.status(500).json({ error: "GRAPH_MAIL_USER_ID environment variable is not configured." });
+        return;
+      }
+
+      const { sendMailViaGraph } = await import("../lib/graph");
+      await sendMailViaGraph({
+        fromUserId,
+        to: recipientEmail,
+        subject: `Test Report: ${canvas.name}`,
+        htmlBody: htmlContent,
+      });
+
+      res.json({ success: true, recipient: recipientEmail, customerId: targetCustomerId });
+    } catch (err) {
+      console.error("EXPLICIT ROUTE ERROR:", err);
+      logger.error({ err }, "msp-reports: POST canvases/:id/send-test failed");
+      res.status(500).json({ error: "Failed to send test email" });
+    }
+  }
+);
+
+// ── Custom Canvas Schedules ──────────────────────────────────────────────────
+
+router.get(
+  "/msp/reports/schedules",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const schedules = await db
+        .select()
+        .from(mspReportSchedulesTable)
+        .where(eq(mspReportSchedulesTable.mspId, mspId))
+        .orderBy(desc(mspReportSchedulesTable.createdAt));
+
+      res.json({ schedules, total: schedules.length });
+    } catch (err) {
+      logger.error({ err }, "msp-reports: GET schedules failed");
+      res.status(500).json({ error: "Failed to fetch schedules" });
+    }
+  },
+);
+
+router.post(
+  "/msp/reports/schedules",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
+
+      const { canvasId, cadence, recipientEmails, enabled } = req.body as {
+        canvasId: string; cadence: "daily" | "weekly" | "monthly"; recipientEmails: string[]; enabled?: boolean;
+      };
+
+      if (!canvasId || !cadence) { res.status(400).json({ error: "canvasId and cadence are required" }); return; }
+
+      const [schedule] = await db
+        .insert(mspReportSchedulesTable)
+        .values({
+          mspId,
+          canvasId,
+          cadence,
+          recipientEmails: recipientEmails ?? [],
+          enabled: enabled ?? true,
+        })
+        .returning();
+
+      res.status(201).json(schedule);
+    } catch (err) {
+      logger.error({ err }, "msp-reports: POST schedules failed");
+      res.status(500).json({ error: "Failed to create schedule" });
     }
   },
 );

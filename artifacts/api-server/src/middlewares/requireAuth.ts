@@ -182,6 +182,45 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
  * MSPAdmin and MSPOperator can access any customer within their MSP.
  * PlatformAdmin can access any customer.
  */
+/**
+ * Tiered ownership check: is `user` permitted to act on `customerId`?
+ *
+ * - PlatformAdmin (`role === "admin"`)      → always.
+ * - MSPAdmin / MSPOperator                  → iff the customer belongs to their MSP (DB IDOR check).
+ * - CustomerUser / Free                     → iff it is their own customer (token claim).
+ * - anything else                           → denied.
+ *
+ * The single source of truth for this rule. `requireCustomerScope` (which reads the
+ * customerId from the request and answers 403) is a thin wrapper over it; callers
+ * whose customerId is DB-resolved — e.g. break-glass, where denial must read as 404,
+ * not 403 — call this directly.
+ */
+export async function assertCustomerAccess(user: AuthUser, customerId: number): Promise<boolean> {
+  const effectiveRole: MspRole | undefined =
+    user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+
+  if (effectiveRole === "PlatformAdmin") return true;
+
+  if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator") {
+    if (!user.mspId) return false;
+    const [customer] = await db
+      .select({ id: mspCustomersTable.id })
+      .from(mspCustomersTable)
+      .where(and(
+        eq(mspCustomersTable.id, customerId),
+        eq(mspCustomersTable.mspId, user.mspId),
+      ))
+      .limit(1);
+    return Boolean(customer);
+  }
+
+  if (effectiveRole === "CustomerUser" || effectiveRole === "Free") {
+    return user.customerId === customerId;
+  }
+
+  return false;
+}
+
 export function requireCustomerScope(source: "params" | "query" | "body" = "params") {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const user = req.user;
@@ -190,11 +229,8 @@ export function requireCustomerScope(source: "params" | "query" | "body" = "para
       return;
     }
 
-    const effectiveRole: MspRole | undefined =
-      user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-
-    // PlatformAdmin bypasses all customer scope checks
-    if (effectiveRole === "PlatformAdmin") {
+    // PlatformAdmin bypasses all customer scope checks (no customerId required)
+    if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
       next();
       return;
     }
@@ -213,38 +249,15 @@ export function requireCustomerScope(source: "params" | "query" | "body" = "para
       return;
     }
 
-    // MSPAdmin/MSPOperator: verify target customer belongs to their MSP (IDOR prevention)
-    if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator") {
-      if (!user.mspId) {
-        res.status(403).json({ error: "MSP operator token has no mspId claim" });
+    try {
+      const ok = await assertCustomerAccess(user, requestedCustomerId);
+      if (!ok) {
+        res.status(403).json({ error: "Access to this customer is not permitted" });
         return;
       }
-      try {
-        const [customer] = await db
-          .select({ id: mspCustomersTable.id })
-          .from(mspCustomersTable)
-          .where(and(
-            eq(mspCustomersTable.id, requestedCustomerId),
-            eq(mspCustomersTable.mspId, user.mspId),
-          ))
-          .limit(1);
-        if (!customer) {
-          res.status(403).json({ error: "Access to this customer is not permitted" });
-          return;
-        }
-        next();
-      } catch {
-        res.status(500).json({ error: "Customer scope verification failed" });
-      }
-      return;
+      next();
+    } catch {
+      res.status(500).json({ error: "Customer scope verification failed" });
     }
-
-    // CustomerUser and Free: can only access their own customer (token-claim check)
-    if (user.customerId !== requestedCustomerId) {
-      res.status(403).json({ error: "Access to this customer is not permitted" });
-      return;
-    }
-
-    next();
   };
 }

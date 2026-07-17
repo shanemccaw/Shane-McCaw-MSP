@@ -24,6 +24,7 @@ import {
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
+  breakGlassPendingSecretsTable,
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
   leadsTable,
@@ -6467,6 +6468,104 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Break-glass verification gate ──────────────────────────────────────
+      // Pauses the run exactly like approval_gate, but the "approver" is a
+      // customer-tenant admin who proves control via Microsoft OAuth out-of-band
+      // (see routes/break-glass-verification.ts). On first execution we create the
+      // pending-secret row (encrypted, status "pending_delivery") and pause; the
+      // secret is NEVER placed in the node output / run payload / output-sample —
+      // only a redacted { pendingSecretId } is recorded.
+      case "break_glass_verification_gate": {
+        if (dryRun) {
+          output = { dryRun: true, revealed: false };
+          break;
+        }
+
+        // Resolve the plaintext secret and customerId from the run payload. The
+        // secret is expected to have been produced by an upstream node. Both are
+        // configurable on node.data; secretTemplate is a {{path}} template (no HTML
+        // escaping — this is a raw secret, not markup).
+        const resolveSecretPath = (raw: unknown, p: Record<string, unknown>): string | undefined => {
+          if (typeof raw !== "string" || raw.length === 0) return undefined;
+          const tpl = raw.replace(/\{\{([\w.]+)\}\}/g, (_m, path: string) => {
+            const key = path.startsWith("payload.") ? path.slice(8) : path;
+            let cur: unknown = p;
+            for (const part of key.split(".")) {
+              if (cur == null || typeof cur !== "object") return "";
+              cur = (cur as Record<string, unknown>)[part];
+            }
+            return cur != null ? String(cur) : "";
+          });
+          return tpl.length > 0 ? tpl : undefined;
+        };
+
+        const secretField = (node.data.secretField as string | undefined) ?? "breakGlassSecret";
+        const plaintext =
+          resolveSecretPath(node.data.secretTemplate, payload) ??
+          (typeof payload[secretField] === "string" ? (payload[secretField] as string) : undefined);
+
+        const customerFieldRaw = (node.data.customerIdField as string | undefined)
+          ? payload[node.data.customerIdField as string]
+          : payload.customerId;
+        const gateCustomerId = customerFieldRaw != null ? parseInt(String(customerFieldRaw), 10) : NaN;
+
+        if (!plaintext || isNaN(gateCustomerId)) {
+          nodeError = true;
+          output = { error: "break_glass_verification_gate: missing secret plaintext or customerId in payload" };
+          break;
+        }
+
+        const { encryptSecret } = await import("./secret-crypto");
+        const [pendingSecret] = await db.insert(breakGlassPendingSecretsTable).values({
+          runId,
+          customerId: gateCustomerId,
+          encryptedValue: encryptSecret(plaintext),
+          gateNodeId: node.id,
+          status: "pending_delivery",
+        }).returning();
+
+        // Build a REDACTED payload snapshot for resume: strip the plaintext secret
+        // (the configured field plus any top-level keys referenced by secretTemplate)
+        // so it never lands in wf_runs.payload or flows to downstream nodes. The
+        // acknowledge endpoint reads this snapshot back to resume the run.
+        const redactedPayload: Record<string, unknown> = { ...payload };
+        delete redactedPayload[secretField];
+        if (typeof node.data.secretTemplate === "string") {
+          for (const m of (node.data.secretTemplate as string).matchAll(/\{\{([\w.]+)\}\}/g)) {
+            const key = (m[1].startsWith("payload.") ? m[1].slice(8) : m[1]).split(".")[0];
+            delete redactedPayload[key];
+          }
+        }
+        redactedPayload.pendingSecretId = pendingSecret.id;
+
+        await db.update(wfRunsTable)
+          .set({ status: "awaiting_approval", payload: redactedPayload })
+          .where(eq(wfRunsTable.id, runId));
+
+        // Redacted output only — never the plaintext.
+        output = { pendingSecretId: pendingSecret.id, status: "pending_delivery" };
+        const bgDurationMs = Date.now() - startMs;
+        await db.insert(wfRunNodeOutputsTable).values({
+          runId,
+          nodeId: node.id,
+          input: { redacted: true },
+          output,
+          durationMs: bgDurationMs,
+          status: "ok",
+        }).catch(() => { });
+        await db.insert(wfRunNodeLogsTable).values({
+          runId,
+          nodeId: node.id,
+          level: "info",
+          message: `break_glass_verification_gate (${node.id}): run paused, pending secret #${pendingSecret.id} awaiting tenant-admin verification`,
+        }).catch(() => { });
+
+        // Return the pause sentinel immediately — skip the shared output/sample
+        // tail so the secret can never leak into wf_run_node_outputs (full payload),
+        // wf_node_output_samples, or the run payload spread.
+        return { output, nextPayload: redactedPayload, cancelRun: false, nodeError: false, pauseForApproval: true };
+      }
+
       // ── Exchange Calendar nodes ────────────────────────────────────────────
 
       case "check_exchange_calendar_availability": {
@@ -7941,7 +8040,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   // an AI call. Skip on error so we never store a partial/error shape.
   // Wrapped in Promise.resolve().then() so any synchronous throw (e.g. in
   // test mocks that don't implement onConflictDoUpdate) is caught too.
-  if (!nodeError && definitionId != null) {
+  // Defense-in-depth: never capture an output sample for the break-glass gate.
+  // Its handler returns early (above) so this is normally unreachable, but the
+  // guard guarantees a sensitive value can never land in wf_node_output_samples
+  // even if that early return is ever refactored away.
+  if (!nodeError && definitionId != null && node.type !== "break_glass_verification_gate") {
     const resolvedNodeType = (node.data?.actionType as string | undefined) ?? node.type;
     Promise.resolve().then(() =>
       db.insert(wfNodeOutputSamplesTable).values({

@@ -2062,7 +2062,12 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id),
   customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id),
   encryptedValue: text("encrypted_value").notNull(),
-  status: text("status", { enum: ["pending_delivery", "delivered_purged"] }).notNull().default("pending_delivery"),
+  // The paused workflow node id, so the /acknowledge path can resume the run via
+  // resumeWorkflowRun(runId, gateNodeId, ...). One pause per pending secret.
+  gateNodeId: text("gate_node_id"),
+  // "superseded_by_reset" = an admin-override reset the credential and issued a new
+  // pending secret; nothing was ever delivered from this row.
+  status: text("status", { enum: ["pending_delivery", "delivered_purged", "superseded_by_reset"] }).notNull().default("pending_delivery"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   deliveredToEmail: text("delivered_to_email"),
@@ -2086,6 +2091,9 @@ export const breakGlassVerificationAttemptsTable = pgTable("break_glass_verifica
   linkStatus: text("link_status", { enum: ["pending", "consumed", "expired", "superseded"] }).notNull().default("pending"),
   verificationOutcome: text("verification_outcome", { enum: ["success", "role_not_active_pim_eligible", "role_absent", "expired", "superseded"] }),
   entraUserPrincipalName: text("entra_user_principal_name"),
+  // Count of failed (role_absent) verification attempts against this link. Once it
+  // reaches the max-attempts threshold the link is burned (linkStatus "expired").
+  failedAttemptCount: integer("failed_attempt_count").default(0),
   attemptedAt: timestamp("attempted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -2096,4 +2104,64 @@ export const breakGlassVerificationAttemptsTable = pgTable("break_glass_verifica
 export const insertBreakGlassVerificationAttemptSchema = createInsertSchema(breakGlassVerificationAttemptsTable).omit({ id: true, createdAt: true });
 export type BreakGlassVerificationAttempt = typeof breakGlassVerificationAttemptsTable.$inferSelect;
 export type InsertBreakGlassVerificationAttempt = typeof breakGlassVerificationAttemptsTable.$inferInsert;
+
+// ── Break Glass Override Audit ─────────────────────────────────────────────────
+// Structured audit of admin-override credential resets. Its own dedicated table
+// (not a generic log) so the repeated-override alert is a single indexed SELECT
+// over (customerId, createdAt) with real columns — no free-text parsing.
+
+export const breakGlassOverrideAuditTable = pgTable("break_glass_override_audit", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id),
+  adminUserId: integer("admin_user_id").notNull(),
+  reason: text("reason").notNull(),
+  oldPendingSecretId: integer("old_pending_secret_id").references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
+  newPendingSecretId: integer("new_pending_secret_id").notNull().references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("break_glass_override_audit_customer_created_idx").on(t.customerId, t.createdAt),
+]);
+
+export const insertBreakGlassOverrideAuditSchema = createInsertSchema(breakGlassOverrideAuditTable).omit({ id: true, createdAt: true });
+export type BreakGlassOverrideAudit = typeof breakGlassOverrideAuditTable.$inferSelect;
+export type InsertBreakGlassOverrideAudit = typeof breakGlassOverrideAuditTable.$inferInsert;
+
+// ── MSP Custom Canvas Reports ────────────────────────────────────────────────
+
+export const mspReportCanvasesTable = pgTable("msp_report_canvases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  canvasLayout: jsonb("canvas_layout").$type<Record<string, unknown>>().notNull().default({}),
+  deliveryConfig: jsonb("delivery_config").$type<{ sendAsHtmlEmail: boolean; attachPdf: boolean; recipientType: "msp_admin" | "customer_contacts" }>().notNull().default({ sendAsHtmlEmail: false, attachPdf: true, recipientType: "msp_admin" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_canvases_msp_id_idx").on(t.mspId),
+]);
+
+export const insertMspReportCanvasSchema = createInsertSchema(mspReportCanvasesTable).omit({ createdAt: true, updatedAt: true });
+export type MspReportCanvas = typeof mspReportCanvasesTable.$inferSelect;
+export type InsertMspReportCanvas = typeof mspReportCanvasesTable.$inferInsert;
+
+export const mspReportSchedulesTable = pgTable("msp_report_schedules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  canvasId: uuid("canvas_id").notNull().references(() => mspReportCanvasesTable.id, { onDelete: "cascade" }),
+  cadence: text("cadence", { enum: ["daily", "weekly", "monthly"] }).notNull(),
+  recipientEmails: text("recipient_emails").array().notNull().default([]),
+  enabled: boolean("enabled").notNull().default(true),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_schedules_msp_id_idx").on(t.mspId),
+  index("msp_report_schedules_canvas_id_idx").on(t.canvasId),
+]);
+
+export const insertMspReportScheduleSchema = createInsertSchema(mspReportSchedulesTable).omit({ createdAt: true, updatedAt: true });
+export type MspReportSchedule = typeof mspReportSchedulesTable.$inferSelect;
+export type InsertMspReportSchedule = typeof mspReportSchedulesTable.$inferInsert;
 

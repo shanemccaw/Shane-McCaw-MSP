@@ -2058,6 +2058,7 @@ export interface WfNode {
     | "join"
     | "retry"
     | "approval_gate"
+    | "break_glass_verification_gate"
     | "report_progress"
     // Calendar (Exchange Online via Microsoft Graph)
     | "check_exchange_calendar_availability"

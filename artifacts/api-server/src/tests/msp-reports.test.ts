@@ -24,6 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import request from "supertest";
 
 // ── Mocks (hoisted before imports) ────────────────────────────────────────────
 
@@ -48,6 +49,8 @@ vi.mock("@workspace/db", () => {
     mspEventStoreTable: {},
     pool: { query: vi.fn() },
     portalWfStartMappingsTable: { eventPattern: "eventPattern", workflowKey: "workflowKey", isActive: "isActive" },
+    mspReportCanvasesTable: { id: "id", mspId: "mspId", name: "name", description: "description", canvasLayout: "canvasLayout", deliveryConfig: "deliveryConfig" },
+    mspReportSchedulesTable: { id: "id", mspId: "mspId", canvasId: "canvasId", cadence: "cadence", recipientEmails: "recipientEmails", enabled: "enabled" },
   };
 });
 
@@ -70,6 +73,10 @@ vi.mock("../lib/graph", () => ({
   sendMailViaGraph: vi.fn(() => Promise.resolve()),
   getAccessToken: vi.fn(() => Promise.resolve("test-token")),
   graphCredentialsPresent: vi.fn(() => false),
+}));
+
+vi.mock("../lib/compileReportToHtml", () => ({
+  compileReportToHtml: vi.fn(() => Promise.resolve("<html>Test Compiled HTML</html>")),
 }));
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
@@ -562,5 +569,117 @@ describe("REPORT_GENERATION_WORKFLOW_KEY", () => {
   it("is a non-empty string", () => {
     expect(typeof REPORT_GENERATION_WORKFLOW_KEY).toBe("string");
     expect(REPORT_GENERATION_WORKFLOW_KEY.length).toBeGreaterThan(0);
+  });
+});
+
+// ── GET/POST router endpoints tests ──────────────────────────────────────────
+describe("POST /api/msp/reports/canvases/:id/send-test", () => {
+  let app: any;
+  const JWT_SECRET = "test-secret";
+  process.env.JWT_SECRET = JWT_SECRET;
+  process.env.GRAPH_MAIL_USER_ID = "sender@msp.com";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const makeToken = (overrides = {}) => {
+    const jwt = require("jsonwebtoken");
+    return jwt.sign(
+      { id: 5, email: "op@msp.com", role: "client", mspRole: "MSPOperator", mspId: 1, ...overrides },
+      JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+  };
+
+  const getApp = async () => {
+    const express = require("express");
+    const mspReportsRouter = (await import("../routes/msp-reports")).default;
+    const a = express();
+    a.use(express.json());
+    a.use("/api", mspReportsRouter);
+    return a;
+  };
+
+  it("sends test email successfully when authorized and parameters are correct", async () => {
+    const { db } = await import("@workspace/db");
+    const { sendMailViaGraph } = await import("../lib/graph");
+    const { compileReportToHtml } = await import("../lib/compileReportToHtml");
+
+    const mockCanvas = {
+      id: "canvas-uuid-001",
+      mspId: 1,
+      name: "Mock Canvas Report",
+      canvasLayout: { layout: [], widgets: {} },
+    };
+
+    const mockCustomer = { id: 101, name: "Customer Org", mspId: 1, status: "active" };
+
+    let selectCallCount = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCallCount++;
+      const data = selectCallCount === 1 ? [mockCanvas] : [mockCustomer];
+      return makeSelectChain(data) as any;
+    });
+
+    vi.mocked(compileReportToHtml).mockResolvedValue("<html>Test Compiled HTML</html>");
+    vi.mocked(sendMailViaGraph).mockResolvedValue(undefined);
+
+    app = await getApp();
+
+    const response = await request(app)
+      .post("/api/msp/reports/canvases/canvas-uuid-001/send-test")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ recipientEmail: "recipient@customer.com", customerId: 101 });
+
+    console.log("DEBUG SEND TEST RESPONSE:", response.status, response.body);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      recipient: "recipient@customer.com",
+      customerId: 101,
+    });
+    expect(sendMailViaGraph).toHaveBeenCalledWith(expect.objectContaining({
+      fromUserId: "sender@msp.com",
+      to: "recipient@customer.com",
+      subject: "Test Report: Mock Canvas Report",
+      htmlBody: "<html>Test Compiled HTML</html>",
+    }));
+  });
+
+  it("returns 404 if canvas does not exist", async () => {
+    const { db } = await import("@workspace/db");
+    vi.mocked(db.select).mockImplementation(() => makeSelectChain([]) as any);
+
+    app = await getApp();
+
+    const response = await request(app)
+      .post("/api/msp/reports/canvases/non-existent/send-test")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ recipientEmail: "recipient@customer.com" });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toContain("Canvas not found");
+  });
+
+  it("returns 400 if recipientEmail is not provided and not in JWT", async () => {
+    const { db } = await import("@workspace/db");
+    const mockCanvas = {
+      id: "canvas-uuid-001",
+      mspId: 1,
+      name: "Mock Canvas Report",
+      canvasLayout: {},
+    };
+    vi.mocked(db.select).mockImplementation(() => makeSelectChain([mockCanvas]) as any);
+
+    app = await getApp();
+
+    const response = await request(app)
+      .post("/api/msp/reports/canvases/canvas-uuid-001/send-test")
+      .set("Authorization", `Bearer ${makeToken({ email: null })}`)
+      .send({ customerId: 101 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("recipientEmail is required");
   });
 });

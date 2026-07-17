@@ -493,6 +493,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Pauses the run and waits for a role-based human approval — no AI",
   },
+  {
+    nodeType: "break_glass_verification_gate",
+    isAIDependent: false,
+    description: "Pauses the run until a customer-tenant admin proves control via Microsoft OAuth and the break-glass secret is delivered — no AI",
+  },
 
   // ── Marketing ───────────────────────────────────────────────────────────────
   {
