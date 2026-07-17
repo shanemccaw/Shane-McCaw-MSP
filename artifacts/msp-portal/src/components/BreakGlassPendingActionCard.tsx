@@ -19,7 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { KeyRound, Loader2, Mail, Clock, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { KeyRound, Loader2, Mail, Clock, CheckCircle2, XCircle, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
 interface BreakGlassAttempt {
@@ -53,11 +54,21 @@ function relativeTime(iso: string): string {
 }
 
 export function BreakGlassPendingActionCard({ runId }: { runId: number }) {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<StatusResponse | null>(null);
   const [emails, setEmails] = useState<string[]>([""]);
   const [inviting, setInviting] = useState(false);
+
+  // Same pattern as command-palette.tsx's canSearchCustomers — mirrors the
+  // backend's admin-override role restriction (PlatformAdmin/MSPAdmin/MSPOperator
+  // only) so the control never renders for a CustomerUser in the first place,
+  // rather than relying on the backend to reject the request.
+  const canOverride = ["PlatformAdmin", "MSPAdmin", "MSPOperator"].includes(user?.mspRole ?? "");
+
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideEmails, setOverrideEmails] = useState<string[]>([""]);
+  const [overriding, setOverriding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,7 +98,14 @@ export function BreakGlassPendingActionCard({ runId }: { runId: number }) {
   // purely conditional on that state.
   if (!data || !data.pending) return null;
 
+  // Mirrors the backend's admin-override 409 precondition exactly (anyLive =
+  // some attempt is neither expired nor superseded) — including the fact that
+  // an empty attempts array is vacuously "all terminal" on the backend too.
+  const allTerminal = !data.attempts.some((a) => a.linkStatus !== "expired" && a.linkStatus !== "superseded");
+  const hasExpiredAttempts = data.attempts.length > 0 && allTerminal;
+
   const validEmails = emails.map((e) => e.trim()).filter(Boolean);
+  const validOverrideEmails = overrideEmails.map((e) => e.trim()).filter(Boolean);
 
   function updateEmail(i: number, value: string) {
     setEmails((prev) => prev.map((e, idx) => (idx === i ? value : e)));
@@ -121,6 +139,45 @@ export function BreakGlassPendingActionCard({ runId }: { runId: number }) {
       await load();
     } finally {
       setInviting(false);
+    }
+  }
+
+  function updateOverrideEmail(i: number, value: string) {
+    setOverrideEmails((prev) => prev.map((e, idx) => (idx === i ? value : e)));
+  }
+  function addOverrideEmailField() {
+    setOverrideEmails((prev) => (prev.length < 5 ? [...prev, ""] : prev));
+  }
+  function removeOverrideEmailField(i: number) {
+    setOverrideEmails((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  }
+
+  async function handleOverride() {
+    if (!data || !data.pending) return;
+    if (!overrideReason.trim()) { toast.error("A reason is required"); return; }
+    if (validOverrideEmails.length > 5) { toast.error("At most 5 recipients"); return; }
+
+    setOverriding(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/break-glass/${data.pendingSecretId}/admin-override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: overrideReason.trim(),
+          ...(validOverrideEmails.length > 0 ? { emails: validOverrideEmails } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(err.error ?? "Failed to reset the credential");
+        return;
+      }
+      toast.success("Credential reset — new verification links sent");
+      setOverrideReason("");
+      setOverrideEmails([""]);
+      await load();
+    } finally {
+      setOverriding(false);
     }
   }
 
@@ -185,7 +242,14 @@ export function BreakGlassPendingActionCard({ runId }: { runId: number }) {
         {/* Per-recipient status — never shows the secret or the link token */}
         {data.attempts.length > 0 && (
           <div className="border-t border-border/60 pt-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Verification link status</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Verification link status</p>
+              {hasExpiredAttempts && (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                  All links expired — emergency reset available
+                </p>
+              )}
+            </div>
             {data.attempts.map((a) => {
               const badge = LINK_STATUS_BADGE[a.linkStatus];
               const Icon = badge.icon;
@@ -202,6 +266,78 @@ export function BreakGlassPendingActionCard({ runId }: { runId: number }) {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Emergency reset — PlatformAdmin/MSPAdmin/MSPOperator only (mirrors the
+            backend's role restriction), and only once every link is terminal
+            (mirrors the backend's 409 precondition) so this control is disabled
+            rather than clickable-then-erroring. */}
+        {canOverride && allTerminal && (
+          <div className="border-t border-border/60 pt-3 space-y-2">
+            <div className="flex items-center gap-1.5">
+              <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" />
+              <p className="text-xs font-medium">Emergency reset</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              All verification links have expired or been superseded. Resetting generates a new
+              credential and re-issues verification links — use this if the original recipients
+              never responded, or are no longer the right people to verify.
+            </p>
+
+            <div className="space-y-1">
+              <Label className="text-xs">
+                Reason <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="Why is this reset needed?"
+                disabled={overriding}
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">New recipient email(s) — up to 5, optional</Label>
+              {overrideEmails.map((email, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Mail className="size-3.5 text-muted-foreground shrink-0" />
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => updateOverrideEmail(i, e.target.value)}
+                    placeholder="admin@customer-tenant.com"
+                    disabled={overriding}
+                    className="h-8 text-sm"
+                  />
+                  {overrideEmails.length > 1 && (
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => removeOverrideEmailField(i)} disabled={overriding}>
+                      <XCircle className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              <p className="text-[10px] text-muted-foreground">
+                Leave blank to re-invite the same recipients.
+              </p>
+              {overrideEmails.length < 5 && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addOverrideEmailField} disabled={overriding}>
+                  + Add recipient
+                </Button>
+              )}
+            </div>
+
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-7 text-xs w-full gap-1.5"
+              onClick={() => void handleOverride()}
+              disabled={overriding || !overrideReason.trim()}
+            >
+              {overriding && <Loader2 className="size-3 animate-spin" />}
+              Reset credential &amp; re-invite
+            </Button>
           </div>
         )}
       </CardContent>
