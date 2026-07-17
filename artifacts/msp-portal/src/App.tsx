@@ -62,6 +62,7 @@ import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
+import CommandCenterPage from "@/pages/command-center";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -288,6 +289,9 @@ function SlugInnerSwitch() {
       {/* Customer-facing pages */}
       <Route path="/customer-home">
         <ProtectedRoute component={CustomerHomePage} />
+      </Route>
+      <Route path="/command-center">
+        <ProtectedRoute component={CommandCenterPage} />
       </Route>
       <Route path="/customer-documents">
         <ProtectedRoute component={CustomerDocumentsPage} />

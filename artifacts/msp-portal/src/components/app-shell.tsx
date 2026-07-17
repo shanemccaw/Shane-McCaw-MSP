@@ -31,6 +31,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Award,
+  BarChart3,
   Bell,
   Building2,
   Check,
@@ -107,6 +108,12 @@ const NAV_SECTIONS: NavSection[] = [
         label: "Home",
         href: "/customer-home",
         roles: ["CustomerUser"],
+      },
+      {
+        icon: BarChart3,
+        label: "Command Center",
+        href: "/command-center",
+        roles: ["CustomerUser", "PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
         icon: FileText,
