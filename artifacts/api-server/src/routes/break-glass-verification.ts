@@ -31,6 +31,7 @@ import {
   breakGlassVerificationAttemptsTable,
   breakGlassOverrideAuditTable,
   mspCustomersTable,
+  mspsTable,
   wfRunsTable,
 } from "@workspace/db";
 import { and, eq, ne, gte } from "drizzle-orm";
@@ -98,28 +99,62 @@ const publicLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+// ── MSP white-label branding + mandatory credibility footer ───────────────────
+interface PageBranding {
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+}
+
+/**
+ * Non-removable per platform standing rule — every customer-facing page renders
+ * this, unconditionally, regardless of which MSP is involved. MSP white-label
+ * branding augments the page; it never overrides or hides this line.
+ */
+const CREDIBILITY_FOOTER_TEXT = "Modernization delivered by a 30-Year Microsoft Veteran & M365 Architect for NASA";
+
 // ── Minimal self-contained public page (baseline; msp-portal Prompt 6 may supersede) ──
-function renderPage(title: string, bodyHtml: string): string {
+// `branding` is null only for pages rendered before an MSP/customer context could
+// be resolved (e.g. a token that doesn't exist yet) — the credibility footer still
+// renders unconditionally in that case.
+function renderPage(title: string, bodyHtml: string, branding: PageBranding | null): string {
+  const accent = branding?.primaryColor || "#111827";
+  const headerHtml = branding
+    ? `<div class="brand-header">` +
+      (branding.logoUrl ? `<img src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(branding.name)}" class="brand-logo">` : "") +
+      `<span class="brand-name">${escapeHtml(branding.name)}</span></div>`
+    : "";
   return `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<meta name="robots" content="noindex,nofollow"><title>${escapeHtml(title)}</title>` +
-    `<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem;color:#1a1a1a}` +
-    `.card{border:1px solid #e5e7eb;border-radius:12px;padding:1.5rem}h1{font-size:1.25rem}` +
+    `<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:34rem;margin:0 auto;padding:0 1rem 2rem;color:#1a1a1a}` +
+    `.brand-header{display:flex;align-items:center;gap:.75rem;padding:1.5rem 0 0}` +
+    `.brand-logo{height:32px;max-width:160px;object-fit:contain}` +
+    `.brand-name{font-weight:600;font-size:1rem;color:#1a1a1a}` +
+    `.card{border:1px solid #e5e7eb;border-radius:12px;padding:1.5rem;margin-top:1.5rem}h1{font-size:1.25rem}` +
     `code{background:#f3f4f6;padding:.15rem .35rem;border-radius:6px}` +
     `.secret{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.1rem;background:#111827;color:#f9fafb;padding:1rem;border-radius:8px;word-break:break-all}` +
-    `button{background:#111827;color:#fff;border:0;border-radius:8px;padding:.6rem 1rem;font-size:1rem;cursor:pointer}</style></head>` +
-    `<body><div class="card">${bodyHtml}</div></body></html>`;
+    `button{background:${accent};color:#fff;border:0;border-radius:8px;padding:.6rem 1rem;font-size:1rem;cursor:pointer}` +
+    `.credibility-footer{margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;text-align:center;font-size:.75rem;color:#6b7280}</style></head>` +
+    `<body>${headerHtml}<div class="card">${bodyHtml}</div>` +
+    `<div class="credibility-footer">${escapeHtml(CREDIBILITY_FOOTER_TEXT)}</div>` +
+    `</body></html>`;
 }
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
-// ── Shared context resolver: pendingSecretId → customer / MSP / tenant ─────────
+// ── Shared context resolver: pendingSecretId → customer / MSP / tenant / branding ──
+// Single query — extends the standard customerId → mspCustomersTable.mspId →
+// mspsTable lookup pattern (same shape used elsewhere for MSP branding, e.g.
+// msp-onboarding.ts) with one more join so callers get white-label branding for
+// free alongside tenant/domain context, without a second round-trip.
 interface PendingContext {
   secret: typeof breakGlassPendingSecretsTable.$inferSelect;
   mspId: number;
   tenantId: string | null;
   domain: string | null;
+  branding: PageBranding;
 }
 async function resolvePendingContext(pendingSecretId: number): Promise<PendingContext | null> {
   const [row] = await db
@@ -128,13 +163,20 @@ async function resolvePendingContext(pendingSecretId: number): Promise<PendingCo
       mspId: mspCustomersTable.mspId,
       tenantId: mspCustomersTable.tenantId,
       domain: mspCustomersTable.domain,
+      mspName: mspsTable.name,
+      mspLogoUrl: mspsTable.logoUrl,
+      mspPrimaryColor: mspsTable.primaryColor,
     })
     .from(breakGlassPendingSecretsTable)
     .innerJoin(mspCustomersTable, eq(breakGlassPendingSecretsTable.customerId, mspCustomersTable.id))
+    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
     .where(eq(breakGlassPendingSecretsTable.id, pendingSecretId))
     .limit(1);
   if (!row) return null;
-  return { secret: row.secret, mspId: row.mspId, tenantId: row.tenantId, domain: row.domain };
+  return {
+    secret: row.secret, mspId: row.mspId, tenantId: row.tenantId, domain: row.domain,
+    branding: { name: row.mspName, logoUrl: row.mspLogoUrl, primaryColor: row.mspPrimaryColor },
+  };
 }
 
 /**
@@ -302,6 +344,10 @@ router.post("/portal/break-glass/:pendingSecretId/invite", requireAuth, async (r
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Request, res: Response) => {
   const token = req.params.token as string;
+  // Declared outside try so the catch-all error page can still use it if it was
+  // resolved before the exception was thrown; null renders an unbranded page
+  // (the credibility footer still renders unconditionally either way).
+  let branding: PageBranding | null = null;
   try {
     const [attempt] = await db
       .select()
@@ -309,26 +355,31 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
       .where(eq(breakGlassVerificationAttemptsTable.linkToken, token))
       .limit(1);
 
+    // Resolve ctx (and its branding) as soon as we know the pendingSecretId, so
+    // every page below — including the invalid/expired ones — can be branded.
+    // A single fetch, reused for the rest of this handler (was fetched twice before).
+    const ctx = attempt ? await resolvePendingContext(attempt.pendingSecretId) : null;
+    branding = ctx?.branding ?? null;
+
     if (!attempt || attempt.linkStatus !== "pending") {
       return res.status(410).send(renderPage("Link unavailable",
-        `<h1>This verification link is no longer valid</h1><p>It may have already been used, superseded, or expired. Please ask your provider to send a new link.</p>`));
+        `<h1>This verification link is no longer valid</h1><p>It may have already been used, superseded, or expired. Please ask your provider to send a new link.</p>`, branding));
     }
     if (attempt.createdAt.getTime() + BREAK_GLASS_LINK_TTL_MS < Date.now()) {
       await db.update(breakGlassVerificationAttemptsTable)
         .set({ linkStatus: "expired", verificationOutcome: "expired" })
         .where(eq(breakGlassVerificationAttemptsTable.id, attempt.id));
       return res.status(410).send(renderPage("Link expired",
-        `<h1>This verification link has expired</h1><p>Please ask your provider to send a new link.</p>`));
+        `<h1>This verification link has expired</h1><p>Please ask your provider to send a new link.</p>`, branding));
     }
 
-    const ctx = await resolvePendingContext(attempt.pendingSecretId);
     if (!ctx || !ctx.tenantId) {
       return res.status(409).send(renderPage("Not available",
-        `<h1>Verification is not available</h1><p>This customer's tenant is not configured for verification. Please contact your provider.</p>`));
+        `<h1>Verification is not available</h1><p>This customer's tenant is not configured for verification. Please contact your provider.</p>`, branding));
     }
 
     const clientId = process.env.MT_APP_CLIENT_ID;
-    if (!clientId) return res.status(500).send(renderPage("Not configured", `<h1>Verification is temporarily unavailable</h1>`));
+    if (!clientId) return res.status(500).send(renderPage("Not configured", `<h1>Verification is temporarily unavailable</h1>`, branding));
 
     const authorize = new URL(`https://login.microsoftonline.com/${encodeURIComponent(ctx.tenantId)}/oauth2/v2.0/authorize`);
     authorize.searchParams.set("client_id", clientId);
@@ -340,7 +391,7 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
     return res.redirect(authorize.toString());
   } catch (err) {
     logger.error({ err }, "break-glass: verify redirect failed");
-    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`));
+    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`, branding));
   }
 });
 
@@ -348,12 +399,15 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
 // GET /public/break-glass/verify/callback  — exchange code once, check role
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Request, res: Response) => {
+  // See the comment on the same pattern in /verify/:token — resolved as soon as
+  // possible below and reused for every renderPage call in this handler.
+  let branding: PageBranding | null = null;
   try {
     const state = String(req.query.state ?? "");
     const code = String(req.query.code ?? "");
     const token = verifyState(state);
     if (!token || !code) {
-      return res.status(400).send(renderPage("Invalid request", `<h1>Invalid or expired request</h1>`));
+      return res.status(400).send(renderPage("Invalid request", `<h1>Invalid or expired request</h1>`, branding));
     }
 
     const [attempt] = await db
@@ -361,19 +415,22 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
       .from(breakGlassVerificationAttemptsTable)
       .where(eq(breakGlassVerificationAttemptsTable.linkToken, token))
       .limit(1);
+
+    const ctx = attempt ? await resolvePendingContext(attempt.pendingSecretId) : null;
+    branding = ctx?.branding ?? null;
+
     if (!attempt || attempt.linkStatus !== "pending") {
-      return res.status(410).send(renderPage("Link unavailable", `<h1>This verification link is no longer valid</h1>`));
+      return res.status(410).send(renderPage("Link unavailable", `<h1>This verification link is no longer valid</h1>`, branding));
     }
 
-    const ctx = await resolvePendingContext(attempt.pendingSecretId);
     if (!ctx || !ctx.tenantId) {
-      return res.status(409).send(renderPage("Not available", `<h1>Verification is not available</h1>`));
+      return res.status(409).send(renderPage("Not available", `<h1>Verification is not available</h1>`, branding));
     }
 
     // Exchange the auth code ONCE. Persist no token / refresh token.
     const accessToken = await exchangeCodeForToken(ctx.tenantId, code);
     if (!accessToken) {
-      return res.status(400).send(renderPage("Sign-in failed", `<h1>We could not verify your sign-in</h1><p>Please reopen your link and try again.</p>`));
+      return res.status(400).send(renderPage("Sign-in failed", `<h1>We could not verify your sign-in</h1><p>Please reopen your link and try again.</p>`, branding));
     }
 
     const me = await graphGetDelegated<{ id: string; userPrincipalName: string }>(accessToken, "/me?$select=id,userPrincipalName");
@@ -414,14 +471,14 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
 
       if (!claimed) {
         return res.status(409).send(renderPage("Already verified",
-          `<h1>This credential has already been verified</h1><p>Another authorized administrator completed verification first.</p>`));
+          `<h1>This credential has already been verified</h1><p>Another authorized administrator completed verification first.</p>`, branding));
       }
 
       // Re-read the pending secret; only reveal while still awaiting delivery.
       const [secret] = await db.select().from(breakGlassPendingSecretsTable)
         .where(eq(breakGlassPendingSecretsTable.id, attempt.pendingSecretId)).limit(1);
       if (!secret || secret.status !== "pending_delivery") {
-        return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`));
+        return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`, branding));
       }
 
       const plaintext = decryptSecret(secret.encryptedValue);
@@ -431,11 +488,12 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
         `<h1>Break-glass credential</h1>` +
         `<p>Signed in as <code>${escapeHtml(upn ?? "unknown")}</code>. This is shown once.</p>` +
         `<div class="secret">${escapeHtml(plaintext)}</div>` +
-        `<p>Copy it somewhere safe now, then acknowledge to complete delivery. Acknowledging permanently purges the stored copy.</p>` +
+        `<p>Store this in your organization's password vault and/or a physical, offline location. Do not save it to OneDrive, SharePoint, Teams, or email — these are automatically indexed by Copilot and are not appropriate for emergency-access credentials.</p>` +
+        `<p>Acknowledging permanently purges the stored copy.</p>` +
         `<form method="POST" action="${siteUrl()}/api/public/break-glass/${secret.id}/acknowledge">` +
         `<input type="hidden" name="linkToken" value="${escapeHtml(token)}">` +
         `<button type="submit">I have saved it — acknowledge & finish</button></form>`;
-      return res.status(200).send(renderPage("Break-glass credential", ackBody));
+      return res.status(200).send(renderPage("Break-glass credential", ackBody, branding));
     }
 
     // Not active — is the user PIM-eligible for an eligible role? Best-effort:
@@ -455,7 +513,7 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
         .set({ verificationOutcome: "role_not_active_pim_eligible", entraUserPrincipalName: upn, attemptedAt: new Date() })
         .where(eq(breakGlassVerificationAttemptsTable.id, attempt.id));
       return res.status(200).send(renderPage("Activate your role",
-        `<h1>Your eligible role isn't active yet</h1><p>You are eligible for an administrator role but it is not currently active. Activate it in Microsoft Entra (PIM), then reopen this same link to finish.</p>`));
+        `<h1>Your eligible role isn't active yet</h1><p>You are eligible for an administrator role but it is not currently active. Activate it in Microsoft Entra (PIM), then reopen this same link to finish.</p>`, branding));
     }
 
     // Neither active nor eligible — record a failed attempt; burn the link only
@@ -476,10 +534,10 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
       `<h1>You don't hold an eligible administrator role</h1>` +
       (burned
         ? `<p>This link has now been disabled after too many attempts. Please ask your provider to send a new one.</p>`
-        : `<p>Sign in with an account that holds an active Global Administrator role, then reopen this link.</p>`)));
+        : `<p>Sign in with an account that holds an active Global Administrator role, then reopen this link.</p>`), branding));
   } catch (err) {
     logger.error({ err }, "break-glass: callback failed");
-    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`));
+    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`, branding));
   }
 });
 
@@ -489,8 +547,15 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
 router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, async (req: Request, res: Response) => {
   const pendingSecretId = parseInt(req.params.pendingSecretId as string, 10);
   const linkToken = String((req.body as Record<string, unknown>)?.linkToken ?? "");
+
+  // pendingSecretId is enough to resolve branding on its own (no linkToken needed
+  // for this lookup) — resolve it before the validity check so even the
+  // "Invalid request" page (missing linkToken) can be branded when possible.
+  const ctxForBranding = !isNaN(pendingSecretId) ? await resolvePendingContext(pendingSecretId) : null;
+  const branding = ctxForBranding?.branding ?? null;
+
   if (isNaN(pendingSecretId) || !linkToken) {
-    return res.status(400).send(renderPage("Invalid request", `<h1>Invalid request</h1>`));
+    return res.status(400).send(renderPage("Invalid request", `<h1>Invalid request</h1>`, branding));
   }
 
   try {
@@ -504,12 +569,12 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
         eq(breakGlassVerificationAttemptsTable.verificationOutcome, "success"),
       ))
       .limit(1);
-    if (!attempt) return res.status(410).send(renderPage("Unavailable", `<h1>This action is no longer available</h1>`));
+    if (!attempt) return res.status(410).send(renderPage("Unavailable", `<h1>This action is no longer available</h1>`, branding));
 
     const [secret] = await db.select().from(breakGlassPendingSecretsTable)
       .where(eq(breakGlassPendingSecretsTable.id, pendingSecretId)).limit(1);
     if (!secret || secret.status !== "pending_delivery") {
-      return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`));
+      return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`, branding));
     }
 
     // Purge: actually remove the ciphertext (column is NOT NULL → empty string),
@@ -540,10 +605,10 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
     // Log ONLY non-sensitive delivery metadata — never the value.
     logger.info({ revealed: true, deliveredToEmail: attempt.invitedEmail, timestamp: new Date().toISOString() }, "break-glass: secret delivered");
 
-    return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. You can close this window.</p>`));
+    return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. You can close this window.</p>`, branding));
   } catch (err) {
     logger.error({ err, pendingSecretId }, "break-glass: acknowledge failed");
-    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1>`));
+    return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1>`, branding));
   }
 });
 
