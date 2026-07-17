@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -64,6 +65,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
   Tag,
   Users,
 } from "lucide-react";
@@ -81,6 +83,7 @@ export interface Customer {
   createdAt: string;
   mspId?: number;
   notes?: string;
+  isTestbed?: boolean;
 }
 
 interface CustomerListResponse {
@@ -117,6 +120,7 @@ interface CustomerForm {
   primaryContact: string;
   primaryEmail: string;
   notes: string;
+  isTestbed: boolean;
 }
 
 const EMPTY_CUSTOMER_FORM: CustomerForm = {
@@ -128,11 +132,13 @@ const EMPTY_CUSTOMER_FORM: CustomerForm = {
   primaryContact: "",
   primaryEmail: "",
   notes: "",
+  isTestbed: false,
 };
 
 export default function CustomersPage() {
   const [, setLocation] = useLocation();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
+  const isPlatformAdmin = user?.mspRole === "PlatformAdmin" || user?.role === "admin";
   const mspSlug = useMspSlug();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
@@ -292,6 +298,7 @@ export default function CustomersPage() {
           primaryContact: createForm.primaryContact.trim() || undefined,
           primaryEmail: createForm.primaryEmail.trim() || undefined,
           notes: createForm.notes.trim() || undefined,
+          isTestbed: createForm.isTestbed,
         }),
       });
       const body = (await res.json()) as Customer & { error?: string };
@@ -302,7 +309,7 @@ export default function CustomersPage() {
       toast.success(`Customer "${body.name}" created`);
       setCreateDialogOpen(false);
       setCreateForm(EMPTY_CUSTOMER_FORM);
-      setCustomers((prev) => [body, ...prev]);
+      setCustomers((prev) => [{ ...body, isTestbed: createForm.isTestbed }, ...prev]);
       setTotal((t) => t + 1);
     } catch {
       setCreateError("Unexpected error — please try again.");
@@ -323,6 +330,7 @@ export default function CustomersPage() {
       primaryContact: c.primaryContact ?? "",
       primaryEmail: c.primaryEmail ?? "",
       notes: c.notes ?? "",
+      isTestbed: !!c.isTestbed,
     });
     setEditError(null);
     setEditDialogOpen(true);
@@ -343,7 +351,7 @@ export default function CustomersPage() {
 
       if (res.ok) {
         const updated = (await res.json()) as Customer;
-        setCustomers((prev) => prev.map((c) => (c.id === editingCustomer.id ? { ...c, ...updated } : c)));
+        setCustomers((prev) => prev.map((c) => (c.id === editingCustomer.id ? { ...c, ...updated, isTestbed: editForm.isTestbed } : c)));
         toast.success(`Customer "${editForm.name}" updated`);
       } else {
         // Fallback optimistic update
@@ -360,6 +368,7 @@ export default function CustomersPage() {
                   primaryContact: editForm.primaryContact,
                   primaryEmail: editForm.primaryEmail,
                   notes: editForm.notes,
+                  isTestbed: editForm.isTestbed,
                 }
               : c,
           ),
@@ -368,7 +377,7 @@ export default function CustomersPage() {
       }
       setEditDialogOpen(false);
     } catch {
-      setEditError("Could not save changes. Please try again.");
+      setEditError("Failed to update customer.");
     } finally {
       setEditSubmitting(false);
     }
@@ -801,6 +810,26 @@ export default function CustomersPage() {
               />
             </div>
 
+            {isPlatformAdmin && (
+              <div className="flex items-center justify-between p-3 border border-purple-500/30 bg-purple-500/5 rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="create-cust-testbed" className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-purple-500" />
+                    <span>Testbed Customer Tenant (is_testbed)</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Designates this customer tenant as a synthetic sandbox/testbed for baseline testing.
+                  </p>
+                </div>
+                <Switch
+                  id="create-cust-testbed"
+                  checked={createForm.isTestbed}
+                  onCheckedChange={(v) => setCreateForm((p) => ({ ...p, isTestbed: v }))}
+                  disabled={createSubmitting}
+                />
+              </div>
+            )}
+
             {createError && <p className="text-sm text-destructive font-medium">{createError}</p>}
 
             <DialogFooter>
@@ -909,6 +938,26 @@ export default function CustomersPage() {
                 disabled={editSubmitting}
               />
             </div>
+
+            {isPlatformAdmin && (
+              <div className="flex items-center justify-between p-3 border border-purple-500/30 bg-purple-500/5 rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="edit-cust-testbed" className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-purple-500" />
+                    <span>Testbed Customer Tenant (is_testbed)</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Designates this customer tenant as a synthetic sandbox/testbed for baseline testing.
+                  </p>
+                </div>
+                <Switch
+                  id="edit-cust-testbed"
+                  checked={editForm.isTestbed}
+                  onCheckedChange={(v) => setEditForm((p) => ({ ...p, isTestbed: v }))}
+                  disabled={editSubmitting}
+                />
+              </div>
+            )}
 
             {editError && <p className="text-sm text-destructive font-medium">{editError}</p>}
 

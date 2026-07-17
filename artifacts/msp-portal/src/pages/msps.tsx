@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -58,6 +59,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -71,6 +73,7 @@ export interface Msp {
   tier?: string;
   primaryContactEmail?: string;
   notes?: string;
+  isTestbed?: boolean;
   offboardingState?: string | null;
   createdAt: string;
 }
@@ -111,6 +114,7 @@ interface CreateMspForm {
   tier: string;
   primaryContactEmail: string;
   notes: string;
+  isTestbed: boolean;
 }
 
 const EMPTY_FORM: CreateMspForm = {
@@ -121,6 +125,7 @@ const EMPTY_FORM: CreateMspForm = {
   tier: "Gold",
   primaryContactEmail: "",
   notes: "",
+  isTestbed: false,
 };
 
 function slugify(str: string) {
@@ -134,6 +139,7 @@ function slugify(str: string) {
 export default function MspsPage() {
   const [, setLocation] = useLocation();
   const { fetchWithAuth, user } = useAuth();
+  const isPlatformAdmin = user?.mspRole === "PlatformAdmin" || user?.role === "admin";
   const [msps, setMsps] = useState<Msp[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -304,6 +310,7 @@ export default function MspsPage() {
       tier: msp.tier ?? "Gold",
       primaryContactEmail: msp.primaryContactEmail ?? "",
       notes: msp.notes ?? "",
+      isTestbed: !!msp.isTestbed,
     });
     setEditError(null);
     setEditDialogOpen(true);
@@ -326,12 +333,13 @@ export default function MspsPage() {
           tier: editForm.tier,
           primaryContactEmail: editForm.primaryContactEmail.trim() || undefined,
           notes: editForm.notes.trim() || undefined,
+          isTestbed: editForm.isTestbed,
         }),
       });
 
       if (res.ok) {
         const updated = (await res.json()) as Msp;
-        setMsps((prev) => prev.map((m) => (m.id === editingMsp.id ? { ...m, ...updated } : m)));
+        setMsps((prev) => prev.map((m) => (m.id === editingMsp.id ? { ...m, ...updated, isTestbed: editForm.isTestbed } : m)));
         toast.success(`MSP "${editForm.name}" updated`);
       } else {
         // Fallback optimistic update
@@ -346,6 +354,7 @@ export default function MspsPage() {
                   tier: editForm.tier,
                   primaryContactEmail: editForm.primaryContactEmail,
                   notes: editForm.notes,
+                  isTestbed: editForm.isTestbed,
                 }
               : m,
           ),
@@ -354,7 +363,7 @@ export default function MspsPage() {
       }
       setEditDialogOpen(false);
     } catch {
-      setEditError("Could not save updates. Please try again.");
+      setEditError("Failed to update MSP partner details.");
     } finally {
       setEditSubmitting(false);
     }
@@ -783,6 +792,26 @@ export default function MspsPage() {
               />
             </div>
 
+            {isPlatformAdmin && (
+              <div className="flex items-center justify-between p-3 border border-purple-500/30 bg-purple-500/5 rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="create-msp-testbed" className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-purple-500" />
+                    <span>Testbed Partner Environment (is_testbed)</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Designates this MSP partner as a synthetic sandbox/testbed for baseline testing.
+                  </p>
+                </div>
+                <Switch
+                  id="create-msp-testbed"
+                  checked={form.isTestbed}
+                  onCheckedChange={(v) => setForm((prev) => ({ ...prev, isTestbed: v }))}
+                  disabled={submitting}
+                />
+              </div>
+            )}
+
             {serverError && <p className="text-sm text-destructive font-medium">{serverError}</p>}
 
             <DialogFooter className="pt-2">
@@ -891,6 +920,26 @@ export default function MspsPage() {
                 className="text-sm"
               />
             </div>
+
+            {isPlatformAdmin && (
+              <div className="flex items-center justify-between p-3 border border-purple-500/30 bg-purple-500/5 rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="edit-msp-testbed" className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-purple-500" />
+                    <span>Testbed Partner Environment (is_testbed)</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Designates this MSP partner as a synthetic sandbox/testbed for baseline testing.
+                  </p>
+                </div>
+                <Switch
+                  id="edit-msp-testbed"
+                  checked={editForm.isTestbed}
+                  onCheckedChange={(v) => setEditForm((prev) => ({ ...prev, isTestbed: v }))}
+                  disabled={editSubmitting}
+                />
+              </div>
+            )}
 
             {editError && <p className="text-sm text-destructive font-medium">{editError}</p>}
 

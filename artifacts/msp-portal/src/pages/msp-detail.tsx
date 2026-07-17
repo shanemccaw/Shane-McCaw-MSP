@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -91,6 +92,7 @@ interface MspDetailData extends Msp {
   totalSeats?: number;
   estateHealthScore?: number;
   mrr?: number;
+  isTestbed?: boolean;
   syncStatus?: "healthy" | "degraded" | "syncing";
   customers?: {
     id: number;
@@ -137,7 +139,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function MspDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, user } = useAuth();
+  const isPlatformAdmin = user?.mspRole === "PlatformAdmin" || user?.role === "admin";
 
   const [msp, setMsp] = useState<MspDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,6 +160,7 @@ export default function MspDetailPage() {
     primaryContactEmail: "",
     primaryContactPhone: "",
     notes: "",
+    isTestbed: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -241,6 +245,7 @@ export default function MspDetailPage() {
       primaryContactEmail: msp.primaryContactEmail ?? "",
       primaryContactPhone: msp.primaryContactPhone ?? "",
       notes: msp.notes ?? "",
+      isTestbed: !!msp.isTestbed,
     });
     setEditDialogOpen(true);
   }
@@ -269,6 +274,7 @@ export default function MspDetailPage() {
               primaryContactEmail: editForm.primaryContactEmail,
               primaryContactPhone: editForm.primaryContactPhone,
               notes: editForm.notes,
+              isTestbed: editForm.isTestbed,
             }
           : null,
       );
@@ -870,6 +876,26 @@ export default function MspDetailPage() {
                 disabled={saving}
               />
             </div>
+
+            {isPlatformAdmin && (
+              <div className="flex items-center justify-between p-3 border border-purple-500/30 bg-purple-500/5 rounded-lg">
+                <div className="space-y-0.5">
+                  <Label htmlFor="edit-msp-detail-testbed" className="text-xs font-semibold text-purple-700 dark:text-purple-300 flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-purple-500" />
+                    <span>Testbed Partner Environment (is_testbed)</span>
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Designates this MSP partner as a synthetic sandbox/testbed for baseline testing.
+                  </p>
+                </div>
+                <Switch
+                  id="edit-msp-detail-testbed"
+                  checked={editForm.isTestbed}
+                  onCheckedChange={(v) => setEditForm((p) => ({ ...p, isTestbed: v }))}
+                  disabled={saving}
+                />
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setEditDialogOpen(false)} disabled={saving}>
