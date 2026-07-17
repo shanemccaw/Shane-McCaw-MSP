@@ -772,7 +772,7 @@ export default function MspDetailPage() {
       </div>
 
       {/* Edit Dialog Modal */}
-      <Dialog open={editDialogOpen} onOpenChange={(o) => if (!saving) setEditDialogOpen(o)}>
+      <Dialog open={editDialogOpen} onOpenChange={(o) => { if (!saving) setEditDialogOpen(o); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit MSP Details</DialogTitle>

@@ -702,7 +702,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Create Customer Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(o) => if (!createSubmitting) setCreateDialogOpen(o)}>
+      <Dialog open={createDialogOpen} onOpenChange={(o) => { if (!createSubmitting) setCreateDialogOpen(o); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Add Customer Tenant</DialogTitle>
@@ -817,7 +817,7 @@ export default function CustomersPage() {
       </Dialog>
 
       {/* Edit Customer Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={(o) => if (!editSubmitting) setEditDialogOpen(o)}>
+      <Dialog open={editDialogOpen} onOpenChange={(o) => { if (!editSubmitting) setEditDialogOpen(o); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Customer — {editingCustomer?.name}</DialogTitle>
