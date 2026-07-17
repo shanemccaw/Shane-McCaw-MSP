@@ -103,7 +103,7 @@ export function DashboardTemplate({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-w-0 bg-slate-950/20 border border-slate-800/50 rounded-xl p-4 sm:p-6 overflow-hidden">
+        <div className="flex-1 min-w-0 bg-slate-950/20 border border-slate-800/50 rounded-xl p-4 sm:p-6 overflow-y-auto">
           {activeContent}
         </div>
       </div>
