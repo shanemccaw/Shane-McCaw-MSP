@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,17 +34,15 @@ interface Agreement {
   createdAt: string;
 }
 
-const ADMIN_PASSWORD = sessionStorage.getItem("adminPassword") ?? "";
-const AUTH_HEADER = { Authorization: `Bearer ${ADMIN_PASSWORD}` };
-
-async function fetchAgreements(): Promise<Agreement[]> {
-  const res = await fetch("/api/admin/platform-agreements", { headers: AUTH_HEADER });
+async function fetchAgreements(fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): Promise<Agreement[]> {
+  const res = await fetchWithAuth("/api/admin/platform-agreements");
   if (!res.ok) throw new Error("Failed to load agreements");
   const data = (await res.json()) as { agreements: Agreement[] };
   return data.agreements;
 }
 
 export default function PlatformAgreementsPage() {
+  const { fetchWithAuth } = useAuth();
   const [agreements, setAgreements] = useState<Agreement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +62,7 @@ export default function PlatformAgreementsPage() {
     setLoading(true);
     setError(null);
     try {
-      setAgreements(await fetchAgreements());
+      setAgreements(await fetchAgreements(fetchWithAuth));
     } catch {
       setError("Failed to load agreements. Make sure you are logged in as an admin.");
     } finally {
@@ -81,9 +80,8 @@ export default function PlatformAgreementsPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await fetch("/api/admin/platform-agreements", {
+      const res = await fetchWithAuth("/api/admin/platform-agreements", {
         method: "POST",
-        headers: { ...AUTH_HEADER, "Content-Type": "application/json" },
         body: JSON.stringify({ version: newVersion.trim(), title: newTitle.trim(), body: newBody.trim() }),
       });
       if (!res.ok) {
@@ -106,9 +104,8 @@ export default function PlatformAgreementsPage() {
   async function handlePublish(id: number) {
     setPublishing(id);
     try {
-      const res = await fetch(`/api/admin/platform-agreements/${id}/publish`, {
+      const res = await fetchWithAuth(`/api/admin/platform-agreements/${id}/publish`, {
         method: "PATCH",
-        headers: AUTH_HEADER,
       });
       if (!res.ok) {
         const d = (await res.json()) as { error?: string };
