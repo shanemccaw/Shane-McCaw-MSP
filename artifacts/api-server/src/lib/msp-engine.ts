@@ -17,7 +17,7 @@
  */
 
 import { db, usersTable, mspUsersTable, mspCustomersTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import {
   computeTenantSignals,
   getDisabledSignalKeys,
@@ -104,7 +104,7 @@ export function computeTenantEngineScores(
   const combinedScore = health.score + drift.score + priorityScore;
 
   return {
-    tenantId,
+    customerId,
     tenantName,
     architectureHealthScore: health.score,
     driftScore: drift.score,
