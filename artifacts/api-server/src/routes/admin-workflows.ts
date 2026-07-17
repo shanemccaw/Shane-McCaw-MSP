@@ -2442,7 +2442,36 @@ const FLAT_NODES = [
   nodeDef("alert_evaluate_rules", "Evaluate Alert Rules", "MSP / System", "Evaluates platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate) and delivers alerts via Exchange Online email and browser push.", [], ["evaluated"], ["default"]),
   nodeDef("kanban_auto_fire", "Kanban Auto Fire", "MSP / System", "Fires the kanban auto-fire pipeline for a client, evaluating rule triggers and creating kanban tasks for matching actions.", [{ key: "clientId", type: "number", required: true, description: "Client user ID." }, { key: "action", type: "string", description: "Specific action to fire (omit to evaluate all)." }], ["fired", "clientId", "action"], ["default"]),
   nodeDef("save_presentation_phases", "Save Presentation Phases (retired)", "MSP / System", "RETIRED — use a sql_query node instead. Any graph still containing this node type will be auto-patched on server startup. Outputs a deprecation notice and continues.", [], ["skipped", "note"], ["default"]),
+  // ── MSP Baseline Actions ──────────────────────────────────────────────────
+  nodeDef(
+    "graph_write_operation",
+    "Graph Write Operation",
+    "MSP / Baseline Actions",
+    "Executes a Microsoft Graph API write call (POST, PATCH, or PUT) against a customer tenant. Resolves the tenant's Graph tenantId from the customerId. On success routes via the 'success' handle; on failure routes via 'insufficient_privilege', 'conflict', 'bad_request', or 'unexpected' handles. dry-run is explicitly blocked — the node returns a skip indicator instead of executing.",
+    [
+      { key: "customerId", type: "string", required: true, description: "MSP customer ID used to resolve the Graph tenant. Supports templates." },
+      { key: "endpoint", type: "string", required: true, description: "Graph API path (e.g. '/policies/authorizationPolicy'). May contain {{variable}} placeholders." },
+      { key: "method", type: "string", required: true, description: "HTTP method: POST | PATCH | PUT." },
+      { key: "body", type: "object", required: true, description: "JSON body to send. May be a static object or a {{steps.*}} reference to an object." },
+      { key: "expectedStatusCodes", type: "array", description: "HTTP status codes treated as success (default: [200, 201, 204])." },
+    ],
+    ["success", "status", "data", "errorType"],
+    ["success", "insufficient_privilege", "conflict", "bad_request", "unexpected"],
+  ),
+  nodeDef(
+    "execute_baseline_template",
+    "Execute Baseline Template",
+    "MSP / Baseline Actions",
+    "Looks up a platform-authored baseline action template by its templateId slug, resolves {{variable}} placeholders in the body using the current run context, validates all requiredVariables, and delegates execution to graphWriteForTenant. Records the outcome in baseline_action_template_audit_log. Routes via 'success' or error-type handles identical to graph_write_operation. dry-run is explicitly blocked.",
+    [
+      { key: "customerId", type: "string", required: true, description: "MSP customer ID used to resolve the Graph tenant. Supports templates." },
+      { key: "templateId", type: "string", required: true, description: "Stable slug of the baseline action template (e.g. 'entra-security-defaults-enable'). Supports templates." },
+    ],
+    ["success", "status", "data", "errorType", "templateId", "label", "missingVariables"],
+    ["success", "insufficient_privilege", "conflict", "bad_request", "unexpected"],
+  ),
 ];
+
 
 const NODE_CATALOG = {
   version: 1,

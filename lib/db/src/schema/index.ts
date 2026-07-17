@@ -2101,6 +2101,10 @@ export interface WfNode {
     // Sales Offer Engine
     | "sales_offer_generate" | "sales_offer_score" | "sales_offer_violation"
     | "sales_offer_escalate" | "sales_offer_resolve"
+    // MSP Score Snapshot
+    | "msp_score_snapshot"
+    // MSP Baseline Actions
+    | "graph_write_operation" | "execute_baseline_template"
     // Utilities
     | "comment";
   position: { x: number; y: number };

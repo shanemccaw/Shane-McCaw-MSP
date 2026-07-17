@@ -24,6 +24,8 @@ import {
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
+  baselineActionTemplatesTable,
+  baselineActionTemplateAuditLogTable,
   leadsTable,
   usersTable,
   mspUsersTable,
@@ -1360,6 +1362,24 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       }
       return { dryRun: true, found: true, objectType: foType, objectId: 1 };
     }
+
+    // ── Graph Write Operation (dry-run: explicitly blocked) ────────────────
+    case "graph_write_operation":
+      // Graph writes are never mocked — return a clear skip indicator so
+      // downstream condition nodes can detect the dry-run branch.
+      return {
+        dryRun: true,
+        skipped: true,
+        reason: "graph_write_operation does not support dry-run execution",
+      };
+
+    // ── Execute Baseline Template (dry-run: explicitly blocked) ─────────────
+    case "execute_baseline_template":
+      return {
+        dryRun: true,
+        skipped: true,
+        reason: "execute_baseline_template does not support dry-run execution",
+      };
 
     default:
       return { dryRun: true, error: true, reason: `unknown node type: ${node.type}` };
@@ -7665,6 +7685,233 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Graph Write Operation ─────────────────────────────────────────────
+      case "graph_write_operation": {
+        if (dryRun) {
+          output = { dryRun: true, skipped: true, reason: "graph_write_operation does not support dry-run execution" };
+          break;
+        }
+
+        const gwoEndpointRaw = interp(node.data.endpoint as string | undefined, payload);
+        const gwoMethod = (node.data.method as string | undefined) as "POST" | "PATCH" | "PUT" | undefined;
+        const gwoExpectedCodes = (node.data.expectedStatusCodes as number[] | undefined) ?? [200, 201, 204];
+
+        if (!gwoEndpointRaw || !gwoMethod) {
+          nodeError = true;
+          output = { error: "graph_write_operation requires endpoint and method" };
+          break;
+        }
+
+        // Resolve body — may be a template string, a {{...}} reference to an object,
+        // or a static object. Use resolveExprNative to preserve type for object values.
+        const gwoBodyRaw = node.data.body;
+        let gwoBody: unknown = {};
+        if (typeof gwoBodyRaw === "string") {
+          const resolved = resolveExprNative(gwoBodyRaw, payload);
+          if (resolved !== undefined) {
+            gwoBody = resolved;
+          } else {
+            try { gwoBody = JSON.parse(interp(gwoBodyRaw, payload) ?? "{}"); } catch { gwoBody = {}; }
+          }
+        } else if (gwoBodyRaw != null) {
+          // Static object in node.data — still interp any string values inside it
+          gwoBody = gwoBodyRaw;
+        }
+
+        // Resolve customerId → tenantId directly from mspCustomersTable
+        const gwoCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
+        const gwoCustomerId = gwoCustomerIdRaw ? parseInt(gwoCustomerIdRaw, 10) : NaN;
+        if (isNaN(gwoCustomerId)) {
+          nodeError = true;
+          output = { error: "graph_write_operation requires a valid customerId to resolve the Graph tenant" };
+          break;
+        }
+
+        const [gwoCustomerRow] = await db
+          .select({ tenantId: mspCustomersTable.tenantId })
+          .from(mspCustomersTable)
+          .where(eq(mspCustomersTable.id, gwoCustomerId))
+          .limit(1);
+
+        if (!gwoCustomerRow?.tenantId) {
+          nodeError = true;
+          output = { error: `graph_write_operation: no tenant found for customerId ${gwoCustomerId}` };
+          break;
+        }
+
+        try {
+          const { graphWriteForTenant, ConsentRevokedError: GwoConsentRevokedError } = await import("./graph");
+          const gwoResult = await graphWriteForTenant(
+            gwoCustomerRow.tenantId,
+            gwoEndpointRaw,
+            gwoMethod,
+            gwoBody,
+            gwoExpectedCodes,
+          );
+
+          // Route to named handle via switchChosenHandle mechanism
+          if (gwoResult.success) {
+            switchChosenHandle = "success";
+            output = { success: true, status: gwoResult.status, data: gwoResult.data };
+          } else {
+            switchChosenHandle = gwoResult.errorType ?? "unexpected";
+            output = { success: false, status: gwoResult.status, errorType: gwoResult.errorType, data: gwoResult.data };
+            nodeError = true;
+          }
+          logger.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
+        } catch (gwoErr) {
+          nodeError = true;
+          const errMsg = gwoErr instanceof Error ? gwoErr.message : String(gwoErr);
+          output = { error: errMsg, success: false };
+          logger.error({ runId, gwoErr }, "wf-executor: graph_write_operation failed");
+        }
+        break;
+      }
+
+      // ── Execute Baseline Template ─────────────────────────────────────────
+      case "execute_baseline_template": {
+        if (dryRun) {
+          output = { dryRun: true, skipped: true, reason: "execute_baseline_template does not support dry-run execution" };
+          break;
+        }
+
+        const ebtTemplateId = interp(node.data.templateId as string | undefined, payload);
+        if (!ebtTemplateId) {
+          nodeError = true;
+          output = { error: "execute_baseline_template requires templateId" };
+          break;
+        }
+
+        // Resolve customerId → tenantId (same pattern as graph_write_operation)
+        const ebtCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
+        const ebtCustomerId = ebtCustomerIdRaw ? parseInt(ebtCustomerIdRaw, 10) : NaN;
+        if (isNaN(ebtCustomerId)) {
+          nodeError = true;
+          output = { error: "execute_baseline_template requires a valid customerId" };
+          break;
+        }
+
+        const [ebtCustomerRow] = await db
+          .select({ tenantId: mspCustomersTable.tenantId })
+          .from(mspCustomersTable)
+          .where(eq(mspCustomersTable.id, ebtCustomerId))
+          .limit(1);
+
+        if (!ebtCustomerRow?.tenantId) {
+          nodeError = true;
+          output = { error: `execute_baseline_template: no tenant found for customerId ${ebtCustomerId}` };
+          break;
+        }
+
+        // Look up the template
+        const [ebtTemplate] = await db
+          .select()
+          .from(baselineActionTemplatesTable)
+          .where(eq(baselineActionTemplatesTable.templateId, ebtTemplateId))
+          .limit(1);
+
+        if (!ebtTemplate) {
+          nodeError = true;
+          output = { error: `execute_baseline_template: template '${ebtTemplateId}' not found` };
+          break;
+        }
+
+        // Resolve {{variable}} placeholders in bodyTemplate using interp()
+        // We do this by JSON-serializing the template, running interp on the string,
+        // then parsing it back — the same approach as any structured JSON template.
+        let ebtBody: Record<string, unknown>;
+        try {
+          const ebtBodyTemplateStr = JSON.stringify(ebtTemplate.bodyTemplate ?? {});
+          const ebtBodyResolved = interp(ebtBodyTemplateStr, payload) ?? "{}";
+          ebtBody = JSON.parse(ebtBodyResolved) as Record<string, unknown>;
+        } catch (parseErr) {
+          nodeError = true;
+          output = { error: `execute_baseline_template: failed to resolve bodyTemplate — ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` };
+          break;
+        }
+
+        // Validate all requiredVariables are present and non-empty after resolution
+        const ebtRequiredVars = ebtTemplate.requiredVariables ?? [];
+        const ebtMissingVars: string[] = [];
+        for (const varName of ebtRequiredVars) {
+          const resolved = interp(`{{${varName}}}`, payload);
+          if (!resolved || resolved.trim() === "") {
+            ebtMissingVars.push(varName);
+          }
+        }
+        if (ebtMissingVars.length > 0) {
+          nodeError = true;
+          output = {
+            error: `execute_baseline_template: missing required variables: ${ebtMissingVars.join(", ")}`,
+            missingVariables: ebtMissingVars,
+          };
+          break;
+        }
+
+        // Resolve the endpoint (may also contain {{variable}} placeholders)
+        const ebtEndpoint = interp(ebtTemplate.endpoint, payload) ?? ebtTemplate.endpoint;
+        const ebtMethod = ebtTemplate.method as "POST" | "PATCH" | "PUT";
+
+        // Delegate execution to graphWriteForTenant (same function as graph_write_operation)
+        try {
+          const { graphWriteForTenant: ebtGraphWrite, ConsentRevokedError: EbtConsentRevokedError } = await import("./graph");
+          const ebtResult = await ebtGraphWrite(
+            ebtCustomerRow.tenantId,
+            ebtEndpoint,
+            ebtMethod,
+            ebtBody,
+            [200, 201, 204],
+          );
+
+          // Record the result in the baseline action template audit log
+          await db.insert(baselineActionTemplateAuditLogTable).values({
+            action: ebtResult.success ? "executed" : "failed",
+            templateId: ebtTemplateId,
+            afterSnapshot: {
+              success: ebtResult.success,
+              status: ebtResult.status,
+              errorType: ebtResult.errorType ?? null,
+              endpoint: ebtEndpoint,
+              method: ebtMethod,
+              customerId: ebtCustomerId,
+              tenantId: ebtCustomerRow.tenantId,
+              executedAt: new Date().toISOString(),
+            },
+          }).catch((auditErr) => {
+            logger.warn({ auditErr, ebtTemplateId, runId }, "execute_baseline_template: audit log insert failed (non-fatal)");
+          });
+
+          if (ebtResult.success) {
+            switchChosenHandle = "success";
+            output = {
+              success: true,
+              status: ebtResult.status,
+              data: ebtResult.data,
+              templateId: ebtTemplateId,
+              label: ebtTemplate.label,
+            };
+          } else {
+            switchChosenHandle = ebtResult.errorType ?? "unexpected";
+            output = {
+              success: false,
+              status: ebtResult.status,
+              errorType: ebtResult.errorType,
+              data: ebtResult.data,
+              templateId: ebtTemplateId,
+              label: ebtTemplate.label,
+            };
+            nodeError = true;
+          }
+          logger.info({ runId, ebtTemplateId, tenantId: ebtCustomerRow.tenantId, status: ebtResult.status, success: ebtResult.success }, "wf-executor: execute_baseline_template completed");
+        } catch (ebtErr) {
+          nodeError = true;
+          const ebtErrMsg = ebtErr instanceof Error ? ebtErr.message : String(ebtErr);
+          output = { error: ebtErrMsg, success: false, templateId: ebtTemplateId };
+          logger.error({ runId, ebtErr, ebtTemplateId }, "wf-executor: execute_baseline_template failed");
+        }
+        break;
+      }
+
       default:
         logger.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");
         nodeError = true;
@@ -7880,7 +8127,7 @@ async function executeItemSubgraph(
       continue;
     }
 
-    if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+    if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
       for (const e of subEdges.filter(e => e.source === nodeId)) {
         subResolveEdge(e.target, e.sourceHandle === switchChosenHandle);
       }
@@ -8163,8 +8410,8 @@ export async function executeWorkflowRun(
         continue;
       }
 
-      // Switch/Case: route only the matching case branch (or default)
-      if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+      // Switch/Case and named-handle write nodes: route only the matching handle
+      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
         const outEdges = graph.edges.filter(e => e.source === nodeId);
         for (const e of outEdges) {
           resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
@@ -8995,7 +9242,7 @@ export async function resumeWorkflowRun(
         continue;
       }
 
-      if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
         const outEdgesNode = graph.edges.filter(e => e.source === nodeId);
         for (const e of outEdgesNode) {
           resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
