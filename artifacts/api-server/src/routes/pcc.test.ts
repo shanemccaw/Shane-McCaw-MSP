@@ -146,4 +146,23 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     expect(valChartBreach.passed).toBe(false);
     expect(valChartBreach.why).toContain('UI Surface Drift: Property \'/values/activeUsers\' value changed');
   });
+
+  it('POST /api/pcc/run with specific tags should run only matching tests', async () => {
+    stateManager.setEnvironment('test');
+
+    const res = await request(testApp)
+      .post('/api/pcc/run')
+      .send({ tags: ['smoke'] })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    
+    // Verify only tests tagged with 'smoke' are in the execution results
+    const executedTestIds = res.body.results.map((r: any) => r.testId);
+    expect(executedTestIds).toContain('drift-detect-settings');
+    expect(executedTestIds).toContain('graph-user-read');
+    expect(executedTestIds).toContain('ui-banner-check');
+    expect(executedTestIds).not.toContain('graph-license-check');
+    expect(executedTestIds).not.toContain('journey-90day-replay');
+  });
 });

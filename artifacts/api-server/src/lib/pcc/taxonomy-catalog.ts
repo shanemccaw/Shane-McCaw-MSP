@@ -7,6 +7,7 @@ export interface PccTest {
   description: string;
   isProdSafe: boolean;
   dependencies: string[];
+  tags: string[];
 }
 
 export const DEFAULT_TESTS: PccTest[] = [
@@ -16,7 +17,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'ConfigDrift',
     description: 'Compares target tenant environment configuration against the reference baseline.',
     isProdSafe: true,
-    dependencies: []
+    dependencies: [],
+    tags: ['drift', 'configuration', 'smoke']
   },
   {
     id: 'graph-user-read',
@@ -24,7 +26,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'GraphEndpoint',
     description: 'Queries Graph user endpoint and validates schema compliance.',
     isProdSafe: true,
-    dependencies: []
+    dependencies: [],
+    tags: ['graph', 'directory', 'smoke']
   },
   {
     id: 'graph-license-check',
@@ -32,7 +35,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'GraphEndpoint',
     description: 'Validates that licensing signals are accurately mapped from user sign-in details.',
     isProdSafe: true,
-    dependencies: ['graph-user-read']
+    dependencies: ['graph-user-read'],
+    tags: ['graph', 'licensing', 'regression']
   },
   {
     id: 'event-stripe-checkout',
@@ -40,7 +44,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'EventInjection',
     description: 'Simulates a Stripe checkout completion webhook delivery.',
     isProdSafe: false,
-    dependencies: []
+    dependencies: [],
+    tags: ['stripe', 'billing', 'destructive']
   },
   {
     id: 'event-consent-grant',
@@ -48,7 +53,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'EventInjection',
     description: 'Simulates a user accepting policy terms.',
     isProdSafe: false,
-    dependencies: []
+    dependencies: [],
+    tags: ['consent', 'compliance', 'destructive']
   },
   {
     id: 'ui-banner-check',
@@ -56,7 +62,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'UISurface',
     description: 'Verifies warning banner positioning and copy drift.',
     isProdSafe: true,
-    dependencies: []
+    dependencies: [],
+    tags: ['ui', 'banner', 'smoke']
   },
   {
     id: 'ui-onboarding-nudge',
@@ -64,7 +71,8 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'UISurface',
     description: 'Validates the presence and styling of client onboarding prompts.',
     isProdSafe: true,
-    dependencies: ['event-consent-grant']
+    dependencies: ['event-consent-grant'],
+    tags: ['ui', 'nudge', 'regression']
   },
   {
     id: 'journey-90day-replay',
@@ -72,6 +80,7 @@ export const DEFAULT_TESTS: PccTest[] = [
     taxonomy: 'JourneyReplay',
     description: 'Replays a sequence of customer lifecycle ticks and asserts state trends.',
     isProdSafe: false,
-    dependencies: ['event-stripe-checkout']
+    dependencies: ['event-stripe-checkout'],
+    tags: ['replay', 'temporal', 'destructive']
   }
 ];

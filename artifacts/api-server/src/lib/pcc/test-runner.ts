@@ -17,18 +17,22 @@ export class PccTestRunner {
     const env = this.stateManager.getEnvironment();
     this.stateManager.startRun(runId);
 
+    const targetTests = tags.length > 0
+      ? DEFAULT_TESTS.filter(t => t.tags.some(tag => tags.includes(tag)))
+      : DEFAULT_TESTS;
+
     // Broadcast run starting
     this.streamingServer.broadcast('run_started', {
       runId,
       environment: env,
-      totalTests: DEFAULT_TESTS.length,
+      totalTests: targetTests.length,
       timestamp: new Date().toISOString()
     });
 
     const results: PccRunResult[] = [];
     const testStatusMap = new Map<string, 'PASS' | 'FAIL' | 'SKIPPED'>();
 
-    for (const test of DEFAULT_TESTS) {
+    for (const test of targetTests) {
       // 1. Environment Gating
       if (env === 'prod' && !test.isProdSafe) {
         const skipResult: PccRunResult = {
