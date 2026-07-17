@@ -740,7 +740,16 @@ function TenantSwitcher({
       .catch(() => {});
   }, [open, canSwitch, mspRole, fetchWithAuth]);
 
-  const displayName = profile?.name ?? "MSP Platform";
+  if (!profile) {
+    return (
+      <div className={`px-3 py-2 rounded-md bg-sidebar-accent/30 animate-pulse flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
+        <div className="size-3.5 rounded bg-sidebar-foreground/20 shrink-0" />
+        {!collapsed && <div className="h-3 w-28 rounded bg-sidebar-foreground/20 shrink-0" />}
+      </div>
+    );
+  }
+
+  const displayName = profile.name;
 
   if (!canSwitch || collapsed) {
     return (
@@ -901,6 +910,8 @@ interface AppShellProps {
   actions?: ReactNode;
 }
 
+let g_cachedMspProfile: MspProfile | null = null;
+
 interface MspSuspensionState {
   suspended: boolean;
   daysSuspended: number | null;
@@ -914,7 +925,18 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
-  const [profile, setProfile] = useState<MspProfile | null>(null);
+  const [profile, setProfile] = useState<MspProfile | null>(() => {
+    if (g_cachedMspProfile) return g_cachedMspProfile;
+    try {
+      const saved = localStorage.getItem("msp_portal_cached_profile");
+      if (saved) {
+        const parsed = JSON.parse(saved) as MspProfile;
+        g_cachedMspProfile = parsed;
+        return parsed;
+      }
+    } catch {}
+    return null;
+  });
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
 
@@ -931,7 +953,14 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         : "/api/msp/profile";
     fetchWithAuth(url)
       .then(async (res) => {
-        if (res.ok) setProfile(await res.json() as MspProfile);
+        if (res.ok) {
+          const data = (await res.json()) as MspProfile;
+          g_cachedMspProfile = data;
+          setProfile(data);
+          try {
+            localStorage.setItem("msp_portal_cached_profile", JSON.stringify(data));
+          } catch {}
+        }
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -997,7 +1026,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const brandName = profile?.name ?? "MSP Platform";
+  const brandName = profile?.name ?? "";
   const sidebarWidth = collapsed ? "w-14" : "w-60";
 
   const sidebarContent = (
@@ -1008,26 +1037,39 @@ export function AppShell({ children, title, actions }: AppShellProps) {
       <div
         className={`flex items-center border-b border-sidebar-border ${collapsed ? "px-2 py-4 justify-center" : "px-4 py-4 gap-2.5"}`}
       >
-        {profile?.logoUrl ? (
-          <img
-            src={profile.logoUrl}
-            alt={brandName}
-            className="size-6 object-contain shrink-0"
-          />
+        {!profile ? (
+          <>
+            <Shield className="size-5 text-sidebar-primary shrink-0 animate-pulse" />
+            {!collapsed && (
+              <div className="h-4 w-28 bg-sidebar-accent/60 rounded-md animate-pulse shrink-0" />
+            )}
+          </>
         ) : (
-          <Shield className="size-5 text-sidebar-primary shrink-0" />
-        )}
-        {!collapsed && (
-          <span className="font-semibold text-sm truncate flex-1">{brandName}</span>
-        )}
-        {!collapsed && (
-          <button
-            className="text-sidebar-foreground/40 hover:text-sidebar-foreground shrink-0"
-            onClick={() => setCollapsed(true)}
-            title="Collapse sidebar"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
+          <>
+            {profile.logoUrl ? (
+              <img
+                src={profile.logoUrl}
+                alt={brandName}
+                className="size-6 object-contain shrink-0"
+              />
+            ) : (
+              <Shield className="size-5 text-sidebar-primary shrink-0" />
+            )}
+            {!collapsed && (
+              <span className="font-semibold text-sm truncate flex-1 animate-in fade-in duration-200">
+                {brandName}
+              </span>
+            )}
+            {!collapsed && (
+              <button
+                className="text-sidebar-foreground/40 hover:text-sidebar-foreground shrink-0"
+                onClick={() => setCollapsed(true)}
+                title="Collapse sidebar"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+            )}
+          </>
         )}
       </div>
 
