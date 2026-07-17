@@ -1989,6 +1989,9 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
   dependsOn: jsonb("depends_on").$type<string[]>().notNull().default([]),
   requiresVerificationGate: boolean("requires_verification_gate").notNull().default(false),
   schemaVersion: integer("schema_version").notNull().default(1),
+  // Archived (not hard-deleted) templates are grandfathered into any config pack
+  // that already references them — mirrors MONITOR_CHECK_STATUS semantics.
+  status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),
   updatedByAdminId: integer("updated_by_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2028,6 +2031,7 @@ export const configPacksTable = pgTable("config_packs", {
   label: text("label").notNull(),
   description: text("description"),
   categories: text("categories").array().notNull().default([]),
+  status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

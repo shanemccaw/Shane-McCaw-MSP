@@ -12,6 +12,7 @@ import FulfillmentQueuePage from "@/pages/FulfillmentQueue";
 import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 import MonitorChecksPage from "@/pages/MonitorChecks";
 import MonitoringPackagesPage from "@/pages/MonitoringPackages";
+import BaselineTemplatesPage from "@/pages/BaselineTemplates";
 
 const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "security", "drift", "forecasting", "crm", "msp", "sla", "monitoring", "sales_offer", "scope_creep"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
@@ -129,6 +130,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Baseline Templates",
+    path: "/delivery/baseline-templates",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
   ...ENGINE_NAV_KEYS.map((key): WorkspaceNavItem => ({
     label: ENGINE_LABELS[key],
     path: `/delivery/engines/${key}`,
@@ -156,6 +166,7 @@ function getContent(section: string): ReactNode {
     case "fulfillment-types":    return <FulfillmentTypesPage />;
     case "monitor-checks":       return <MonitorChecksPage />;
     case "monitoring-packages":  return <MonitoringPackagesPage />;
+    case "baseline-templates":   return <BaselineTemplatesPage />;
     default:                     return <ProjectsPage />;
   }
 }

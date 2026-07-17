@@ -1380,6 +1380,13 @@
       "when": 1784163644556,
       "tag": "0193_add_break_glass_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1784163644557,
+      "tag": "0194_add_baseline_templates_config_packs",
+      "breakpoints": true
     }
   ]
 }

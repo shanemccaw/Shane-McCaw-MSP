@@ -374,6 +374,92 @@ function interpOrNull(template: string | undefined, payload: Record<string, unkn
   return result?.trim() ? result : null;
 }
 
+export interface BaselineTemplateExecutionResult {
+  success: boolean;
+  status: number;
+  data: unknown;
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  endpoint: string;
+  method: string;
+  label: string;
+  /** Present (and success=false) when requiredVariables didn't resolve — no Graph call was made. */
+  missingVariables?: string[];
+}
+
+/**
+ * Resolve a baseline action template's endpoint/body against `payload` and
+ * execute it via graphWriteForTenant, recording the attempt in
+ * baseline_action_template_audit_log. Shared by the execute_baseline_template
+ * node handler and the admin "Testing" endpoint (routes/admin-baseline-templates.ts)
+ * so there is exactly one implementation of "run this template for real."
+ */
+export async function runBaselineTemplateAgainstTenant(
+  templateId: string,
+  tenantId: string,
+  customerId: number,
+  payload: Record<string, unknown>,
+): Promise<BaselineTemplateExecutionResult> {
+  const [template] = await db
+    .select()
+    .from(baselineActionTemplatesTable)
+    .where(eq(baselineActionTemplatesTable.templateId, templateId))
+    .limit(1);
+
+  if (!template) {
+    throw new Error(`Template '${templateId}' not found`);
+  }
+
+  // Resolve {{variable}} placeholders in bodyTemplate using interp(). We do this
+  // by JSON-serializing the template, running interp on the string, then parsing
+  // it back — the same approach as any structured JSON template.
+  const bodyTemplateStr = JSON.stringify(template.bodyTemplate ?? {});
+  const bodyResolved = interp(bodyTemplateStr, payload) ?? "{}";
+  const body = JSON.parse(bodyResolved) as Record<string, unknown>;
+
+  // Validate all requiredVariables are present and non-empty after resolution
+  const requiredVars = template.requiredVariables ?? [];
+  const missingVariables = requiredVars.filter(varName => {
+    const resolved = interp(`{{${varName}}}`, payload);
+    return !resolved || resolved.trim() === "";
+  });
+  if (missingVariables.length > 0) {
+    return {
+      success: false, status: 400, errorType: "bad_request", data: null,
+      endpoint: template.endpoint, method: template.method, label: template.label,
+      missingVariables,
+    };
+  }
+
+  // Resolve the endpoint (may also contain {{variable}} placeholders)
+  const endpoint = interp(template.endpoint, payload) ?? template.endpoint;
+  const method = template.method as "POST" | "PATCH" | "PUT";
+
+  const { graphWriteForTenant } = await import("./graph");
+  const result = await graphWriteForTenant(tenantId, endpoint, method, body, [200, 201, 204]);
+
+  await db.insert(baselineActionTemplateAuditLogTable).values({
+    action: result.success ? "executed" : "failed",
+    templateId,
+    afterSnapshot: {
+      success: result.success,
+      status: result.status,
+      errorType: result.errorType ?? null,
+      endpoint,
+      method,
+      customerId,
+      tenantId,
+      executedAt: new Date().toISOString(),
+    },
+  }).catch((auditErr: unknown) => {
+    logger.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
+  });
+
+  return {
+    success: result.success, status: result.status, data: result.data, errorType: result.errorType,
+    endpoint, method, label: template.label,
+  };
+}
+
 /**
  * Resolve a template expression to its NATIVE value instead of a string.
  *
@@ -7918,83 +8004,17 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        // Look up the template
-        const [ebtTemplate] = await db
-          .select()
-          .from(baselineActionTemplatesTable)
-          .where(eq(baselineActionTemplatesTable.templateId, ebtTemplateId))
-          .limit(1);
-
-        if (!ebtTemplate) {
-          nodeError = true;
-          output = { error: `execute_baseline_template: template '${ebtTemplateId}' not found` };
-          break;
-        }
-
-        // Resolve {{variable}} placeholders in bodyTemplate using interp()
-        // We do this by JSON-serializing the template, running interp on the string,
-        // then parsing it back — the same approach as any structured JSON template.
-        let ebtBody: Record<string, unknown>;
         try {
-          const ebtBodyTemplateStr = JSON.stringify(ebtTemplate.bodyTemplate ?? {});
-          const ebtBodyResolved = interp(ebtBodyTemplateStr, payload) ?? "{}";
-          ebtBody = JSON.parse(ebtBodyResolved) as Record<string, unknown>;
-        } catch (parseErr) {
-          nodeError = true;
-          output = { error: `execute_baseline_template: failed to resolve bodyTemplate — ${parseErr instanceof Error ? parseErr.message : String(parseErr)}` };
-          break;
-        }
+          const ebtResult = await runBaselineTemplateAgainstTenant(ebtTemplateId, ebtCustomerRow.tenantId, ebtCustomerId, payload);
 
-        // Validate all requiredVariables are present and non-empty after resolution
-        const ebtRequiredVars = ebtTemplate.requiredVariables ?? [];
-        const ebtMissingVars: string[] = [];
-        for (const varName of ebtRequiredVars) {
-          const resolved = interp(`{{${varName}}}`, payload);
-          if (!resolved || resolved.trim() === "") {
-            ebtMissingVars.push(varName);
+          if (ebtResult.missingVariables) {
+            nodeError = true;
+            output = {
+              error: `execute_baseline_template: missing required variables: ${ebtResult.missingVariables.join(", ")}`,
+              missingVariables: ebtResult.missingVariables,
+            };
+            break;
           }
-        }
-        if (ebtMissingVars.length > 0) {
-          nodeError = true;
-          output = {
-            error: `execute_baseline_template: missing required variables: ${ebtMissingVars.join(", ")}`,
-            missingVariables: ebtMissingVars,
-          };
-          break;
-        }
-
-        // Resolve the endpoint (may also contain {{variable}} placeholders)
-        const ebtEndpoint = interp(ebtTemplate.endpoint, payload) ?? ebtTemplate.endpoint;
-        const ebtMethod = ebtTemplate.method as "POST" | "PATCH" | "PUT";
-
-        // Delegate execution to graphWriteForTenant (same function as graph_write_operation)
-        try {
-          const { graphWriteForTenant: ebtGraphWrite, ConsentRevokedError: EbtConsentRevokedError } = await import("./graph");
-          const ebtResult = await ebtGraphWrite(
-            ebtCustomerRow.tenantId,
-            ebtEndpoint,
-            ebtMethod,
-            ebtBody,
-            [200, 201, 204],
-          );
-
-          // Record the result in the baseline action template audit log
-          await db.insert(baselineActionTemplateAuditLogTable).values({
-            action: ebtResult.success ? "executed" : "failed",
-            templateId: ebtTemplateId,
-            afterSnapshot: {
-              success: ebtResult.success,
-              status: ebtResult.status,
-              errorType: ebtResult.errorType ?? null,
-              endpoint: ebtEndpoint,
-              method: ebtMethod,
-              customerId: ebtCustomerId,
-              tenantId: ebtCustomerRow.tenantId,
-              executedAt: new Date().toISOString(),
-            },
-          }).catch((auditErr) => {
-            logger.warn({ auditErr, ebtTemplateId, runId }, "execute_baseline_template: audit log insert failed (non-fatal)");
-          });
 
           if (ebtResult.success) {
             switchChosenHandle = "success";
@@ -8003,7 +8023,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               status: ebtResult.status,
               data: ebtResult.data,
               templateId: ebtTemplateId,
-              label: ebtTemplate.label,
+              label: ebtResult.label,
             };
           } else {
             switchChosenHandle = ebtResult.errorType ?? "unexpected";
@@ -8013,7 +8033,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               errorType: ebtResult.errorType,
               data: ebtResult.data,
               templateId: ebtTemplateId,
-              label: ebtTemplate.label,
+              label: ebtResult.label,
             };
             nodeError = true;
           }
