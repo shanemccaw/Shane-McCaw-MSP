@@ -315,3 +315,69 @@ describe("POST /api/admin/observability/alert-rules/:id/test", () => {
     expect(typeof body.pushOk).toBe("boolean");
   });
 });
+
+describe("GET /api/admin/observability", () => {
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = buildApp();
+  });
+
+  it("returns system telemetry successfully with empty stats", async () => {
+    stubMany(
+      // 1. DB Size
+      [{ size: "500 MB", bytes: "524288000" }],
+      // 2. DB Connections
+      [{ saturation: 0.12, active: "12", max: "100" }],
+      // 3. Today's AI tokens
+      [{ total_tokens: "1000" }],
+      // 4. Monthly AI cost cents
+      [{ cost_cents: "2543" }],
+      // 5. Top consuming tenants breakdown
+      [
+        { msp_id: 1, msp_name: "Test MSP", total_tokens: "1000", cost_cents: "2543" }
+      ],
+      // 6. Max delay seconds
+      [{ max_delay_seconds: 150 }],
+    );
+
+    const res = await request(app).get("/admin/observability");
+    expect(res.status).toBe(200);
+
+    const body = res.body as {
+      ai: {
+        todayTokens: number;
+        monthlyCostUsd: string;
+        topTenants: Array<{ mspId: number; mspName: string; totalTokens: number; costUsd: string }>;
+      };
+      system: {
+        database: {
+          sizePretty: string;
+          connections: { active: number; max: number; saturation: number };
+        };
+        process: {
+          heapUsed: number;
+          heapTotal: number;
+        };
+      };
+      heartbeats: {
+        apiEngine: string;
+        cronLoops: string;
+      };
+    };
+
+    expect(body.ai.todayTokens).toBe(1000);
+    expect(body.ai.monthlyCostUsd).toBe("25.43");
+    expect(body.ai.topTenants).toHaveLength(1);
+    expect(body.ai.topTenants[0].mspName).toBe("Test MSP");
+    expect(body.ai.topTenants[0].costUsd).toBe("25.43");
+    
+    expect(body.system.database.sizePretty).toBe("500 MB");
+    expect(body.system.database.connections.active).toBe(12);
+    expect(body.system.database.connections.max).toBe(100);
+    
+    expect(body.heartbeats.apiEngine).toBe("healthy");
+    expect(body.heartbeats.cronLoops).toBe("healthy");
+  });
+});

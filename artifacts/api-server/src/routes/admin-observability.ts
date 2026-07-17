@@ -591,6 +591,127 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
   }
 });
 
+// ── GET /api/admin/observability ─────────────────────────────────────────────
+
+router.get("/admin/observability", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const [dbSizeStats, dbConnStats, todayTokensStats, monthlyCostStats, topTenantsStats, cronHealthStats] = await Promise.all([
+      // 1. DB Size
+      pool.query<{ size: string; bytes: string }>(`
+        SELECT pg_size_pretty(pg_database_size(current_database())) as size,
+               pg_database_size(current_database())::text as bytes
+      `).catch(() => ({ rows: [] })),
+
+      // 2. DB Connections
+      pool.query<{ saturation: number; active: string; max: string }>(`
+        SELECT 
+          (count(*)::float / NULLIF((SELECT setting::int FROM pg_settings WHERE name = 'max_connections'), 0)) as saturation,
+          count(*)::text as active,
+          (SELECT setting FROM pg_settings WHERE name = 'max_connections')::text as max
+        FROM pg_stat_activity
+      `).catch(() => ({ rows: [] })),
+
+      // 3. Today's AI Token usage (since midnight UTC)
+      pool.query<{ total_tokens: string }>(`
+        SELECT COALESCE(SUM(total_tokens), 0)::text as total_tokens
+        FROM ai_usage_events
+        WHERE occurred_at >= DATE_TRUNC('day', NOW())
+      `).catch(() => ({ rows: [] })),
+
+      // 4. Monthly AI Cost in cents (current calendar month)
+      pool.query<{ cost_cents: string }>(`
+        SELECT COALESCE(SUM(cost_cents), 0)::text as cost_cents
+        FROM ai_usage_events
+        WHERE occurred_at >= DATE_TRUNC('month', NOW())
+      `).catch(() => ({ rows: [] })),
+
+      // 5. Top consuming tenants breakdown
+      pool.query<{ msp_id: number | null; msp_name: string | null; total_tokens: string; cost_cents: string }>(`
+        SELECT 
+          ae.msp_id,
+          m.name as msp_name,
+          COALESCE(SUM(ae.total_tokens), 0)::text as total_tokens,
+          COALESCE(SUM(ae.cost_cents), 0)::text as cost_cents
+        FROM ai_usage_events ae
+        LEFT JOIN msps m ON m.id = ae.msp_id
+        WHERE ae.occurred_at >= DATE_TRUNC('month', NOW())
+        GROUP BY ae.msp_id, m.name
+        ORDER BY SUM(ae.cost_cents) DESC
+        LIMIT 10
+      `).catch(() => ({ rows: [] })),
+
+      // 6. Background Queue CRON loops health check (max delay in pending jobs)
+      pool.query<{ max_delay_seconds: number }>(`
+        SELECT EXTRACT(EPOCH FROM (NOW() - created_at)) as max_delay_seconds
+        FROM msp_job_queue
+        WHERE status = 'pending'
+        ORDER BY created_at ASC
+        LIMIT 1
+      `).catch(() => ({ rows: [] })),
+    ]);
+
+    // AI calculations
+    const todayTokens = parseInt(todayTokensStats.rows[0]?.total_tokens ?? "0", 10);
+    const monthlyCostCents = parseInt(monthlyCostStats.rows[0]?.cost_cents ?? "0", 10);
+    const monthlyCostUsd = (monthlyCostCents / 100).toFixed(2);
+
+    const topTenants = topTenantsStats.rows.map(row => ({
+      mspId: row.msp_id,
+      mspName: row.msp_name ?? "Platform / Internal",
+      totalTokens: parseInt(row.total_tokens ?? "0", 10),
+      costUsd: (parseInt(row.cost_cents ?? "0", 10) / 100).toFixed(2),
+    }));
+
+    // System usage calculation
+    const dbSizePretty = dbSizeStats.rows[0]?.size ?? "0 B";
+    const dbSizeBytes = parseInt(dbSizeStats.rows[0]?.bytes ?? "0", 10);
+
+    const dbActiveConnections = parseInt(dbConnStats.rows[0]?.active ?? "0", 10);
+    const dbMaxConnections = parseInt(dbConnStats.rows[0]?.max ?? "100", 10);
+    const dbSaturation = dbConnStats.rows[0]?.saturation ?? 0;
+
+    // Node.js process heap memory
+    const memory = process.memoryUsage();
+
+    // Heartbeats calculations
+    // API Engine Heartbeat is healthy because we successfully process this request
+    const apiEngineHeartbeat = "healthy";
+
+    const maxQueueDelay = cronHealthStats.rows[0]?.max_delay_seconds ?? 0;
+    const cronLoopsHeartbeat = (maxQueueDelay > 300) ? "unhealthy" : "healthy";
+
+    res.json({
+      ai: {
+        todayTokens,
+        monthlyCostUsd,
+        topTenants,
+      },
+      system: {
+        database: {
+          sizePretty: dbSizePretty,
+          sizeBytes: dbSizeBytes,
+          connections: {
+            active: dbActiveConnections,
+            max: dbMaxConnections,
+            saturation: dbSaturation,
+          },
+        },
+        process: {
+          heapUsed: memory.heapUsed,
+          heapTotal: memory.heapTotal,
+        },
+      },
+      heartbeats: {
+        apiEngine: apiEngineHeartbeat,
+        cronLoops: cronLoopsHeartbeat,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /admin/observability failed");
+    res.status(500).json({ error: "Failed to fetch observability telemetry" });
+  }
+});
+
 // ── Internal Synthetic Heartbeats & Alert Routing ──────────────────────────────
 
 let heartbeatInterval: NodeJS.Timeout | null = null;

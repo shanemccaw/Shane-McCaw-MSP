@@ -34,6 +34,38 @@ interface AlertEvent {
   firedAt: string;
 }
 
+interface TelemetryData {
+  ai: {
+    todayTokens: number;
+    monthlyCostUsd: string;
+    topTenants: Array<{
+      mspId: number | null;
+      mspName: string;
+      totalTokens: number;
+      costUsd: string;
+    }>;
+  };
+  system: {
+    database: {
+      sizePretty: string;
+      sizeBytes: number;
+      connections: {
+        active: number;
+        max: number;
+        saturation: number;
+      };
+    };
+    process: {
+      heapUsed: number;
+      heapTotal: number;
+    };
+  };
+  heartbeats: {
+    apiEngine: string;
+    cronLoops: string;
+  };
+}
+
 function StatCard({ label, value, sub, accent }: { label: string; value: number | string; sub?: string; accent?: string }) {
   return (
     <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4">
@@ -60,6 +92,7 @@ export default function ObservabilityDashboard() {
   const [health, setHealth] = useState<ServiceHealth | null>(null);
   const [eventBus, setEventBus] = useState<EventBusStats | null>(null);
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([]);
+  const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState<number | null>(null);
 
@@ -69,14 +102,18 @@ export default function ObservabilityDashboard() {
 
   const load = useCallback(async () => {
     try {
-      const [h, e, a] = await Promise.all([
+      const [h, e, a, t] = await Promise.all([
         fetchWithAuth("/api/admin/observability/service-health").then((r: Response) => r.json() as Promise<ServiceHealth>),
         fetchWithAuth("/api/admin/observability/event-bus?hours=24").then((r: Response) => r.json() as Promise<EventBusStats>),
         fetchWithAuth("/api/admin/observability/alert-events?limit=20").then((r: Response) => r.json() as Promise<{ events: AlertEvent[] }>),
+        fetchWithAuth("/api/admin/observability")
+          .then((r: Response) => r.json() as Promise<TelemetryData>)
+          .catch(() => null),
       ]);
       setHealth(h);
       setEventBus(e);
       setAlertEvents(a.events ?? []);
+      setTelemetry(t);
     } catch {
       /* non-fatal */
     } finally {
@@ -131,6 +168,32 @@ export default function ObservabilityDashboard() {
         <div>
           <h1 className="text-[#E6EDF3] text-xl font-semibold">Service Health</h1>
           <p className="text-[#7D8590] text-sm mt-1">Live platform health across jobs, DLQ, webhooks, and portal workflows.</p>
+          <div className="flex items-center gap-4 mt-3 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-[#7D8590]">
+              <span>API Engine:</span>
+              <span className={`px-2 py-0.5 rounded font-medium border text-[10px] uppercase tracking-wider ${
+                telemetry?.heartbeats.apiEngine === 'healthy' 
+                  ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' 
+                  : telemetry?.heartbeats.apiEngine === 'unhealthy' 
+                  ? 'bg-red-900/30 text-red-400 border-red-800/50' 
+                  : 'bg-[#21262D] text-[#7D8590] border-[#30363D]'
+              }`}>
+                {telemetry?.heartbeats.apiEngine || 'loading...'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-[#7D8590]">
+              <span>Background Queue CRON:</span>
+              <span className={`px-2 py-0.5 rounded font-medium border text-[10px] uppercase tracking-wider ${
+                telemetry?.heartbeats.cronLoops === 'healthy' 
+                  ? 'bg-emerald-900/30 text-emerald-400 border-emerald-800/50' 
+                  : telemetry?.heartbeats.cronLoops === 'unhealthy' 
+                  ? 'bg-red-900/30 text-red-400 border-red-800/50' 
+                  : 'bg-[#21262D] text-[#7D8590] border-[#30363D]'
+              }`}>
+                {telemetry?.heartbeats.cronLoops || 'loading...'}
+              </span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -195,6 +258,99 @@ export default function ObservabilityDashboard() {
               <p className="text-[#7D8590] text-xs mt-0.5">{s.label}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* AI Telemetry and System Utilization Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Claude AI Token Burn & Cost */}
+        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-5">
+          <h2 className="text-[#E6EDF3] text-sm font-semibold mb-3">Claude AI Token Burn & Cost</h2>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-[#0D1117] border border-[#21262D] p-3 rounded">
+              <p className="text-[#7D8590] text-xs">Today's Token Usage</p>
+              <p className="text-xl font-bold text-blue-400 mt-1">
+                {telemetry ? telemetry.ai.todayTokens.toLocaleString() : "—"}
+              </p>
+            </div>
+            <div className="bg-[#0D1117] border border-[#21262D] p-3 rounded">
+              <p className="text-[#7D8590] text-xs">Monthly Estimated Cost</p>
+              <p className="text-xl font-bold text-emerald-400 mt-1">
+                {telemetry ? `$${telemetry.ai.monthlyCostUsd} USD` : "—"}
+              </p>
+            </div>
+          </div>
+          <div>
+            <p className="text-[#E6EDF3] text-xs font-semibold mb-2">Top Consuming Tenants (This Month)</p>
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+              {telemetry?.ai.topTenants.map((t, idx) => (
+                <div key={t.mspId || idx} className="flex justify-between items-center text-xs py-1 border-b border-[#21262D] last:border-0">
+                  <span className="text-[#7D8590] truncate max-w-[180px]">{t.mspName}</span>
+                  <span className="text-[#E6EDF3] font-mono shrink-0">
+                    {t.totalTokens.toLocaleString()} tokens (${t.costUsd})
+                  </span>
+                </div>
+              ))}
+              {telemetry && telemetry.ai.topTenants.length === 0 && (
+                <p className="text-[#7D8590] text-xs italic">No AI usage recorded this month.</p>
+              )}
+              {!telemetry && (
+                <p className="text-[#7D8590] text-xs italic">Loading tenant breakdown...</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Database & Process Utilization */}
+        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-5">
+          <h2 className="text-[#E6EDF3] text-sm font-semibold mb-3">Database & Process Utilization</h2>
+          <div className="space-y-4">
+            {/* DB Size */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-[#7D8590]">PostgreSQL Database Size</span>
+                <span className="text-[#E6EDF3] font-mono font-semibold">
+                  {telemetry?.system.database.sizePretty || "—"}
+                </span>
+              </div>
+            </div>
+
+            {/* Active DB Connections */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-[#7D8590]">Active DB Connections</span>
+                <span className="text-[#E6EDF3] font-mono">
+                  {telemetry ? `${telemetry.system.database.connections.active} / ${telemetry.system.database.connections.max} active` : "—"}
+                </span>
+              </div>
+              <div className="w-full bg-[#21262D] rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className={`h-1.5 rounded-full ${
+                    telemetry && telemetry.system.database.connections.saturation > 0.8 ? 'bg-red-500' : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${telemetry ? Math.min(telemetry.system.database.connections.saturation * 100, 100) : 0}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Node.js Process Heap Memory */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-[#7D8590]">Node.js Heap Memory</span>
+                <span className="text-[#E6EDF3] font-mono font-semibold">
+                  {telemetry ? `${(telemetry.system.process.heapUsed / 1024 / 1024).toFixed(1)} MB / ${(telemetry.system.process.heapTotal / 1024 / 1024).toFixed(1)} MB` : "—"}
+                </span>
+              </div>
+              <div className="w-full bg-[#21262D] rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className={`h-1.5 rounded-full ${
+                    telemetry && (telemetry.system.process.heapUsed / telemetry.system.process.heapTotal) > 0.8 ? 'bg-amber-500' : 'bg-purple-500'
+                  }`}
+                  style={{ width: `${telemetry ? Math.min((telemetry.system.process.heapUsed / telemetry.system.process.heapTotal) * 100, 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
