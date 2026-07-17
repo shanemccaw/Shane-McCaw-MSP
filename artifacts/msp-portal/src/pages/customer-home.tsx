@@ -130,6 +130,90 @@ export default function CustomerHomePage() {
   return (
     <AppShell title="My Portal">
       <div className="p-6 space-y-6 max-w-5xl mx-auto">
+        {/* DEV ONLY: Dashboard Type Switcher. REMOVE BEFORE PRODUCTION */}
+        <div className="p-4 bg-slate-900 border border-slate-800 rounded-lg space-y-2">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            [DEV ONLY] Switch Dashboard View / State:
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900"
+              onClick={() => {
+                setData(prev => prev ? {
+                  ...prev,
+                  customerStatus: "active",
+                  telemetryStatus: undefined,
+                  type_attributes: [],
+                } : null);
+              }}
+            >
+              Active Customer (Clean)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900"
+              onClick={() => {
+                setData(prev => prev ? {
+                  ...prev,
+                  customerStatus: "inactive",
+                  mspId: 1,
+                } : null);
+              }}
+            >
+              Inactive Customer (Promo Banner)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900"
+              onClick={() => {
+                setData(prev => prev ? {
+                  ...prev,
+                  telemetryStatus: "in_progress",
+                } : null);
+              }}
+            >
+              Telemetry: In Progress
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900"
+              onClick={() => {
+                setData(prev => prev ? {
+                  ...prev,
+                  telemetryStatus: "completed",
+                  type_attributes: ["priority-health", "findings", "governance"],
+                  results: {
+                    status: "complete",
+                    runId: "run-dev-123",
+                    generatedAt: new Date().toISOString(),
+                    summary: {
+                      compositeScore: 78,
+                      priorityItems: ["MFA disabled for 3 admin accounts", "Legacy auth protocols enabled"],
+                    },
+                    pillars: {
+                      governance: {
+                        score: 82,
+                        status: "complete",
+                        findings: ["Public guest access enabled on SharePoint root site"],
+                        recommendations: ["Restrict anonymous links to specific verified users"],
+                      },
+                    },
+                    document: null,
+                  },
+                } : null);
+              }}
+            >
+              Telemetry: Completed (Show Modules)
+            </Button>
+          </div>
+        </div>
+        {/* END DEV ONLY */}
+
         {/* Welcome header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
