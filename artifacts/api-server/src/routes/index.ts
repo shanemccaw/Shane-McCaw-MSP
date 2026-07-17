@@ -103,6 +103,8 @@ import mspSowRouter from "./msp-sow";
 import adminObservabilityRouter from "./admin-observability";
 import portalCheckoutRouter from "./portal-checkout";
 
+import pccRouter from "./pcc.js";
+
 const router: IRouter = Router();
 
 // Dev-only seed endpoint — registered at runtime, not imported at module level,
@@ -219,5 +221,8 @@ router.use(portalCheckoutRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
+
+// Platform Command Center (PCC) API Router
+router.use("/pcc", pccRouter);
 
 export default router;
