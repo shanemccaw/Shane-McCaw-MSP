@@ -242,19 +242,19 @@ ON CONFLICT ("pack_key") DO NOTHING;
 -- ────────────────────────────────────────────────────────────────────────────────
 
 INSERT INTO "config_pack_templates" ("pack_id", "template_id", "sort_order", "depends_on_override")
-SELECT p.id, t.template_id, o.sort_order, o.depends_on_override
+SELECT p.id, o.template_id, o.sort_order, o.depends_on_override
 FROM (VALUES
-  ('entra-security-defaults-enable', 1, NULL),
-  ('tenant-branding-configure', 2, NULL),
-  ('breakglass-user-create', 3, NULL),
+  ('entra-security-defaults-enable', 1, NULL::jsonb),
+  ('tenant-branding-configure', 2, NULL::jsonb),
+  ('breakglass-user-create', 3, NULL::jsonb),
   ('breakglass-assign-global-admin', 4, '["breakglass-user-create"]'::jsonb),
   ('pim-role-assignment-rules', 5, '["breakglass-assign-global-admin"]'::jsonb),
-  ('guest-access-restrict', 6, NULL),
+  ('guest-access-restrict', 6, NULL::jsonb),
   ('conditional-access-baseline', 7, '["breakglass-assign-global-admin"]'::jsonb),
-  ('group-naming-policy', 8, NULL)
+  ('group-naming-policy', 8, NULL::jsonb)
 ) AS o(template_id, sort_order, depends_on_override)
 CROSS JOIN (SELECT id FROM "config_packs" WHERE pack_key = 'quickstart-v1' LIMIT 1) p
-CROSS JOIN (SELECT template_id FROM "baseline_action_templates" WHERE template_id = o.template_id LIMIT 1) t
+WHERE EXISTS (SELECT 1 FROM "baseline_action_templates" bat WHERE bat.template_id = o.template_id)
 ON CONFLICT DO NOTHING;
 
 -- ────────────────────────────────────────────────────────────────────────────────
