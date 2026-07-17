@@ -69,13 +69,13 @@ router.get(
 
     try {
       const state = req.query["state"] as SalesOfferState | undefined;
-      const tenantId = req.query["tenantId"] ? parseInt(String(req.query["tenantId"]), 10) : undefined;
+      const customerId = req.query["customerId"] ? parseInt(String(req.query["customerId"]), 10) : undefined;
       const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10) || 200, 500);
       const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
 
       const conditions = [eq(salesOffersTable.mspId, mspId)];
       if (state && SALES_OFFER_STATES.includes(state)) conditions.push(eq(salesOffersTable.state, state));
-      if (tenantId != null && !isNaN(tenantId)) conditions.push(eq(salesOffersTable.tenantId, tenantId));
+      if (customerId != null && !isNaN(customerId)) conditions.push(eq(salesOffersTable.customerId, customerId));
 
       const offers = await db
         .select()
@@ -158,25 +158,25 @@ router.post(
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
-      const { tenantId } = req.body as { tenantId?: number };
-      if (!tenantId || isNaN(Number(tenantId))) {
-        apiErr(res, 400, "tenantId is required");
+      const { customerId } = req.body as { customerId?: number };
+      if (!customerId || isNaN(Number(customerId))) {
+        apiErr(res, 400, "customerId is required");
         return;
       }
 
-      const engineOutput = await runSalesOfferEngineForTenant(Number(tenantId), mspId);
+      const engineOutput = await runSalesOfferEngineForTenant(Number(customerId), mspId);
       const insertedIds = await persistSalesOfferCandidates(
         engineOutput.candidates,
-        Number(tenantId),
+        Number(customerId),
         mspId,
         engineOutput as unknown as Record<string, unknown>,
       );
 
       if (insertedIds.length > 0) {
-        broadcastMspOfferChange(mspId, { offersGenerated: insertedIds.length, tenantId: Number(tenantId) });
+        broadcastMspOfferChange(mspId, { offersGenerated: insertedIds.length, tenantId: Number(customerId) });
       }
 
-      logger.info({ mspId, tenantId, insertedCount: insertedIds.length }, "POST /api/msp/sales-offers/generate completed");
+      logger.info({ mspId, customerId, insertedCount: insertedIds.length }, "POST /api/msp/sales-offers/generate completed");
       res.status(201).json({
         insertedOfferIds: insertedIds,
         candidateCount: engineOutput.candidates.length,
@@ -342,7 +342,7 @@ router.patch(
       }
 
       const [existing] = await db
-        .select({ id: salesOffersTable.id, tenantId: salesOffersTable.tenantId, mspId: salesOffersTable.mspId })
+        .select({ id: salesOffersTable.id, customerId: salesOffersTable.customerId, mspId: salesOffersTable.mspId })
         .from(salesOffersTable)
         .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
         .limit(1);

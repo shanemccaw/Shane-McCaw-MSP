@@ -212,7 +212,7 @@ router.post(
         state: salesOffersTable.state,
         mspId: salesOffersTable.mspId,
         serviceId: salesOffersTable.serviceId,
-        tenantId: salesOffersTable.tenantId,
+        customerId: salesOffersTable.customerId,
         title: salesOffersTable.title,
         adjustedPriceCents: salesOffersTable.adjustedPriceCents,
         trialPeriodDays: salesOffersTable.trialPeriodDays,
@@ -220,7 +220,7 @@ router.post(
         priceCents: salesOffersTable.priceCents,
       })
       .from(salesOffersTable)
-      .where(and(eq(salesOffersTable.id, offerId), eq(salesOffersTable.tenantId, customerId)))
+      .where(and(eq(salesOffersTable.id, offerId), eq(salesOffersTable.customerId, customerId)))
       .limit(1);
 
     if (!offerRow) {

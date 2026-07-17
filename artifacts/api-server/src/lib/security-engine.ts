@@ -57,15 +57,15 @@ export function computeSecurityEngine(
   };
 }
 
-export async function runSecurityEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SecurityEngineOutput> {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+export async function runSecurityEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SecurityEngineOutput> {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
 
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
 
   return computeSecurityEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);

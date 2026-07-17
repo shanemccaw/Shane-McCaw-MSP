@@ -153,7 +153,7 @@ router.post(
         state: salesOffersTable.state,
         mspId: salesOffersTable.mspId,
         serviceId: salesOffersTable.serviceId,
-        tenantId: salesOffersTable.tenantId,
+        customerId: salesOffersTable.customerId,
         title: salesOffersTable.title,
         adjustedPriceCents: salesOffersTable.adjustedPriceCents,
       })
@@ -224,15 +224,15 @@ router.post(
     if (serviceClass === "project") {
       // Resolve customer context
       let customerId: number | null = null;
-      if (offer.tenantId) {
+      if (offer.customerId) {
         const [customer] = await db
           .select({ id: mspCustomersTable.id })
           .from(mspCustomersTable)
           .where(and(
             eq(mspCustomersTable.mspId, mspId),
             or(
-              eq(mspCustomersTable.tenantId, offer.tenantId.toString()),
-              eq(mspCustomersTable.id, offer.tenantId),
+              eq(mspCustomersTable.tenantId, offer.customerId.toString()),
+              eq(mspCustomersTable.id, offer.customerId),
             ),
           ))
           .limit(1);

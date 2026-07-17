@@ -209,11 +209,11 @@ export async function buildTenantProfileAndFindings(
  * evaluator every other call site uses (`computeTenantSignals`), so this
  * engine can never drift from what the SOW/CRM/workflow paths consider fired.
  */
-export async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
+export async function getFiredSignalKeysForTenant(customerId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
-  const { mergedProfile, findings, customerId, mspId } = await buildTenantProfileAndFindings(tenantId);
+  const { mergedProfile, findings, customerId: resolvedCustomerId, mspId } = await buildTenantProfileAndFindings(customerId);
   const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
@@ -225,7 +225,7 @@ export async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
     rules,
     groups,
     disabledSignalKeys,
-    customerId != null && mspId != null ? { customerId, mspId } : undefined,
+    resolvedCustomerId != null && mspId != null ? { customerId: resolvedCustomerId, mspId } : undefined,
   );
 
   return { firedSignalKeys: [...firedSignals], rules };
@@ -308,9 +308,9 @@ export function sumPriorityScore(rankedSignals: RankedSignal[]): { score: number
  * `priorityScoreContribution`. Thin DB-fetching wrapper around the pure
  * `rankFiredSignals`.
  */
-export async function getRankedSignals(tenantId: number): Promise<RankedSignal[]> {
+export async function getRankedSignals(customerId: number): Promise<RankedSignal[]> {
   const [{ firedSignalKeys }, weights] = await Promise.all([
-    getFiredSignalKeysForTenant(tenantId),
+    getFiredSignalKeysForTenant(customerId),
     getSignalWeights(),
   ]);
 
@@ -323,8 +323,8 @@ export async function getRankedSignals(tenantId: number): Promise<RankedSignal[]
  * Nothing else is added, multiplied, or conditionally applied — this is a
  * pure sum over the tenant's ranked signals (see `sumPriorityScore`).
  */
-export async function calculatePriorityScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<EngineOutput> {
-  const { firedSignalKeys, rules } = await getFiredSignalKeysForTenant(tenantId);
+export async function calculatePriorityScore(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<EngineOutput> {
+  const { firedSignalKeys, rules } = await getFiredSignalKeysForTenant(customerId);
   const weights = await getSignalWeights();
   const rankedSignals = rankFiredSignals(firedSignalKeys, weights);
   const { score, breakdown } = sumPriorityScore(rankedSignals);

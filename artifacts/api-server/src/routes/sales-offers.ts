@@ -39,7 +39,7 @@ const router = Router();
 
 /**
  * GET /api/sales-offers
- * Query params: tenantId?, state?, mspId?, limit?, offset?
+ * Query params: customerId?, state?, mspId?, limit?, offset?
  */
 router.get(
   "/api/sales-offers",
@@ -47,14 +47,14 @@ router.get(
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const tenantId = req.query["tenantId"] ? parseInt(req.query["tenantId"] as string, 10) : undefined;
+      const customerId = req.query["customerId"] ? parseInt(req.query["customerId"] as string, 10) : undefined;
       const state = req.query["state"] as SalesOfferState | undefined;
       const mspId = req.query["mspId"] ? parseInt(req.query["mspId"] as string, 10) : undefined;
       const limit = Math.min(parseInt((req.query["limit"] as string) ?? "50", 10) || 50, 200);
       const offset = parseInt((req.query["offset"] as string) ?? "0", 10) || 0;
 
       const conditions = [];
-      if (tenantId != null && !isNaN(tenantId)) conditions.push(eq(salesOffersTable.tenantId, tenantId));
+      if (customerId != null && !isNaN(customerId)) conditions.push(eq(salesOffersTable.customerId, customerId));
       if (state && SALES_OFFER_STATES.includes(state)) conditions.push(eq(salesOffersTable.state, state));
       if (mspId != null && !isNaN(mspId)) conditions.push(eq(salesOffersTable.mspId, mspId));
 
@@ -115,7 +115,7 @@ router.get(
 
 /**
  * POST /api/sales-offers/generate
- * Body: { tenantId: number, mspId?: number }
+ * Body: { customerId: number, mspId?: number }
  *
  * Runs the full Sales Offer Engine for a tenant and persists draft offers.
  * Idempotent — duplicate signal sets skip insert (ON CONFLICT DO NOTHING).
@@ -126,21 +126,21 @@ router.post(
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { tenantId, mspId = null } = req.body as { tenantId?: number; mspId?: number | null };
-      if (!tenantId || isNaN(Number(tenantId))) {
-        res.status(400).json({ error: "tenantId is required" });
+      const { customerId, mspId = null } = req.body as { customerId?: number; mspId?: number | null };
+      if (!customerId || isNaN(Number(customerId))) {
+        res.status(400).json({ error: "customerId is required" });
         return;
       }
 
-      const engineOutput = await runSalesOfferEngineForTenant(Number(tenantId), mspId ? Number(mspId) : null);
+      const engineOutput = await runSalesOfferEngineForTenant(Number(customerId), mspId ? Number(mspId) : null);
       const insertedIds = await persistSalesOfferCandidates(
         engineOutput.candidates,
-        Number(tenantId),
+        Number(customerId),
         mspId ? Number(mspId) : null,
         engineOutput as unknown as Record<string, unknown>,
       );
 
-      logger.info({ tenantId, insertedCount: insertedIds.length }, "POST /api/sales-offers/generate completed");
+      logger.info({ customerId, insertedCount: insertedIds.length }, "POST /api/sales-offers/generate completed");
       res.status(201).json({
         insertedOfferIds: insertedIds,
         candidateCount: engineOutput.candidates.length,

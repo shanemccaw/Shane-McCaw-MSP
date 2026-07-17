@@ -48,7 +48,7 @@ export interface SalesOfferCandidate {
 
 export interface SalesOfferEngineOutput {
   engine: "sales_offer";
-  tenantId: number | null;
+  customerId: number | null;
   firedSignals: string[];
   candidates: SalesOfferCandidate[];
   config: Pick<SalesOfferConfig, "minScore" | "maxOffersPerGenerate" | "defaultExpirationDays" | "bundlingThreshold">;
@@ -100,7 +100,7 @@ export async function loadSalesOfferRuleGroups(): Promise<SalesOfferRuleGroup[]>
  * and engine config, produces a ranked list of offer candidates.
  */
 export function computeSalesOfferEngine(
-  tenantId: number | null,
+  customerId: number | null,
   firedSignals: Set<string>,
   ruleGroups: SalesOfferRuleGroup[],
   services: Array<{ id: number; name: string; price: string | null; basePrice: string | null }>,
@@ -173,7 +173,7 @@ export function computeSalesOfferEngine(
 
     if (score < config.minScore) continue;
 
-    const idempotencyKey = buildIdempotencyKey(tenantId, serviceId, firedSignalArray);
+    const idempotencyKey = buildIdempotencyKey(customerId, serviceId, firedSignalArray);
 
     candidates.push({
       serviceId,
@@ -196,7 +196,7 @@ export function computeSalesOfferEngine(
 
   return {
     engine: "sales_offer",
-    tenantId,
+    customerId,
     firedSignals: firedSignalArray,
     candidates: capped,
     config,
@@ -219,9 +219,9 @@ function priceToCents(price: string | null | undefined): number {
   return isNaN(n) ? 0 : Math.round(n * 100);
 }
 
-function buildIdempotencyKey(tenantId: number | null, serviceId: number, signals: string[]): string {
+function buildIdempotencyKey(customerId: number | null, serviceId: number, signals: string[]): string {
   const sorted = [...signals].sort().join(",");
-  return createHash("sha256").update(`${tenantId}:${serviceId}:${sorted}`).digest("hex").slice(0, 32);
+  return createHash("sha256").update(`${customerId}:${serviceId}:${sorted}`).digest("hex").slice(0, 32);
 }
 
 function buildRationale(firedSignals: string[]): string {
@@ -232,13 +232,13 @@ function buildRationale(firedSignals: string[]): string {
 // ── Tenant-scoped runner (async, reads DB) ────────────────────────────────────
 
 export async function runSalesOfferEngineForTenant(
-  tenantId: number,
+  customerId: number,
   mspId: number | null = null,
   ctx?: { evaluationTimestamp?: Date },
 ): Promise<SalesOfferEngineOutput> {
-  const [{ mergedProfile, findings, customerId, mspId: resolvedMspId }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId: resolvedMspId }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
     await Promise.all([
-      buildTenantProfileAndFindings(tenantId),
+      buildTenantProfileAndFindings(customerId),
       fetchSignalRulesAndGroups(),
       getDisabledSignalKeys(),
       loadSalesOfferRuleGroups(),
@@ -252,10 +252,10 @@ export async function runSalesOfferEngineForTenant(
     rules,
     groups,
     disabledSignalKeys,
-    customerId != null && resolvedMspId != null ? { customerId, mspId: resolvedMspId } : undefined,
+    fetchedCustomerId != null && resolvedMspId != null ? { customerId: fetchedCustomerId, mspId: resolvedMspId } : undefined,
   );
 
-  return computeSalesOfferEngine(tenantId, firedSignals, ruleGroups, services, config, ctx);
+  return computeSalesOfferEngine(customerId, firedSignals, ruleGroups, services, config, ctx);
 }
 
 // ── Offer persistence ─────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ export async function runSalesOfferEngineForTenant(
  */
 export async function persistSalesOfferCandidates(
   candidates: SalesOfferCandidate[],
-  tenantId: number | null,
+  customerId: number | null,
   mspId: number | null,
   engineSnapshot: Record<string, unknown>,
 ): Promise<number[]> {
@@ -278,7 +278,7 @@ export async function persistSalesOfferCandidates(
       const result = await db
         .insert(salesOffersTable)
         .values({
-          tenantId,
+          customerId,
           serviceId: c.serviceId,
           mspId,
           title: c.title,

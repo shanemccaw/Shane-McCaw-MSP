@@ -2310,8 +2310,8 @@ export type SalesOfferRuleType = typeof SALES_OFFER_RULE_TYPES[number];
 /** One generated offer — scoped to a tenant/MSP pair, backed by a catalog product. */
 export const salesOffersTable = pgTable("sales_offers", {
   id: serial("id").primaryKey(),
-  /** The MSP customer tenant the offer is addressed to. */
-  tenantId: integer("tenant_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /** The MSP customer (user) this offer is addressed to. Despite the historical column name, this is NOT the M365 tenant GUID — it's a numeric FK to usersTable.id. */
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
   /** FK to servicesTable — the product this offer is for. Pricing reads from there. */
   serviceId: integer("service_id").references(() => servicesTable.id, { onDelete: "set null" }),
   /** Which MSP generated this offer (null = platform admin). */
@@ -2344,7 +2344,7 @@ export const salesOffersTable = pgTable("sales_offers", {
   closedAt: timestamp("closed_at"),
   /** Free-text reason supplied on rejection. */
   rejectionReason: text("rejection_reason"),
-  /** Idempotency key — prevents duplicate offers for same (tenantId, serviceId, signalSet). */
+  /** Idempotency key — prevents duplicate offers for same (customerId, serviceId, signalSet). */
   idempotencyKey: text("idempotency_key").unique(),
   /** Full engine output snapshot at generation time (for audit). */
   engineSnapshot: jsonb("engine_snapshot").$type<Record<string, unknown>>().notNull().default({}),

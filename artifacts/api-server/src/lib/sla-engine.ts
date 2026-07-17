@@ -272,12 +272,12 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
   return rows.rows as unknown as SlaTimer[];
 }
 
-export async function runSlaEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
+export async function runSlaEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
   const [customerRow] = await db
     .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
     .from(mspUsersTable)
     .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, tenantId))
+    .where(eq(mspUsersTable.userId, customerId))
     .limit(1);
   const resolvedCustomerId = customerRow?.customerId ?? null;
   const resolvedMspId = customerRow?.mspId ?? null;

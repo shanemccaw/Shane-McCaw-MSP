@@ -13,7 +13,7 @@ export interface EngineTestLogEntry {
   engineKey: string;
   createdAt: string;
   mode: "tenant" | "payload";
-  tenantId?: number;
+  customerId?: number;
   debug: boolean;
   output: unknown;
   error?: string;

@@ -243,15 +243,15 @@ async function buildTenantProfileAndFindings(
  * findings, and the live signal rule/group configuration from the DB, then
  * delegating to the pure `computeHealthEngine`.
  */
-export async function calculateArchitectureHealthScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<HealthEngineOutput> {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+export async function calculateArchitectureHealthScore(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<HealthEngineOutput> {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
 
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
 
   const healthResult = computeHealthEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);

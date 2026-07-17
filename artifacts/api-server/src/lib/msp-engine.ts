@@ -37,7 +37,7 @@ import {
 // ── Shared engine output contract (mirrors priority-engine.ts / health-engine.ts) ──
 
 export interface TenantEngineScores {
-  tenantId: number;
+  customerId: number;
   tenantName: string | null;
   architectureHealthScore: number;
   driftScore: number;
@@ -83,7 +83,7 @@ export function aggregatePortfolioRisk(
  * into `combinedScore`.
  */
 export function computeTenantEngineScores(
-  tenantId: number,
+  customerId: number,
   tenantName: string | null,
   mergedProfile: Record<string, unknown>,
   parsedFindings: string[],
@@ -207,7 +207,7 @@ export async function calculateMspPortfolioRisk(mspId: number, ctx?: { evaluatio
   const workflowVariables: Record<string, number> = {
     portfolioRisk,
     tenantCount: tenantScores.length,
-    topRiskTenantId: rankedTenants[0]?.tenantId ?? 0,
+    topRiskTenantId: rankedTenants[0]?.customerId ?? 0,
     topRiskCombinedScore: rankedTenants[0]?.combinedScore ?? 0,
   };
 
@@ -247,7 +247,7 @@ export async function calculatePlatformPortfolioRisk(ctx?: { evaluationTimestamp
   const workflowVariables: Record<string, number> = {
     portfolioRisk,
     tenantCount: tenantScores.length,
-    topRiskTenantId: rankedTenants[0]?.tenantId ?? 0,
+    topRiskTenantId: rankedTenants[0]?.customerId ?? 0,
     topRiskCombinedScore: rankedTenants[0]?.combinedScore ?? 0,
   };
 

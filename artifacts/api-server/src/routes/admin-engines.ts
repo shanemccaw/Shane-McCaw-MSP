@@ -33,22 +33,22 @@ const router: IRouter = Router();
 async function runEngine(
   engineKey: string,
   body: Record<string, unknown>,
-): Promise<{ mode: "tenant"; tenantId: number; output: unknown }> {
+): Promise<{ mode: "tenant"; customerId: number; output: unknown }> {
   const def = getEngineDef(engineKey);
   if (!def) throw new Error(`Unknown engine: ${engineKey}`);
 
-  const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
-  if (tenantId == null || isNaN(tenantId)) {
+  const customerId = body.customerId != null ? Number(body.customerId) : undefined;
+  if (customerId == null || isNaN(customerId)) {
     // Fake-payload testing (runForPayload) is retired platform-wide. Every
     // engine test/preview call must exercise the real runForTenant() path
     // against a real (testbed-flagged) customer — no parallel/simulated
     // evaluation is permitted, even for ad hoc admin testing.
     throw new Error(
-      "A real tenantId is required. Select a testbed customer — free-text sample payload testing has been retired.",
+      "A real customerId is required. Select a testbed customer — free-text sample payload testing has been retired.",
     );
   }
-  const output = await def.runForTenant(tenantId);
-  return { mode: "tenant", tenantId, output };
+  const output = await def.runForTenant(customerId);
+  return { mode: "tenant", customerId, output };
 }
 
 // ── GET /api/admin/portfolio-risk ──────────────────────────────────────────
@@ -437,9 +437,9 @@ router.post("/admin/engines/:key/test", requireAdmin, async (req: Request, res: 
   const { key } = req.params;
   const debug = Boolean((req.body as Record<string, unknown> | undefined)?.debug);
   try {
-    const { mode, tenantId, output } = await runEngine(String(key), (req.body ?? {}) as Record<string, unknown>);
-    pushEngineTestLog({ id: randomUUID(), engineKey: String(key), createdAt: new Date().toISOString(), mode, tenantId, debug, output });
-    res.json({ mode, tenantId, output });
+    const { mode, customerId, output } = await runEngine(String(key), (req.body ?? {}) as Record<string, unknown>);
+    pushEngineTestLog({ id: randomUUID(), engineKey: String(key), createdAt: new Date().toISOString(), mode, customerId, debug, output });
+    res.json({ mode, customerId, output });
   } catch (err) {
     logger.error({ err, engineKey: key }, "admin-engines: test run failed");
     const message = err instanceof Error ? err.message : "Engine test failed";
@@ -455,7 +455,7 @@ router.post("/admin/engines/:key/test", requireAdmin, async (req: Request, res: 
 router.post("/admin/engines/:key/preview", requireAdmin, async (req: Request, res: Response) => {
   const { key } = req.params;
   try {
-    const { mode, tenantId, output } = await runEngine(String(key), (req.body ?? {}) as Record<string, unknown>);
+    const { mode, customerId, output } = await runEngine(String(key), (req.body ?? {}) as Record<string, unknown>);
 
     const rawSignals = Array.isArray((output as { rawSignals?: unknown })?.rawSignals)
       ? (output as { rawSignals: string[] }).rawSignals
@@ -483,7 +483,7 @@ router.post("/admin/engines/:key/preview", requireAdmin, async (req: Request, re
         ? { note: `This engine's score feeds into the MSP portfolio roll-up's combinedScore for this tenant.` }
         : null;
 
-    res.json({ mode, tenantId, output, workflowOutputPreview, sowImpactPreview, mspImpactPreview });
+    res.json({ mode, customerId, output, workflowOutputPreview, sowImpactPreview, mspImpactPreview });
   } catch (err) {
     logger.error({ err, engineKey: key }, "admin-engines: preview failed");
     res.status(400).json({ error: err instanceof Error ? err.message : "Engine preview failed" });
@@ -851,13 +851,13 @@ router.post("/admin/engines/rule-groups/:groupId/test", requireAdmin, async (req
     if (!group) { res.status(404).json({ error: "Rule group not found" }); return; }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const tenantId = body.tenantId != null ? Number(body.tenantId) : undefined;
-    if (tenantId == null || isNaN(tenantId)) {
+    const customerId = body.customerId != null ? Number(body.customerId) : undefined;
+    if (customerId == null || isNaN(customerId)) {
       // Fake-payload testing is retired platform-wide — real tenantId only.
-      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
+      res.status(400).json({ error: "A real customerId is required. Select a testbed customer." });
       return;
     }
-    const input = await buildEngineTestInputForTenant(tenantId);
+    const input = await buildEngineTestInputForTenant(customerId);
 
     const groupRules = rules.filter(r => r.groupId === groupId);
     const traces = groupRules.map(r => ({ ruleId: r.id, ...evaluateRule(r, input.mergedProfile, input.parsedFindings) }));
@@ -916,13 +916,13 @@ router.get("/admin/engines/rule-groups/:groupId/activation-logs", requireAdmin, 
 router.post("/admin/engines/signals/:signalKey/test", requireAdmin, async (req: Request, res: Response) => {
   const signalKey = String(req.params.signalKey);
   try {
-    const tenantId = (req.body as Record<string, unknown>)?.tenantId != null ? Number((req.body as Record<string, unknown>).tenantId) : undefined;
-    if (tenantId == null || isNaN(tenantId)) {
+    const customerId = (req.body as Record<string, unknown>)?.customerId != null ? Number((req.body as Record<string, unknown>).customerId) : undefined;
+    if (customerId == null || isNaN(customerId)) {
       // Fake-payload testing is retired platform-wide — real tenantId only.
-      res.status(400).json({ error: "A real tenantId is required. Select a testbed customer." });
+      res.status(400).json({ error: "A real customerId is required. Select a testbed customer." });
       return;
     }
-    const input = await buildEngineTestInputForTenant(tenantId);
+    const input = await buildEngineTestInputForTenant(customerId);
 
     const scopedRules = input.rules.filter(r => r.signalKey === signalKey);
     const scopedGroups = input.groups.filter(g => g.signalKey === signalKey);

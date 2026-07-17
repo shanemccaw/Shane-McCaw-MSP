@@ -64,7 +64,7 @@ export interface EngineDef {
    *  fake-payload/parallel-simulation testing (runForPayload) was retired
    *  platform-wide; every test/preview call must go through a real
    *  (testbed-flagged, where applicable) tenant. */
-  runForTenant(tenantId: number, ctx?: EngineContext): Promise<unknown>;
+  runForTenant(customerId: number, ctx?: EngineContext): Promise<unknown>;
   /** true for engines that operate per-tenant (all but MSP, which is portfolio-wide). */
   tenantScoped: boolean;
   /**
@@ -127,54 +127,54 @@ export function computePricingEngine(
   };
 }
 
-async function calculatePricingImpact(tenantId: number, ctx?: EngineContext): Promise<PricingEngineOutput> {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+async function calculatePricingImpact(customerId: number, ctx?: EngineContext): Promise<PricingEngineOutput> {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
   return computePricingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
 // ── shared tenant-scoped payload wrapper for drift/forecasting (no lib wrapper exists) ──
 
-async function calculateDriftForTenant(tenantId: number, ctx?: EngineContext) {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+async function calculateDriftForTenant(customerId: number, ctx?: EngineContext) {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
   return computeDriftEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
-async function calculateForecastForTenant(tenantId: number, ctx?: EngineContext) {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+async function calculateForecastForTenant(customerId: number, ctx?: EngineContext) {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
   return computeForecastingEngine(mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
-async function calculateMspForTenant(tenantId: number, ctx?: EngineContext) {
-  const [{ mergedProfile, findings, customerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+async function calculateMspForTenant(customerId: number, ctx?: EngineContext) {
+  const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
-  if (customerId != null && mspId != null) {
-    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId, mspId });
+  if (fetchedCustomerId != null && mspId != null) {
+    computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys, { customerId: fetchedCustomerId, mspId });
   }
-  return computeTenantEngineScores(tenantId, null, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
+  return computeTenantEngineScores(customerId, null, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
 }
 
 export const ENGINE_DEFS: EngineDef[] = [
@@ -186,7 +186,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculatePriorityScore(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculatePriorityScore(customerId, ctx),
   },
   {
     key: "pricing",
@@ -196,7 +196,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculatePricingImpact(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculatePricingImpact(customerId, ctx),
   },
   {
     key: "health",
@@ -206,7 +206,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: ["security"],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculateArchitectureHealthScore(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculateArchitectureHealthScore(customerId, ctx),
   },
   {
     key: "security",
@@ -216,7 +216,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => runSecurityEngineForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => runSecurityEngineForTenant(customerId, ctx),
   },
   {
     key: "drift",
@@ -226,7 +226,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculateDriftForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculateDriftForTenant(customerId, ctx),
   },
   {
     key: "forecasting",
@@ -236,7 +236,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculateForecastForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculateForecastForTenant(customerId, ctx),
   },
   {
     key: "crm",
@@ -246,7 +246,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculateCrmScore(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculateCrmScore(customerId, ctx),
   },
   {
     key: "msp",
@@ -256,7 +256,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: ["health", "drift", "priority"],
     tenantScoped: false,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => calculateMspForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => calculateMspForTenant(customerId, ctx),
   },
   {
     key: "sla",
@@ -266,7 +266,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId, ctx) => runSlaEngineForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => runSlaEngineForTenant(customerId, ctx),
   },
   {
     key: "scope_creep",
@@ -276,7 +276,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId, ctx) => runScopeCreepEngineForTenant(tenantId, ctx),
+    runForTenant: (customerId, ctx) => runScopeCreepEngineForTenant(customerId, ctx),
   },
   {
     key: "monitoring",
@@ -286,7 +286,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "platform",
-    runForTenant: (tenantId, ctx) => computeMonitoringEngine(tenantId),
+    runForTenant: (customerId, ctx) => computeMonitoringEngine(customerId),
   },
   {
     key: "sales_offer",
@@ -296,13 +296,13 @@ export const ENGINE_DEFS: EngineDef[] = [
     dependsOn: [],
     tenantScoped: true,
     ruleOwnership: "msp",
-    runForTenant: (tenantId, ctx) => runSalesOfferEngineForTenant(tenantId, null, ctx),
+    runForTenant: (customerId, ctx) => runSalesOfferEngineForTenant(customerId, null, ctx),
   },
 ];
 
 async function writeEngineSnapshot(
   engineKey: string,
-  tenantId: number,
+  customerId: number,
   result: unknown,
 ): Promise<void> {
   try {
@@ -310,11 +310,11 @@ async function writeEngineSnapshot(
       .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
       .from(mspUsersTable)
       .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-      .where(eq(mspUsersTable.userId, tenantId))
+      .where(eq(mspUsersTable.userId, customerId))
       .limit(1);
-    const customerId = customerRow?.customerId ?? null;
+    const resolvedCustomerId = customerRow?.customerId ?? null;
     const mspId = customerRow?.mspId ?? null;
-    if (customerId == null) return;
+    if (resolvedCustomerId == null) return;
 
     const [auditRow] = await db
       .select({ id: signalRuleAuditLogTable.id })
@@ -334,7 +334,7 @@ async function writeEngineSnapshot(
     const [prior] = await db
       .select({ score: tenantEngineSnapshotsTable.score, rawSignals: tenantEngineSnapshotsTable.rawSignals })
       .from(tenantEngineSnapshotsTable)
-      .where(and(eq(tenantEngineSnapshotsTable.customerId, customerId), eq(tenantEngineSnapshotsTable.engineKey, engineKey)))
+      .where(and(eq(tenantEngineSnapshotsTable.customerId, resolvedCustomerId), eq(tenantEngineSnapshotsTable.engineKey, engineKey)))
       .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
       .limit(1);
     const previousScore = prior?.score ?? null;
@@ -342,7 +342,7 @@ async function writeEngineSnapshot(
     const delta = previousScore != null ? score - previousScore : null;
 
     const [insertedSnapshot] = await db.insert(tenantEngineSnapshotsTable).values({
-      customerId,
+      customerId: resolvedCustomerId,
       mspId,
       engineKey,
       score,
@@ -372,13 +372,13 @@ async function writeEngineSnapshot(
     const [priorBaseline] = await db
       .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion, baselineScore: engineBaselineHistoryTable.baselineScore })
       .from(engineBaselineHistoryTable)
-      .where(and(eq(engineBaselineHistoryTable.customerId, customerId), eq(engineBaselineHistoryTable.engineKey, engineKey)))
+      .where(and(eq(engineBaselineHistoryTable.customerId, resolvedCustomerId), eq(engineBaselineHistoryTable.engineKey, engineKey)))
       .orderBy(desc(engineBaselineHistoryTable.createdAt))
       .limit(1);
 
     if (previousScore == null) {
       await db.insert(engineBaselineHistoryTable).values({
-        customerId,
+        customerId: resolvedCustomerId,
         mspId,
         engineKey,
         baselineScore: score,
@@ -393,7 +393,7 @@ async function writeEngineSnapshot(
       priorBaseline.ruleVersion !== currentRuleVersion
     ) {
       await db.insert(engineBaselineHistoryTable).values({
-        customerId,
+        customerId: resolvedCustomerId,
         mspId,
         engineKey,
         baselineScore: score,
@@ -409,7 +409,7 @@ async function writeEngineSnapshot(
 
         const assignment = await db.execute(sql`
           SELECT policy_id AS "policyId" FROM scope_creep_assignments
-          WHERE customer_id = ${customerId} LIMIT 1
+          WHERE customer_id = ${resolvedCustomerId} LIMIT 1
         `);
         const policyId = (assignment.rows[0] as { policyId: number } | undefined)?.policyId;
 
@@ -424,7 +424,7 @@ async function writeEngineSnapshot(
             const { recordScopeCreepDetection } = await import("./scope-creep-engine.ts");
             await recordScopeCreepDetection({
               mspId: mspId ?? 0,
-              customerId,
+              customerId: resolvedCustomerId,
               policyId,
               detectionType: "drift",
               ref: `engine_baseline:${engineKey}`,
@@ -440,21 +440,21 @@ async function writeEngineSnapshot(
       }
     }
   } catch (err) {
-    logger.warn({ err, engineKey, tenantId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
+    logger.warn({ err, engineKey, customerId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
   }
 }
 
 for (const def of ENGINE_DEFS) {
   const originalRunForTenant = def.runForTenant.bind(def);
-  def.runForTenant = async (tenantId: number, ctx?: EngineContext) => {
-    const result = await originalRunForTenant(tenantId, ctx);
-    void writeEngineSnapshot(def.key, tenantId, result);
+  def.runForTenant = async (customerId: number, ctx?: EngineContext) => {
+    const result = await originalRunForTenant(customerId, ctx);
+    void writeEngineSnapshot(def.key, customerId, result);
 
     let trace: any[] = [];
     let rawInput: any = {};
-    if (tenantId > 0) {
+    if (customerId > 0) {
       try {
-        const testInput = await buildEngineTestInputForTenant(tenantId);
+        const testInput = await buildEngineTestInputForTenant(customerId);
         if (testInput) {
           rawInput = testInput.mergedProfile;
           const { trace: signalTrace } = computeTenantSignals(
@@ -471,7 +471,7 @@ for (const def of ENGINE_DEFS) {
           }));
         }
       } catch (err) {
-        logger.warn({ err, tenantId, engineKey: def.key }, "def.runForTenant wrapper: failed to generate signal trace");
+        logger.warn({ err, customerId, engineKey: def.key }, "def.runForTenant wrapper: failed to generate signal trace");
       }
     }
 
@@ -686,7 +686,7 @@ export function validateEngineManifest(): string[] {
  * whatever it transitively depends on, without running the full set.
  */
 export async function runEngineManifestForTenant(
-  tenantId: number,
+  customerId: number,
   ctx?: EngineContext,
   engineKeys?: string[],
 ): Promise<Record<string, unknown>> {
@@ -697,13 +697,13 @@ export async function runEngineManifestForTenant(
   for (const key of targetKeys) {
     const def = getEngineDef(key);
     if (!def) {
-      logger.warn({ engineKey: key, tenantId }, "runEngineManifestForTenant: unknown engine key in manifest order, skipping");
+      logger.warn({ engineKey: key, customerId }, "runEngineManifestForTenant: unknown engine key in manifest order, skipping");
       continue;
     }
     try {
-      results[key] = await def.runForTenant(tenantId, ctx);
+      results[key] = await def.runForTenant(customerId, ctx);
     } catch (err) {
-      logger.warn({ err, engineKey: key, tenantId }, "runEngineManifestForTenant: engine run failed — continuing with remaining engines in manifest order");
+      logger.warn({ err, engineKey: key, customerId }, "runEngineManifestForTenant: engine run failed — continuing with remaining engines in manifest order");
       results[key] = null;
     }
   }
@@ -711,9 +711,9 @@ export async function runEngineManifestForTenant(
   return results;
 }
 
-export async function buildEngineTestInputForTenant(tenantId: number): Promise<EngineTestInput> {
+export async function buildEngineTestInputForTenant(customerId: number): Promise<EngineTestInput> {
   const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(tenantId),
+    buildTenantProfileAndFindings(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);

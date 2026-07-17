@@ -311,11 +311,11 @@ async function countOpenViolations(customerId?: number, mspId?: number): Promise
   return parseInt((rows.rows[0] as { cnt: string }).cnt, 10) || 0;
 }
 
-export async function runScopeCreepEngineForTenant(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
+export async function runScopeCreepEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
   const [detections, policies, openViolations] = await Promise.all([
-    fetchOpenDetections(undefined, tenantId),
+    fetchOpenDetections(undefined, customerId),
     fetchPolicies(),
-    countOpenViolations(tenantId),
+    countOpenViolations(customerId),
   ]);
   return computeScopeCreepEngine(detections, policies, openViolations, ctx?.evaluationTimestamp);
 }

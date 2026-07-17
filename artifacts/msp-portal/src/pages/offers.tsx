@@ -83,7 +83,7 @@ import { ConfirmModal } from "@/components/confirm-modal";
 
 interface SalesOffer {
   id: number;
-  tenantId: number | null;
+  customerId: number | null;
   mspId: number | null;
   title: string;
   rationale: string | null;
@@ -361,8 +361,8 @@ function OfferDetailSheet({ offer, onClose, onStateChanged, fetchWithAuth }: Off
             <SheetDescription className="flex items-center gap-2 flex-wrap">
               <OfferStateBadge state={offer.state} />
               <span className="text-xs text-muted-foreground">ID #{offer.id}</span>
-              {offer.tenantId && (
-                <span className="text-xs text-muted-foreground">Tenant {offer.tenantId}</span>
+              {offer.customerId && (
+                <span className="text-xs text-muted-foreground">Customer {offer.customerId}</span>
               )}
             </SheetDescription>
           </SheetHeader>
@@ -828,7 +828,7 @@ export default function OffersPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right text-xs">{formatCents(offer.adjustedPriceCents)}</TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">{offer.tenantId ?? "—"}</TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">{offer.customerId ?? "—"}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{relativeDate(offer.createdAt)}</TableCell>
                   </TableRow>
                 ))}

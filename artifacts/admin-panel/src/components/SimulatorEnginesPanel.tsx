@@ -36,7 +36,7 @@ interface EngineDefSummary {
 
 interface EngineRunResult {
   mode: "tenant";
-  tenantId: number;
+  customerId: number;
   output: unknown;
 }
 
@@ -81,7 +81,7 @@ export function SimulatorEnginesPanel() {
       const res = await fetchWithAuth(`/api/admin/engines/${key}/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId: Number(selectedTestbedId), debug: true }),
+        body: JSON.stringify({ customerId: Number(selectedTestbedId), debug: true }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -177,7 +177,7 @@ export function SimulatorEnginesPanel() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                            Tenant #{(result as EngineRunResult).tenantId} Succeeded
+                            Customer #{(result as EngineRunResult).customerId} Succeeded
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <Button 

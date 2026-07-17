@@ -145,7 +145,7 @@ router.get(
         .from(salesOffersTable)
         .where(
           and(
-            eq(salesOffersTable.tenantId, customerId),
+            eq(salesOffersTable.customerId, customerId),
             inArray(salesOffersTable.state, visibleStates),
           ),
         )
@@ -184,7 +184,7 @@ router.get(
         .where(
           and(
             eq(salesOffersTable.id, id),
-            eq(salesOffersTable.tenantId, customerId),
+            eq(salesOffersTable.customerId, customerId),
           ),
         )
         .limit(1);
@@ -231,11 +231,11 @@ router.post(
         .select({
           id: salesOffersTable.id,
           state: salesOffersTable.state,
-          tenantId: salesOffersTable.tenantId,
+          customerId: salesOffersTable.customerId,
           mspId: salesOffersTable.mspId,
         })
         .from(salesOffersTable)
-        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.tenantId, customerId)))
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.customerId, customerId)))
         .limit(1);
 
       if (!row) {
@@ -252,7 +252,7 @@ router.post(
 
       // Broadcast to both the customer's SSE channel and the MSP's channel
       broadcastCustomerOfferChange(customerId, { offerId: id, state: "accepted" });
-      if (row.mspId) broadcastMspOfferChange(row.mspId, { offerId: id, state: "accepted", tenantId: customerId });
+      if (row.mspId) broadcastMspOfferChange(row.mspId, { offerId: id, state: "accepted", customerId: customerId });
 
       res.json({ offer: toCustomerOffer(updated) });
     } catch (err) {
@@ -293,11 +293,11 @@ router.post(
         .select({
           id: salesOffersTable.id,
           state: salesOffersTable.state,
-          tenantId: salesOffersTable.tenantId,
+          customerId: salesOffersTable.customerId,
           mspId: salesOffersTable.mspId,
         })
         .from(salesOffersTable)
-        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.tenantId, customerId)))
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.customerId, customerId)))
         .limit(1);
 
       if (!row) {
@@ -314,7 +314,7 @@ router.post(
 
       // Broadcast to both channels
       broadcastCustomerOfferChange(customerId, { offerId: id, state: "rejected" });
-      if (row.mspId) broadcastMspOfferChange(row.mspId, { offerId: id, state: "rejected", tenantId: customerId });
+      if (row.mspId) broadcastMspOfferChange(row.mspId, { offerId: id, state: "rejected", customerId: customerId });
 
       res.json({ offer: toCustomerOffer(updated) });
     } catch (err) {

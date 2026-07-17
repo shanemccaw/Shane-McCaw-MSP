@@ -224,11 +224,11 @@ async function buildTenantProfileAndFindings(
  * engine can never drift from what the SOW/priority/CRM/workflow paths
  * consider fired.
  */
-async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
+async function getFiredSignalKeysForTenant(customerId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
-  const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenantId);
+  const { mergedProfile, findings } = await buildTenantProfileAndFindings(customerId);
   const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
@@ -245,9 +245,9 @@ async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
  * tenant's currently-fired, enabled `crm:*` signals. Returns the unified
  * engine output shape shared by every scoring engine in this codebase.
  */
-export async function calculateCrmScore(tenantId: number, ctx?: { evaluationTimestamp?: Date }): Promise<CrmEngineOutput> {
+export async function calculateCrmScore(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<CrmEngineOutput> {
   const [{ firedSignalKeys, rules }, weights] = await Promise.all([
-    getFiredSignalKeysForTenant(tenantId),
+    getFiredSignalKeysForTenant(customerId),
     getCrmSignalWeights(),
   ]);
 

@@ -788,15 +788,15 @@ export interface MonitoringEngineOutput {
   timestamp: string;
 }
 
-export async function computeMonitoringEngine(tenantId: number): Promise<MonitoringEngineOutput> {
+export async function computeMonitoringEngine(customerId: number): Promise<MonitoringEngineOutput> {
   // Resolve tenant GUID from customer ID
   const [customer] = await db
     .select({ tenantId: mspCustomersTable.tenantId })
     .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, tenantId))
+    .where(eq(mspCustomersTable.id, customerId))
     .limit(1);
 
-  const resolvedTenantId = customer?.tenantId ?? String(tenantId);
+  const resolvedTenantId = customer?.tenantId ?? String(customerId);
 
   // Fetch recent profile rows for this tenant (last run per check key)
   const rows = await db
@@ -841,7 +841,7 @@ export async function computeMonitoringEngine(tenantId: number): Promise<Monitor
     results,
     breakdown: { total, ok, error, requiresScript, consentRevoked, coverage, failures },
     logs: [],
-    debug: { tenantId, checksEvaluated: total },
+    debug: { customerId, checksEvaluated: total },
     timestamp: new Date().toISOString(),
   };
 }
