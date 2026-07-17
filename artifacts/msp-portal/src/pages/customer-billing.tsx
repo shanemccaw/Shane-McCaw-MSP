@@ -2,15 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -24,292 +15,28 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Download,
-  CreditCard,
-  RefreshCw,
   Building2,
   Loader2,
   Shield,
-  Undo2,
+  CreditCard,
+  History,
 } from "lucide-react";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+import type { Invoice, StripeReceipt, Subscription, MspProfile } from "@/components/billing/billing-types";
+import { BillingSummaryCards } from "@/components/billing/BillingSummaryCards";
+import { SubscriptionList } from "@/components/billing/SubscriptionList";
+import { InvoiceHistory } from "@/components/billing/InvoiceHistory";
 
-interface Invoice {
-  id: number;
-  invoiceNumber: string;
-  description: string | null;
-  amount: string;
-  currency: string;
-  status: string;
-  dueDate: string | null;
-  paidAt: string | null;
-  pdfFilename: string | null;
-  createdAt: string;
+function formatDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
-
-interface StripeReceipt {
-  id: string;
-  number: string | null;
-  amount: number;
-  currency: string;
-  status: string;
-  date: number;
-  invoicePdf: string | null;
-}
-
-interface Subscription {
-  id: number;
-  serviceId: number;
-  serviceName: string;
-  serviceSlug: string | null;
-  status: string;
-  startDate: string | null;
-  purchasedAt: string;
-  stripeSubscriptionId: string | null;
-  stripe: {
-    status: string;
-    cancelAtPeriodEnd: boolean;
-    cancelAt: number | null;
-    billingCycleAnchor: number | null;
-    currentPeriodEnd: number | null;
-    amount: number | null;
-    currency: string | null;
-  } | null;
-}
-
-interface MspProfile {
-  name: string;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
-  paid: { label: "Paid", classes: "bg-green-100 text-green-700 border-green-200" },
-  due: { label: "Due", classes: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  overdue: { label: "Overdue", classes: "bg-red-100 text-red-700 border-red-200" },
-  draft: { label: "Draft", classes: "bg-gray-100 text-gray-500 border-gray-200" },
-};
 
 function formatCurrency(amount: string | number, currency: string): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(num);
 }
 
-function formatDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
-function nextBillingFromAnchor(anchor: number | null): string | null {
-  if (!anchor) return null;
-  const anchorDate = new Date(anchor * 1000);
-  const dayOfMonth = anchorDate.getUTCDate();
-  const now = new Date();
-  const candidate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), dayOfMonth));
-  if (candidate <= now) candidate.setUTCMonth(candidate.getUTCMonth() + 1);
-  return candidate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
-// ── SubscriptionCard ──────────────────────────────────────────────────────────
-
-function SubscriptionCard({
-  sub,
-  onCancel,
-  onResume,
-  cancelling,
-  fetchWithAuth,
-  onAlert,
-  undoExpiresAt,
-  onUndo,
-  undoLoading,
-}: {
-  sub: Subscription;
-  onCancel: (sub: Subscription) => void;
-  onResume: (sub: Subscription) => void;
-  cancelling: boolean;
-  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
-  onAlert: (a: { type: "success" | "error"; message: string }) => void;
-  undoExpiresAt: number | null;
-  onUndo: () => void;
-  undoLoading: boolean;
-}) {
-  const [portalLoading, setPortalLoading] = useState(false);
-  const [resubLoading, setResubLoading] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState<number>(0);
-
-  useEffect(() => {
-    if (!undoExpiresAt) {
-      setSecondsLeft(0);
-      return;
-    }
-    const tick = () => {
-      const remaining = Math.max(0, Math.ceil((undoExpiresAt - Date.now()) / 1000));
-      setSecondsLeft(remaining);
-    };
-    tick();
-    const id = setInterval(tick, 250);
-    return () => clearInterval(id);
-  }, [undoExpiresAt]);
-
-  const stripe = sub.stripe;
-  const isCanceled = stripe?.status === "canceled";
-  const isCancelPending = stripe?.cancelAtPeriodEnd === true && !isCanceled;
-  const isActive = stripe
-    ? (stripe.status === "active" || stripe.status === "trialing")
-    : sub.status === "active";
-  const cancelAt = stripe?.cancelAt ?? null;
-  const amount = stripe?.amount;
-  const currency = stripe?.currency ?? "usd";
-
-  const nextBilling = stripe?.currentPeriodEnd
-    ? formatDate(stripe.currentPeriodEnd)
-    : nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
-
-  const handleManagePayment = async () => {
-    setPortalLoading(true);
-    try {
-      const res = await fetchWithAuth("/api/portal/billing/customer-portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (res.ok) {
-        const data = await res.json() as { url: string };
-        window.location.href = data.url;
-      } else {
-        const err = await res.json() as { error: string };
-        onAlert({ type: "error", message: err.error ?? "Could not open payment portal. Please try again." });
-      }
-    } catch {
-      onAlert({ type: "error", message: "Network error. Please try again." });
-    } finally {
-      setPortalLoading(false);
-    }
-  };
-
-  const handleResubscribe = async () => {
-    setResubLoading(true);
-    try {
-      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${sub.id}/resubscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ returnUrl: window.location.origin }),
-      });
-      if (res.ok) {
-        const data = await res.json() as { url: string };
-        window.location.href = data.url;
-      } else {
-        const err = await res.json() as { error: string };
-        onAlert({ type: "error", message: err.error ?? "Could not start checkout. Please try again." });
-      }
-    } catch {
-      onAlert({ type: "error", message: "Network error. Please try again." });
-    } finally {
-      setResubLoading(false);
-    }
-  };
-
-  const showUndoBanner = isCancelPending && undoExpiresAt !== null && secondsLeft > 0;
-
-  return (
-    <div className="flex flex-col">
-      {showUndoBanner && (
-        <div className="flex items-center justify-between gap-3 px-5 py-2.5 bg-orange-50 border-b border-orange-200">
-          <p className="text-xs text-orange-800 font-medium">
-            Subscription cancelled — changed your mind?
-          </p>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <Button
-              size="sm"
-              variant="destructive"
-              className="h-7 bg-orange-600 hover:bg-orange-700 text-xs"
-              onClick={onUndo}
-              disabled={undoLoading}
-            >
-              {undoLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Undo2 className="w-3 h-3 mr-1" />
-              )}
-              Undo cancel
-            </Button>
-            <span className="text-xs text-orange-500 font-medium tabular-nums w-6 text-right">{secondsLeft}s</span>
-          </div>
-        </div>
-      )}
-      <div className="px-5 py-5 flex items-start gap-4 flex-wrap sm:flex-nowrap">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <RefreshCw className="w-5 h-5 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <p className="text-sm font-bold">{sub.serviceName}</p>
-            {isCanceled ? (
-              <Badge variant="secondary">Canceled</Badge>
-            ) : isCancelPending ? (
-              <Badge className="bg-orange-100 text-orange-700 border-orange-200 border">
-                Cancels {cancelAt ? formatDate(cancelAt) : "at period end"}
-              </Badge>
-            ) : isActive ? (
-              <Badge className="bg-green-100 text-green-700 border-green-200 border">Active</Badge>
-            ) : (
-              <Badge variant="secondary">{stripe?.status ?? sub.status}</Badge>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {amount !== null && amount !== undefined && (
-              <span className="font-medium text-foreground">
-                {formatCurrency(amount / 100, currency)}/month
-              </span>
-            )}
-            {!isCancelPending && !isCanceled && nextBilling && isActive && (
-              <span>Next billing: {nextBilling}</span>
-            )}
-            {sub.startDate && (
-              <span>
-                Started {new Date(sub.startDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
-              </span>
-            )}
-            {!sub.stripeSubscriptionId && (
-              <span className="italic">Manually assigned — contact support to manage</span>
-            )}
-          </div>
-        </div>
-        <div className="flex-shrink-0 ml-auto self-center flex flex-col gap-2 items-end">
-          {isCanceled && sub.stripeSubscriptionId && (
-            <Button size="sm" onClick={() => void handleResubscribe()} disabled={resubLoading}>
-              {resubLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-              Re-purchase
-            </Button>
-          )}
-          {isCancelPending && sub.stripeSubscriptionId && (
-            <Button size="sm" variant="outline" className="text-green-700 border-green-300 hover:bg-green-50" onClick={() => onResume(sub)}>
-              Resume subscription
-            </Button>
-          )}
-          {!isCancelPending && !isCanceled && isActive && sub.stripeSubscriptionId && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => void handleManagePayment()} disabled={portalLoading}>
-                {portalLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <CreditCard className="w-3.5 h-3.5 mr-1" />}
-                Manage payment method
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive border-destructive/30 hover:border-destructive/60 hover:bg-destructive/5"
-                onClick={() => onCancel(sub)}
-                disabled={cancelling}
-              >
-                Cancel subscription
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── CancelDialog ──────────────────────────────────────────────────────────────
+// ── Dialogs ──────────────────────────────────────────────────────────────
 
 function CancelDialog({
   sub,
@@ -327,23 +54,23 @@ function CancelDialog({
   const periodEnd = sub.stripe?.cancelAt;
   return (
     <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <AlertDialogContent>
+      <AlertDialogContent className="sm:max-w-[425px]">
         <AlertDialogHeader>
-          <AlertDialogTitle>Cancel subscription?</AlertDialogTitle>
-          <AlertDialogDescription>
-            You&apos;re about to cancel your <strong>{sub.serviceName}</strong> retainer.{" "}
+          <AlertDialogTitle className="text-xl">Cancel subscription?</AlertDialogTitle>
+          <AlertDialogDescription className="text-slate-500">
+            You&apos;re about to cancel your <strong className="text-slate-800 dark:text-slate-200">{sub.serviceName}</strong> retainer.{" "}
             {periodEnd
               ? `You'll retain access until ${formatDate(periodEnd)}, then the subscription won't renew. No further charges will be made.`
               : "Your access will continue through the end of the current billing period. No further charges will be made."
             }
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Keep subscription</AlertDialogCancel>
+        <AlertDialogFooter className="mt-4">
+          <AlertDialogCancel disabled={loading} className="rounded-full">Keep subscription</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => { e.preventDefault(); onConfirm(); }}
             disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className="bg-rose-600 hover:bg-rose-700 text-white rounded-full border-none"
           >
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Yes, cancel
@@ -353,8 +80,6 @@ function CancelDialog({
     </AlertDialog>
   );
 }
-
-// ── ResumeDialog ──────────────────────────────────────────────────────────────
 
 function ResumeDialog({
   sub,
@@ -374,39 +99,39 @@ function ResumeDialog({
   const currency = stripe?.currency ?? "usd";
   const nextBilling = stripe?.currentPeriodEnd
     ? formatDate(stripe.currentPeriodEnd)
-    : nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+    : null; // Assuming anchor logic handled in main component or simplified here
 
   return (
     <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <AlertDialogContent>
+      <AlertDialogContent className="sm:max-w-[425px]">
         <AlertDialogHeader>
-          <AlertDialogTitle>Resume subscription?</AlertDialogTitle>
-          <AlertDialogDescription>
-            You&apos;re about to resume your <strong>{sub.serviceName}</strong> retainer.
+          <AlertDialogTitle className="text-xl">Resume subscription?</AlertDialogTitle>
+          <AlertDialogDescription className="text-slate-500">
+            You&apos;re about to resume your <strong className="text-slate-800 dark:text-slate-200">{sub.serviceName}</strong> retainer.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="px-6 pb-2">
-          <div className="bg-muted rounded-xl border border-border px-4 py-3 space-y-1.5">
+        <div className="px-1 py-4">
+          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800/50 px-5 py-4 space-y-2">
             {amount !== null && amount !== undefined && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Next charge</span>
-                <span className="font-semibold">{formatCurrency(amount / 100, currency)}/month</span>
+                <span className="text-slate-500">Next charge</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{formatCurrency(amount / 100, currency)}/month</span>
               </div>
             )}
             {nextBilling && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Billing date</span>
-                <span className="font-semibold">{nextBilling}</span>
+                <span className="text-slate-500">Billing date</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{nextBilling}</span>
               </div>
             )}
           </div>
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Never mind</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading} className="rounded-full">Never mind</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => { e.preventDefault(); onConfirm(); }}
             disabled={loading}
-            className="bg-green-600 hover:bg-green-700 text-white"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full border-none"
           >
             {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Yes, resume
@@ -428,10 +153,12 @@ export default function CustomerBillingPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [stripeReceipts, setStripeReceipts] = useState<StripeReceipt[]>([]);
   const [mspProfile, setMspProfile] = useState<MspProfile | null>(null);
+  
   const [loading, setLoading] = useState(true);
   const [subLoading, setSubLoading] = useState(isPlatformBilled);
   const [receiptsLoading, setReceiptsLoading] = useState(isPlatformBilled);
-  const [paying, setPayingId] = useState<number | null>(null);
+  
+  const [payingId, setPayingId] = useState<number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [resumeTarget, setResumeTarget] = useState<Subscription | null>(null);
@@ -439,6 +166,8 @@ export default function CustomerBillingPage() {
   const [undoTarget, setUndoTarget] = useState<{ id: number; name: string; expiresAt: number } | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const UNDO_WINDOW_MS = 30_000;
 
   useEffect(() => {
     fetchWithAuth("/api/portal/invoices")
@@ -473,8 +202,6 @@ export default function CustomerBillingPage() {
       .then((d) => { if (d) setMspProfile(d); })
       .catch(() => null);
   }, [fetchWithAuth, isPlatformBilled]);
-
-  const UNDO_WINDOW_MS = 30_000;
 
   useEffect(() => {
     if (!undoTarget) return;
@@ -599,291 +326,108 @@ export default function CustomerBillingPage() {
     }
   }, [resumeTarget, fetchWithAuth]);
 
-  const totalDue = invoices
-    .filter((i) => i.status === "due" || i.status === "overdue")
-    .reduce((sum, i) => sum + parseFloat(i.amount), 0);
-  const totalPaid = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + parseFloat(i.amount), 0);
-
   return (
-    <AppShell title="Billing">
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Billing &amp; Invoices</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {isPlatformBilled
-              ? "Manage your retainer subscriptions and view invoices."
-              : "View your invoice history and payment records."}
-          </p>
+    <AppShell title="Billing Command Center">
+      <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Billing Center</h1>
+            <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm sm:text-base max-w-2xl">
+              {isPlatformBilled
+                ? "Manage your enterprise retainers, review invoice history, and access secure Stripe receipts."
+                : "View your invoice history and payment records for your organization."}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-3 bg-white/5 dark:bg-slate-900/40 backdrop-blur-md border border-slate-200 dark:border-slate-800/50 rounded-full px-5 py-2.5 shadow-sm">
+            <Shield className="w-4 h-4 text-emerald-500" />
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Bank-grade encryption</span>
+          </div>
         </div>
 
+        {/* Global Alert Notification */}
         {alert && (
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
-            alert.type === "success" ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"
+          <div className={`flex items-center gap-4 px-5 py-4 rounded-2xl border shadow-sm animate-in zoom-in-95 duration-200 ${
+            alert.type === "success" ? "bg-emerald-50/50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-300" : "bg-rose-50/50 border-rose-200 text-rose-800 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-300"
           }`}>
             {alert.type === "success"
-              ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              : <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              ? <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-500" />
+              : <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-500" />
             }
             <p className="text-sm font-medium flex-1">{alert.message}</p>
-            <button onClick={() => setAlert(null)} className="opacity-60 hover:opacity-100 transition-opacity">
+            <button onClick={() => setAlert(null)} className="opacity-60 hover:opacity-100 transition-opacity bg-black/5 dark:bg-white/5 rounded-full p-1.5">
               <XCircle className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        {/* ── Non-platform-billed: managed-by notice ─────────────────── */}
+        {/* Non-platform-billed: managed-by notice */}
         {!isPlatformBilled && (
-          <div className="rounded-2xl border border-border bg-muted/30 px-5 py-4">
-            <div className="flex items-start gap-3">
-              <Building2 className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold">Subscription managed by your MSP</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Your subscription is managed by{" "}
-                  <strong>{mspProfile?.name ?? "your service provider"}</strong>. Contact them directly to make changes.
-                </p>
-              </div>
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-900/20 px-6 py-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Building2 className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+            </div>
+            <div>
+              <p className="text-base font-bold text-slate-800 dark:text-slate-100">Subscription managed by your MSP</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                Your subscription is managed by{" "}
+                <strong className="text-slate-700 dark:text-slate-300">{mspProfile?.name ?? "your service provider"}</strong>. Please contact them directly to make changes or adjust billing.
+              </p>
             </div>
           </div>
         )}
 
-        {/* ── Platform-billed: Monthly Retainers ────────────────────── */}
-        {isPlatformBilled && (subLoading || subscriptions.length > 0) && (
-          <div>
-            <h2 className="text-base font-semibold mb-3">Monthly Retainers</h2>
-            {subLoading ? (
-              <Card>
-                <CardContent className="flex items-center gap-3 py-6 text-muted-foreground text-sm">
-                  <Loader2 className="w-5 h-5 animate-spin text-primary flex-shrink-0" />
-                  Loading subscriptions…
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="overflow-hidden">
-                <div className="divide-y divide-border">
-                  {subscriptions.map((sub) => (
-                    <SubscriptionCard
-                      key={sub.id}
-                      sub={sub}
-                      onCancel={setCancelTarget}
-                      onResume={setResumeTarget}
-                      cancelling={cancelling && cancelTarget?.id === sub.id}
-                      fetchWithAuth={fetchWithAuth}
-                      onAlert={setAlert}
-                      undoExpiresAt={undoTarget?.id === sub.id ? undoTarget.expiresAt : null}
-                      onUndo={handleUndoCancel}
-                      undoLoading={undoLoading && undoTarget?.id === sub.id}
-                    />
-                  ))}
-                </div>
-              </Card>
-            )}
-          </div>
-        )}
+        {/* High Level Billing Summary */}
+        <BillingSummaryCards invoices={invoices} />
 
-        {/* ── Invoice summary cards ──────────────────────────────────── */}
-        {!loading && invoices.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Total Invoiced</p>
-                <p className="text-xl font-extrabold">
-                  {formatCurrency(String(invoices.reduce((s, i) => s + parseFloat(i.amount), 0)), "usd")}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Amount Paid</p>
-                <p className="text-xl font-extrabold text-green-700">{formatCurrency(String(totalPaid), "usd")}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Outstanding</p>
-                <p className={`text-xl font-extrabold ${totalDue > 0 ? "text-red-600" : ""}`}>
-                  {formatCurrency(String(totalDue), "usd")}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* ── Invoice list ───────────────────────────────────────────── */}
-        <div>
-          <h2 className="text-base font-semibold mb-3">Invoice History</h2>
-          {loading ? (
-            <Card>
-              <CardContent className="flex items-center justify-center py-16">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </CardContent>
-            </Card>
-          ) : invoices.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                  <CreditCard className="w-7 h-7 text-primary" />
-                </div>
-                <CardTitle className="text-base mb-1">No invoices yet</CardTitle>
-                <CardDescription>Your invoices will appear here.</CardDescription>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="overflow-hidden">
-              <div className="divide-y divide-border">
-                {invoices.map((inv) => {
-                  const config = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.draft;
-                  const canPay = inv.status === "due" || inv.status === "overdue";
-                  return (
-                    <div key={inv.id} className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <CreditCard className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                          <p className="text-sm font-bold">{inv.invoiceNumber}</p>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${config.classes}`}>{config.label}</span>
-                        </div>
-                        {inv.description && <p className="text-xs text-muted-foreground truncate">{inv.description}</p>}
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground flex-wrap">
-                          {inv.dueDate && inv.status !== "paid" && (
-                            <span>Due {new Date(inv.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                          )}
-                          {inv.paidAt && (
-                            <span className="text-green-600 font-medium">
-                              Paid {new Date(inv.paidAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0 ml-auto">
-                        <p className="text-base font-extrabold">
-                          {formatCurrency(inv.amount, inv.currency)}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {inv.pdfFilename && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="Download PDF"
-                              onClick={async () => {
-                                const r = await fetchWithAuth(`/api/portal/invoices/${inv.id}/download`);
-                                const blob = await r.blob();
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement("a");
-                                a.href = url;
-                                a.download = `Invoice-${inv.invoiceNumber ?? inv.id}.pdf`;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                              }}
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                          )}
-                          {canPay && (
-                            <Button
-                              size="sm"
-                              onClick={() => void handlePay(inv)}
-                              disabled={paying === inv.id}
-                            >
-                              {paying === inv.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin mr-1" />
-                              ) : (
-                                <CreditCard className="w-4 h-4 mr-1" />
-                              )}
-                              Pay Now
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+        {/* Main Grid Layout (Split-pane on Desktop) */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+          
+          {/* Left Column: Subscriptions */}
+          {isPlatformBilled && (
+            <div className="xl:col-span-7 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CreditCard className="w-5 h-5 text-blue-500" />
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Active Retainers</h2>
               </div>
-            </Card>
+              <SubscriptionList
+                subscriptions={subscriptions}
+                loading={subLoading}
+                onCancel={setCancelTarget}
+                onResume={setResumeTarget}
+                cancelling={cancelling}
+                fetchWithAuth={fetchWithAuth}
+                onAlert={setAlert}
+                undoTarget={undoTarget}
+                onUndo={handleUndoCancel}
+                undoLoading={undoLoading}
+              />
+            </div>
           )}
-        </div>
 
-        {/* ── Subscription Receipts (platform-billed only) ───────────── */}
-        {isPlatformBilled && (receiptsLoading || stripeReceipts.length > 0) && (
-          <div>
-            <h2 className="text-base font-semibold mb-3">Subscription Receipts</h2>
-            {receiptsLoading ? (
-              <Card>
-                <CardContent className="flex items-center gap-3 py-6 text-muted-foreground text-sm">
-                  <Loader2 className="w-5 h-5 animate-spin text-primary flex-shrink-0" />
-                  Loading receipts…
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="overflow-hidden">
-                <div className="divide-y divide-border">
-                  {stripeReceipts.map((receipt) => {
-                    const isPaid = receipt.status === "paid";
-                    const statusClasses = isPaid
-                      ? "bg-green-100 text-green-700 border-green-200"
-                      : receipt.status === "open"
-                      ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-                      : "bg-gray-100 text-gray-500 border-gray-200";
-                    const statusLabel = isPaid
-                      ? "Paid"
-                      : receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1);
-                    return (
-                      <div key={receipt.id} className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <RefreshCw className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                            <p className="text-sm font-bold">{receipt.number ?? receipt.id}</p>
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${statusClasses}`}>
-                              {statusLabel}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(receipt.date * 1000).toLocaleDateString("en-US", {
-                              month: "long",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3 flex-shrink-0 ml-auto">
-                          <p className="text-base font-extrabold">
-                            {formatCurrency(receipt.amount / 100, receipt.currency)}
-                          </p>
-                          {receipt.invoicePdf && (
-                            <a
-                              href={receipt.invoicePdf}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Download PDF"
-                            >
-                              <Button variant="outline" size="icon" className="h-8 w-8">
-                                <Download className="w-4 h-4" />
-                              </Button>
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
+          {/* Right Column: Invoice History */}
+          <div className={isPlatformBilled ? "xl:col-span-5 space-y-4" : "xl:col-span-12 space-y-4"}>
+            <div className="flex items-center gap-2 mb-2">
+              <History className="w-5 h-5 text-purple-500" />
+              <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Recent Transactions</h2>
+            </div>
+            <InvoiceHistory
+              invoices={invoices}
+              stripeReceipts={stripeReceipts}
+              loading={loading}
+              receiptsLoading={receiptsLoading}
+              isPlatformBilled={isPlatformBilled}
+              fetchWithAuth={fetchWithAuth}
+              onPay={handlePay}
+              payingId={payingId}
+            />
           </div>
-        )}
-
-        {/* ── Security footer ────────────────────────────────────────── */}
-        <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 flex items-center gap-3">
-          <Shield className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-          <p className="text-xs text-muted-foreground">
-            Payments are processed securely via Stripe. Your card details are never stored on our servers.
-          </p>
+          
         </div>
 
-        {/* ── Dialogs ────────────────────────────────────────────────── */}
+        {/* Dialogs */}
         {cancelTarget && (
           <CancelDialog
             sub={cancelTarget}
