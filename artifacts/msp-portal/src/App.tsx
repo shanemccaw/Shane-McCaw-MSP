@@ -616,15 +616,19 @@ function AppInner() {
   );
 }
 
+import { SupportChatProvider } from "@/lib/support-chat-context";
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <WouterRouter base={BASE_PATH}>
-            <AppInner />
-          </WouterRouter>
-          <Toaster richColors position="top-right" theme="dark" />
+          <SupportChatProvider>
+            <WouterRouter base={BASE_PATH}>
+              <AppInner />
+            </WouterRouter>
+            <Toaster richColors position="top-right" theme="dark" />
+          </SupportChatProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

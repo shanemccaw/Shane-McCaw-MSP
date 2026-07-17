@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Link, useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
+import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -120,14 +121,6 @@ function getInitials(name?: string | null, email?: string): string {
 
 // ── Support Chat Slide-Out Sheet ───────────────────────────────────────────────
 
-interface SupportChatMessage {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  escalated?: boolean;
-  timestamp: Date;
-}
-
 const SUPPORT_STARTER_PROMPTS = [
   "What is my current plan status?",
   "What signals have fired recently?",
@@ -183,111 +176,24 @@ function SupportMessageBubble({ message }: { message: SupportChatMessage }) {
   );
 }
 
-function DockedSupportPanel({ onClose }: { onClose: () => void }) {
-  const { user, fetchWithAuth } = useAuth();
-  const [messages, setMessages] = useState<SupportChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [escalating, setEscalating] = useState(false);
-  const [everEscalated, setEverEscalated] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+function DockedSupportPanel() {
+  const {
+    setSupportOpen,
+    messages,
+    input,
+    setInput,
+    sending,
+    escalating,
+    everEscalated,
+    sendMessage,
+    handleExplicitEscalate,
+  } = useSupportChat();
 
-  useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([
-        {
-          id: "init",
-          role: "assistant",
-          content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
-          timestamp: new Date(),
-        },
-      ]);
-    }
-  }, [user?.name, messages.length]);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  const apiMessages = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-
-  const sendMessage = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || sending) return;
-
-      const userMsg: SupportChatMessage = {
-        id: `u-${Date.now()}`,
-        role: "user",
-        content: trimmed,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-      setSending(true);
-
-      try {
-        const res = await fetchWithAuth("/api/msp/support/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [...apiMessages, { role: "user", content: trimmed }],
-          }),
-        });
-
-        if (!res.ok) {
-          const err = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(err.error ?? `HTTP ${res.status}`);
-        }
-
-        const data = (await res.json()) as { reply: string; escalated: boolean };
-        const assistantMsg: SupportChatMessage = {
-          id: `a-${Date.now()}`,
-          role: "assistant",
-          content: data.reply,
-          escalated: data.escalated,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-        if (data.escalated) setEverEscalated(true);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to send message");
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
-      } finally {
-        setSending(false);
-      }
-    },
-    [sending, fetchWithAuth, apiMessages]
-  );
-
-  const handleExplicitEscalate = async () => {
-    if (escalating) return;
-    setEscalating(true);
-    try {
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-      await fetchWithAuth("/api/msp/support/escalate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: lastUserMsg?.content ?? "(no question)" }),
-      });
-
-      const systemMsg: SupportChatMessage = {
-        id: `sys-${Date.now()}`,
-        role: "system",
-        content: "Your request has been escalated to human support. We will follow up shortly.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, systemMsg]);
-      setEverEscalated(true);
-    } catch {
-      toast.error("Failed to escalate. Please try again.");
-    } finally {
-      setEscalating(false);
-    }
-  };
 
   const isEmpty = messages.filter((m) => m.role === "user").length === 0;
 
@@ -312,7 +218,7 @@ function DockedSupportPanel({ onClose }: { onClose: () => void }) {
             AI Support
           </Badge>
           <button
-            onClick={onClose}
+            onClick={() => setSupportOpen(false)}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             title="Close chat panel"
           >
@@ -882,12 +788,12 @@ interface MspSuspensionState {
 
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
+  const { supportOpen, setSupportOpen } = useSupportChat();
   const [, navigate] = useLocation();
   const slug = useMspSlug();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
-  const [supportOpen, setSupportOpen] = useState(false);
   const [profile, setProfile] = useState<MspProfile | null>(null);
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
@@ -1337,9 +1243,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
       </div>
 
       {/* Non-blocking Docked Support Panel on the Right */}
-      {supportOpen && (
-        <DockedSupportPanel onClose={() => setSupportOpen(false)} />
-      )}
+      {supportOpen && <DockedSupportPanel />}
 
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
     </div>
