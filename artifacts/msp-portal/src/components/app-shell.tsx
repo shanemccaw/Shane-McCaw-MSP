@@ -10,7 +10,7 @@
  *   - Mobile-responsive with collapsible sidebar
  */
 
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
@@ -25,6 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationBell } from "@/components/notification-bell";
 import {
@@ -34,8 +44,10 @@ import {
   Award,
   BarChart3,
   Bell,
+  Bot,
   Building2,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -49,17 +61,21 @@ import {
   Home,
   LayoutDashboard,
   ListTodo,
+  Loader2,
   Lock,
   LogOut,
   Menu,
   MessageCircle,
+  MessageSquare,
   Package,
   Play,
   Search,
+  Send,
   Shield,
   ShieldCheck,
   Sparkles,
   Timer,
+  User,
   Users,
   Webhook,
   Zap,
@@ -99,6 +115,301 @@ function getInitials(name?: string | null, email?: string): string {
     return email.substring(0, 2).toUpperCase();
   }
   return "U";
+}
+
+// ── Support Chat Slide-Out Sheet ───────────────────────────────────────────────
+
+interface SupportChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  escalated?: boolean;
+  timestamp: Date;
+}
+
+const SUPPORT_STARTER_PROMPTS = [
+  "What is my current plan status?",
+  "What signals have fired recently?",
+  "What's the status of my active services?",
+  "When is the next monitoring run?",
+];
+
+function SupportMessageBubble({ message }: { message: SupportChatMessage }) {
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-2">
+        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[11px] text-amber-500">
+          <AlertCircle className="size-3 shrink-0" />
+          <span>{message.content}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+      <div
+        className={`shrink-0 size-7 rounded-full flex items-center justify-center ${
+          isUser ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+        }`}
+      >
+        {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
+      </div>
+      <div className={`flex flex-col gap-1 max-w-[82%] ${isUser ? "items-end" : "items-start"}`}>
+        <div
+          className={`px-3 py-2 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
+            isUser
+              ? "bg-primary text-primary-foreground rounded-tr-xs"
+              : "bg-muted text-foreground rounded-tl-xs"
+          }`}
+        >
+          {message.content}
+          {message.escalated && (
+            <div className="mt-1.5 pt-1.5 border-t border-amber-500/30 flex items-center gap-1 text-[10px] text-amber-500">
+              <AlertCircle className="size-3 shrink-0" />
+              <span>Escalated to human support</span>
+            </div>
+          )}
+        </div>
+        <span className="text-[10px] text-muted-foreground/60 px-1">
+          {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SupportChatSheet() {
+  const { user, fetchWithAuth } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<SupportChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [escalating, setEscalating] = useState(false);
+  const [everEscalated, setEverEscalated] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && messages.length === 0) {
+      setMessages([
+        {
+          id: "init",
+          role: "assistant",
+          content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant. I can answer questions about your account status, signals, services, and monitoring.\n\nHow can I help you today?`,
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [open, user?.name, messages.length]);
+
+  useEffect(() => {
+    if (open) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, open]);
+
+  const apiMessages = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || sending) return;
+
+      const userMsg: SupportChatMessage = {
+        id: `u-${Date.now()}`,
+        role: "user",
+        content: trimmed,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+      setSending(true);
+
+      try {
+        const res = await fetchWithAuth("/api/msp/support/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [...apiMessages, { role: "user", content: trimmed }],
+          }),
+        });
+
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+
+        const data = (await res.json()) as { reply: string; escalated: boolean };
+        const assistantMsg: SupportChatMessage = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          content: data.reply,
+          escalated: data.escalated,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        if (data.escalated) setEverEscalated(true);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to send message");
+        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
+      } finally {
+        setSending(false);
+      }
+    },
+    [sending, fetchWithAuth, apiMessages]
+  );
+
+  const handleExplicitEscalate = async () => {
+    if (escalating) return;
+    setEscalating(true);
+    try {
+      const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+      await fetchWithAuth("/api/msp/support/escalate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: lastUserMsg?.content ?? "(no question)" }),
+      });
+
+      const systemMsg: SupportChatMessage = {
+        id: `sys-${Date.now()}`,
+        role: "system",
+        content: "Your request has been escalated to human support. We will follow up shortly.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, systemMsg]);
+      setEverEscalated(true);
+    } catch {
+      toast.error("Failed to escalate. Please try again.");
+    } finally {
+      setEscalating(false);
+    }
+  };
+
+  const isEmpty = messages.filter((m) => m.role === "user").length === 0;
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          className="relative rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title="Support Chat"
+          aria-label="Support Chat"
+        >
+          <MessageSquare className="size-4" />
+        </button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col h-full z-[100] bg-background">
+        <SheetHeader className="p-4 border-b border-border text-left">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center text-primary">
+              <MessageSquare className="size-4" />
+            </div>
+            <div>
+              <SheetTitle className="text-sm font-semibold">Support Chat</SheetTitle>
+              <SheetDescription className="text-xs text-muted-foreground">
+                AI-assisted • Grounded in platform data
+              </SheetDescription>
+            </div>
+            <Badge variant="secondary" className="ml-auto text-[10px] gap-1 px-2 py-0.5">
+              <Bot className="size-2.5" />
+              AI Support
+            </Badge>
+          </div>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+          {messages.map((msg) => (
+            <SupportMessageBubble key={msg.id} message={msg} />
+          ))}
+          {sending && (
+            <div className="flex gap-2.5">
+              <div className="size-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <Bot className="size-3.5 text-muted-foreground" />
+              </div>
+              <div className="bg-muted rounded-2xl rounded-tl-xs px-3 py-2 flex items-center gap-2">
+                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Thinking…</span>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {isEmpty && !sending && (
+          <div className="p-3 border-t border-border/60 bg-muted/20">
+            <p className="text-[11px] text-muted-foreground mb-2 font-medium">Suggested questions:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SUPPORT_STARTER_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => void sendMessage(p)}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-border/70 hover:bg-muted transition-colors text-muted-foreground hover:text-foreground text-left"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {everEscalated && (
+          <div className="px-4 py-2 bg-green-500/10 border-t border-green-500/20 flex items-center gap-2 text-xs text-green-500">
+            <CheckCircle2 className="size-3.5 shrink-0" />
+            Support team has been notified and will follow up.
+          </div>
+        )}
+
+        <div className="p-3 border-t border-border bg-background">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendMessage(input);
+            }}
+            className="flex gap-2 items-center"
+          >
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void sendMessage(input);
+                }
+              }}
+              placeholder="Ask a question..."
+              rows={1}
+              className="min-h-[40px] max-h-[120px] resize-none text-xs py-2 px-3"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!input.trim() || sending}
+              className="size-9 shrink-0"
+            >
+              <Send className="size-4" />
+            </Button>
+          </form>
+          <div className="flex items-center justify-between mt-2 px-1 text-[10px] text-muted-foreground">
+            <span>Press Enter to send</span>
+            <button
+              type="button"
+              onClick={() => void handleExplicitEscalate()}
+              disabled={escalating}
+              className="hover:underline text-amber-500/80 hover:text-amber-500 transition-colors"
+            >
+              {escalating ? "Escalating..." : "Talk to human support"}
+            </button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
 
 // ── Navigation config ─────────────────────────────────────────────────────────
@@ -840,7 +1151,8 @@ export function AppShell({ children, title, actions }: AppShellProps) {
 
           <div className="ml-auto flex items-center gap-2">
             {actions}
-            <NotificationBell />
+
+            {/* 1. Search */}
             <button
               className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               onClick={() => setCmdOpen(true)}
@@ -850,7 +1162,13 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               <kbd className="text-[10px] bg-border px-1 rounded">⌘K</kbd>
             </button>
 
-            {/* User Profile Head & Dropdown Menu */}
+            {/* 2. Bell */}
+            <NotificationBell />
+
+            {/* 3. Chat (Slide-out panel) */}
+            <SupportChatSheet />
+
+            {/* 4. Profile Card */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
