@@ -73,10 +73,11 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
-  ShieldCheck,
+  Sparkles,
   TrendingUp,
   UserCheck,
   Users,
+  X,
 } from "lucide-react";
 
 import type { Msp } from "./msps";
@@ -158,6 +159,10 @@ export default function MspDetailPage() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+
+  // Disable account state
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [disableSubmitting, setDisableSubmitting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -344,6 +349,18 @@ export default function MspDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            {msp.status !== "inactive" && msp.status !== "disabled" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 rounded-lg border-rose-500/30 hover:border-rose-500 hover:bg-rose-500/10 text-rose-400"
+                onClick={() => setDisableDialogOpen(true)}
+              >
+                <X className="size-3.5" />
+                Disable Partner
+              </Button>
+            )}
+
             <Button variant="outline" size="sm" className="gap-1.5 rounded-lg" onClick={openEditModal}>
               <Edit className="size-3.5 text-amber-400" />
               Edit MSP
@@ -867,6 +884,52 @@ export default function MspDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Disable MSP Partner Confirmation Dialog */}
+      <Dialog open={disableDialogOpen} onOpenChange={(o) => { if (!disableSubmitting) setDisableDialogOpen(o); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Disable MSP Partner?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm text-slate-400">
+            <p>
+              You are about to cancel the platform subscription and disable the MSP partner account for{" "}
+              <strong className="text-slate-200">{msp.name}</strong>.
+            </p>
+            <p className="text-rose-400 font-semibold">
+              This will disable their access and pause all telemetry monitoring across their entire customer estate.
+            </p>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="ghost" onClick={() => setDisableDialogOpen(false)} disabled={disableSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setDisableSubmitting(true);
+                try {
+                  await fetchWithAuth(`/api/admin/msps/${msp.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: "inactive" }),
+                  });
+                  setMsp((prev) => prev ? { ...prev, status: "inactive" } : null);
+                  toast.success("MSP partner disabled & platform subscription cancelled.");
+                  setDisableDialogOpen(false);
+                } catch {
+                  toast.error("Failed to disable MSP partner.");
+                } finally {
+                  setDisableSubmitting(false);
+                }
+              }}
+              disabled={disableSubmitting}
+            >
+              {disableSubmitting && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+              Yes, Disable Partner
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

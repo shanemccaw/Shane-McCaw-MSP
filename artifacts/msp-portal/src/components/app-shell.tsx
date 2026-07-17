@@ -561,6 +561,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [profile, setProfile] = useState<MspProfile | null>(null);
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
+  const [customerStatus, setCustomerStatus] = useState<string | null>(null);
 
   const mspRole = user?.mspRole;
 
@@ -593,7 +594,19 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mspRole, user?.mspId]);
 
-  // Inject MSP primary color as CSS custom property (safe: server-controlled)
+  // Fetch customerStatus if CustomerUser
+  useEffect(() => {
+    if (mspRole !== "CustomerUser") return;
+    fetchWithAuth("/api/portal/dashboard")
+      .then(async (res) => {
+        if (res.ok) {
+          const d = await res.json() as { customerStatus?: string };
+          setCustomerStatus(d.customerStatus ?? null);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mspRole]);
   useEffect(() => {
     if (!profile?.primaryColor) return;
     const safe = profile.primaryColor.replace(/[^a-zA-Z0-9#(),%.\s]/g, "");
@@ -608,6 +621,14 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     if (!mspRole) return false;
     return item.roles.includes(mspRole);
   }
+
+  const isMspInactive = (mspRole === "MSPAdmin" || mspRole === "MSPOperator") && 
+    (profile?.status === "inactive" || profile?.status === "disabled");
+
+  const isCustomerInactive = mspRole === "CustomerUser" && 
+    (customerStatus === "inactive" || customerStatus === "disabled");
+
+  const isAccountInactive = isMspInactive || isCustomerInactive;
 
   // Cmd+K global keyboard shortcut
   useEffect(() => {
@@ -814,6 +835,29 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             </button>
           </div>
         </header>
+
+        {isAccountInactive && (
+          <div
+            role="alert"
+            className="shrink-0 flex items-center justify-between gap-4 px-4 md:px-6 py-3 bg-rose-500/10 border-b border-rose-500/30 text-rose-800 dark:text-rose-300"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-rose-500" />
+              <p className="text-sm">
+                <span className="font-semibold">Subscription Inactive:&nbsp;</span>
+                {mspRole === "CustomerUser" 
+                  ? "Monitoring and telemetry services are currently paused for your organization."
+                  : "Telemetry estate monitoring has been paused."}
+                {" "}Please resubscribe to reactivate your services.
+              </p>
+            </div>
+            <Link href={mspRole === "CustomerUser" ? "/customer-billing" : "/settings/billing"}>
+              <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-4 shrink-0">
+                Resubscribe
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Day 7+ MSP-suspended banner — shown to CustomerUsers only, non-dismissible */}
         {/* Server already enforces the 7-day threshold; suspended===true means ≥7 days */}

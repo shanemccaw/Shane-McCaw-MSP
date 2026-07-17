@@ -170,9 +170,10 @@ interface DiagnosticsTabProps {
   customerId: number;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
   accessToken?: string;
+  isInactive?: boolean;
 }
 
-function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsTabProps) {
+function DiagnosticsTab({ customerId, fetchWithAuth, accessToken, isInactive }: DiagnosticsTabProps) {
   const [runs, setRuns] = useState<DiagnosticRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(true);
   const [selectedRun, setSelectedRun] = useState<DiagnosticRun | null>(null);
@@ -425,12 +426,19 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsT
             size="sm"
             className="gap-2 rounded-lg shadow-sm"
             onClick={() => { void handleRunDiagnostics(); }}
-            disabled={triggering || isRunning}
+            disabled={triggering || isRunning || isInactive}
           >
             {triggering || isRunning ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
             Run Live Diagnostics
           </Button>
         </div>
+
+        {isInactive && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3 text-amber-300 text-sm">
+            <AlertTriangle className="size-5 shrink-0 mt-0.5" />
+            <p>Diagnostics & monitoring are paused because this customer account is disabled. Resubscribe to enable diagnostics.</p>
+          </div>
+        )}
 
         {loadingRuns ? (
           <div className="space-y-2">
@@ -505,6 +513,10 @@ export default function CustomerDetailPage() {
     notes: "",
   });
   const [editLoading, setEditLoading] = useState(false);
+
+  // Disable account state
+  const [disableDialogOpen, setDisableDialogOpen] = useState(false);
+  const [disableSubmitting, setDisableSubmitting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -663,6 +675,18 @@ export default function CustomerDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            {customer.status !== "inactive" && customer.status !== "disabled" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 rounded-lg border-rose-500/30 hover:border-rose-500 hover:bg-rose-500/10 text-rose-400"
+                onClick={() => setDisableDialogOpen(true)}
+              >
+                <X className="size-3.5" />
+                Disable Tenant
+              </Button>
+            )}
+
             <Button variant="outline" size="sm" className="gap-1.5 rounded-lg" onClick={openEditModal}>
               <Edit className="size-3.5 text-amber-400" />
               Edit Customer
@@ -672,6 +696,7 @@ export default function CustomerDetailPage() {
               size="sm"
               className="gap-1.5 rounded-lg shadow-sm"
               onClick={() => setActiveTab("diagnostics")}
+              disabled={customer.status === "inactive" || customer.status === "disabled"}
             >
               <Play className="size-3.5" />
               Run Diagnostics
@@ -893,7 +918,12 @@ export default function CustomerDetailPage() {
 
           {/* TAB 3: DIAGNOSTICS & RUNS */}
           <TabsContent value="diagnostics" className="space-y-4">
-            <DiagnosticsTab customerId={customer.id} fetchWithAuth={fetchWithAuth} accessToken={accessToken} />
+            <DiagnosticsTab
+              customerId={customer.id}
+              fetchWithAuth={fetchWithAuth}
+              accessToken={accessToken}
+              isInactive={customer.status === "inactive" || customer.status === "disabled"}
+            />
           </TabsContent>
 
           {/* TAB 4: RETAINERS & BILLING */}
@@ -974,7 +1004,7 @@ export default function CustomerDetailPage() {
       </div>
 
       {/* Edit Customer Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={(o) => if (!editLoading) setEditDialogOpen(o)}>
+      <Dialog open={editDialogOpen} onOpenChange={(o) => { if (!editLoading) setEditDialogOpen(o); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Customer Profile</DialogTitle>
@@ -1077,6 +1107,53 @@ export default function CustomerDetailPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Disable Customer Confirmation Dialog */}
+      <Dialog open={disableDialogOpen} onOpenChange={(o) => { if (!disableSubmitting) setDisableDialogOpen(o); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Disable Customer Account?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm text-slate-400">
+            <p>
+              You are about to cancel the Stripe retainer subscription and disable the customer account for{" "}
+              <strong className="text-slate-200">{customer.name}</strong>.
+            </p>
+            <p className="text-rose-400 font-semibold">
+              This will pause all active Microsoft 365 telemetry monitoring and diagnostic services immediately.
+            </p>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="ghost" onClick={() => setDisableDialogOpen(false)} disabled={disableSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setDisableSubmitting(true);
+                try {
+                  await fetchWithAuth(`/api/msp/customers/${customer.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: "inactive" }),
+                  });
+                  setCustomer((prev) => prev ? { ...prev, status: "inactive" } : null);
+                  toast.success("Customer account disabled & subscription cancelled.");
+                  setDisableDialogOpen(false);
+                } catch {
+                  toast.error("Failed to disable customer.");
+                } finally {
+                  setDisableSubmitting(false);
+                }
+              }}
+              disabled={disableSubmitting}
+            >
+              {disableSubmitting && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+              Yes, Disable Account
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>
