@@ -82,7 +82,7 @@ VALUES
     'POST',
     '{
       "@odata.type": "#microsoft.graph.unifiedRoleAssignment",
-      "roleDefinitionId": "c2cf284d-6c41-4e6b-afac-4b80928c9034",
+      "roleDefinitionId": "62e90394-69f5-4237-9190-012177145e10",
       "principalId": "{breakglassUserId}",
       "directoryScopeId": "/"
     }'::jsonb,
