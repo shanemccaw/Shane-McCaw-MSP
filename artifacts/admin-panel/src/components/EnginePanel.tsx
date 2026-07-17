@@ -28,7 +28,7 @@ interface DashboardResult {
 
 interface TestRunResult {
   mode: "tenant" | "payload";
-  tenantId?: number;
+  customerId?: number;
   output: unknown;
   error?: string;
 }
@@ -202,7 +202,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   };
 
   const buildBody = (): Record<string, unknown> => {
-    if (testTenantId.trim()) return { tenantId: Number(testTenantId), debug: true };
+    if (testTenantId.trim()) return { customerId: Number(testTenantId), debug: true };
     try {
       const payload = JSON.parse(testPayload || "{}");
       return { payload, debug: true };
@@ -527,7 +527,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               {logs.map(l => (
                 <div key={String(l.id)} className="text-xs border rounded p-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">{String(l.mode)}{l.tenantId != null ? ` · tenant #${l.tenantId}` : ""}</span>
+                    <span className="font-medium">{String(l.mode)}{l.customerId != null ? ` · tenant #${l.customerId}` : ""}</span>
                     <span className="text-muted-foreground">{new Date(String(l.createdAt)).toLocaleString()}</span>
                   </div>
                   {l.error ? <p className="text-destructive mt-1">{String(l.error)}</p> : null}
