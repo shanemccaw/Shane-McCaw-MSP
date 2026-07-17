@@ -96,6 +96,23 @@ import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
 
+// ── Sensitive payload redaction for node-input logging ───────────────────────
+// wf_run_node_outputs.input snapshots the full run payload at the moment a node
+// executes. That payload can carry secrets a break_glass_verification_gate is
+// about to consume/redact — but nodes execute (and log their input) before the
+// gate ever runs, so those keys would otherwise land in plaintext regardless of
+// the gate's own redactedPayload handling. Mirrors the gate's default field
+// names (see the break_glass_verification_gate case) so an input log can never
+// contain what the gate itself would have stripped.
+const SENSITIVE_PAYLOAD_KEYS = new Set(["generatedPassword", "breakGlassSecret", "breakGlassAccountId"]);
+
+function redactSensitivePayloadKeys(payload: Record<string, unknown>): Record<string, unknown> {
+  if (payload == null || typeof payload !== "object") return payload;
+  const redacted = { ...payload };
+  for (const key of SENSITIVE_PAYLOAD_KEYS) delete redacted[key];
+  return redacted;
+}
+
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
 // workflow node produces identical output to clicking Generate in the UI.
@@ -6536,7 +6553,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           await db.insert(wfRunNodeOutputsTable).values({
             runId,
             nodeId: node.id,
-            input: payload,
+            input: redactSensitivePayloadKeys(payload),
             output,
             durationMs,
             status: "ok",
@@ -8063,7 +8080,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   await db.insert(wfRunNodeOutputsTable).values({
     runId,
     nodeId: node.id,
-    input: payload,
+    input: redactSensitivePayloadKeys(payload),
     output,
     durationMs,
     status,
@@ -8223,7 +8240,7 @@ async function executeItemSubgraph(
       await db.insert(wfRunNodeOutputsTable).values({
         runId,
         nodeId: `${node.id}[${iterationIndex}]`,
-        input: nodeInputPayload,
+        input: redactSensitivePayloadKeys(nodeInputPayload),
         output,
         durationMs: null,
         status: nodeError ? "error" : "ok",
@@ -8439,7 +8456,7 @@ export async function executeWorkflowRun(
       // ── Skip path: node is reachable only through skipped predecessors ──
       if (item.skip) {
         await db.insert(wfRunNodeOutputsTable).values({
-          runId, nodeId, input: payload, output: { skipped: true }, status: "skipped",
+          runId, nodeId, input: redactSensitivePayloadKeys(payload), output: { skipped: true }, status: "skipped",
         }).catch(() => { });
         for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
           resolveEdge(e.target, false);
@@ -9324,7 +9341,7 @@ export async function resumeWorkflowRun(
 
       if (item.skip) {
         await db.insert(wfRunNodeOutputsTable).values({
-          runId, nodeId, input: payload, output: { skipped: true }, status: "skipped",
+          runId, nodeId, input: redactSensitivePayloadKeys(payload), output: { skipped: true }, status: "skipped",
         }).catch(() => { });
         for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
           resolveEdge(e.target, false);
