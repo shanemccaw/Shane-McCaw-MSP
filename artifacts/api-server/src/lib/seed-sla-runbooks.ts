@@ -15,6 +15,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.sla" });
 
 interface SlaRunbook {
   id: string;
@@ -314,5 +315,5 @@ export async function seedSlaRunbooks(): Promise<void> {
     `);
     if ((result as { rowCount?: number }).rowCount) seeded++;
   }
-  logger.info({ count: seeded }, "seed-sla-runbooks: SLA runbooks seeded");
+  log.info({ count: seeded }, "seed-sla-runbooks: SLA runbooks seeded");
 }

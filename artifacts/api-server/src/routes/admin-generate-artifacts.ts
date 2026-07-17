@@ -8,6 +8,8 @@ import { uploadFileToSharePoint, graphCredentialsPresent, ensureSharePointFolder
 import { logger } from "../lib/logger";
 import { getPrompt } from "../lib/prompt-loader.ts";
 
+const log = logger.child({ channel: "admin.content" });
+
 const router = Router();
 
 const navy  = rgb(0.039, 0.145, 0.251);
@@ -373,7 +375,7 @@ router.post(
         req.log.info({ artifactName, webUrl }, "Artifact generated and uploaded");
         sendEvent({ type: "artifactDone", artifactName, sharepointUrl: webUrl });
       } catch (err) {
-        logger.error({ err, artifactName }, "Error generating artifact");
+        log.error({ err, artifactName }, "Error generating artifact");
         const msg = `Error generating "${artifactName}": ${err instanceof Error ? err.message : String(err)}`;
         errors.push(msg);
         sendEvent({ type: "artifactError", artifactName, error: msg });
@@ -471,7 +473,7 @@ router.post(
         req.log.info({ artifactName }, "Artifact draft generated");
         sendEvent({ type: "artifactDraft", artifactName, markdown });
       } catch (err) {
-        logger.error({ err, artifactName }, "Error drafting artifact");
+        log.error({ err, artifactName }, "Error drafting artifact");
         const msg = `Error drafting "${artifactName}": ${err instanceof Error ? err.message : String(err)}`;
         errors.push(msg);
         sendEvent({ type: "artifactError", artifactName, error: msg });
@@ -535,7 +537,7 @@ router.post(
       req.log.info({ artifactName, webUrl }, "Artifact finalized and uploaded");
       res.json({ sharepointUrl: webUrl, artifacts: merged });
     } catch (err) {
-      logger.error({ err, artifactName }, "Error finalizing artifact");
+      log.error({ err, artifactName }, "Error finalizing artifact");
       res.status(500).json({ error: `Failed to finalize "${artifactName}": ${err instanceof Error ? err.message : String(err)}` });
     }
   },

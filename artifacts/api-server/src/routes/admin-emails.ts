@@ -4,6 +4,7 @@ import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "comms.email" });
 
 const router: IRouter = Router();
 
@@ -149,7 +150,7 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
         bodyContentType = msg.body.contentType;
       }
     } catch (err) {
-      logger.warn({ err }, "Failed to fetch email body from Graph; falling back to preview");
+      log.warn({ err }, "Failed to fetch email body from Graph; falling back to preview");
     }
   }
 

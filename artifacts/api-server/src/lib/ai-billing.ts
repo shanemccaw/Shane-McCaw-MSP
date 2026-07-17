@@ -38,6 +38,7 @@ import {
 import { eq, and, sum, desc, gte, sql, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "billing" });
 
 // ── Billing MSP resolution ─────────────────────────────────────────────────────
 
@@ -268,7 +269,7 @@ export async function checkAiAdmission(
   }
 
   if (mspId == null) {
-    logger.warn({}, "ai-billing: admission check with null mspId — blocking");
+    log.warn({}, "ai-billing: admission check with null mspId — blocking");
     return { admitted: false, balanceCents: 0, reason: "no mspId" };
   }
 
@@ -280,11 +281,11 @@ export async function checkAiAdmission(
   const balanceCents = Number(row?.total ?? 0);
 
   if (balanceCents > 0) {
-    logger.info({ mspId, balanceCents }, "ai-billing: MSP admitted (positive balance)");
+    log.info({ mspId, balanceCents }, "ai-billing: MSP admitted (positive balance)");
     return { admitted: true, balanceCents };
   }
 
-  logger.warn({ mspId, balanceCents }, "ai-billing: MSP blocked (zero/negative balance)");
+  log.warn({ mspId, balanceCents }, "ai-billing: MSP blocked (zero/negative balance)");
   return {
     admitted: false,
     balanceCents,
@@ -375,16 +376,16 @@ export async function recordAiUsage(opts: RecordAiUsageOpts): Promise<void> {
         periodKey: periodKeyFor(),
       });
 
-      logger.info(
+      log.info(
         { mspId, nodeType, costCents, balanceBefore, balanceAfter },
         "ai-billing: MSP usage recorded and debited",
       );
     } else if (costOwner === "platform") {
-      logger.debug({ nodeType, costCents }, "ai-billing: platform usage recorded (no MSP debit)");
+      log.debug({ nodeType, costCents }, "ai-billing: platform usage recorded (no MSP debit)");
     }
   } catch (err) {
     // Non-fatal — usage recording failures must never break the workflow
-    logger.error({ err, mspId, nodeType }, "ai-billing: failed to record usage event (non-fatal)");
+    log.error({ err, mspId, nodeType }, "ai-billing: failed to record usage event (non-fatal)");
   }
 }
 
@@ -417,7 +418,7 @@ export async function creditMonthlyGrant(opts: {
     .limit(1);
 
   if (existing) {
-    logger.info({ mspId: opts.mspId, periodKey: pk }, "ai-billing: monthly grant already exists — skipping");
+    log.info({ mspId: opts.mspId, periodKey: pk }, "ai-billing: monthly grant already exists — skipping");
     return false;
   }
 
@@ -438,7 +439,7 @@ export async function creditMonthlyGrant(opts: {
     createdByUserId: opts.createdByUserId,
   });
 
-  logger.info(
+  log.info(
     { mspId: opts.mspId, grantCents: opts.grantCents, periodKey: pk },
     "ai-billing: monthly grant credited",
   );
@@ -510,7 +511,7 @@ export async function expireMonthlyGrant(opts: {
     createdByUserId: opts.createdByUserId,
   });
 
-  logger.info(
+  log.info(
     { mspId: opts.mspId, periodKey: opts.periodKey, unusedCents },
     "ai-billing: monthly grant expired (no rollover)",
   );
@@ -551,7 +552,7 @@ export async function activateAiPurchase(opts: {
     .set({ status: "active", activatedAt: new Date(), updatedAt: new Date() })
     .where(eq(mspAiPurchasesTable.purchaseId, opts.purchaseId));
 
-  logger.info(
+  log.info(
     { mspId: opts.mspId, purchaseId: opts.purchaseId, creditGrantedCents: opts.creditGrantedCents },
     "ai-billing: AI credit block activated",
   );

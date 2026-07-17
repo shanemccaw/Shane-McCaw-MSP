@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import path from "path";
 import fs from "fs";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "admin.content" });
 
 const router: IRouter = Router();
 
@@ -12,7 +13,7 @@ const UPLOADS_BASE = process.env.UPLOADS_DIR
 const GENERATED_IMAGES_DIR = path.join(UPLOADS_BASE, "generated-images");
 
 fs.mkdirSync(GENERATED_IMAGES_DIR, { recursive: true });
-logger.info({ dir: GENERATED_IMAGES_DIR }, "generated-images: directory ready");
+log.info({ dir: GENERATED_IMAGES_DIR }, "generated-images: directory ready");
 
 router.get("/uploads/generated-images/:filename", (req: Request, res: Response) => {
   const filename = path.basename(String(req.params.filename ?? ""));

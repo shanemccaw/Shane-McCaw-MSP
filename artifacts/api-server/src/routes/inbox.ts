@@ -33,6 +33,7 @@ import {
 } from "../lib/graphEmail";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "growth.booking" });
 
 const router: IRouter = Router();
 
@@ -547,7 +548,7 @@ router.post("/inbox/ai", requireAdmin, async (req: Request, res: Response) => {
     res.json({ result: text });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "AI error";
-    logger.error({ err }, "inbox AI error");
+    log.error({ err }, "inbox AI error");
     res.status(500).json({ error: errMsg });
   }
 });
@@ -763,7 +764,7 @@ If no changes are warranted return suggestScoreChange: false and suggestStageCha
       res.json({ suggestScoreChange: false, suggestStageChange: false });
     }
   } catch (err) {
-    logger.error({ err }, "suggest-updates error");
+    log.error({ err }, "suggest-updates error");
     res.json({ suggestScoreChange: false, suggestStageChange: false });
   }
 });
@@ -938,7 +939,7 @@ router.patch("/inbox/leads/:leadId/score-stage", requireAdmin, async (req: Reque
       .returning({ id: leadsTable.id, score: leadsTable.score, stage: leadsTable.stage });
     res.json({ lead: updated ?? null });
   } catch (err) {
-    logger.error({ err }, "score-stage patch error");
+    log.error({ err }, "score-stage patch error");
     res.status(500).json({ error: "Failed to update lead" });
   }
 });

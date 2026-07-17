@@ -27,6 +27,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import crypto from "crypto";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "comms.webhook" });
 import { checkIdempotency, recordIdempotency, hashBody } from "../lib/idempotency.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 
@@ -67,7 +68,7 @@ function verifyStripeSignature(
   // Reject events older than 5 minutes (replay protection)
   const eventAge = Math.abs(Date.now() / 1000 - parseInt(timestamp, 10));
   if (eventAge > 300) {
-    logger.warn({ eventAge }, "msp-webhook/stripe: event too old — possible replay attack");
+    log.warn({ eventAge }, "msp-webhook/stripe: event too old — possible replay attack");
     return null;
   }
 
@@ -99,7 +100,7 @@ function verifyStripeSignature(
  * Stubbed — billing subsystem wires in real handlers here.
  */
 async function handleStripeEvent(event: { id: string; type: string; data: { object: Record<string, unknown> } }): Promise<void> {
-  logger.info({ eventId: event.id, eventType: event.type }, "msp-webhook/stripe: dispatching event");
+  log.info({ eventId: event.id, eventType: event.type }, "msp-webhook/stripe: dispatching event");
 
   switch (event.type) {
     case "checkout.session.completed":
@@ -119,21 +120,21 @@ async function handleStripeEvent(event: { id: string; type: string; data: { obje
       // TODO (Dunning task): increment dunning counter, send warning email
       break;
     default:
-      logger.info({ eventType: event.type }, "msp-webhook/stripe: unhandled event type (no-op)");
+      log.info({ eventType: event.type }, "msp-webhook/stripe: unhandled event type (no-op)");
   }
 }
 
 router.post("/stripe", async (req: Request, res: Response) => {
   const secret = process.env["STRIPE_MSP_WEBHOOK_SECRET"];
   if (!secret) {
-    logger.warn({}, "msp-webhook/stripe: STRIPE_MSP_WEBHOOK_SECRET not configured — rejecting");
+    log.warn({}, "msp-webhook/stripe: STRIPE_MSP_WEBHOOK_SECRET not configured — rejecting");
     apiError(res, 503, ApiErrorCode.INTERNAL, "Webhook endpoint not configured");
     return;
   }
 
   const rawBody = req.body as Buffer;
   if (!Buffer.isBuffer(rawBody)) {
-    logger.warn({ bodyType: typeof rawBody }, "msp-webhook/stripe: expected raw Buffer body");
+    log.warn({ bodyType: typeof rawBody }, "msp-webhook/stripe: expected raw Buffer body");
     apiError(res, 400, ApiErrorCode.VALIDATION, "Webhook requires raw body — check Content-Type");
     return;
   }
@@ -142,7 +143,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
   const event = verifyStripeSignature(rawBody, sigHeader, secret);
 
   if (!event) {
-    logger.warn({ sigHeader: sigHeader?.slice(0, 40) }, "msp-webhook/stripe: invalid signature");
+    log.warn({ sigHeader: sigHeader?.slice(0, 40) }, "msp-webhook/stripe: invalid signature");
     apiError(res, 400, ApiErrorCode.WEBHOOK_INVALID_SIGNATURE, "Webhook signature verification failed");
     return;
   }
@@ -151,7 +152,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
   const bodyHash = hashBody({ eventId: event.id });
   const cached = await checkIdempotency(`stripe-msp:${event.id}`, null, bodyHash);
   if (cached) {
-    logger.info({ eventId: event.id }, "msp-webhook/stripe: duplicate event — returning cached response");
+    log.info({ eventId: event.id }, "msp-webhook/stripe: duplicate event — returning cached response");
     res.status(cached.statusCode).json(cached.responseBody);
     return;
   }
@@ -162,7 +163,7 @@ router.post("/stripe", async (req: Request, res: Response) => {
     await recordIdempotency(`stripe-msp:${event.id}`, null, bodyHash, 200, responseBody);
     res.json(responseBody);
   } catch (err) {
-    logger.error({ err, eventId: event.id }, "msp-webhook/stripe: handler error");
+    log.error({ err, eventId: event.id }, "msp-webhook/stripe: handler error");
     apiError(res, 500, ApiErrorCode.INTERNAL, "Webhook processing failed");
   }
 });
@@ -191,7 +192,7 @@ function verifyAppSignature(
 
   const eventAge = Math.abs(Date.now() / 1000 - timestamp);
   if (eventAge > 300) {
-    logger.warn({ eventAge }, "msp-webhook/app: event too old — possible replay attack");
+    log.warn({ eventAge }, "msp-webhook/app: event too old — possible replay attack");
     return false;
   }
 
@@ -216,7 +217,7 @@ function verifyAppSignature(
  * Stubbed — subsystem tasks wire in real handlers here.
  */
 async function handleAppCallback(event: { eventId: string; eventType: string; payload: Record<string, unknown> }): Promise<void> {
-  logger.info({ eventId: event.eventId, eventType: event.eventType }, "msp-webhook/app: dispatching callback");
+  log.info({ eventId: event.eventId, eventType: event.eventType }, "msp-webhook/app: dispatching callback");
 
   switch (event.eventType) {
     case "provisioning.completed":
@@ -229,21 +230,21 @@ async function handleAppCallback(event: { eventId: string; eventType: string; pa
       // TODO (Diagnostics task): ingest health snapshot
       break;
     default:
-      logger.info({ eventType: event.eventType }, "msp-webhook/app: unhandled callback type (no-op)");
+      log.info({ eventType: event.eventType }, "msp-webhook/app: unhandled callback type (no-op)");
   }
 }
 
 router.post("/app-signature", async (req: Request, res: Response) => {
   const secret = process.env["APP_WEBHOOK_SECRET"];
   if (!secret) {
-    logger.warn({}, "msp-webhook/app: APP_WEBHOOK_SECRET not configured — rejecting");
+    log.warn({}, "msp-webhook/app: APP_WEBHOOK_SECRET not configured — rejecting");
     apiError(res, 503, ApiErrorCode.INTERNAL, "Webhook endpoint not configured");
     return;
   }
 
   const rawBody = req.body as Buffer;
   if (!Buffer.isBuffer(rawBody)) {
-    logger.warn({ bodyType: typeof rawBody }, "msp-webhook/app: expected raw Buffer body");
+    log.warn({ bodyType: typeof rawBody }, "msp-webhook/app: expected raw Buffer body");
     apiError(res, 400, ApiErrorCode.VALIDATION, "Webhook requires raw body — check Content-Type");
     return;
   }
@@ -252,7 +253,7 @@ router.post("/app-signature", async (req: Request, res: Response) => {
   const tsHeader = req.headers["x-app-timestamp"] as string | undefined;
 
   if (!verifyAppSignature(rawBody, sigHeader, tsHeader, secret)) {
-    logger.warn({}, "msp-webhook/app: invalid signature");
+    log.warn({}, "msp-webhook/app: invalid signature");
     apiError(res, 400, ApiErrorCode.WEBHOOK_INVALID_SIGNATURE, "Webhook signature verification failed");
     return;
   }
@@ -270,7 +271,7 @@ router.post("/app-signature", async (req: Request, res: Response) => {
   const bodyHash = hashBody({ eventId: event.eventId });
   const cached = await checkIdempotency(`app:${event.eventId}`, null, bodyHash);
   if (cached) {
-    logger.info({ eventId: event.eventId }, "msp-webhook/app: duplicate event — returning cached response");
+    log.info({ eventId: event.eventId }, "msp-webhook/app: duplicate event — returning cached response");
     res.status(cached.statusCode).json(cached.responseBody);
     return;
   }
@@ -281,7 +282,7 @@ router.post("/app-signature", async (req: Request, res: Response) => {
     await recordIdempotency(`app:${event.eventId}`, null, bodyHash, 200, responseBody);
     res.json(responseBody);
   } catch (err) {
-    logger.error({ err, eventId: event.eventId }, "msp-webhook/app: handler error");
+    log.error({ err, eventId: event.eventId }, "msp-webhook/app: handler error");
     apiError(res, 500, ApiErrorCode.INTERNAL, "Webhook processing failed");
   }
 });

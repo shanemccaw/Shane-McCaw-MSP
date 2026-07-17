@@ -23,6 +23,8 @@ import { resolveTxt } from "dns/promises";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 
+const log = logger.child({ channel: "tenant.msp-admin" });
+
 const router: IRouter = Router();
 
 function apiError(res: Response, status: number, message: string) {
@@ -298,7 +300,7 @@ router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async
     if (e.code === "ENOTFOUND" || e.code === "ENODATA" || e.code === "ENOENT") {
       errorMessage = `TXT record not found at ${txtHost}. DNS may not have propagated yet (can take up to 24 hours).`;
     } else {
-      logger.warn({ err, txtHost }, "DNS verification lookup failed");
+      log.warn({ err, txtHost }, "DNS verification lookup failed");
       errorMessage = "DNS lookup error. Please try again in a few minutes.";
     }
   }

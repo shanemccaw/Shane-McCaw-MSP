@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.sla" });
 import {
   computeSlaEngine,
   runSlaEngineForMsp,
@@ -71,7 +72,7 @@ router.get("/admin/sla/policies", requireAdmin, async (_req: Request, res: Respo
     const policies = await fetchAllPolicies();
     res.json({ policies });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list policies failed");
+    log.error({ err }, "admin-sla: list policies failed");
     res.status(500).json({ error: "Failed to list SLA policies" });
   }
 });
@@ -93,7 +94,7 @@ router.get("/admin/sla/policies/:id", requireAdmin, async (req: Request, res: Re
     if (rows.rows.length === 0) { res.status(404).json({ error: "Policy not found" }); return; }
     res.json({ policy: rowToPolicy(rows.rows[0] as Record<string, unknown>) });
   } catch (err) {
-    logger.error({ err, id }, "admin-sla: get policy failed");
+    log.error({ err, id }, "admin-sla: get policy failed");
     res.status(500).json({ error: "Failed to get policy" });
   }
 });
@@ -119,10 +120,10 @@ router.post("/admin/sla/policies", requireAdmin, async (req: Request, res: Respo
       ) RETURNING id
     `);
     const newId = (result.rows[0] as { id: number }).id;
-    logger.info({ id: newId }, "admin-sla: policy created");
+    log.info({ id: newId }, "admin-sla: policy created");
     res.status(201).json({ id: newId });
   } catch (err) {
-    logger.error({ err }, "admin-sla: create policy failed");
+    log.error({ err }, "admin-sla: create policy failed");
     res.status(500).json({ error: "Failed to create policy" });
   }
 });
@@ -147,7 +148,7 @@ router.patch("/admin/sla/policies/:id", requireAdmin, async (req: Request, res: 
     `);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-sla: update policy failed");
+    log.error({ err, id }, "admin-sla: update policy failed");
     res.status(500).json({ error: "Failed to update policy" });
   }
 });
@@ -158,7 +159,7 @@ router.delete("/admin/sla/policies/:id", requireAdmin, async (req: Request, res:
     await db.execute(sql`UPDATE sla_policies SET is_active = false, updated_at = NOW() WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-sla: delete policy failed");
+    log.error({ err, id }, "admin-sla: delete policy failed");
     res.status(500).json({ error: "Failed to deactivate policy" });
   }
 });
@@ -181,7 +182,7 @@ router.get("/admin/sla/assignments", requireAdmin, async (req: Request, res: Res
     );
     res.json({ assignments: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list assignments failed");
+    log.error({ err }, "admin-sla: list assignments failed");
     res.status(500).json({ error: "Failed to list assignments" });
   }
 });
@@ -200,10 +201,10 @@ router.post("/admin/sla/assignments", requireAdmin, async (req: Request, res: Re
       RETURNING id
     `);
     const id = (result.rows[0] as { id: number }).id;
-    logger.info({ id, mspId: b.mspId, customerId: b.customerId }, "admin-sla: assignment upserted");
+    log.info({ id, mspId: b.mspId, customerId: b.customerId }, "admin-sla: assignment upserted");
     res.status(201).json({ id, idempotencyKey: key });
   } catch (err) {
-    logger.error({ err }, "admin-sla: create assignment failed");
+    log.error({ err }, "admin-sla: create assignment failed");
     res.status(500).json({ error: "Failed to create assignment" });
   }
 });
@@ -214,7 +215,7 @@ router.delete("/admin/sla/assignments/:id", requireAdmin, async (req: Request, r
     await db.execute(sql`DELETE FROM sla_assignments WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-sla: delete assignment failed");
+    log.error({ err, id }, "admin-sla: delete assignment failed");
     res.status(500).json({ error: "Failed to delete assignment" });
   }
 });
@@ -254,7 +255,7 @@ router.get("/admin/sla/timers", requireAdmin, async (req: Request, res: Response
     );
     res.json({ timers: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list timers failed");
+    log.error({ err }, "admin-sla: list timers failed");
     res.status(500).json({ error: "Failed to list timers" });
   }
 });
@@ -275,7 +276,7 @@ router.post("/admin/sla/timers/start", requireAdmin, async (req: Request, res: R
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-sla: start timer failed");
+    log.error({ err }, "admin-sla: start timer failed");
     res.status(500).json({ error: "Failed to start timer" });
   }
 });
@@ -286,7 +287,7 @@ router.post("/admin/sla/timers/:timerId/stop", requireAdmin, async (req: Request
     const stopped = await stopSlaTimer(timerId);
     res.json({ ok: stopped });
   } catch (err) {
-    logger.error({ err, timerId }, "admin-sla: stop timer failed");
+    log.error({ err, timerId }, "admin-sla: stop timer failed");
     res.status(500).json({ error: "Failed to stop timer" });
   }
 });
@@ -298,7 +299,7 @@ router.post("/admin/sla/timers/:timerId/resolve", requireAdmin, async (req: Requ
     const resolved = await resolveSlaTimer(timerId, b.notes as string | undefined);
     res.json({ ok: resolved });
   } catch (err) {
-    logger.error({ err, timerId }, "admin-sla: resolve timer failed");
+    log.error({ err, timerId }, "admin-sla: resolve timer failed");
     res.status(500).json({ error: "Failed to resolve timer" });
   }
 });
@@ -327,7 +328,7 @@ router.get("/admin/sla/breaches", requireAdmin, async (req: Request, res: Respon
     );
     res.json({ breaches: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list breaches failed");
+    log.error({ err }, "admin-sla: list breaches failed");
     res.status(500).json({ error: "Failed to list breaches" });
   }
 });
@@ -354,7 +355,7 @@ router.get("/admin/sla/escalations", requireAdmin, async (req: Request, res: Res
     );
     res.json({ escalations: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list escalations failed");
+    log.error({ err }, "admin-sla: list escalations failed");
     res.status(500).json({ error: "Failed to list escalations" });
   }
 });
@@ -376,7 +377,7 @@ router.post("/admin/sla/escalations", requireAdmin, async (req: Request, res: Re
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-sla: create escalation failed");
+    log.error({ err }, "admin-sla: create escalation failed");
     res.status(500).json({ error: "Failed to create escalation" });
   }
 });
@@ -411,7 +412,7 @@ router.get("/admin/sla/compliance", requireAdmin, async (req: Request, res: Resp
     );
     res.json({ records: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-sla: list compliance records failed");
+    log.error({ err }, "admin-sla: list compliance records failed");
     res.status(500).json({ error: "Failed to list compliance records" });
   }
 });
@@ -445,7 +446,7 @@ router.post("/admin/sla/compliance/snapshot", requireAdmin, async (req: Request,
     `);
     res.status(201).json({ recordId, ...snapshot });
   } catch (err) {
-    logger.error({ err }, "admin-sla: compliance snapshot failed");
+    log.error({ err }, "admin-sla: compliance snapshot failed");
     res.status(500).json({ error: "Failed to compute compliance snapshot" });
   }
 });
@@ -467,7 +468,7 @@ router.post("/admin/sla/evaluate", requireAdmin, async (req: Request, res: Respo
     }
     res.json(output);
   } catch (err) {
-    logger.error({ err }, "admin-sla: evaluate failed");
+    log.error({ err }, "admin-sla: evaluate failed");
     res.status(500).json({ error: "SLA engine evaluation failed" });
   }
 });
@@ -486,7 +487,7 @@ router.get("/admin/sla/evaluate", requireAdmin, async (req: Request, res: Respon
     }
     res.json(output);
   } catch (err) {
-    logger.error({ err }, "admin-sla: evaluate failed");
+    log.error({ err }, "admin-sla: evaluate failed");
     res.status(500).json({ error: "SLA engine evaluation failed" });
   }
 });

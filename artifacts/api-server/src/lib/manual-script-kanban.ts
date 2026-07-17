@@ -9,6 +9,7 @@ import { db, kanbanTasksTable, projectsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.script" });
 
 export interface ManualScriptKanbanInput {
   scriptId: number;
@@ -78,7 +79,7 @@ export async function createManualScriptKanbanCard(
 
   const projectId = await resolveProjectForCustomer(customerId);
   if (!projectId) {
-    logger.warn(
+    log.warn(
       { customerId, scriptRunResultId },
       "manual-script-kanban: no active project found for customer — skipping card creation",
     );
@@ -166,7 +167,7 @@ export async function createManualScriptKanbanCard(
           updatedAt: new Date(),
         })
         .where(eq(kanbanTasksTable.id, existingCard.id));
-      logger.info(
+      log.info(
         { kanbanTaskId: existingCard.id, scriptRunResultId },
         "manual-script-kanban: updated existing card",
       );
@@ -189,13 +190,13 @@ export async function createManualScriptKanbanCard(
       })
       .returning({ id: kanbanTasksTable.id });
 
-    logger.info(
+    log.info(
       { kanbanTaskId: newTask.id, projectId, scriptRunResultId },
       "manual-script-kanban: created card",
     );
     return newTask.id;
   } catch (err) {
-    logger.error({ err, scriptRunResultId }, "manual-script-kanban: failed to create/update card");
+    log.error({ err, scriptRunResultId }, "manual-script-kanban: failed to create/update card");
     return null;
   }
 }
@@ -227,7 +228,7 @@ export async function completeManualScriptKanbanCard(
     );
 
     if (!card) {
-      logger.warn(
+      log.warn(
         { scriptRunResultId },
         "manual-script-kanban: no card found to complete",
       );
@@ -248,11 +249,11 @@ export async function completeManualScriptKanbanCard(
       })
       .where(eq(kanbanTasksTable.id, card.id));
 
-    logger.info(
+    log.info(
       { kanbanTaskId: card.id, scriptRunResultId },
       "manual-script-kanban: marked card completed",
     );
   } catch (err) {
-    logger.warn({ err, scriptRunResultId }, "manual-script-kanban: could not complete card (non-fatal)");
+    log.warn({ err, scriptRunResultId }, "manual-script-kanban: could not complete card (non-fatal)");
   }
 }

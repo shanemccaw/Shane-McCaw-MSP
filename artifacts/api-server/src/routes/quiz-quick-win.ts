@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, quickWinQuizResultsTable, servicesTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "growth.quiz" });
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.post("/quiz/quick-win/submit", submitLimiter, async (req, res) => {
 
     res.json({ resultId: row.id });
   } catch (err) {
-    logger.error({ err }, "Failed to save quick win quiz result");
+    log.error({ err }, "Failed to save quick win quiz result");
     res.status(500).json({ error: "Failed to save result" });
   }
 });
@@ -143,7 +144,7 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
       createdAt: result.createdAt,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to fetch quick win quiz result");
+    log.error({ err }, "Failed to fetch quick win quiz result");
     res.status(500).json({ error: "Failed to fetch result" });
   }
 });

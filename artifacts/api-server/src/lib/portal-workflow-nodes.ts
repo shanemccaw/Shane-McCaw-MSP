@@ -22,6 +22,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.run" });
 import { registerDocPipelineHandlers } from "./doc-pipeline-nodes";
 import { registerReportNodes } from "./report-nodes";
 
@@ -79,7 +80,7 @@ async function handleHttpCall(ctx: NodeExecutionContext): Promise<Record<string,
   const bodyTemplate = cfg["body"] != null ? String(cfg["body"]) : undefined;
   const body = bodyTemplate ? interp(bodyTemplate, ctx.input) : undefined;
 
-  logger.info({ runId: ctx.runId, nodeId: ctx.nodeId, method, url }, "portal-wf: http_call");
+  log.info({ runId: ctx.runId, nodeId: ctx.nodeId, method, url }, "portal-wf: http_call");
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -133,7 +134,7 @@ async function handleDbWrite(ctx: NodeExecutionContext): Promise<Record<string, 
   const statement = interp(rawStatement, ctx.input) ?? rawStatement;
   const returning = Boolean(cfg["returning"] ?? false);
 
-  logger.info({ runId: ctx.runId, nodeId: ctx.nodeId, statement: statement.slice(0, 100) }, "portal-wf: db_write");
+  log.info({ runId: ctx.runId, nodeId: ctx.nodeId, statement: statement.slice(0, 100) }, "portal-wf: db_write");
 
   const result = await db.execute(sql.raw(statement));
   const rows = (result as unknown as { rows: Record<string, unknown>[] }).rows ?? [];
@@ -182,7 +183,7 @@ async function handleEmitEvent(ctx: NodeExecutionContext): Promise<Record<string
     payload: resolvedPayload,
   });
 
-  logger.info({ runId: ctx.runId, nodeId: ctx.nodeId, eventType, dispatched: dispatched?.eventId }, "portal-wf: emit_event");
+  log.info({ runId: ctx.runId, nodeId: ctx.nodeId, eventType, dispatched: dispatched?.eventId }, "portal-wf: emit_event");
 
   return {
     eventId: dispatched?.eventId,
@@ -198,7 +199,7 @@ async function handleEmitEvent(ctx: NodeExecutionContext): Promise<Record<string
 async function handleWait(ctx: NodeExecutionContext): Promise<Record<string, unknown>> {
   const rawMs = Number(ctx.config["ms"] ?? 0);
   const ms = Math.min(rawMs, process.env.NODE_ENV === "test" ? 10 : 60_000);
-  logger.debug({ runId: ctx.runId, nodeId: ctx.nodeId, ms }, "portal-wf: wait");
+  log.debug({ runId: ctx.runId, nodeId: ctx.nodeId, ms }, "portal-wf: wait");
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
   return { waited: ms };
 }
@@ -287,5 +288,5 @@ export function registerBuiltinHandlers(): void {
   // Report generation node
   registerReportNodes();
 
-  logger.info({}, "portal-wf: built-in node handlers registered (start, http_call, db_write, emit_event, wait, condition + doc pipeline + report)");
+  log.info({}, "portal-wf: built-in node handlers registered (start, http_call, db_write, emit_event, wait, condition + doc pipeline + report)");
 }

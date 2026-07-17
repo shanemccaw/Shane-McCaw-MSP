@@ -32,6 +32,7 @@ import {
   loadSalesOfferConfig,
 } from "../lib/sales-offer-engine";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.offer" });
 
 const router = Router();
 
@@ -68,7 +69,7 @@ router.get(
 
       res.json({ offers: rows, limit, offset });
     } catch (err) {
-      logger.error({ err }, "GET /api/sales-offers failed");
+      log.error({ err }, "GET /api/sales-offers failed");
       res.status(500).json({ error: "Failed to list sales offers" });
     }
   },
@@ -105,7 +106,7 @@ router.get(
 
       res.json({ offer, events });
     } catch (err) {
-      logger.error({ err }, "GET /api/sales-offers/:id failed");
+      log.error({ err }, "GET /api/sales-offers/:id failed");
       res.status(500).json({ error: "Failed to fetch sales offer" });
     }
   },
@@ -140,7 +141,7 @@ router.post(
         engineOutput as unknown as Record<string, unknown>,
       );
 
-      logger.info({ customerId, insertedCount: insertedIds.length }, "POST /api/sales-offers/generate completed");
+      log.info({ customerId, insertedCount: insertedIds.length }, "POST /api/sales-offers/generate completed");
       res.status(201).json({
         insertedOfferIds: insertedIds,
         candidateCount: engineOutput.candidates.length,
@@ -148,7 +149,7 @@ router.post(
         config: engineOutput.config,
       });
     } catch (err) {
-      logger.error({ err }, "POST /api/sales-offers/generate failed");
+      log.error({ err }, "POST /api/sales-offers/generate failed");
       res.status(500).json({ error: "Failed to generate sales offers" });
     }
   },
@@ -187,7 +188,7 @@ router.patch(
         res.status(422).json({ error: message });
         return;
       }
-      logger.error({ err }, "PATCH /api/sales-offers/:id/state failed");
+      log.error({ err }, "PATCH /api/sales-offers/:id/state failed");
       res.status(500).json({ error: "Failed to transition offer state" });
     }
   },
@@ -228,7 +229,7 @@ router.delete(
       await db.delete(salesOffersTable).where(eq(salesOffersTable.id, id));
       res.json({ deleted: true, id });
     } catch (err) {
-      logger.error({ err }, "DELETE /api/sales-offers/:id failed");
+      log.error({ err }, "DELETE /api/sales-offers/:id failed");
       res.status(500).json({ error: "Failed to delete sales offer" });
     }
   },
@@ -249,7 +250,7 @@ router.post(
       const expired = await expireStaleSalesOffers();
       res.json({ expired });
     } catch (err) {
-      logger.error({ err }, "POST /api/sales-offers/expire-stale failed");
+      log.error({ err }, "POST /api/sales-offers/expire-stale failed");
       res.status(500).json({ error: "Failed to expire stale offers" });
     }
   },
@@ -271,7 +272,7 @@ router.get(
       const config = await loadSalesOfferConfig(mspId != null && !isNaN(mspId) ? mspId : null);
       res.json({ config });
     } catch (err) {
-      logger.error({ err }, "GET /api/admin/sales-offers/config failed");
+      log.error({ err }, "GET /api/admin/sales-offers/config failed");
       res.status(500).json({ error: "Failed to load sales offer config" });
     }
   },
@@ -324,7 +325,7 @@ router.put(
 
       res.json({ config: upserted });
     } catch (err) {
-      logger.error({ err }, "PUT /api/admin/sales-offers/config failed");
+      log.error({ err }, "PUT /api/admin/sales-offers/config failed");
       res.status(500).json({ error: "Failed to save sales offer config" });
     }
   },
@@ -347,7 +348,7 @@ router.get(
         .orderBy(asc(salesOfferRuleGroupsTable.sortOrder), asc(salesOfferRuleGroupsTable.id));
       res.json({ ruleGroups: rows });
     } catch (err) {
-      logger.error({ err }, "GET /api/admin/sales-offers/rule-groups failed");
+      log.error({ err }, "GET /api/admin/sales-offers/rule-groups failed");
       res.status(500).json({ error: "Failed to list rule groups" });
     }
   },
@@ -405,7 +406,7 @@ router.post(
         res.status(409).json({ error: "Rule group key already exists" });
         return;
       }
-      logger.error({ err }, "POST /api/admin/sales-offers/rule-groups failed");
+      log.error({ err }, "POST /api/admin/sales-offers/rule-groups failed");
       res.status(500).json({ error: "Failed to create rule group" });
     }
   },
@@ -448,7 +449,7 @@ router.patch(
       }
       res.json({ ruleGroup: updated });
     } catch (err) {
-      logger.error({ err }, "PATCH /api/admin/sales-offers/rule-groups/:id failed");
+      log.error({ err }, "PATCH /api/admin/sales-offers/rule-groups/:id failed");
       res.status(500).json({ error: "Failed to update rule group" });
     }
   },
@@ -472,7 +473,7 @@ router.delete(
       await db.delete(salesOfferRuleGroupsTable).where(eq(salesOfferRuleGroupsTable.id, id));
       res.json({ deleted: true, id });
     } catch (err) {
-      logger.error({ err }, "DELETE /api/admin/sales-offers/rule-groups/:id failed");
+      log.error({ err }, "DELETE /api/admin/sales-offers/rule-groups/:id failed");
       res.status(500).json({ error: "Failed to delete rule group" });
     }
   },
@@ -503,7 +504,7 @@ router.get(
 
       res.json({ events });
     } catch (err) {
-      logger.error({ err }, "GET /api/sales-offers/:id/events failed");
+      log.error({ err }, "GET /api/sales-offers/:id/events failed");
       res.status(500).json({ error: "Failed to fetch offer events" });
     }
   },

@@ -3,6 +3,7 @@ import { db, scriptRunResultsTable, engagementProjectsTable, usersTable } from "
 import { eq, desc, asc, isNull, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.signals" });
 import {
   TENANT_SIGNALS,
   ADJUSTMENT_SIGNALS,
@@ -253,10 +254,10 @@ async function seedAdjustmentSignalRules(): Promise<void> {
         `);
       }
 
-      logger.info({ signalKey: sig.key }, "admin-signal-rules: seeded default adjustment signal rules");
+      log.info({ signalKey: sig.key }, "admin-signal-rules: seeded default adjustment signal rules");
     }
   } catch (err) {
-    logger.warn({ err }, "admin-signal-rules: adjustment signal seeder failed (non-fatal)");
+    log.warn({ err }, "admin-signal-rules: adjustment signal seeder failed (non-fatal)");
   }
 }
 
@@ -322,9 +323,9 @@ async function seedCategoryTaxonomyExamples(): Promise<void> {
         )
       `);
     }
-    logger.info({ count: CATEGORY_TAXONOMY_EXAMPLES.length }, "admin-signal-rules: seeded illustrative category taxonomy examples");
+    log.info({ count: CATEGORY_TAXONOMY_EXAMPLES.length }, "admin-signal-rules: seeded illustrative category taxonomy examples");
   } catch (err) {
-    logger.warn({ err }, "admin-signal-rules: category taxonomy example seeder failed (non-fatal)");
+    log.warn({ err }, "admin-signal-rules: category taxonomy example seeder failed (non-fatal)");
   }
 }
 
@@ -347,7 +348,7 @@ router.get("/admin/custom-signals", requireAdmin, async (_req: Request, res: Res
     const custom = await getCustomSignals();
     res.json(custom);
   } catch (err) {
-    logger.error({ err }, "GET /admin/custom-signals failed");
+    log.error({ err }, "GET /admin/custom-signals failed");
     res.status(500).json({ error: "Failed to fetch custom signals" });
   }
 });
@@ -374,10 +375,10 @@ router.delete("/admin/custom-signals/:key", requireAdmin, async (req: Request, r
       `);
     });
 
-    logger.info({ key }, "admin-signal-rules: custom signal deleted");
+    log.info({ key }, "admin-signal-rules: custom signal deleted");
     res.json({ deleted: key });
   } catch (err) {
-    logger.error({ err }, "DELETE /admin/custom-signals/:key failed");
+    log.error({ err }, "DELETE /admin/custom-signals/:key failed");
     res.status(500).json({ error: "Failed to delete signal" });
   }
 });
@@ -415,7 +416,7 @@ router.post("/admin/custom-signals", requireAdmin, async (req: Request, res: Res
     await appendAuditLog({ action: "custom_signal_created", signalKey: slug });
     res.status(201).json({ key: slug });
   } catch (err) {
-    logger.error({ err }, "POST /admin/custom-signals failed");
+    log.error({ err }, "POST /admin/custom-signals failed");
     res.status(500).json({ error: "Failed to create custom signal" });
   }
 });
@@ -432,7 +433,7 @@ router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: 
     const all = [...ADJUSTMENT_SIGNALS, ...customAdj].map(s => ({ ...s, enabled: enabledMap[s.key] ?? true }));
     res.json(all);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
+    log.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
     res.status(500).json({ error: "Failed to fetch adjustment signals" });
   }
 });
@@ -444,7 +445,7 @@ router.get("/admin/signal-rules/enabled-state", requireAdmin, async (_req: Reque
     const map = await getSignalEnabledMap();
     res.json(map);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/enabled-state failed");
+    log.error({ err }, "GET /admin/signal-rules/enabled-state failed");
     res.status(500).json({ error: "Failed to fetch signal enabled state" });
   }
 });
@@ -482,10 +483,10 @@ router.patch("/admin/signal-rules/:signalKey/enabled", requireAdmin, async (req:
       note: `Signal "${signalKey}" ${enabled ? "enabled" : "disabled"} by admin`,
     });
 
-    logger.info({ signalKey, enabled }, "admin-signal-rules: signal enabled state updated");
+    log.info({ signalKey, enabled }, "admin-signal-rules: signal enabled state updated");
     res.json({ signalKey, enabled });
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/signal-rules/:signalKey/enabled failed");
+    log.error({ err }, "PATCH /admin/signal-rules/:signalKey/enabled failed");
     res.status(500).json({ error: "Failed to update signal enabled state" });
   }
 });
@@ -514,7 +515,7 @@ router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Respo
 
     res.json({ bySignal, rules, groups });
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules failed");
+    log.error({ err }, "GET /admin/signal-rules failed");
     res.status(500).json({ error: "Failed to fetch signal rules" });
   }
 });
@@ -587,7 +588,7 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
     await appendAuditLog({ action: "create", signalKey: signalKey as string, ruleId: created.id, after: created, adminUserId: adminId });
     res.status(201).json(created);
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules failed");
+    log.error({ err }, "POST /admin/signal-rules failed");
     res.status(500).json({ error: "Failed to create rule" });
   }
 });
@@ -690,7 +691,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
     await appendAuditLog({ action: "update", signalKey: updated.signalKey, ruleId: id, before: prior, after: updated, adminUserId: adminId });
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/signal-rules/:id failed");
+    log.error({ err }, "PATCH /admin/signal-rules/:id failed");
     res.status(500).json({ error: "Failed to update rule" });
   }
 });
@@ -714,7 +715,7 @@ router.delete("/admin/signal-rules/:id", requireAdmin, async (req: Request, res:
     await appendAuditLog({ action: "delete", signalKey: prior.signalKey, ruleId: id, before: prior, adminUserId: adminId });
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "DELETE /admin/signal-rules/:id failed");
+    log.error({ err }, "DELETE /admin/signal-rules/:id failed");
     res.status(500).json({ error: "Failed to delete rule" });
   }
 });
@@ -749,7 +750,7 @@ router.post("/admin/signal-rule-groups", requireAdmin, async (req: Request, res:
     `);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rule-groups failed");
+    log.error({ err }, "POST /admin/signal-rule-groups failed");
     res.status(500).json({ error: "Failed to create group" });
   }
 });
@@ -807,7 +808,7 @@ router.patch("/admin/signal-rule-groups/:id", requireAdmin, async (req: Request,
     if (result.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
     res.json(result.rows[0]);
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/signal-rule-groups/:id failed");
+    log.error({ err }, "PATCH /admin/signal-rule-groups/:id failed");
     res.status(500).json({ error: "Failed to update group" });
   }
 });
@@ -822,7 +823,7 @@ router.delete("/admin/signal-rule-groups/:id", requireAdmin, async (req: Request
     await db.execute(sql`DELETE FROM signal_rule_groups WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "DELETE /admin/signal-rule-groups/:id failed");
+    log.error({ err }, "DELETE /admin/signal-rule-groups/:id failed");
     res.status(500).json({ error: "Failed to delete group" });
   }
 });
@@ -846,7 +847,7 @@ router.post("/admin/signal-rules/evaluate", requireAdmin, async (req: Request, r
 
     res.json({ firedSignals: firedArr, ruleTrace: trace });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/evaluate failed");
+    log.error({ err }, "POST /admin/signal-rules/evaluate failed");
     res.status(500).json({ error: "Evaluation failed" });
   }
 });
@@ -902,7 +903,7 @@ router.post("/admin/signal-rules/preview-projects", requireAdmin, async (req: Re
 
     res.json({ firedSignals: firedArr, included, excluded });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/preview-projects failed");
+    log.error({ err }, "POST /admin/signal-rules/preview-projects failed");
     res.status(500).json({ error: "Preview failed" });
   }
 });
@@ -915,7 +916,7 @@ router.get("/admin/signal-rules/conflicts", requireAdmin, async (_req: Request, 
     const conflicts = detectRuleConflicts(rules);
     res.json({ conflicts, count: conflicts.length });
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/conflicts failed");
+    log.error({ err }, "GET /admin/signal-rules/conflicts failed");
     res.status(500).json({ error: "Conflict detection failed" });
   }
 });
@@ -968,7 +969,7 @@ router.get("/admin/signal-rules/health", requireAdmin, async (_req: Request, res
 
     res.json(health);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/health failed");
+    log.error({ err }, "GET /admin/signal-rules/health failed");
     res.status(500).json({ error: "Health check failed" });
   }
 });
@@ -1013,7 +1014,7 @@ router.get("/admin/signal-rules/script-fields", requireAdmin, async (_req: Reque
 
     res.json(fields);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/script-fields failed");
+    log.error({ err }, "GET /admin/signal-rules/script-fields failed");
     res.status(500).json({ error: "Failed to fetch script fields" });
   }
 });
@@ -1054,7 +1055,7 @@ router.get("/admin/signal-rules/audit-log", requireAdmin, async (req: Request, r
       offset,
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/audit-log failed");
+    log.error({ err }, "GET /admin/signal-rules/audit-log failed");
     res.status(500).json({ error: "Failed to fetch audit log" });
   }
 });
@@ -1249,7 +1250,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
 
     res.json({ imported: ruleCount, skipped: 0, errors: [], snapshotId, projectLinksUpdated: projectLinkCount });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/import failed");
+    log.error({ err }, "POST /admin/signal-rules/import failed");
     res.status(500).json({ error: "Import failed" });
   }
 });
@@ -1326,10 +1327,10 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
       `);
     });
 
-    logger.info({ signalKey, count: importedRules.length }, "admin-signal-rules: per-signal import complete");
+    log.info({ signalKey, count: importedRules.length }, "admin-signal-rules: per-signal import complete");
     res.json({ imported: importedRules.length, signalKey });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/:signalKey/import failed");
+    log.error({ err }, "POST /admin/signal-rules/:signalKey/import failed");
     res.status(500).json({ error: "Import failed" });
   }
 });
@@ -1423,10 +1424,10 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
       `);
     });
 
-    logger.info({ signalKey, groupId: newGroupId, imported }, "admin-signal-rules: bundle import complete");
+    log.info({ signalKey, groupId: newGroupId, imported }, "admin-signal-rules: bundle import complete");
     res.json({ signalKey, groupId: newGroupId, imported });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/import-bundle failed");
+    log.error({ err }, "POST /admin/signal-rules/import-bundle failed");
     res.status(500).json({ error: "Bundle import failed" });
   }
 });
@@ -1441,7 +1442,7 @@ router.get("/admin/signal-rules/versions", requireAdmin, async (_req: Request, r
     `);
     res.json(result.rows);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/versions failed");
+    log.error({ err }, "GET /admin/signal-rules/versions failed");
     res.status(500).json({ error: "Failed to fetch versions" });
   }
 });
@@ -1458,7 +1459,7 @@ router.post("/admin/signal-rules/versions", requireAdmin, async (req: Request, r
     const id = await saveSnapshot(name.trim(), adminId);
     res.status(201).json({ id });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/versions failed");
+    log.error({ err }, "POST /admin/signal-rules/versions failed");
     res.status(500).json({ error: "Failed to save snapshot" });
   }
 });
@@ -1534,7 +1535,7 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
 
     res.json({ restored: ruleCount, backupSnapshotId: backupId });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/versions/:id/restore failed");
+    log.error({ err }, "POST /admin/signal-rules/versions/:id/restore failed");
     res.status(500).json({ error: "Restore failed" });
   }
 });
@@ -1552,7 +1553,7 @@ router.get("/admin/signal-rules/simulation-profiles", requireAdmin, async (_req:
     `);
     res.json(result.rows);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/simulation-profiles failed");
+    log.error({ err }, "GET /admin/signal-rules/simulation-profiles failed");
     res.status(500).json({ error: "Failed to fetch simulation profiles" });
   }
 });
@@ -1575,7 +1576,7 @@ router.post("/admin/signal-rules/simulation-profiles", requireAdmin, async (req:
     `);
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/simulation-profiles failed");
+    log.error({ err }, "POST /admin/signal-rules/simulation-profiles failed");
     res.status(500).json({ error: "Failed to create simulation profile" });
   }
 });
@@ -1603,7 +1604,7 @@ router.patch("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async 
     if (result.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
     res.json(result.rows[0]);
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/signal-rules/simulation-profiles/:id failed");
+    log.error({ err }, "PATCH /admin/signal-rules/simulation-profiles/:id failed");
     res.status(500).json({ error: "Failed to update simulation profile" });
   }
 });
@@ -1617,7 +1618,7 @@ router.delete("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async
     await db.execute(sql`DELETE FROM signal_simulation_profiles WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "DELETE /admin/signal-rules/simulation-profiles/:id failed");
+    log.error({ err }, "DELETE /admin/signal-rules/simulation-profiles/:id failed");
     res.status(500).json({ error: "Failed to delete simulation profile" });
   }
 });
@@ -1645,7 +1646,7 @@ router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: R
       lastRunAt: r.last_run_at,
     })));
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/clients-with-runs failed");
+    log.error({ err }, "GET /admin/signal-rules/clients-with-runs failed");
     res.status(500).json({ error: "Failed to fetch clients" });
   }
 });
@@ -1707,7 +1708,7 @@ router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin,
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/simulation-profiles/from-client failed");
+    log.error({ err }, "POST /admin/signal-rules/simulation-profiles/from-client failed");
     res.status(500).json({ error: "Failed to create simulation profile from client data" });
   }
 });
@@ -1817,7 +1818,7 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
 
     res.json({ firedSignals: firedArr, ruleTrace: trace, includedProjects, excludedProjects, previousRunDiff });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/simulation-profiles/:id/run failed");
+    log.error({ err }, "POST /admin/signal-rules/simulation-profiles/:id/run failed");
     res.status(500).json({ error: "Failed to run simulation profile" });
   }
 });
@@ -1884,7 +1885,7 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
       note: "No document was generated. This is a dry run only.",
     });
   } catch (err) {
-    logger.error({ err }, "POST /admin/signal-rules/dry-run-sow failed");
+    log.error({ err }, "POST /admin/signal-rules/dry-run-sow failed");
     res.status(500).json({ error: "Dry-run failed" });
   }
 });
@@ -2024,13 +2025,13 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
       await prodPool.end();
     }
 
-    logger.info(
+    log.info(
       { customSignals: devCustomSignals.length, groups: devGroups.length, rules: devRules.length },
       "signal-rules: published to prod",
     );
     res.json({ ok: true, customSignals: devCustomSignals.length, groups: devGroups.length, rules: devRules.length });
   } catch (err) {
-    logger.error({ err }, "signal-rules: publish-to-prod failed");
+    log.error({ err }, "signal-rules: publish-to-prod failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
   }
 });
@@ -2122,7 +2123,7 @@ router.get("/admin/signal-rules/export", requireAdmin, async (_req: Request, res
     res.setHeader("Content-Disposition", 'attachment; filename="tenant-signals-export.json"');
     res.json(payload);
   } catch (err) {
-    logger.error({ err }, "GET /admin/signal-rules/export failed");
+    log.error({ err }, "GET /admin/signal-rules/export failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
   }
 });

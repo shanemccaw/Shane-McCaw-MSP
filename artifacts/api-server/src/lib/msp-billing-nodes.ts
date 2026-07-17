@@ -10,6 +10,7 @@ import { db } from "@workspace/db";
 import { mspSubscriptionsTable, mspsTable, mspEventStoreTable, mspCustomersTable, servicesTable } from "@workspace/db";
 import { eq, and, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "billing" });
 
 // ── MSP Dunning State Machine ─────────────────────────────────────────────────
 // Runs daily (seeded workflow). For each past_due/unpaid subscription,
@@ -101,16 +102,16 @@ export async function handleMspDunningAdvance(
         mspId: sub.mspId,
         ownerType: "platform",
       }).catch((err: unknown) => {
-        logger.warn({ err, mspId: sub.mspId }, "msp_dunning_advance: event store insert failed (non-fatal)");
+        log.warn({ err, mspId: sub.mspId }, "msp_dunning_advance: event store insert failed (non-fatal)");
       });
 
-      logger.info({ mspId: sub.mspId, daysSince, prevState: sub.dunningState, newState: targetState }, "msp_dunning_advance: state advanced");
+      log.info({ mspId: sub.mspId, daysSince, prevState: sub.dunningState, newState: targetState }, "msp_dunning_advance: state advanced");
       advanced++;
     }
   }
 
   const result = { checked: overdue.length, advanced, suspended, revoked, archived };
-  logger.info(result, "msp_dunning_advance: completed");
+  log.info(result, "msp_dunning_advance: completed");
   return result;
 }
 
@@ -185,13 +186,13 @@ export async function handleMspOverageMeter(
       mspId: sub.mspId,
       ownerType: "platform",
     }).catch((err: unknown) => {
-      logger.warn({ err, mspId: sub.mspId }, "msp_overage_meter: event store insert failed (non-fatal)");
+      log.warn({ err, mspId: sub.mspId }, "msp_overage_meter: event store insert failed (non-fatal)");
     });
 
-    logger.info({ mspId: sub.mspId, tenantCount, allowance, overageCount, overageAmountCents: overageCount * overageRateCents }, "msp_overage_meter: overage metered");
+    log.info({ mspId: sub.mspId, tenantCount, allowance, overageCount, overageAmountCents: overageCount * overageRateCents }, "msp_overage_meter: overage metered");
   }
 
   const result = { subscriptionsChecked: activeSubscriptions.length, metered, totalOverageTenants };
-  logger.info(result, "msp_overage_meter: completed");
+  log.info(result, "msp_overage_meter: completed");
   return result;
 }

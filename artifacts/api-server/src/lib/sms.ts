@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+const log = logger.child({ channel: "comms.sms-push" });
 import { db, mspsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
@@ -33,7 +34,7 @@ async function isDesignatedAdminPhone(phone: string): Promise<boolean> {
         }
       }
     } catch (err) {
-      logger.error({ err }, "isDesignatedAdminPhone: error querying target MSP testbedMetadata");
+      log.error({ err }, "isDesignatedAdminPhone: error querying target MSP testbedMetadata");
     }
   }
   
@@ -56,7 +57,7 @@ export async function sendAdminSms(body: string): Promise<void> {
   const to = process.env.SHANE_PHONE_NUMBER;
 
   if (!accountSid || !authToken || !from || !to) {
-    logger.warn("SMS not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, SHANE_PHONE_NUMBER to enable alerts");
+    log.warn("SMS not configured — set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, SHANE_PHONE_NUMBER to enable alerts");
     return;
   }
 
@@ -64,19 +65,19 @@ export async function sendAdminSms(body: string): Promise<void> {
   if (store?.isTestbed) {
     const isAllowed = await isDesignatedAdminPhone(to);
     if (!isAllowed) {
-      logger.info({ to }, "[Simulator] SMS to non-admin suppressed");
+      log.info({ to }, "[Simulator] SMS to non-admin suppressed");
       return;
     }
-    logger.info({ to }, "[Simulator] Allowing real SMS dispatch to admin contact");
+    log.info({ to }, "[Simulator] Allowing real SMS dispatch to admin contact");
   }
 
   try {
     const { default: twilio } = await import("twilio");
     const client = twilio(accountSid, authToken);
     await client.messages.create({ body, from, to });
-    logger.info({ to }, "SMS sent");
+    log.info({ to }, "SMS sent");
   } catch (err) {
-    logger.error({ err }, "Failed to send SMS via Twilio");
+    log.error({ err }, "Failed to send SMS via Twilio");
   }
 }
 

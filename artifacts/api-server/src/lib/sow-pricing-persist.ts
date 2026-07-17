@@ -23,6 +23,7 @@ import {
   nextBusinessMonday,
 } from "./sow-pricing.js";
 import { logger } from "./logger.js";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 
 /**
  * Parse pricing from a SOW HTML string and persist the result to the DB.
@@ -48,7 +49,7 @@ export async function persistSowPricing(
 
   const validation = z.array(SowPricingLineSchema).safeParse(sowLines);
   if (!validation.success) {
-    logger.warn(
+    log.warn(
       { documentId, issues: validation.error.issues },
       "persistSowPricing: sowPricingLines failed schema validation — persisting anyway",
     );
@@ -63,7 +64,7 @@ export async function persistSowPricing(
     })
     .where(eq(insightsGeneratedDocumentsTable.id, documentId));
 
-  logger.info(
+  log.info(
     { documentId, lineCount: sowLines.length, totalPrice: computedTotal },
     "persistSowPricing: wrote sowPricingLines + sowTotalPrice",
   );

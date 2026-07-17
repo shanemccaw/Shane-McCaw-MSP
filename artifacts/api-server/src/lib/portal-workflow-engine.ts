@@ -39,6 +39,7 @@ import {
 import type { PortalWfRun } from "@workspace/db";
 import { eq, and, inArray, sql as drizzleSql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.run" });
 import { addEventListener, dispatchEvent, systemActor } from "./event-bus";
 import { runWithRequestContext } from "./request-context.ts";
 import type { DispatchedEvent } from "./event-bus";
@@ -100,7 +101,7 @@ const nodeHandlers = new Map<string, NodeHandler>();
 
 export function registerNodeHandler(nodeType: string, handler: NodeHandler): void {
   nodeHandlers.set(nodeType, handler);
-  logger.debug({ nodeType }, "portal-wf: registered node handler");
+  log.debug({ nodeType }, "portal-wf: registered node handler");
 }
 
 // ── In-memory event subscription state ───────────────────────────────────────
@@ -133,9 +134,9 @@ export async function reloadStartMappings(): Promise<void> {
       isActive: r.isActive,
     }));
     mappingsLoadedAt = new Date();
-    logger.info({ count: startMappings.length }, "portal-wf: start mappings loaded");
+    log.info({ count: startMappings.length }, "portal-wf: start mappings loaded");
   } catch (err) {
-    logger.error({ err }, "portal-wf: failed to load start mappings");
+    log.error({ err }, "portal-wf: failed to load start mappings");
   }
 }
 
@@ -191,7 +192,7 @@ export async function createRun(opts: {
   }).returning({ runId: portalWfRunsTable.runId });
 
   const runId = row!.runId;
-  logger.info({ runId, workflowKey: opts.workflowKey, ...opts.tenantContext }, "portal-wf: run created");
+  log.info({ runId, workflowKey: opts.workflowKey, ...opts.tenantContext }, "portal-wf: run created");
   return runId;
 }
 
@@ -205,7 +206,7 @@ async function handleEventFired(event: DispatchedEvent & {
   const matchedKeys = findMatchingWorkflowKeys(event.eventType);
   if (matchedKeys.length === 0) return;
 
-  logger.info({ eventType: event.eventType, matchedKeys }, "portal-wf: event matched workflows");
+  log.info({ eventType: event.eventType, matchedKeys }, "portal-wf: event matched workflows");
 
   const tenantContext: TenantContext = {
     mspId: event.mspId ?? null,
@@ -224,7 +225,7 @@ async function handleEventFired(event: DispatchedEvent & {
       // Enqueue execution immediately (non-blocking)
       void executeRunAsync(runId);
     } catch (err) {
-      logger.error({ err, workflowKey, eventType: event.eventType }, "portal-wf: failed to create run from event");
+      log.error({ err, workflowKey, eventType: event.eventType }, "portal-wf: failed to create run from event");
     }
   }
 }
@@ -379,7 +380,7 @@ async function executeNodeWithRetry(
     // Check idempotency cache first
     const cached = await checkIdempotency(sideEffectKey);
     if (cached) {
-      logger.info({ runId, nodeId: node.id, attempt }, "portal-wf: node idempotent hit — reusing cached output");
+      log.info({ runId, nodeId: node.id, attempt }, "portal-wf: node idempotent hit — reusing cached output");
       await upsertNodeOutput({
         runId,
         nodeId: node.id,
@@ -394,7 +395,7 @@ async function executeNodeWithRetry(
     }
 
     try {
-      logger.info({ runId, nodeId: node.id, nodeType: node.type, attempt }, "portal-wf: executing node");
+      log.info({ runId, nodeId: node.id, nodeType: node.type, attempt }, "portal-wf: executing node");
       const output = await executeNodeAttempt(node, input, tenantContext, runId, attempt);
 
       // Persist idempotency marker
@@ -412,13 +413,13 @@ async function executeNodeWithRetry(
         completedAt: new Date(),
       });
 
-      logger.info({ runId, nodeId: node.id, attempt }, "portal-wf: node completed");
+      log.info({ runId, nodeId: node.id, attempt }, "portal-wf: node completed");
       return { output, failed: false };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       const backoffSec = Math.pow(retryPolicy.backoffMultiplier, attempt - 1) * retryPolicy.backoffBaseSeconds;
 
-      logger.warn({ runId, nodeId: node.id, attempt, backoffSec, err: lastError.message }, "portal-wf: node failed — will retry");
+      log.warn({ runId, nodeId: node.id, attempt, backoffSec, err: lastError.message }, "portal-wf: node failed — will retry");
 
       await upsertNodeOutput({
         runId,
@@ -473,9 +474,9 @@ async function createOperatorTask(opts: {
       mspId: opts.tenantContext.mspId,
       customerId: opts.tenantContext.customerId,
     });
-    logger.info({ runId: opts.runId, workflowKey: opts.workflowKey }, "portal-wf: operator task created");
+    log.info({ runId: opts.runId, workflowKey: opts.workflowKey }, "portal-wf: operator task created");
   } catch (err) {
-    logger.error({ err, runId: opts.runId }, "portal-wf: failed to create operator task");
+    log.error({ err, runId: opts.runId }, "portal-wf: failed to create operator task");
   }
 }
 
@@ -506,9 +507,9 @@ async function routeToDlq(opts: {
       mspId: opts.tenantContext.mspId ?? undefined,
       customerId: opts.tenantContext.customerId ?? undefined,
     });
-    logger.warn({ runId: opts.runId, workflowKey: opts.workflowKey }, "portal-wf: run routed to DLQ");
+    log.warn({ runId: opts.runId, workflowKey: opts.workflowKey }, "portal-wf: run routed to DLQ");
   } catch (err) {
-    logger.error({ err, runId: opts.runId }, "portal-wf: failed to route run to DLQ");
+    log.error({ err, runId: opts.runId }, "portal-wf: failed to route run to DLQ");
   }
 }
 
@@ -524,7 +525,7 @@ export async function executeRun(runId: string): Promise<void> {
     .limit(1);
 
   if (!run) {
-    logger.error({ runId }, "portal-wf: run not found");
+    log.error({ runId }, "portal-wf: run not found");
     return;
   }
 
@@ -553,7 +554,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
   const runId = run.runId;
 
   if (run.status === "completed" || run.status === "cancelled") {
-    logger.info({ runId, status: run.status }, "portal-wf: run already in terminal state — skipping");
+    log.info({ runId, status: run.status }, "portal-wf: run already in terminal state — skipping");
     return;
   }
 
@@ -564,7 +565,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
     .limit(1);
 
   if (!wf || !wf.isActive) {
-    logger.error({ runId, workflowKey: run.workflowKey }, "portal-wf: workflow not found or inactive");
+    log.error({ runId, workflowKey: run.workflowKey }, "portal-wf: workflow not found or inactive");
     await db.update(portalWfRunsTable).set({
       status: "failed",
       errorMessage: `Workflow '${run.workflowKey}' not found or inactive`,
@@ -583,7 +584,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
     startedAt: new Date(),
   }).where(eq(portalWfRunsTable.runId, runId));
 
-  logger.info({ runId, workflowKey: run.workflowKey, nodes: graph.nodes.length }, "portal-wf: starting run execution");
+  log.info({ runId, workflowKey: run.workflowKey, nodes: graph.nodes.length }, "portal-wf: starting run execution");
 
   // Topological sort
   let executionOrder: string[];
@@ -658,7 +659,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
           .where(eq(portalWfRunsTable.runId, runId));
 
         if (!aiAdmitted) {
-          logger.warn(
+          log.warn(
             { runId, nodeId, nodeType: node.type, mspId: tenantContext.mspId, reason: admission.reason },
             "portal-wf: AI node blocked — MSP has insufficient AI credit balance",
           );
@@ -751,7 +752,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
       triggerEventId: run.triggerEventId ?? undefined,
     });
 
-    logger.error({ runId, workflowKey: run.workflowKey, failedNodeId, errorMessage }, "portal-wf: run failed");
+    log.error({ runId, workflowKey: run.workflowKey, failedNodeId, errorMessage }, "portal-wf: run failed");
 
     // Emit failure event (best-effort)
     void dispatchEvent({
@@ -774,7 +775,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
       completedAt: new Date(),
     }).where(eq(portalWfRunsTable.runId, runId));
 
-    logger.info({ runId, workflowKey: run.workflowKey }, "portal-wf: run completed");
+    log.info({ runId, workflowKey: run.workflowKey }, "portal-wf: run completed");
 
     // Emit success event (best-effort)
     void dispatchEvent({
@@ -792,7 +793,7 @@ async function executeRunInner(run: PortalWfRun): Promise<void> {
 /** Execute a run in the background — fire-and-forget with error logging. */
 function executeRunAsync(runId: string): void {
   executeRun(runId).catch((err) => {
-    logger.error({ err, runId }, "portal-wf: unhandled error in executeRun");
+    log.error({ err, runId }, "portal-wf: unhandled error in executeRun");
   });
 }
 
@@ -823,7 +824,7 @@ export async function retryRun(runId: string): Promise<string> {
   });
 
   void executeRunAsync(newRunId);
-  logger.info({ originalRunId: runId, newRunId }, "portal-wf: run retry initiated");
+  log.info({ originalRunId: runId, newRunId }, "portal-wf: run retry initiated");
   return newRunId;
 }
 
@@ -861,7 +862,7 @@ export async function replayDlqItem(dlqId: string): Promise<string> {
   }).where(eq(dlqTable.dlqId, dlqId));
 
   void executeRunAsync(newRunId);
-  logger.info({ dlqId, newRunId, workflowKey: payload.workflowKey }, "portal-wf: DLQ item replayed");
+  log.info({ dlqId, newRunId, workflowKey: payload.workflowKey }, "portal-wf: DLQ item replayed");
   return newRunId;
 }
 
@@ -892,7 +893,7 @@ export async function initPortalWorkflowEngine(): Promise<void> {
     void handleEventFired(event);
   });
 
-  logger.info({}, "portal-wf: engine initialized");
+  log.info({}, "portal-wf: engine initialized");
 }
 
 // ── Workflow definition CRUD helpers ──────────────────────────────────────────

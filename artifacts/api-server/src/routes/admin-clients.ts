@@ -16,6 +16,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+const log = logger.child({ channel: "admin.clients" });
 
 // ─── GET /admin/clients/enriched ─────────────────────────────────────────────
 // Returns all clients with project counts, open task counts, and quiz scores.
@@ -197,7 +198,7 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
 
     res.json(enriched);
   } catch (err) {
-    logger.error({ err }, "Failed to fetch enriched clients");
+    log.error({ err }, "Failed to fetch enriched clients");
     res.status(500).json({ error: "Failed to fetch clients" });
   }
 });
@@ -244,7 +245,7 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
 
     res.json(result);
   } catch (err) {
-    logger.error({ err }, "Failed to fetch clients with azure credentials");
+    log.error({ err }, "Failed to fetch clients with azure credentials");
     res.status(500).json({ error: "Failed to fetch clients" });
   }
 });
@@ -384,7 +385,7 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
       hasM365Profile,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to fetch client command center");
+    log.error({ err }, "Failed to fetch client command center");
     res.status(500).json({ error: "Failed to fetch client data" });
   }
 });
@@ -419,7 +420,7 @@ router.get("/admin/clients/:id/quiz-results", requireAdmin, async (req: Request,
 
     res.json(quizRows);
   } catch (err) {
-    logger.error({ err }, "Failed to fetch client quiz results");
+    log.error({ err }, "Failed to fetch client quiz results");
     res.status(500).json({ error: "Failed to fetch quiz results" });
   }
 });
@@ -525,7 +526,7 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
       categories,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to fetch client health summary");
+    log.error({ err }, "Failed to fetch client health summary");
     res.status(500).json({ error: "Failed to fetch health summary" });
   }
 });

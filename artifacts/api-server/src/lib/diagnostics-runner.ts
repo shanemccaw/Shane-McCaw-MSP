@@ -38,6 +38,7 @@ import {
   clearDiagnosticsRunSSEState,
 } from "./sse-broadcast";
 import { logger } from "./logger";
+const log = logger.child({ channel: "tenant.portal" });
 
 // ── Finding severity classification ──────────────────────────────────────────
 
@@ -338,7 +339,7 @@ async function createFailureOperatorTask(opts: {
   errorMessage: string;
 }): Promise<void> {
   if (opts.customerId == null) {
-    logger.warn(
+    log.warn(
       { runId: opts.runId, mspId: opts.mspId },
       "diagnostics-runner: skipping operator task — customerId null (orphaned run)",
     );
@@ -371,7 +372,7 @@ async function createFailureOperatorTask(opts: {
       customerId: opts.customerId,
     });
   } catch (err) {
-    logger.warn({ err, runId: opts.runId }, "diagnostics-runner: failed to create operator task (non-fatal)");
+    log.warn({ err, runId: opts.runId }, "diagnostics-runner: failed to create operator task (non-fatal)");
   }
 }
 
@@ -490,7 +491,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     runId = runRow!.runId;
   }
 
-  logger.info({ runId, mspId, customerId, resolvedTenantId, packageKey }, "diagnostics-runner: run started");
+  log.info({ runId, mspId, customerId, resolvedTenantId, packageKey }, "diagnostics-runner: run started");
 
   // Update to running
   await db
@@ -601,7 +602,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
           .set({ documentId, updatedAt: new Date() })
           .where(eq(mspDiagnosticRunsTable.runId, runId));
 
-        logger.info({ runId, documentId, mspId, customerId }, "diagnostics-runner: report document created");
+        log.info({ runId, documentId, mspId, customerId }, "diagnostics-runner: report document created");
 
         // Kick off Document Pipeline (fire-and-forget — errors are non-fatal)
         void (async () => {
@@ -658,12 +659,12 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
               await executeRun(portalRunId);
             }
           } catch (pipelineErr) {
-            logger.warn({ err: pipelineErr, runId, documentId }, "diagnostics-runner: doc pipeline fire failed (non-fatal)");
+            log.warn({ err: pipelineErr, runId, documentId }, "diagnostics-runner: doc pipeline fire failed (non-fatal)");
           }
         })();
       }
     } catch (docErr) {
-      logger.warn({ err: docErr, runId }, "diagnostics-runner: document creation failed (non-fatal)");
+      log.warn({ err: docErr, runId }, "diagnostics-runner: document creation failed (non-fatal)");
     }
 
     // 6. Determine final status
@@ -698,13 +699,13 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       findings: findingsCount,
     });
 
-    logger.info({ runId, finalStatus, checksTotal, checksOk, checksError, findingsCount }, "diagnostics-runner: run completed");
+    log.info({ runId, finalStatus, checksTotal, checksOk, checksError, findingsCount }, "diagnostics-runner: run completed");
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, findingsCount, documentId };
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logger.error({ err, runId, mspId, customerId }, "diagnostics-runner: run failed");
+    log.error({ err, runId, mspId, customerId }, "diagnostics-runner: run failed");
 
     await db
       .update(mspDiagnosticRunsTable)

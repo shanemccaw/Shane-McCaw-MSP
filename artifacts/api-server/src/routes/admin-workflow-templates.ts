@@ -22,6 +22,8 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
 import { getPrompt } from "../lib/prompt-loader";
 
+const log = logger.child({ channel: "workflow.run" });
+
 const router: IRouter = Router();
 
 router.get("/admin/workflow-templates", requireAdmin, async (_req: Request, res: Response) => {
@@ -407,7 +409,7 @@ Rules:
       ? parsed.instructionSet.filter((s): s is string => typeof s === "string")
       : [];
   } catch (err) {
-    logger.warn({ err }, "generate-asset-sets: instruction set AI call failed");
+    log.warn({ err }, "generate-asset-sets: instruction set AI call failed");
     return [];
   }
 }
@@ -451,7 +453,7 @@ Rules:
         )
       : [];
   } catch (err) {
-    logger.warn({ err }, "generate-asset-sets: checklist AI call failed");
+    log.warn({ err }, "generate-asset-sets: checklist AI call failed");
     return [];
   }
 }
@@ -499,7 +501,7 @@ Rules:
         : [],
     };
   } catch (err) {
-    logger.warn({ err }, "generate-asset-sets: outputs AI call failed");
+    log.warn({ err }, "generate-asset-sets: outputs AI call failed");
     return { artifactSet: [], deliverableSet: [] };
   }
 }
@@ -712,7 +714,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       res.json({ processed, setsCreated, failed });
     }
   } catch (err) {
-    logger.error({ err }, "generate-asset-sets: endpoint failed");
+    log.error({ err }, "generate-asset-sets: endpoint failed");
     if (acceptsSSE) {
       sendSSE({ type: "error", message: "Failed to generate asset sets" });
       res.end();
@@ -938,7 +940,7 @@ router.post(
             sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: true, skipped: false });
           }
         } catch (err) {
-          logger.error({ err, taskTitle: task.title }, "generate-scripts: script generation failed");
+          log.error({ err, taskTitle: task.title }, "generate-scripts: script generation failed");
           failed++;
           if (acceptsSSE) {
             sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: false, skipped: false });
@@ -953,7 +955,7 @@ router.post(
         res.json({ packageId, packageTitle, generated, skipped, failed });
       }
     } catch (err) {
-      logger.error({ err }, "generate-scripts: endpoint failed");
+      log.error({ err }, "generate-scripts: endpoint failed");
       if (acceptsSSE) {
         sendSSE({ type: "error", message: "Failed to generate scripts" });
         res.end();
@@ -1033,7 +1035,7 @@ router.put("/admin/workflow-templates/:id/service-link", requireAdmin, async (re
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "service-link: failed to update service link");
+    log.error({ err }, "service-link: failed to update service link");
     res.status(500).json({ error: "Failed to update service link" });
   }
 });
@@ -1126,7 +1128,7 @@ Rules:
 
     const rawSteps = extractJsonArrayFromText(block.text);
     if (!rawSteps) {
-      logger.warn({ text: block.text.slice(0, 500) }, "ai-generate: could not extract JSON array from response");
+      log.warn({ text: block.text.slice(0, 500) }, "ai-generate: could not extract JSON array from response");
       res.status(500).json({ error: "AI response could not be parsed as a step array" }); return;
     }
 
@@ -1189,7 +1191,7 @@ Rules:
 
     res.json({ stepsCreated, tasksCreated, mode });
   } catch (err) {
-    logger.error({ err }, "ai-generate: endpoint failed");
+    log.error({ err }, "ai-generate: endpoint failed");
     res.status(500).json({ error: "Failed to generate workflow" });
   }
 });

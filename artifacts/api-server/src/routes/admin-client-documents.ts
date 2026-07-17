@@ -14,6 +14,7 @@ import { db, clientDocumentsTable, usersTable, statusReportsTable } from "@works
 import { eq, and, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "admin.clients" });
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.get("/admin/clients/:clientId/documents", requireAdmin, async (req: Reque
 
     res.json(docs);
   } catch (err) {
-    logger.error({ err, clientId }, "admin-client-documents: failed to list documents");
+    log.error({ err, clientId }, "admin-client-documents: failed to list documents");
     res.status(500).json({ error: "Failed to fetch documents" });
   }
 });
@@ -96,7 +97,7 @@ router.post("/admin/clients/:clientId/documents", requireAdmin, async (req: Requ
 
     res.status(201).json(doc);
   } catch (err) {
-    logger.error({ err, clientId }, "admin-client-documents: failed to create document");
+    log.error({ err, clientId }, "admin-client-documents: failed to create document");
     res.status(500).json({ error: "Failed to create document" });
   }
 });
@@ -124,7 +125,7 @@ router.delete("/admin/clients/:clientId/documents/:docId", requireAdmin, async (
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, clientId, docId }, "admin-client-documents: failed to delete document");
+    log.error({ err, clientId, docId }, "admin-client-documents: failed to delete document");
     res.status(500).json({ error: "Failed to delete document" });
   }
 });
@@ -159,7 +160,7 @@ router.get("/admin/clients/:clientId/status-reports", requireAdmin, async (req: 
 
     res.json(reports);
   } catch (err) {
-    logger.error({ err, clientId }, "admin-client-documents: failed to list status reports");
+    log.error({ err, clientId }, "admin-client-documents: failed to list status reports");
     res.status(500).json({ error: "Failed to fetch status reports" });
   }
 });

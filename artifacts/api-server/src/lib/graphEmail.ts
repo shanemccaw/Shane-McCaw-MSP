@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+const log = logger.child({ channel: "comms.email" });
 import { getAccessToken, graphCredentialsPresent, markTenantConsentRevoked } from "./graph";
 
 export class GraphMailConfigError extends Error {
@@ -148,7 +149,7 @@ export async function listMessages(opts: ListMessagesOptions): Promise<InboxList
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text, folder }, "listMessages failed");
+      log.warn({ status: res.status, body: text, folder }, "listMessages failed");
       return { messages: [], nextLink: null, totalCount: null };
     }
     const data = await res.json() as {
@@ -168,7 +169,7 @@ export async function listMessages(opts: ListMessagesOptions): Promise<InboxList
       totalCount: data["@odata.count"] ?? null,
     };
   } catch (err) {
-    logger.error({ err }, "listMessages error");
+    log.error({ err }, "listMessages error");
     return { messages: [], nextLink: null, totalCount: null };
   }
 }
@@ -183,12 +184,12 @@ export async function getMessage(userId: string, messageId: string): Promise<Inb
     if (res.status === 404) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "getMessage failed");
+      log.warn({ status: res.status, body: text }, "getMessage failed");
       return null;
     }
     return await res.json() as InboxMessage;
   } catch (err) {
-    logger.error({ err }, "getMessage error");
+    log.error({ err }, "getMessage error");
     return null;
   }
 }
@@ -203,12 +204,12 @@ export async function getMessageBody(userId: string, messageId: string): Promise
     if (res.status === 404) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "getMessageBody failed");
+      log.warn({ status: res.status, body: text }, "getMessageBody failed");
       return null;
     }
     return await res.json() as InboxMessageDetail;
   } catch (err) {
-    logger.error({ err }, "getMessageBody error");
+    log.error({ err }, "getMessageBody error");
     return null;
   }
 }
@@ -223,7 +224,7 @@ export async function markReadUnread(userId: string, messageId: string, isRead: 
     );
     return res.ok;
   } catch (err) {
-    logger.error({ err }, "markReadUnread error");
+    log.error({ err }, "markReadUnread error");
     return false;
   }
 }
@@ -238,7 +239,7 @@ export async function flagMessage(userId: string, messageId: string, flagStatus:
     );
     return res.ok;
   } catch (err) {
-    logger.error({ err }, "flagMessage error");
+    log.error({ err }, "flagMessage error");
     return false;
   }
 }
@@ -253,7 +254,7 @@ export async function moveToFolder(userId: string, messageId: string, destinatio
     );
     return res.ok;
   } catch (err) {
-    logger.error({ err }, "moveToFolder error");
+    log.error({ err }, "moveToFolder error");
     return false;
   }
 }
@@ -315,7 +316,7 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
 
     if (res.status === 401) {
       const text = await res.text();
-      logger.warn({ status: 401, body: text }, "sendMessage: Graph returned 401");
+      log.warn({ status: 401, body: text }, "sendMessage: Graph returned 401");
       const isConsentError =
         res.status === 401 ||
         text.includes("invalid_grant") ||
@@ -331,7 +332,7 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
 
     if (res.status === 403) {
       const text = await res.text();
-      logger.warn({ status: 403, body: text }, "sendMessage: Graph returned 403");
+      log.warn({ status: 403, body: text }, "sendMessage: Graph returned 403");
       if (
         text.includes("invalid_grant") ||
         text.includes("AADSTS65001") ||
@@ -347,7 +348,7 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
     return res.ok || res.status === 202;
   } catch (err) {
     if (err instanceof GraphMailConfigError) throw err;
-    logger.error({ err }, "sendMessage error");
+    log.error({ err }, "sendMessage error");
     return false;
   }
 }
@@ -363,7 +364,7 @@ export async function replyToMessage(userId: string, messageId: string, body: st
     );
     return res.ok || res.status === 202;
   } catch (err) {
-    logger.error({ err }, "replyToMessage error");
+    log.error({ err }, "replyToMessage error");
     return false;
   }
 }
@@ -384,7 +385,7 @@ export async function forwardMessage(userId: string, messageId: string, toAddres
     );
     return res.ok || res.status === 202;
   } catch (err) {
-    logger.error({ err }, "forwardMessage error");
+    log.error({ err }, "forwardMessage error");
     return false;
   }
 }
@@ -410,7 +411,7 @@ export async function createDraft(opts: SendMessageOpts): Promise<InboxMessage |
     if (!res.ok) return null;
     return await res.json() as InboxMessage;
   } catch (err) {
-    logger.error({ err }, "createDraft error");
+    log.error({ err }, "createDraft error");
     return null;
   }
 }
@@ -431,7 +432,7 @@ export async function updateDraft(userId: string, messageId: string, patch: Part
     );
     return res.ok;
   } catch (err) {
-    logger.error({ err }, "updateDraft error");
+    log.error({ err }, "updateDraft error");
     return false;
   }
 }

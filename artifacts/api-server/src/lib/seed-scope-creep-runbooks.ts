@@ -21,6 +21,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.scope-creep" });
 
 interface ScopeCreepRunbook {
   id: string;
@@ -633,5 +634,5 @@ export async function seedScopeCreepRunbooks(): Promise<void> {
     `);
     if ((result as { rowCount?: number }).rowCount) seeded++;
   }
-  logger.info({ count: seeded }, "seed-scope-creep-runbooks: scope creep runbooks seeded");
+  log.info({ count: seeded }, "seed-scope-creep-runbooks: scope creep runbooks seeded");
 }

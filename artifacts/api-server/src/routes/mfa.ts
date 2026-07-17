@@ -7,6 +7,7 @@ import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCreden
 import { eq, and, gt } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "auth" });
 import { generateSecret, generateURI, verifySync } from "otplib";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
 
@@ -492,7 +493,7 @@ router.post("/auth/mfa/passkey/verify-registration", requireAuth, async (req: Re
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "Passkey registration error");
+    log.error({ err }, "Passkey registration error");
     res.status(400).json({ error: "Registration failed" });
   }
 });
@@ -627,7 +628,7 @@ router.post("/auth/mfa/passkey/verify-authentication", mfaLimiter, async (req: R
 
     return issueFullSession(userId, res);
   } catch (err) {
-    logger.error({ err }, "Passkey authentication error");
+    log.error({ err }, "Passkey authentication error");
     res.status(400).json({ error: "Authentication failed" });
   }
 });
@@ -849,7 +850,7 @@ async function sendSmsOtp(phone: string, code: string): Promise<void> {
   const from = process.env.TWILIO_FROM_NUMBER;
 
   if (!accountSid || !authToken || !from) {
-    logger.warn({ code }, "Twilio not configured — OTP code not sent (dev mode)");
+    log.warn({ code }, "Twilio not configured — OTP code not sent (dev mode)");
     return;
   }
 
@@ -862,7 +863,7 @@ async function sendSmsOtp(phone: string, code: string): Promise<void> {
       to: phone,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to send OTP via Twilio");
+    log.error({ err }, "Failed to send OTP via Twilio");
     throw new Error("Failed to send SMS. Please check your phone number.");
   }
 }

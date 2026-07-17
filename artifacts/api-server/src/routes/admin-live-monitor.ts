@@ -17,6 +17,8 @@ import { eq, and, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
+const log = logger.child({ channel: "engine.alert" });
+
 const router: IRouter = Router();
 
 // ── List all activity subscriptions ───────────────────────────────────────────
@@ -57,7 +59,7 @@ router.get("/admin/live-monitor/subscriptions", requireAdmin, async (_req: Reque
 
     res.json(enriched);
   } catch (err) {
-    logger.error({ err }, "admin-live-monitor: list subscriptions failed");
+    log.error({ err }, "admin-live-monitor: list subscriptions failed");
     res.status(500).json({ error: "Failed to load subscriptions" });
   }
 });
@@ -89,7 +91,7 @@ router.get(
 
       res.json(rows[0]);
     } catch (err) {
-      logger.error({ err, tenantId, contentType }, "admin-live-monitor: get subscription failed");
+      log.error({ err, tenantId, contentType }, "admin-live-monitor: get subscription failed");
       res.status(500).json({ error: "Failed to load subscription" });
     }
   },
@@ -117,10 +119,10 @@ router.post(
         );
 
       const count = updated.rowCount ?? 0;
-      logger.info({ tenantId, contentType, newWatermark, lookbackHours }, "admin-live-monitor: watermark reset");
+      log.info({ tenantId, contentType, newWatermark, lookbackHours }, "admin-live-monitor: watermark reset");
       res.json({ ok: true, newWatermark: newWatermark.toISOString(), rowsUpdated: count });
     } catch (err) {
-      logger.error({ err, tenantId, contentType }, "admin-live-monitor: watermark reset failed");
+      log.error({ err, tenantId, contentType }, "admin-live-monitor: watermark reset failed");
       res.status(500).json({ error: "Failed to reset watermark" });
     }
   },

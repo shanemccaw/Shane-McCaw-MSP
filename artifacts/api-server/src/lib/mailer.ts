@@ -1,6 +1,7 @@
 import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, failedNotificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "comms.email" });
 import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph";
 import { computeTenantHealthVars } from "./tenant-signals";
 
@@ -15,14 +16,14 @@ function warnIfCredentialsMissing(): void {
   _credentialCheckLogged = true;
   const userId = process.env.GRAPH_MAIL_USER_ID;
   if (!userId) {
-    logger.warn(
+    log.warn(
       "EMAIL CONFIG ISSUE: GRAPH_MAIL_USER_ID secret is not set. " +
       "All email sends will fail. To fix: set GRAPH_MAIL_USER_ID to the UPN or object ID " +
       "of the sending mailbox, and grant the service principal Mail.Send (Application) " +
       "permission in Azure AD with admin consent.",
     );
   } else if (!graphCredentialsPresent()) {
-    logger.warn(
+    log.warn(
       "EMAIL CONFIG ISSUE: GRAPH_MAIL_USER_ID is set but Graph app credentials " +
       "(GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET / GRAPH_TENANT_ID) are missing. " +
       "Ensure the service principal has Mail.Send (Application) permission in Azure AD.",
@@ -104,7 +105,7 @@ export async function brandedEmail(bodyHtml: string): Promise<string> {
       return row.bodyHtml.replace("{{body}}", () => bodyHtml);
     }
   } catch (err) {
-    logger.warn({ err }, "branded-layout template DB lookup failed — using hardcoded fallback wrapper");
+    log.warn({ err }, "branded-layout template DB lookup failed — using hardcoded fallback wrapper");
   }
   return hardcodedBrandedLayout(bodyHtml);
 }
@@ -165,7 +166,7 @@ export async function sendEmail(
   try {
     await sendEmailOrThrow(to, subject, bodyHtml, opts);
   } catch (err) {
-    logger.warn({ err, to, subject }, "Failed to send email");
+    log.warn({ err, to, subject }, "Failed to send email");
   }
 }
 
@@ -199,19 +200,19 @@ export async function sendEmailOrThrow(
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       await sender(to, subject, html);
-      logger.info({ to, subject, attempt }, "Email sent");
+      log.info({ to, subject, attempt }, "Email sent");
       db.insert(emailEventsTable).values({
         emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         eventType: "sent",
         recipient: to,
         subject,
         metadata: { attempt },
-      }).catch((err: unknown) => logger.warn({ err }, "Failed to record email_event"));
+      }).catch((err: unknown) => log.warn({ err }, "Failed to record email_event"));
       return;
     } catch (err) {
       lastErr = err;
       if (attempt === 1) {
-        logger.warn({ err, to, subject, attempt }, "Email send failed — retrying once after 2s delay");
+        log.warn({ err, to, subject, attempt }, "Email send failed — retrying once after 2s delay");
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
@@ -225,9 +226,9 @@ export async function sendEmailOrThrow(
     templateName: opts?.templateName ?? subject,
     errorMessage,
   }).catch((dbErr: unknown) =>
-    logger.warn({ dbErr, to, subject }, "failed_notifications: DB insert itself failed"),
+    log.warn({ dbErr, to, subject }, "failed_notifications: DB insert itself failed"),
   );
-  logger.error({ err: lastErr, to, subject, templateName: opts?.templateName }, "Email send failed after retry — failed_notification written");
+  log.error({ err: lastErr, to, subject, templateName: opts?.templateName }, "Email send failed after retry — failed_notification written");
   throw lastErr;
 }
 
@@ -243,14 +244,14 @@ export async function sendEmailWithAttachment(
 ): Promise<void> {
   const sender = getGraphSender();
   if (!sender) {
-    logger.warn({ to, subject }, "Exchange Online not configured (GRAPH_MAIL_USER_ID missing) — attachment email skipped");
+    log.warn({ to, subject }, "Exchange Online not configured (GRAPH_MAIL_USER_ID missing) — attachment email skipped");
     return;
   }
   try {
     await sender(to, subject, html, attachments);
-    logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
+    log.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
   } catch (err) {
-    logger.warn({ err, to, subject }, "Failed to send email with attachment");
+    log.warn({ err, to, subject }, "Failed to send email with attachment");
   }
 }
 
@@ -269,7 +270,7 @@ export async function sendEmailWithAttachmentOrThrow(
     throw new Error("No email transport configured — Exchange Online credentials (GRAPH_MAIL_USER_ID) are required");
   }
   await sender(to, subject, html, attachments);
-  logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
+  log.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
 }
 
 // ─── MSP-scoped email routing ─────────────────────────────────────────────────
@@ -296,7 +297,7 @@ export async function getMspMailboxConnector(mspId: number): Promise<{
     if (!row) return null;
     return row;
   } catch (err) {
-    logger.warn({ err, mspId }, "getMspMailboxConnector: DB lookup failed");
+    log.warn({ err, mspId }, "getMspMailboxConnector: DB lookup failed");
     return null;
   }
 }
@@ -314,7 +315,7 @@ async function getMspName(mspId: number): Promise<string | null> {
       .limit(1);
     return row?.name ?? null;
   } catch (err) {
-    logger.warn({ err, mspId }, "getMspName: DB lookup failed");
+    log.warn({ err, mspId }, "getMspName: DB lookup failed");
     return null;
   }
 }
@@ -343,7 +344,7 @@ export async function sendEmailForMsp(
   try {
     await sendEmailForMspOrThrow(mspId, to, subject, bodyHtml, opts);
   } catch (err) {
-    logger.warn({ err, mspId, to, subject }, "sendEmailForMsp: Failed to send email");
+    log.warn({ err, mspId, to, subject }, "sendEmailForMsp: Failed to send email");
   }
 }
 
@@ -373,25 +374,25 @@ export async function sendEmailForMspOrThrow(
           subject,
           htmlBody: html,
         });
-        logger.info({ mspId, to, subject, path: "msp_mailbox" }, "Email sent via MSP mailbox");
+        log.info({ mspId, to, subject, path: "msp_mailbox" }, "Email sent via MSP mailbox");
         db.insert(emailEventsTable).values({
           emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
           eventType: "sent",
           recipient: to,
           subject,
           metadata: { mspId, via: "msp_mailbox" },
-        }).catch((e: unknown) => logger.warn({ e }, "Failed to record email_event"));
+        }).catch((e: unknown) => log.warn({ e }, "Failed to record email_event"));
         return;
       } catch (err) {
         if (err instanceof ConsentRevokedError) {
-          logger.warn({ mspId, tenantId: connector.tenantId }, "sendEmailForMspOrThrow: MSP mailbox consent revoked — deactivating connector and falling back to platform mailbox");
+          log.warn({ mspId, tenantId: connector.tenantId }, "sendEmailForMspOrThrow: MSP mailbox consent revoked — deactivating connector and falling back to platform mailbox");
           // Mark the connector inactive so future sends skip straight to fallback
           db.update(mspMailboxConnectorsTable)
             .set({ isActive: false, revokedAt: new Date(), updatedAt: new Date() })
             .where(eq(mspMailboxConnectorsTable.mspId, mspId))
-            .catch((e: unknown) => logger.warn({ e }, "Failed to deactivate MSP mailbox connector"));
+            .catch((e: unknown) => log.warn({ e }, "Failed to deactivate MSP mailbox connector"));
         } else {
-          logger.warn({ err, mspId, to }, "sendEmailForMspOrThrow: MSP mailbox send failed — falling back to platform mailbox");
+          log.warn({ err, mspId, to }, "sendEmailForMspOrThrow: MSP mailbox send failed — falling back to platform mailbox");
         }
         // Fall through to platform mailbox
       }
@@ -412,14 +413,14 @@ export async function sendEmailForMspOrThrow(
       subject,
       htmlBody: html,
     });
-    logger.info({ mspId, to, subject, path: "platform_mailbox_display_override" }, "Email sent via platform mailbox with MSP display-name override");
+    log.info({ mspId, to, subject, path: "platform_mailbox_display_override" }, "Email sent via platform mailbox with MSP display-name override");
     db.insert(emailEventsTable).values({
       emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       eventType: "sent",
       recipient: to,
       subject,
       metadata: { mspId, via: "platform_display_override", displayName },
-    }).catch((e: unknown) => logger.warn({ e }, "Failed to record email_event"));
+    }).catch((e: unknown) => log.warn({ e }, "Failed to record email_event"));
     return;
   }
 
@@ -826,7 +827,7 @@ export async function getEmailTemplateOrFallback(
       };
     }
   } catch (err) {
-    logger.warn({ err, slug }, "Email template DB lookup failed — using hardcoded fallback");
+    log.warn({ err, slug }, "Email template DB lookup failed — using hardcoded fallback");
   }
   return { subject: defaultSubject, bodyHtml: defaultBodyHtml };
 }
@@ -871,7 +872,7 @@ export async function getTenantHealthBlockHtml(clientUserId: number | null | und
     );
     return bodyHtml.trim();
   } catch (err) {
-    logger.warn({ err, clientUserId }, "Failed to render tenant-health-block — omitting from email");
+    log.warn({ err, clientUserId }, "Failed to render tenant-health-block — omitting from email");
     return "";
   }
 }

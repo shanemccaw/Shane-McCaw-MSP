@@ -12,6 +12,7 @@ import { SecretClient } from "@azure/keyvault-secrets";
 import { CertificateClient } from "@azure/keyvault-certificates";
 import { ClientSecretCredential } from "@azure/identity";
 import { logger } from "./logger";
+const log = logger.child({ channel: "integration.azure" });
 
 function getCredentialClient() {
   const tenantId = process.env.AZURE_TENANT_ID;
@@ -122,7 +123,7 @@ export async function getCredential(
     }
     return await getSecretValue(secretName);
   } catch (err) {
-    logger.error({ err, secretName, type }, "azure-keyvault: failed to retrieve credential");
+    log.error({ err, secretName, type }, "azure-keyvault: failed to retrieve credential");
     throw err;
   }
 }

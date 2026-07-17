@@ -8,6 +8,7 @@
 
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.monitor" });
 
 export const HEALTH_SCORE_CATEGORIES = [
   "identity",
@@ -108,7 +109,7 @@ export async function scoreHealthFromScriptRun(input: ScorerInput): Promise<M365
     if (!block || block.type !== "text") throw new Error("No text block in AI response");
     raw = block.text.trim();
   } catch (err) {
-    logger.error({ err, scriptRunId: input.scriptRunId }, "m365-health-ai-scorer: Claude call failed");
+    log.error({ err, scriptRunId: input.scriptRunId }, "m365-health-ai-scorer: Claude call failed");
     throw err;
   }
 
@@ -116,7 +117,7 @@ export async function scoreHealthFromScriptRun(input: ScorerInput): Promise<M365
   try {
     parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
   } catch {
-    logger.warn(
+    log.warn(
       { raw: raw.slice(0, 300), scriptRunId: input.scriptRunId },
       "m365-health-ai-scorer: JSON parse failed — returning neutral defaults",
     );
@@ -131,7 +132,7 @@ export async function scoreHealthFromScriptRun(input: ScorerInput): Promise<M365
     }
   }
 
-  logger.info({ scriptRunId: input.scriptRunId, scores }, "m365-health-ai-scorer: scores derived");
+  log.info({ scriptRunId: input.scriptRunId, scores }, "m365-health-ai-scorer: scores derived");
   return scores;
 }
 

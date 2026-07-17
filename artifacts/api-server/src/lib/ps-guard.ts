@@ -22,6 +22,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { randomBytes } from "crypto";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "workflow.script" });
 
 export const PS_KEYWORD_RE = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-/i;
 
@@ -64,7 +65,7 @@ export async function validatePsSyntax(content: string): Promise<PsSyntaxResult>
   try {
     writeFileSync(tmpFile, content, "utf8");
   } catch (writeErr) {
-    logger.warn({ err: writeErr }, "ps-guard: failed to write temp file for syntax validation — skipping");
+    log.warn({ err: writeErr }, "ps-guard: failed to write temp file for syntax validation — skipping");
     return { valid: true, skipped: true };
   }
 
@@ -87,9 +88,9 @@ export async function validatePsSyntax(content: string): Promise<PsSyntaxResult>
         if (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code === "ENOENT") {
-            logger.warn("ps-guard: pwsh not found on this host — syntax validation skipped");
+            log.warn("ps-guard: pwsh not found on this host — syntax validation skipped");
           } else {
-            logger.warn({ err }, "ps-guard: pwsh execution error — syntax validation skipped");
+            log.warn({ err }, "ps-guard: pwsh execution error — syntax validation skipped");
           }
           resolve({ valid: true, skipped: true });
           return;
@@ -112,7 +113,7 @@ export async function validatePsSyntax(content: string): Promise<PsSyntaxResult>
             resolve({ valid: true });
           }
         } catch {
-          logger.warn({ stdout: trimmed.slice(0, 300) }, "ps-guard: could not parse pwsh validation output — skipping");
+          log.warn({ stdout: trimmed.slice(0, 300) }, "ps-guard: could not parse pwsh validation output — skipping");
           resolve({ valid: true, skipped: true });
         }
       },

@@ -29,6 +29,7 @@ import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "tenant.portal" });
 import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange, replayPhaseGenState } from "../lib/sse-broadcast.ts";
 import multer from "multer";
 import path from "path";
@@ -324,7 +325,7 @@ async function resolveTemplateTaskMetadata(
   const uuidRunbookIds = allRunbookIds.filter(id => PROV_UUID_RE.test(id));
   const nonUuidRunbookIds = allRunbookIds.filter(id => !PROV_UUID_RE.test(id));
   if (nonUuidRunbookIds.length > 0) {
-    logger.warn({ nonUuidRunbookIds }, "portal: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
+    log.warn({ nonUuidRunbookIds }, "portal: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
   }
   const allDlIds = [...new Set(templateTasks.map(t => t.customerDownloadScriptId).filter((id): id is string => !!id && PROV_UUID_RE.test(id)))];
 
@@ -990,7 +991,7 @@ async function reProbeClientPermissionsInBackground(clientUserId: number): Promi
     try {
       clientSecret = await getSecretValue(appReg.keyVaultSecretName);
     } catch (kvErr) {
-      logger.warn(
+      log.warn(
         { kvErr, clientUserId },
         "re-probe: could not retrieve client secret from Key Vault — skipping permission re-check",
       );
@@ -1011,7 +1012,7 @@ async function reProbeClientPermissionsInBackground(clientUserId: number): Promi
       .set({ permissionCheck: probeResult, updatedAt: new Date() })
       .where(eq(clientAppRegistrationsTable.clientUserId, clientUserId));
 
-    logger.info(
+    log.info(
       {
         clientUserId,
         granted: probeResult.granted.length,
@@ -1032,7 +1033,7 @@ async function reProbeClientPermissionsInBackground(clientUserId: number): Promi
       });
     }
   } catch (err) {
-    logger.warn({ err, clientUserId }, "re-probe: background permission re-check failed (non-fatal)");
+    log.warn({ err, clientUserId }, "re-probe: background permission re-check failed (non-fatal)");
   }
 }
 
@@ -6662,7 +6663,7 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
           )
         );
     } catch (revokeErr) {
-      logger.warn({ revokeErr, projectId: id }, "portal: failed to auto-revoke callback tokens on project completion (non-fatal)");
+      log.warn({ revokeErr, projectId: id }, "portal: failed to auto-revoke callback tokens on project completion (non-fatal)");
     }
   }
 
@@ -7155,7 +7156,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
             newDueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
           });
         } catch (e) {
-          logger.warn({ err: e, taskId: updated.id }, "kanban-tasks: failed to emit milestone.delivery_date_changed (non-fatal)");
+          log.warn({ err: e, taskId: updated.id }, "kanban-tasks: failed to emit milestone.delivery_date_changed (non-fatal)");
         }
       })();
     }
@@ -10198,7 +10199,7 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
 
     res.json(enriched);
   } catch (err) {
-    logger.error({ err, projectId, userId }, "portal: failed to list manual scripts");
+    log.error({ err, projectId, userId }, "portal: failed to list manual scripts");
     res.status(500).json({ error: "Failed to load manual scripts" });
   }
 });
@@ -10288,7 +10289,7 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       callbackToken = plaintext;
       callbackUrl = `${uploadBaseUrl}/api/script-callback`;
     } catch (tokenErr) {
-      logger.warn({ tokenErr, runResultId }, "portal: failed to create callback token (non-fatal)");
+      log.warn({ tokenErr, runResultId }, "portal: failed to create callback token (non-fatal)");
     }
 
     const scriptTitle = script?.title ?? "Script";
@@ -10304,7 +10305,7 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(scriptBody);
   } catch (err) {
-    logger.error({ err, runResultId }, "portal: failed to download manual script");
+    log.error({ err, runResultId }, "portal: failed to download manual script");
     res.status(500).json({ error: "Failed to generate script download" });
   }
 });
@@ -10362,7 +10363,7 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
     const { processManualScriptUpload, UploadError } = await import("../lib/manual-script-upload");
     const result = await processManualScriptUpload(scriptRunId, data, uploadedBy);
 
-    logger.info({ scriptRunId, userId }, "portal: manual script upload processed");
+    log.info({ scriptRunId, userId }, "portal: manual script upload processed");
     res.json({
       runResultId: result.runResultId,
       status: result.status,
@@ -10375,7 +10376,7 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
       res.status(err.statusCode).json({ error: err.message });
       return;
     }
-    logger.error({ err, scriptRunId }, "portal: manual script upload failed");
+    log.error({ err, scriptRunId }, "portal: manual script upload failed");
     res.status(500).json({ error: "Failed to process uploaded results" });
   }
 });
@@ -10530,7 +10531,7 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
 
     res.json({ id: newPresentation.id });
   } catch (err) {
-    logger.error({ err }, "portal: failed to create presentation");
+    log.error({ err }, "portal: failed to create presentation");
     res.status(500).json({ error: "Failed to create presentation" });
   }
 });
@@ -10659,7 +10660,7 @@ async function computeSignalDrivenAdjustments(
         adjustmentsTotal += match.priceUsd;
         namedAdjustmentLines.push({ title: match.title, description: match.scope || match.notes || "", price: match.priceUsd });
       } else {
-        logger.warn(
+        log.warn(
           { clientUserId, signalKey: key, label: entry?.label },
           "deriveEffectiveSowData: adjustment signal fired but no matching priced row found in SOW pricing lines — adjustment omitted from total",
         );
@@ -10668,7 +10669,7 @@ async function computeSignalDrivenAdjustments(
 
     return { success: true, firedAdjKeys, adjustmentsTotal, namedAdjustmentLines };
   } catch (err) {
-    logger.warn({ err, clientUserId }, "deriveEffectiveSowData: failed to compute signal-driven adjustments — falling back to legacy method");
+    log.warn({ err, clientUserId }, "deriveEffectiveSowData: failed to compute signal-driven adjustments — falling back to legacy method");
     return { success: false, firedAdjKeys: [], adjustmentsTotal: 0, namedAdjustmentLines: [] };
   }
 }
@@ -10767,7 +10768,7 @@ async function deriveEffectiveSowData(
     const adjustmentsTotal = signalAdjustments.success ? signalAdjustments.adjustmentsTotal : 0;
     const namedAdjustmentLines = signalAdjustments.success ? signalAdjustments.namedAdjustmentLines : [];
     if (!signalAdjustments.success) {
-      logger.warn(
+      log.warn(
         { projectId: pres.projectId },
         "deriveEffectiveSowData: signal-driven adjustments unavailable for AI-generated-phases path — adjustments defaulted to 0",
       );
@@ -10824,7 +10825,7 @@ async function deriveEffectiveSowData(
       adjustmentsTotal = signalAdjustments.adjustmentsTotal;
       namedAdjustmentLines = signalAdjustments.namedAdjustmentLines;
     } else {
-      logger.warn(
+      log.warn(
         { projectId: pres.projectId },
         "deriveEffectiveSowData: signal-driven adjustments unavailable — using legacy workstream-scoped/gap fallback for this (likely pre-signal) SOW",
       );
@@ -11226,7 +11227,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       phaseGenCompleted,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to get presentation");
+    log.error({ err }, "portal: failed to get presentation");
     res.status(500).json({ error: "Failed to get presentation" });
   }
 });
@@ -11542,7 +11543,7 @@ router.get("/portal/presentations/:id/sow-document", async (req: Request, res: R
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(page);
   } catch (err) {
-    logger.error({ err }, "portal: failed to serve sow-document");
+    log.error({ err }, "portal: failed to serve sow-document");
     res.status(500).send("Failed to load document");
   }
 });
@@ -11723,7 +11724,7 @@ router.get("/portal/presentations/:id/payment-summary", async (req: Request, res
       sowDocPath,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to get payment-summary");
+    log.error({ err }, "portal: failed to get payment-summary");
     res.status(500).json({ error: "Failed to get payment summary" });
   }
 });
@@ -11812,7 +11813,7 @@ router.get("/portal/presentations/:id/offer", async (req: Request, res: Response
       ...(discountPct !== null && { discountPct }),
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to get pay-today offer");
+    log.error({ err }, "portal: failed to get pay-today offer");
     res.status(500).json({ error: "Failed to get offer" });
   }
 });
@@ -11854,7 +11855,7 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
 
     res.json({ totalPrice: newTotal, adjustmentsTotal, adjustmentLines: namedAdjustmentLines, selectedPhaseIds: finalSelectedIds, sowVersion });
   } catch (err) {
-    logger.error({ err }, "portal: failed to update presentation selections");
+    log.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });
   }
 });
@@ -11888,7 +11889,7 @@ router.patch("/portal/presentations/:id/payment-plan", requireAuth, async (req: 
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "portal: failed to save payment plan");
+    log.error({ err }, "portal: failed to save payment plan");
     res.status(500).json({ error: "Failed to save payment plan" });
   }
 });
@@ -12405,7 +12406,7 @@ ${originalSowRow.htmlContent}`;
           previousTotal: prevTotalCents,
           newTotal: scopedTotalCents,
         });
-        logger.info({ presentationId: id, clientUserId: userId, removedPhaseCount, prevTotalCents, scopedTotalCents }, "portal: sow.scope_reduced event emitted");
+        log.info({ presentationId: id, clientUserId: userId, removedPhaseCount, prevTotalCents, scopedTotalCents }, "portal: sow.scope_reduced event emitted");
       }
     }
 
@@ -12415,7 +12416,7 @@ ${originalSowRow.htmlContent}`;
       scopedPhaseIds: safeIds,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to regenerate scoped SOW");
+    log.error({ err }, "portal: failed to regenerate scoped SOW");
     res.status(500).json({ error: "Failed to regenerate scoped SOW" });
   }
 });
@@ -12524,7 +12525,7 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
       scopedPhaseIds: pres.scopedPhaseIds ?? null,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to sign presentation");
+    log.error({ err }, "portal: failed to sign presentation");
     res.status(500).json({ error: "Failed to sign" });
   }
 });
@@ -12715,7 +12716,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
 
     res.json({ url: session.url });
   } catch (err) {
-    logger.error({ err }, "portal: failed to create presentation checkout");
+    log.error({ err }, "portal: failed to create presentation checkout");
     res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
@@ -13150,7 +13151,7 @@ router.post("/portal/presentations/:id/claim-free", requireAuth, async (req: Req
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "portal: failed to process free-claim presentation");
+    log.error({ err }, "portal: failed to process free-claim presentation");
     res.status(500).json({ error: "Failed to claim free offer" });
   }
 });
@@ -13225,7 +13226,7 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
       firstCardClick,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to fetch presentation analytics");
+    log.error({ err }, "portal: failed to fetch presentation analytics");
     res.status(500).json({ error: "Failed to fetch presentation analytics" });
   }
 });
@@ -13335,7 +13336,7 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
 
     res.json({ presentationId: pres.id, shareUrl });
   } catch (err) {
-    logger.error({ err }, "portal: failed to generate presentation share URL");
+    log.error({ err }, "portal: failed to generate presentation share URL");
     res.status(500).json({ error: "Failed to generate shareable link" });
   }
 });
@@ -13407,7 +13408,7 @@ router.post("/portal/presentations/:id/doc-views", async (req: Request, res: Res
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "portal: failed to record doc view");
+    log.error({ err }, "portal: failed to record doc view");
     res.status(500).json({ error: "Failed to record doc view" });
   }
 });
@@ -13453,7 +13454,7 @@ router.get("/admin/presentations/:id/doc-views", requireAdmin, async (req: Reque
       rawViews: views,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to fetch doc views");
+    log.error({ err }, "portal: failed to fetch doc views");
     res.status(500).json({ error: "Failed to fetch doc views" });
   }
 });
@@ -13507,7 +13508,7 @@ router.get("/portal/quick-win/share-results", requireAuth, async (req: Request, 
       },
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to fetch quick win result share link");
+    log.error({ err }, "portal: failed to fetch quick win result share link");
     res.status(500).json({ error: "Failed to load share link" });
   }
 });
@@ -13563,7 +13564,7 @@ router.post("/portal/quick-win/share-results", requireAuth, async (req: Request,
 
     res.json({ shareUrl, expiresAt: expiresAt.toISOString() });
   } catch (err) {
-    logger.error({ err }, "portal: failed to generate quick win result share link");
+    log.error({ err }, "portal: failed to generate quick win result share link");
     res.status(500).json({ error: "Failed to generate share link" });
   }
 });
@@ -13607,7 +13608,7 @@ router.get("/admin/quick-win/result-shares", requireAdmin, async (_req: Request,
       })),
     });
   } catch (err) {
-    logger.error({ err }, "admin: failed to list quick win result shares");
+    log.error({ err }, "admin: failed to list quick win result shares");
     res.status(500).json({ error: "Failed to load result shares" });
   }
 });
@@ -13641,7 +13642,7 @@ router.get("/portal/quick-win/shared/:token", async (req: Request, res: Response
       expiresAt: share.expiresAt.toISOString(),
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to fetch shared quick win results");
+    log.error({ err }, "portal: failed to fetch shared quick win results");
     res.status(500).json({ error: "Failed to load results" });
   }
 });
@@ -13700,7 +13701,7 @@ router.get("/admin/presentations", requireAdmin, async (req: Request, res: Respo
       limit,
     });
   } catch (err) {
-    logger.error({ err }, "portal: failed to fetch admin presentations list");
+    log.error({ err }, "portal: failed to fetch admin presentations list");
     res.status(500).json({ error: "Failed to load presentations" });
   }
 });

@@ -20,6 +20,7 @@ import type {
   MspRole,
 } from "@workspace/db";
 import { logger } from "./logger";
+const log = logger.child({ channel: "system.core" });
 import { fanOutWebhooks } from "./webhook-delivery.ts";
 import { getRequestContext } from "./request-context.ts";
 
@@ -131,7 +132,7 @@ function notifyListeners(
     try {
       fn(enriched);
     } catch (err) {
-      logger.error({ err, eventType: dispatched.eventType }, "event-bus: listener threw");
+      log.error({ err, eventType: dispatched.eventType }, "event-bus: listener threw");
     }
   }
 }
@@ -150,7 +151,7 @@ export async function dispatchEvent(opts: EventDispatchOptions): Promise<Dispatc
   try {
     return await dispatchUnsafe(opts);
   } catch (err) {
-    logger.error({ err, eventType: opts.eventType }, "event-bus: failed to dispatch event");
+    log.error({ err, eventType: opts.eventType }, "event-bus: failed to dispatch event");
     return null;
   }
 }

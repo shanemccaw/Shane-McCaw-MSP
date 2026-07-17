@@ -28,6 +28,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { uploadToSharePoint, ensureSharePointFolder, computeChecksum } from "./sharepoint-connector";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { randomUUID } from "crypto";
@@ -199,7 +200,7 @@ async function handleDocStoreHtml(ctx: NodeExecutionContext): Promise<Record<str
 
   if (existing.length > 0) {
     const ev = existing[0]!;
-    logger.info(
+    log.info(
       { runId: ctx.runId, nodeId: ctx.nodeId, documentId, versionId: ev.versionId },
       "doc_store_html: existing version with same hash — reusing",
     );
@@ -246,7 +247,7 @@ async function handleDocStoreHtml(ctx: NodeExecutionContext): Promise<Record<str
     })
     .where(eq(mspDocumentsTable.documentId, documentId));
 
-  logger.info(
+  log.info(
     { runId: ctx.runId, nodeId: ctx.nodeId, documentId, versionId: newVersion.versionId, versionNumber },
     "doc_store_html: version created",
   );
@@ -328,7 +329,7 @@ async function handleDocGeneratePdf(ctx: NodeExecutionContext): Promise<Record<s
     })
     .where(eq(mspDocumentVersionsTable.versionId, versionId));
 
-  logger.info(
+  log.info(
     { runId: ctx.runId, nodeId: ctx.nodeId, documentId, versionId, pdfSizeBytes: pdfBuffer.length },
     "doc_generate_pdf: PDF rendered",
   );
@@ -378,7 +379,7 @@ async function handleDocSaveSharepoint(ctx: NodeExecutionContext): Promise<Recor
   if (!version) throw new Error(`doc_save_sharepoint: version ${versionId} not found`);
 
   if (version.sharepointFileId && version.sharepointFileUrl) {
-    logger.info(
+    log.info(
       { runId: ctx.runId, nodeId: ctx.nodeId, documentId, versionId, fileId: version.sharepointFileId },
       "doc_save_sharepoint: SharePoint file already uploaded — skipping (idempotent)",
     );
@@ -499,7 +500,7 @@ async function handleDocSaveSharepoint(ctx: NodeExecutionContext): Promise<Recor
     .set({ pipelineStatus: "sharepoint_uploaded", updatedAt: new Date() })
     .where(eq(mspDocumentsTable.documentId, documentId));
 
-  logger.info(
+  log.info(
     {
       runId: ctx.runId,
       nodeId: ctx.nodeId,
@@ -557,7 +558,7 @@ async function handleDocRegisterVersion(ctx: NodeExecutionContext): Promise<Reco
     .set({ pipelineStatus: "version_registered" })
     .where(eq(mspDocumentVersionsTable.versionId, versionId));
 
-  logger.info(
+  log.info(
     { runId: ctx.runId, nodeId: ctx.nodeId, documentId, versionId, versionNumber: version.versionNumber },
     "doc_register_version: version promoted to current",
   );
@@ -595,7 +596,7 @@ async function handleDocPublish(ctx: NodeExecutionContext): Promise<Record<strin
   if (!doc) throw new Error(`doc_publish: document ${documentId} not found`);
 
   if (doc.status === "active" && doc.publishedAt) {
-    logger.info(
+    log.info(
       { runId: ctx.runId, nodeId: ctx.nodeId, documentId },
       "doc_publish: document already published — idempotent skip",
     );
@@ -622,7 +623,7 @@ async function handleDocPublish(ctx: NodeExecutionContext): Promise<Record<strin
       .where(eq(mspDocumentVersionsTable.versionId, versionId));
   }
 
-  logger.info(
+  log.info(
     { runId: ctx.runId, nodeId: ctx.nodeId, documentId, publishedAt },
     "doc_publish: document published",
   );
@@ -658,14 +659,14 @@ async function handleDocAuditExport(ctx: NodeExecutionContext): Promise<Record<s
       },
     });
 
-    logger.info(
+    log.info(
       { runId: ctx.runId, nodeId: ctx.nodeId, documentId, eventId: dispatched?.eventId },
       "doc_audit_export: event emitted",
     );
 
     return { documentId, versionId, eventId: dispatched?.eventId ?? null, emitted: dispatched != null };
   } catch (err) {
-    logger.warn({ err, runId: ctx.runId, documentId }, "doc_audit_export: event dispatch failed (non-fatal)");
+    log.warn({ err, runId: ctx.runId, documentId }, "doc_audit_export: event dispatch failed (non-fatal)");
     return { documentId, versionId, eventId: null, emitted: false };
   }
 }
@@ -679,7 +680,7 @@ async function handleDocAuditExport(ctx: NodeExecutionContext): Promise<Record<s
 
 async function handleDocCleanup(ctx: NodeExecutionContext): Promise<Record<string, unknown>> {
   const documentId = String(ctx.input["documentId"] ?? "");
-  logger.info({ runId: ctx.runId, nodeId: ctx.nodeId, documentId }, "doc_cleanup: pipeline complete");
+  log.info({ runId: ctx.runId, nodeId: ctx.nodeId, documentId }, "doc_cleanup: pipeline complete");
   return { cleaned: true, documentId };
 }
 
@@ -694,7 +695,7 @@ export function registerDocPipelineHandlers(): void {
   registerNodeHandler("doc_audit_export", handleDocAuditExport);
   registerNodeHandler("doc_cleanup", handleDocCleanup);
 
-  logger.info(
+  log.info(
     {},
     "portal-wf: doc pipeline node handlers registered (doc_store_html, doc_generate_pdf, doc_save_sharepoint, doc_register_version, doc_publish, doc_audit_export, doc_cleanup)",
   );

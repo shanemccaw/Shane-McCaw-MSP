@@ -86,6 +86,7 @@ import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
@@ -470,7 +471,7 @@ export async function runBaselineTemplateAgainstTenant(
       executedAt: new Date().toISOString(),
     },
   }).catch((auditErr: unknown) => {
-    logger.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
+    log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
   });
 
   return {
@@ -573,7 +574,7 @@ const ARTICLES_DIR = path.resolve(
 );
 
 // Log resolved path at startup — useful for debugging and code-review verification.
-logger.info({ articlesDir: ARTICLES_DIR }, "workflow-executor: content articles directory resolved");
+log.info({ articlesDir: ARTICLES_DIR }, "workflow-executor: content articles directory resolved");
 
 // ── Safe condition evaluator ─────────────────────────────────────────────────
 // NO eval/new Function. Supports: path op literal (==,!=,>,<,>=,<=,contains),
@@ -969,7 +970,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "play_sound": {
       const psTarget = (node.data.target as string | undefined) ?? "browser";
       const psSound  = (node.data.sound  as string | undefined) ?? "ping";
-      logger.info({ psTarget, psSound }, "workflow-executor [dry-run]: play_sound would play");
+      log.info({ psTarget, psSound }, "workflow-executor [dry-run]: play_sound would play");
       return { dryRun: true, soundPlayed: false, soundTarget: psTarget, skipped: true };
     }
 
@@ -1003,7 +1004,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
       const dryBody    = interp(node.data.body      as string | undefined, payload) ?? "";
       const dryLink    = interp(node.data.linkPath  as string | undefined, payload) ?? null;
-      logger.info({ dryTitle, dryBody, dryLink }, "workflow-executor [dry-run]: send_browser_notification would send");
+      log.info({ dryTitle, dryBody, dryLink }, "workflow-executor [dry-run]: send_browser_notification would send");
       return { dryRun: true, notificationSent: true, preview: { title: dryTitle, body: dryBody, linkPath: dryLink } };
     }
 
@@ -1012,14 +1013,14 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const cnBody  = interp(node.data.body  as string | undefined, payload) ?? "";
       const cnLink  = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
       const cnType  = (interp(node.data.type as string | undefined, payload) ?? "message") as string;
-      logger.info({ cnTitle, cnBody, cnLink, cnType }, "workflow-executor [dry-run]: create_notification would insert");
+      log.info({ cnTitle, cnBody, cnLink, cnType }, "workflow-executor [dry-run]: create_notification would insert");
       return { dryRun: true, notificationCount: 0, preview: { title: cnTitle, body: cnBody, linkPath: cnLink, type: cnType } };
     }
 
     case "send_mobile_push": {
       const dryMpTitle = interp(node.data.title as string | undefined, payload) ?? "(no title)";
       const dryMpBody  = interp(node.data.body  as string | undefined, payload) ?? "";
-      logger.info({ dryMpTitle, dryMpBody }, "workflow-executor [dry-run]: send_mobile_push would send");
+      log.info({ dryMpTitle, dryMpBody }, "workflow-executor [dry-run]: send_mobile_push would send");
       return { dryRun: true, sent: true, sentCount: 0, preview: { title: dryMpTitle, body: dryMpBody } };
     }
 
@@ -1761,7 +1762,7 @@ async function executeNode(
                 : typeof presIdRaw === "string" ? parseInt(presIdRaw, 10) : NaN;
               if (!isNaN(presId) && presId > 0) {
                 broadcastPresentationProjectReady(presId, project.id);
-                logger.info({ runId, presId, projectId: project.id }, "wf-executor: project_ready broadcast sent for presentation");
+                log.info({ runId, presId, projectId: project.id }, "wf-executor: project_ready broadcast sent for presentation");
               }
             }
           }
@@ -1852,7 +1853,7 @@ async function executeNode(
               const failed    = results.filter(r => r.status !== "succeeded").map(r => r.runbook);
 
               output = { allSucceeded: failed.length === 0, results, succeeded, failed };
-              logger.info(
+              log.info(
                 { runId, nodeId: node.id, total: runbookList.length, succeeded: succeeded.length, failed: failed.length },
                 "wf-executor: execute_runbook multi-runbook fan-out complete",
               );
@@ -2024,7 +2025,7 @@ async function executeNode(
                 });
                 if (!isNaN(presId)) {
                   broadcastPresentationDocsChange(presId);
-                  logger.info({ runId, presId, docId: sowResult.docId }, "wf-executor: consolidated_sow broadcast docs_changed for presentation");
+                  log.info({ runId, presId, docId: sowResult.docId }, "wf-executor: consolidated_sow broadcast docs_changed for presentation");
                 }
                 if (!isNaN(projectId)) {
                   void broadcastSowChangeForProject(projectId);
@@ -2038,7 +2039,7 @@ async function executeNode(
                   error: sowErrMsg,
                   customerError: "SOW generation failed — please retry or contact support if the problem persists.",
                 };
-                logger.error({ runId, err: sowErr }, "wf-executor: consolidated_sow generation failed");
+                log.error({ runId, err: sowErr }, "wf-executor: consolidated_sow generation failed");
               }
             }
 
@@ -2205,7 +2206,7 @@ async function executeNode(
               try {
                 await persistSowPricing(reportDocId, htmlContent);
               } catch (pricingErr) {
-                logger.warn({ runId, reportDocId, err: pricingErr }, "wf-executor: generate_document — persistSowPricing failed (non-fatal)");
+                log.warn({ runId, reportDocId, err: pricingErr }, "wf-executor: generate_document — persistSowPricing failed (non-fatal)");
               }
 
               // Notify any open presentation SSE channels so the client's
@@ -2219,7 +2220,7 @@ async function executeNode(
                 : NaN;
               if (!isNaN(presId)) {
                 broadcastPresentationDocsChange(presId);
-                logger.info({ runId, presId, reportDocId }, "wf-executor: generate_document — broadcast docs_changed for presentation");
+                log.info({ runId, presId, reportDocId }, "wf-executor: generate_document — broadcast docs_changed for presentation");
               }
             }
 
@@ -2234,7 +2235,7 @@ async function executeNode(
               .set({ pdfUrl: `/api/admin/insights/documents/${reportDocId}/download` })
               .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
 
-            logger.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
+            log.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
             output = docType === "task_execution_guide"
               ? { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId, htmlContent }
               : { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
@@ -2257,7 +2258,7 @@ async function executeNode(
             const mergedPayload = { ...payload, ...extraPayload };
             await emitWorkflowEvent(emitEventType, mergedPayload, definitionId, currentChainDepth);
             output = { emitted: true, eventType: emitEventType };
-            logger.info({ runId, definitionId, eventType: emitEventType, chainDepth: currentChainDepth }, "wf-executor: emit_event node fired");
+            log.info({ runId, definitionId, eventType: emitEventType, chainDepth: currentChainDepth }, "wf-executor: emit_event node fired");
 
             // ── Route presentation.phase_gen.* events to the SSE channel ──────
             if (emitEventType.startsWith("presentation.phase_gen.")) {
@@ -2365,12 +2366,12 @@ async function executeNode(
               output = firstRow
                 ? { rowCount: result.rowCount ?? result.rows.length, ...firstRow }
                 : { rowCount: result.rowCount ?? 0 };
-              logger.info({ runId, rowCount: result.rowCount ?? result.rows.length }, "wf-executor: sql_query node executed");
+              log.info({ runId, rowCount: result.rowCount ?? result.rows.length }, "wf-executor: sql_query node executed");
             } catch (queryErr) {
               nodeError = true;
               const errMsg = queryErr instanceof Error ? queryErr.message : String(queryErr);
               output = { error: `sql_query failed: ${errMsg.slice(0, 200)}` };
-              logger.warn({ runId, err: queryErr }, "wf-executor: sql_query node failed");
+              log.warn({ runId, err: queryErr }, "wf-executor: sql_query node failed");
             }
           }
         } else if (actionType === "calculate_pricing") {
@@ -2416,10 +2417,10 @@ async function executeNode(
                   lineCount: 0,
                   totalPrice: 0,
                 };
-                logger.warn({ runId, calcDocId, calcDocType }, "wf-executor: calculate_pricing found 0 pricing lines — failing node");
+                log.warn({ runId, calcDocId, calcDocType }, "wf-executor: calculate_pricing found 0 pricing lines — failing node");
               } else {
                 output = { documentId: calcDocId, totalPrice, lineCount, ...(calcDocType ? { docType: calcDocType } : {}) };
-                logger.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
+                log.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
               }
             }
           }
@@ -2468,7 +2469,7 @@ async function executeNode(
                 depth: currentDepth,
                 maxDepth: RUN_WORKFLOW_MAX_DEPTH,
               };
-              logger.warn({ runId, subDefId, currentDepth, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow depth limit reached — aborting to prevent infinite loop");
+              log.warn({ runId, subDefId, currentDepth, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow depth limit reached — aborting to prevent infinite loop");
             } else {
             const rawMapping = node.data.inputMapping as Array<{ key: string; expr: string }> | undefined;
             // Start with a clean payload for the child workflow — do NOT spread the
@@ -2545,7 +2546,7 @@ async function executeNode(
                     if (rowOutput) Object.assign(mergedChildOutput, rowOutput);
                   }
                   output = { ...mergedChildOutput, childRunId, depth: currentDepth + 1, maxDepth: RUN_WORKFLOW_MAX_DEPTH };
-                  logger.info({ runId, childRunId, subDefId, depth: currentDepth + 1, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow completed — child outputs merged into parent context");
+                  log.info({ runId, childRunId, subDefId, depth: currentDepth + 1, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow completed — child outputs merged into parent context");
                 }
               }
             }
@@ -2595,7 +2596,7 @@ async function executeNode(
             } catch (err) {
               nodeError = true;
               const errorMessage = err instanceof Error ? err.message : String(err);
-              logger.warn({ runId, nodeId: node.id, err, to: seTo }, "wf-executor: send_email failed");
+              log.warn({ runId, nodeId: node.id, err, to: seTo }, "wf-executor: send_email failed");
               output = { sent: false, error: errorMessage };
             }
           }
@@ -2624,7 +2625,7 @@ async function executeNode(
             } catch (err) {
               nodeError = true;
               const errorMessage = err instanceof Error ? err.message : String(err);
-              logger.warn({ runId, nodeId: node.id, err, sowId: cmcSowId }, "wf-executor: charge_msp_card failed");
+              log.warn({ runId, nodeId: node.id, err, sowId: cmcSowId }, "wf-executor: charge_msp_card failed");
               output = { success: false, status: "failed", error: errorMessage };
             }
           }
@@ -2777,7 +2778,7 @@ async function executeNode(
           feItems = feResolved.split(",").map(s => s.trim()).filter(s => s.length > 0);
         }
         if (!feItems) {
-          logger.warn({ runId, arrayPath: feCleanPath, resolvedType: typeof feResolved },
+          log.warn({ runId, arrayPath: feCleanPath, resolvedType: typeof feResolved },
             "workflow-executor: foreach array path did not resolve to an array or CSV string — skipping all iterations");
         }
         const feAlias = (node.data.itemAlias as string | undefined)?.trim() || null;
@@ -2810,7 +2811,7 @@ async function executeNode(
             if (Array.isArray(parsedJson)) {
               forItems = parsedJson;
             } else {
-              logger.warn({ runId, arraySource: forArraySource, resolvedType: typeof parsedJson },
+              log.warn({ runId, arraySource: forArraySource, resolvedType: typeof parsedJson },
                 "workflow-executor: for loop arraySource resolved to a non-array JSON value — skipping all iterations");
             }
           } else {
@@ -2818,7 +2819,7 @@ async function executeNode(
           }
         }
         if (!forItems) {
-          logger.warn({ runId, arraySource: forArraySource, resolvedType: typeof forResolved },
+          log.warn({ runId, arraySource: forArraySource, resolvedType: typeof forResolved },
             "workflow-executor: for loop arraySource did not resolve to an array — skipping all iterations");
         }
         const forMaxIter = (node.data.maxIterations as number | undefined) ?? null;
@@ -2910,7 +2911,7 @@ async function executeNode(
                     steps: updatedNodes,
                   };
                 } catch (err) {
-                  logger.error({ runId, nodeId: node.id, refreshNodeId: rNode.id, err }, "wf-executor: delay node refresh failed for sub-node");
+                  log.error({ runId, nodeId: node.id, refreshNodeId: rNode.id, err }, "wf-executor: delay node refresh failed for sub-node");
                 }
               }
             }
@@ -3379,7 +3380,7 @@ async function executeNode(
             const signals = [...firedSignals];
             const hasSignals = firedSignals.size > 1;
             output = { signals, signalCount: signals.length, hasSignals };
-            logger.info({ runId, gtsClientId, gtsTenantId, monitorCheckCount: monitorRows.length, signalCount: signals.length, hasSignals }, "wf-executor: get_tenant_signals completed");
+            log.info({ runId, gtsClientId, gtsTenantId, monitorCheckCount: monitorRows.length, signalCount: signals.length, hasSignals }, "wf-executor: get_tenant_signals completed");
           } catch (gtsErr) {
             nodeError = true;
             const errMsg = gtsErr instanceof Error ? gtsErr.message : String(gtsErr);
@@ -3387,7 +3388,7 @@ async function executeNode(
               error: errMsg,
               customerError: "Unable to retrieve your tenant signals — an error occurred. Please retry or contact support.",
             };
-            logger.error({ runId, gtsErr }, "wf-executor: get_tenant_signals failed");
+            log.error({ runId, gtsErr }, "wf-executor: get_tenant_signals failed");
           }
         }
         break;
@@ -3418,7 +3419,7 @@ async function executeNode(
             } else {
               const result = await def.runForTenant(ceClientId);
               output = { engine: engineKey, ...(result as Record<string, unknown>) };
-              logger.info({ runId, ceClientId, engine: engineKey }, "wf-executor: engine node completed");
+              log.info({ runId, ceClientId, engine: engineKey }, "wf-executor: engine node completed");
             }
           } catch (ceErr) {
             nodeError = true;
@@ -3427,7 +3428,7 @@ async function executeNode(
               error: errMsg,
               customerError: "Unable to compute this score — an error occurred. Please retry or contact support.",
             };
-            logger.error({ runId, ceErr }, "wf-executor: engine node failed");
+            log.error({ runId, ceErr }, "wf-executor: engine node failed");
           }
         }
         break;
@@ -3454,11 +3455,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = slaStartResult;
-            logger.info({ runId, timerId: slaStartResult.timerId }, "wf-executor: sla_start_timer completed");
+            log.info({ runId, timerId: slaStartResult.timerId }, "wf-executor: sla_start_timer completed");
           } catch (slaErr) {
             nodeError = true;
             output = { error: slaErr instanceof Error ? slaErr.message : String(slaErr) };
-            logger.error({ runId, slaErr }, "wf-executor: sla_start_timer failed");
+            log.error({ runId, slaErr }, "wf-executor: sla_start_timer failed");
           }
         }
         break;
@@ -3474,11 +3475,11 @@ async function executeNode(
           try {
             const stopped = await slaStopTimer(slaStopTimerId);
             output = { stopped, timerId: slaStopTimerId };
-            logger.info({ runId, timerId: slaStopTimerId, stopped }, "wf-executor: sla_stop_timer completed");
+            log.info({ runId, timerId: slaStopTimerId, stopped }, "wf-executor: sla_stop_timer completed");
           } catch (slaStopErr) {
             nodeError = true;
             output = { error: slaStopErr instanceof Error ? slaStopErr.message : String(slaStopErr) };
-            logger.error({ runId, slaStopErr }, "wf-executor: sla_stop_timer failed");
+            log.error({ runId, slaStopErr }, "wf-executor: sla_stop_timer failed");
           }
         }
         break;
@@ -3498,11 +3499,11 @@ async function executeNode(
               WHERE timer_id = ${slaWarnTimerId} AND warning_fired_at IS NULL
             `);
             output = { warningFired: true, timerId: slaWarnTimerId };
-            logger.info({ runId, timerId: slaWarnTimerId }, "wf-executor: sla_warning fired");
+            log.info({ runId, timerId: slaWarnTimerId }, "wf-executor: sla_warning fired");
           } catch (slaWarnErr) {
             nodeError = true;
             output = { error: slaWarnErr instanceof Error ? slaWarnErr.message : String(slaWarnErr) };
-            logger.error({ runId, slaWarnErr }, "wf-executor: sla_warning failed");
+            log.error({ runId, slaWarnErr }, "wf-executor: sla_warning failed");
           }
         }
         break;
@@ -3534,11 +3535,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = slaBreachResult;
-            logger.info({ runId, breachId: slaBreachResult.breachId }, "wf-executor: sla_breach recorded");
+            log.info({ runId, breachId: slaBreachResult.breachId }, "wf-executor: sla_breach recorded");
           } catch (slaBreachErr) {
             nodeError = true;
             output = { error: slaBreachErr instanceof Error ? slaBreachErr.message : String(slaBreachErr) };
-            logger.error({ runId, slaBreachErr }, "wf-executor: sla_breach failed");
+            log.error({ runId, slaBreachErr }, "wf-executor: sla_breach failed");
           }
         }
         break;
@@ -3567,11 +3568,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = slaEscResult;
-            logger.info({ runId, escalationId: slaEscResult.escalationId }, "wf-executor: sla_escalate completed");
+            log.info({ runId, escalationId: slaEscResult.escalationId }, "wf-executor: sla_escalate completed");
           } catch (slaEscErr) {
             nodeError = true;
             output = { error: slaEscErr instanceof Error ? slaEscErr.message : String(slaEscErr) };
-            logger.error({ runId, slaEscErr }, "wf-executor: sla_escalate failed");
+            log.error({ runId, slaEscErr }, "wf-executor: sla_escalate failed");
           }
         }
         break;
@@ -3590,11 +3591,11 @@ async function executeNode(
               interp(node.data.notes as string | undefined, payload) ?? undefined,
             );
             output = { resolved, timerId: slaResTimerId };
-            logger.info({ runId, timerId: slaResTimerId, resolved }, "wf-executor: sla_resolve completed");
+            log.info({ runId, timerId: slaResTimerId, resolved }, "wf-executor: sla_resolve completed");
           } catch (slaResErr) {
             nodeError = true;
             output = { error: slaResErr instanceof Error ? slaResErr.message : String(slaResErr) };
-            logger.error({ runId, slaResErr }, "wf-executor: sla_resolve failed");
+            log.error({ runId, slaResErr }, "wf-executor: sla_resolve failed");
           }
         }
         break;
@@ -3625,11 +3626,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = scDetResult;
-            logger.info({ runId, detectionId: scDetResult.detectionId }, "wf-executor: scope_creep_detect recorded");
+            log.info({ runId, detectionId: scDetResult.detectionId }, "wf-executor: scope_creep_detect recorded");
           } catch (scDetErr) {
             nodeError = true;
             output = { error: scDetErr instanceof Error ? scDetErr.message : String(scDetErr) };
-            logger.error({ runId, scDetErr }, "wf-executor: scope_creep_detect failed");
+            log.error({ runId, scDetErr }, "wf-executor: scope_creep_detect failed");
           }
         }
         break;
@@ -3653,11 +3654,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = scScoreResult;
-            logger.info({ runId, scoreId: scScoreResult.scoreId, compositeScore: scScoreResult.compositeScore }, "wf-executor: scope_creep_score completed");
+            log.info({ runId, scoreId: scScoreResult.scoreId, compositeScore: scScoreResult.compositeScore }, "wf-executor: scope_creep_score completed");
           } catch (scScoreErr) {
             nodeError = true;
             output = { error: scScoreErr instanceof Error ? scScoreErr.message : String(scScoreErr) };
-            logger.error({ runId, scScoreErr }, "wf-executor: scope_creep_score failed");
+            log.error({ runId, scScoreErr }, "wf-executor: scope_creep_score failed");
           }
         }
         break;
@@ -3687,14 +3688,14 @@ async function executeNode(
             });
             output = scViolResult;
             if (scViolResult.belowThreshold) {
-              logger.info({ runId, compositeScore: isNaN(scViolScore) ? 0 : scViolScore, threshold: isNaN(scViolThreshold) ? 60 : scViolThreshold }, "wf-executor: scope_creep_violation skipped — score below threshold");
+              log.info({ runId, compositeScore: isNaN(scViolScore) ? 0 : scViolScore, threshold: isNaN(scViolThreshold) ? 60 : scViolThreshold }, "wf-executor: scope_creep_violation skipped — score below threshold");
             } else {
-              logger.info({ runId, violationId: scViolResult.violationId, severity: scViolResult.severity }, "wf-executor: scope_creep_violation fired");
+              log.info({ runId, violationId: scViolResult.violationId, severity: scViolResult.severity }, "wf-executor: scope_creep_violation fired");
             }
           } catch (scViolErr) {
             nodeError = true;
             output = { error: scViolErr instanceof Error ? scViolErr.message : String(scViolErr) };
-            logger.error({ runId, scViolErr }, "wf-executor: scope_creep_violation failed");
+            log.error({ runId, scViolErr }, "wf-executor: scope_creep_violation failed");
           }
         }
         break;
@@ -3725,11 +3726,11 @@ async function executeNode(
               traceId: String(runId),
             });
             output = scEscResult;
-            logger.info({ runId, escalationId: scEscResult.escalationId }, "wf-executor: scope_creep_escalate completed");
+            log.info({ runId, escalationId: scEscResult.escalationId }, "wf-executor: scope_creep_escalate completed");
           } catch (scEscErr) {
             nodeError = true;
             output = { error: scEscErr instanceof Error ? scEscErr.message : String(scEscErr) };
-            logger.error({ runId, scEscErr }, "wf-executor: scope_creep_escalate failed");
+            log.error({ runId, scEscErr }, "wf-executor: scope_creep_escalate failed");
           }
         }
         break;
@@ -3748,11 +3749,11 @@ async function executeNode(
               interp(node.data.notes as string | undefined, payload) ?? undefined,
             );
             output = { resolved, violationId: scResViolationId };
-            logger.info({ runId, violationId: scResViolationId, resolved }, "wf-executor: scope_creep_resolve completed");
+            log.info({ runId, violationId: scResViolationId, resolved }, "wf-executor: scope_creep_resolve completed");
           } catch (scResErr) {
             nodeError = true;
             output = { error: scResErr instanceof Error ? scResErr.message : String(scResErr) };
-            logger.error({ runId, scResErr }, "wf-executor: scope_creep_resolve failed");
+            log.error({ runId, scResErr }, "wf-executor: scope_creep_resolve failed");
           }
         }
         break;
@@ -3796,11 +3797,11 @@ async function executeNode(
               ON CONFLICT DO NOTHING
             `);
             output = { recordId: scRecordId, ...snapshot };
-            logger.info({ runId, recordId: scRecordId, compliancePct: snapshot.compliancePct }, "wf-executor: scope_creep_compliance_update completed");
+            log.info({ runId, recordId: scRecordId, compliancePct: snapshot.compliancePct }, "wf-executor: scope_creep_compliance_update completed");
           } catch (scCompErr) {
             nodeError = true;
             output = { error: scCompErr instanceof Error ? scCompErr.message : String(scCompErr) };
-            logger.error({ runId, scCompErr }, "wf-executor: scope_creep_compliance_update failed");
+            log.error({ runId, scCompErr }, "wf-executor: scope_creep_compliance_update failed");
           }
         }
         break;
@@ -3820,11 +3821,11 @@ async function executeNode(
             const soResult = await soRun(soTenantId, soMspId);
             const soInserted = await soPersist(soResult.candidates, soTenantId, soMspId, soResult as unknown as Record<string, unknown>);
             output = { insertedOfferIds: soInserted, candidateCount: soResult.candidates.length, firedSignals: soResult.firedSignals };
-            logger.info({ runId, soTenantId, candidateCount: soResult.candidates.length, insertedCount: soInserted.length }, "wf-executor: sales_offer_generate completed");
+            log.info({ runId, soTenantId, candidateCount: soResult.candidates.length, insertedCount: soInserted.length }, "wf-executor: sales_offer_generate completed");
           } catch (soGenErr) {
             nodeError = true;
             output = { error: soGenErr instanceof Error ? soGenErr.message : String(soGenErr) };
-            logger.error({ runId, soGenErr }, "wf-executor: sales_offer_generate failed");
+            log.error({ runId, soGenErr }, "wf-executor: sales_offer_generate failed");
           }
         }
         break;
@@ -3856,11 +3857,11 @@ async function executeNode(
             // Emit canonical offer.scored event for audit trail completeness
             await soScoreEmit(soScoreOfferId, "offer.scored", { previousScore: soPrevScore, newScore: soNewScore }, null);
             output = { offerId: soScoreOfferId, previousScore: soPrevScore, newScore: soNewScore };
-            logger.info({ runId, soScoreOfferId, soPrevScore, soNewScore }, "wf-executor: sales_offer_score completed");
+            log.info({ runId, soScoreOfferId, soPrevScore, soNewScore }, "wf-executor: sales_offer_score completed");
           } catch (soScoreErr) {
             nodeError = true;
             output = { error: soScoreErr instanceof Error ? soScoreErr.message : String(soScoreErr) };
-            logger.error({ runId, soScoreErr }, "wf-executor: sales_offer_score failed");
+            log.error({ runId, soScoreErr }, "wf-executor: sales_offer_score failed");
           }
         }
         break;
@@ -3881,15 +3882,15 @@ async function executeNode(
             const { alreadyExisted: soViolAlreadyExisted } = await soEmit(soViolOfferId, "offer.violation", { violationType: soViolType, note: interp(node.data.note as string | undefined, payload) ?? "" }, null, soViolIdempKey ?? undefined);
             if (soViolAlreadyExisted) {
               output = { offerId: soViolOfferId, violationType: soViolType, emitted: false, skipped: true, reason: "idempotent: already emitted" };
-              logger.info({ runId, soViolOfferId }, "wf-executor: sales_offer_violation skipped (idempotent)");
+              log.info({ runId, soViolOfferId }, "wf-executor: sales_offer_violation skipped (idempotent)");
             } else {
               output = { offerId: soViolOfferId, violationType: soViolType, emitted: true };
-              logger.info({ runId, soViolOfferId, soViolType }, "wf-executor: sales_offer_violation emitted");
+              log.info({ runId, soViolOfferId, soViolType }, "wf-executor: sales_offer_violation emitted");
             }
           } catch (soViolErr) {
             nodeError = true;
             output = { error: soViolErr instanceof Error ? soViolErr.message : String(soViolErr) };
-            logger.error({ runId, soViolErr }, "wf-executor: sales_offer_violation failed");
+            log.error({ runId, soViolErr }, "wf-executor: sales_offer_violation failed");
           }
         }
         break;
@@ -3909,15 +3910,15 @@ async function executeNode(
             const { alreadyExisted: soEscAlreadyExisted } = await soEscEmit(soEscOfferId, "offer.escalated", { escalatedTo: soEscTo, note: interp(node.data.note as string | undefined, payload) ?? "" }, null, soEscIdempKey ?? undefined);
             if (soEscAlreadyExisted) {
               output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: false, skipped: true, reason: "idempotent: already emitted" };
-              logger.info({ runId, soEscOfferId }, "wf-executor: sales_offer_escalate skipped (idempotent)");
+              log.info({ runId, soEscOfferId }, "wf-executor: sales_offer_escalate skipped (idempotent)");
             } else {
               output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: true };
-              logger.info({ runId, soEscOfferId, soEscTo }, "wf-executor: sales_offer_escalate emitted");
+              log.info({ runId, soEscOfferId, soEscTo }, "wf-executor: sales_offer_escalate emitted");
             }
           } catch (soEscErr) {
             nodeError = true;
             output = { error: soEscErr instanceof Error ? soEscErr.message : String(soEscErr) };
-            logger.error({ runId, soEscErr }, "wf-executor: sales_offer_escalate failed");
+            log.error({ runId, soEscErr }, "wf-executor: sales_offer_escalate failed");
           }
         }
         break;
@@ -3935,11 +3936,11 @@ async function executeNode(
           try {
             const soUpdated = await soTransition(soResOfferId, soResState as import("@workspace/db").SalesOfferState, null, { rejectionReason: soResReason });
             output = { offerId: soResOfferId, newState: soResState, updatedAt: soUpdated.updatedAt };
-            logger.info({ runId, soResOfferId, soResState }, "wf-executor: sales_offer_resolve completed");
+            log.info({ runId, soResOfferId, soResState }, "wf-executor: sales_offer_resolve completed");
           } catch (soResErr) {
             nodeError = true;
             output = { error: soResErr instanceof Error ? soResErr.message : String(soResErr) };
-            logger.error({ runId, soResErr }, "wf-executor: sales_offer_resolve failed");
+            log.error({ runId, soResErr }, "wf-executor: sales_offer_resolve failed");
           }
         }
         break;
@@ -3950,14 +3951,14 @@ async function executeNode(
         const sbnBody     = interp(node.data.body     as string | undefined, payload) ?? "";
         const sbnLinkPath = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
         if (!sbnTitle) {
-          logger.warn({ runId }, "send_browser_notification: title is empty — skipping push");
+          log.warn({ runId }, "send_browser_notification: title is empty — skipping push");
           output = { notificationSent: false, skipped: true, reason: "title is empty" };
         } else {
           try {
             await sendWebPushToAdmins({ title: sbnTitle, body: sbnBody, linkPath: sbnLinkPath });
             output = { notificationSent: true };
           } catch (sbnErr) {
-            logger.warn({ sbnErr, runId }, "send_browser_notification: push dispatch failed — continuing run");
+            log.warn({ sbnErr, runId }, "send_browser_notification: push dispatch failed — continuing run");
             output = { notificationSent: false, error: String(sbnErr) };
           }
         }
@@ -3980,7 +3981,7 @@ async function executeNode(
         const cnFeedType = (interp(node.data.feedType as string | undefined, payload)?.trim() || "personal") as "personal" | "all_activity";
 
         if (!cnTitle) {
-          logger.warn({ runId }, "create_notification: title is empty — skipping insert");
+          log.warn({ runId }, "create_notification: title is empty — skipping insert");
           output = { notificationCount: 0, skipped: true, reason: "title is empty" };
         } else if (cnChannel === "inbox") {
           // Notification Center path: insert for all admins with full NC fields
@@ -3990,7 +3991,7 @@ async function executeNode(
             .where(eq(usersTable.role, "admin"));
 
           if (adminRows.length === 0) {
-            logger.warn({ runId }, "create_notification[inbox]: no admin users found — skipping");
+            log.warn({ runId }, "create_notification[inbox]: no admin users found — skipping");
             output = { notificationCount: 0, skipped: true, reason: "no admin users" };
           } else {
             const { broadcastNotification, broadcastUnreadCount } = await import("./sse-broadcast");
@@ -4023,7 +4024,7 @@ async function executeNode(
                 .where(and(eq(notificationsTable.userId, row.id), eq(notificationsTable.feedType, "personal"), eq(notificationsTable.read, false)));
               broadcastUnreadCount(row.id, cnt?.n ?? 0);
             }
-            logger.info({ runId, notificationCount: adminRows.length, cnFeedType, cnCategory }, "create_notification[inbox]: inserted notifications");
+            log.info({ runId, notificationCount: adminRows.length, cnFeedType, cnCategory }, "create_notification[inbox]: inserted notifications");
             output = { notificationCount: adminRows.length };
           }
         } else {
@@ -4034,7 +4035,7 @@ async function executeNode(
             .where(eq(usersTable.role, "admin"));
 
           if (adminRows.length === 0) {
-            logger.warn({ runId }, "create_notification: no admin users found — skipping insert");
+            log.warn({ runId }, "create_notification: no admin users found — skipping insert");
             output = { notificationCount: 0, skipped: true, reason: "no admin users" };
           } else {
             await db.insert(notificationsTable).values(
@@ -4047,7 +4048,7 @@ async function executeNode(
                 read: false,
               })),
             );
-            logger.info({ runId, notificationCount: adminRows.length, cnType: resolvedType }, "create_notification: inserted notifications");
+            log.info({ runId, notificationCount: adminRows.length, cnType: resolvedType }, "create_notification: inserted notifications");
             output = { notificationCount: adminRows.length };
           }
         }
@@ -4059,12 +4060,12 @@ async function executeNode(
         const smpBody   = interp(node.data.body  as string | undefined, payload) ?? "";
         const tokenRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
         if (!tokenRows.length) {
-          logger.warn({ runId }, "send_mobile_push: no device tokens registered — skipping");
+          log.warn({ runId }, "send_mobile_push: no device tokens registered — skipping");
           output = { sent: false, sentCount: 0 };
         } else {
           const tokens = tokenRows.map(r => r.token);
           await sendPushNotifications(tokens, smpTitle || "Notification", smpBody);
-          logger.info({ runId, sentCount: tokens.length }, "send_mobile_push: dispatched to device tokens");
+          log.info({ runId, sentCount: tokens.length }, "send_mobile_push: dispatched to device tokens");
           output = { sent: true, sentCount: tokens.length };
         }
         break;
@@ -4104,7 +4105,7 @@ async function executeNode(
               conditionMet = true;
           }
           if (!conditionMet) {
-            logger.info({ runId, psCondOp, psCondExpr, resolved }, "play_sound: condition not met — skipping");
+            log.info({ runId, psCondOp, psCondExpr, resolved }, "play_sound: condition not met — skipping");
             output = { soundPlayed: false, soundSkipped: true, soundTarget: psTarget };
             break;
           }
@@ -4125,10 +4126,10 @@ async function executeNode(
                   : { type: "preset", preset: psSound }
               ),
             } as Parameters<typeof sendWebPushToAdmins>[0] & { soundPayload?: string });
-            logger.info({ runId, psLabel }, "play_sound [desktop]: web push dispatched");
+            log.info({ runId, psLabel }, "play_sound [desktop]: web push dispatched");
             output = { soundPlayed: true, soundTarget: "desktop" };
           } catch (psErr) {
-            logger.warn({ psErr, runId }, "play_sound [desktop]: push dispatch failed");
+            log.warn({ psErr, runId }, "play_sound [desktop]: push dispatch failed");
             output = { soundPlayed: false, soundTarget: "desktop", error: String(psErr) };
           }
         } else {
@@ -4139,7 +4140,7 @@ async function executeNode(
               : psUrl   ? { type: "url",    url: psUrl }
               : { type: "preset", preset: psSound },
           });
-          logger.info({ runId, psLabel }, "play_sound [browser]: SSE event broadcast");
+          log.info({ runId, psLabel }, "play_sound [browser]: SSE event broadcast");
           output = { soundPlayed: true, soundTarget: "browser" };
         }
         break;
@@ -4721,7 +4722,7 @@ async function executeNode(
         }
 
         if (!presRow) {
-          logger.warn({ gpProjectId, gpPresentationId }, "get_phases: no presentation found — returning empty phases");
+          log.warn({ gpProjectId, gpPresentationId }, "get_phases: no presentation found — returning empty phases");
           output = { phases: [], phaseCount: 0, presentationId: null };
           break;
         }
@@ -4774,7 +4775,7 @@ async function executeNode(
         // a sql_query node with a CTE that computes price weights and upserts the
         // quick_win_presentations row directly. Graphs still using this node type
         // receive a compat patch from seedSystemWorkflows on next server startup.
-        logger.warn({ runId, nodeId: node.id }, "wf-executor: save_presentation_phases is retired — graph needs re-seeding via seedSystemWorkflows");
+        log.warn({ runId, nodeId: node.id }, "wf-executor: save_presentation_phases is retired — graph needs re-seeding via seedSystemWorkflows");
         output = { skipped: true, note: "save_presentation_phases is retired — use sql_query instead" };
         break;
       }
@@ -4947,7 +4948,7 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
               );
             }
           } catch (notifErr) {
-            logger.warn({ notifErr, slug: newArticle.slug }, "publish_article: failed to insert draft notifications (non-fatal)");
+            log.warn({ notifErr, slug: newArticle.slug }, "publish_article: failed to insert draft notifications (non-fatal)");
           }
 
           void sendWebPushToAdmins({
@@ -5057,7 +5058,7 @@ Return ONLY a JSON object with these exact keys:
             revisedPrompt: giFullPrompt,
           };
         } catch (err) {
-          logger.error({ err }, "generate_image: OpenAI image generation failed");
+          log.error({ err }, "generate_image: OpenAI image generation failed");
           nodeError = true;
           output = { error: `generate_image: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -5640,7 +5641,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             "The phase likely has no linked draft invoice — run the \"Create Phased Invoices\" node first, " +
             "or link an invoice manually by setting stripeInvoiceId on the workflow step row. " +
             `Expression evaluated: "${node.data.stripeInvoiceIdExpr ?? "(not set)"}"`;
-          logger.warn({ runId, nodeId: node.id, expr: node.data.stripeInvoiceIdExpr }, esiWarnMsg);
+          log.warn({ runId, nodeId: node.id, expr: node.data.stripeInvoiceIdExpr }, esiWarnMsg);
           nodeError = true;
           output = { error: esiWarnMsg };
           break;
@@ -5690,7 +5691,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           };
         } catch (esiErr) {
           const esiErrMsg = esiErr instanceof Error ? esiErr.message : String(esiErr);
-          logger.warn({ invoiceId: esiInvoiceId, err: esiErr }, "edit_stripe_invoice: update failed");
+          log.warn({ invoiceId: esiInvoiceId, err: esiErr }, "edit_stripe_invoice: update failed");
           nodeError = true;
           output = { error: esiErrMsg };
         }
@@ -5809,7 +5810,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           try {
             parsed = JSON.parse(valueToParse);
           } catch {
-            logger.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
+            log.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
             output = { value: resolvedValue, parseError: true };
             break;
           }
@@ -5871,13 +5872,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const rorTask = (node.data.task as string | undefined) ?? "reconcile_orphaned_runs";
         if (rorTask === "reconcile_late_stuck_queued") {
           await reconcileLateStuckQueuedCompletions();
-          logger.info("wf-executor: reconcile_orphaned_runs — reconcile_late_stuck_queued completed");
+          log.info("wf-executor: reconcile_orphaned_runs — reconcile_late_stuck_queued completed");
           output = { reconciled: true, task: rorTask };
         } else {
           await reconcileOrphanedRuns();
           await reconcileStalledPhases();
           await reconcileLateStuckQueuedCompletions();
-          logger.info("wf-executor: reconcile_orphaned_runs completed");
+          log.info("wf-executor: reconcile_orphaned_runs completed");
           output = { reconciled: true, task: rorTask };
         }
         break;
@@ -5885,7 +5886,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       case "alert_evaluate_rules": {
         await runAlertRuleEvaluation();
-        logger.info("wf-executor: alert_evaluate_rules completed");
+        log.info("wf-executor: alert_evaluate_rules completed");
         output = { evaluated: true };
         break;
       }
@@ -5905,14 +5906,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           ?? String(payload.action ?? "")) as string;
 
         if (isNaN(mepClientId)) {
-          logger.warn({ runId, nodeId: node.id }, "kanban_auto_fire: no clientId — skipping");
+          log.warn({ runId, nodeId: node.id }, "kanban_auto_fire: no clientId — skipping");
           output = { skipped: true, reason: "no clientId" };
           break;
         }
 
         // Empty action defaults to "script" (original executor behaviour).
         output = await handleAutoFireKanban({ clientUserId: mepClientId, action: mepAction || "script" });
-        logger.info({ runId, mepClientId, mepAction, output }, "wf-executor: kanban_auto_fire dispatched");
+        log.info({ runId, mepClientId, mepAction, output }, "wf-executor: kanban_auto_fire dispatched");
         break;
       }
 
@@ -6000,7 +6001,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // If the AI failed to return parseable JSON, log it so it's visible in
         // the run logs and downstream nodes can fall back gracefully.
         if (!fnhAiText || Object.keys(fnhParsed).length === 0) {
-          logger.warn({ runId, nodeId: node.id, rawResponse: fnhAiText.slice(0, 500) },
+          log.warn({ runId, nodeId: node.id, rawResponse: fnhAiText.slice(0, 500) },
             "fetch_news_headlines: AI did not return valid JSON — fields will be derived from first headline");
         }
 
@@ -6046,7 +6047,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               status:   "draft",
             }).returning();
             fnhCampaignId = fnhNewCampaign.id;
-            logger.info({ campaignId: fnhCampaignId, topic: fnhTopic }, "fetch_news_headlines: auto-created campaign draft");
+            log.info({ campaignId: fnhCampaignId, topic: fnhTopic }, "fetch_news_headlines: auto-created campaign draft");
           }
         }
 
@@ -6177,7 +6178,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               }
             } catch (imgErr) {
               // Image upload is best-effort — log and fall back to text-only post
-              logger.warn({ err: imgErr, imageUrl }, "post_linkedin: image upload failed, falling back to text-only");
+              log.warn({ err: imgErr, imageUrl }, "post_linkedin: image upload failed, falling back to text-only");
               imageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
             }
           }
@@ -6295,7 +6296,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               }
             } catch (imgErr) {
               // Image upload is best-effort — log and fall back to text-only tweet
-              logger.warn({ err: imgErr, imageUrl }, "post_twitter: image upload failed, falling back to text-only");
+              log.warn({ err: imgErr, imageUrl }, "post_twitter: image upload failed, falling back to text-only");
               imageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
             }
           }
@@ -6385,7 +6386,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               );
               if (!resp.ok) {
                 const errText = await resp.text().catch(() => "");
-                logger.warn({ status: resp.status, detail: errText.slice(0, 400), imageUrl }, "post_facebook: image upload failed, falling back to text-only");
+                log.warn({ status: resp.status, detail: errText.slice(0, 400), imageUrl }, "post_facebook: image upload failed, falling back to text-only");
                 fbImageUploadWarning = `Image not attached — Facebook Graph API rejected the image upload (HTTP ${resp.status})`;
                 fbUseImage = false;
               } else {
@@ -6395,7 +6396,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 output = { facebookPostId: rawId, facebookPostUrl };
               }
             } catch (imgErr) {
-              logger.warn({ err: imgErr, imageUrl }, "post_facebook: image upload failed, falling back to text-only");
+              log.warn({ err: imgErr, imageUrl }, "post_facebook: image upload failed, falling back to text-only");
               fbImageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
               fbUseImage = false;
             }
@@ -6518,10 +6519,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                   if (a.email) void sendEmail(a.email, notifTitle, `<p>${notifBody}</p><p>Log in to the MSP Portal to review.</p>`);
                 }
               } else {
-                logger.warn({ runId, mspId: gateMspId }, "approval_gate: MSP-scoped approval with no eligible approver (no MSPAdmin, no canApprovePurchases user) — nobody notified");
+                log.warn({ runId, mspId: gateMspId }, "approval_gate: MSP-scoped approval with no eligible approver (no MSPAdmin, no canApprovePurchases user) — nobody notified");
               }
             } catch (notifErr) {
-              logger.warn({ notifErr, runId, mspId: gateMspId }, "approval_gate: failed to notify MSP approvers (non-fatal)");
+              log.warn({ notifErr, runId, mspId: gateMspId }, "approval_gate: failed to notify MSP approvers (non-fatal)");
             }
           } else {
             const notifLink = `/admin-panel/workflows/runs/${runId}`;
@@ -6543,7 +6544,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 );
               }
             } catch (notifErr) {
-              logger.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
+              log.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
             }
 
             void sendWebPushToAdmins({ title: notifTitle, body: notifBody, linkPath: notifLink });
@@ -7352,7 +7353,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         } catch (csiErr) {
           // Card declined, insufficient funds, etc. — return failure status instead of throwing
           const csiErrMsg = csiErr instanceof Error ? csiErr.message : String(csiErr);
-          logger.warn({ invoiceId: csiInvoiceId, err: csiErr }, "charge_stripe_invoice: charge failed");
+          log.warn({ invoiceId: csiInvoiceId, err: csiErr }, "charge_stripe_invoice: charge failed");
           output = {
             chargeStatus: "failed",
             amountCharged: 0,
@@ -7756,10 +7757,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             tenantId: mseTId,
             webhookAuthId: subInfo?.webhook?.authId ?? null,
           };
-          logger.info({ tenantId: mseTId, contentType: mseContentType, status: output.subscriptionStatus },
+          log.info({ tenantId: mseTId, contentType: mseContentType, status: output.subscriptionStatus },
             "wf-executor: monitor_subscription_ensure done");
         } catch (mseErr) {
-          logger.warn({ tenantId: mseTId, contentType: mseContentType, err: mseErr },
+          log.warn({ tenantId: mseTId, contentType: mseContentType, err: mseErr },
             "wf-executor: monitor_subscription_ensure error (non-fatal)");
           output = { subscriptionStatus: "error", tenantId: mseTId, contentType: mseContentType, error: String(mseErr) };
         }
@@ -7866,7 +7867,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                     itemCount:  1,
                   }).onConflictDoNothing();
                 } catch (profileErr) {
-                  logger.warn({ err: profileErr, idempKey }, "monitor_poll_activity: profile insert failed (non-fatal)");
+                  log.warn({ err: profileErr, idempKey }, "monitor_poll_activity: profile insert failed (non-fatal)");
                 }
               }
             }
@@ -7893,12 +7894,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             watermarkFrom: startTime.toISOString(),
             watermarkTo:   endTime.toISOString(),
           };
-          logger.info(
+          log.info(
             { tenantId: mpaTenantId, contentType: mpaContentType, totalEventCount, criticalCount },
             "wf-executor: monitor_poll_activity done",
           );
         } catch (mpaErr) {
-          logger.warn({ tenantId: mpaTenantId, contentType: mpaContentType, err: mpaErr },
+          log.warn({ tenantId: mpaTenantId, contentType: mpaContentType, err: mpaErr },
             "wf-executor: monitor_poll_activity error (non-fatal)");
           output = { criticalChangeDetected: false, eventCount: 0, criticalCount: 0, error: String(mpaErr), tenantId: mpaTenantId, contentType: mpaContentType };
         }
@@ -7978,12 +7979,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             output = { success: false, status: gwoResult.status, errorType: gwoResult.errorType, data: gwoResult.data };
             nodeError = true;
           }
-          logger.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
+          log.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
         } catch (gwoErr) {
           nodeError = true;
           const errMsg = gwoErr instanceof Error ? gwoErr.message : String(gwoErr);
           output = { error: errMsg, success: false };
-          logger.error({ runId, gwoErr }, "wf-executor: graph_write_operation failed");
+          log.error({ runId, gwoErr }, "wf-executor: graph_write_operation failed");
         }
         break;
       }
@@ -8056,18 +8057,18 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             };
             nodeError = true;
           }
-          logger.info({ runId, ebtTemplateId, tenantId: ebtCustomerRow.tenantId, status: ebtResult.status, success: ebtResult.success }, "wf-executor: execute_baseline_template completed");
+          log.info({ runId, ebtTemplateId, tenantId: ebtCustomerRow.tenantId, status: ebtResult.status, success: ebtResult.success }, "wf-executor: execute_baseline_template completed");
         } catch (ebtErr) {
           nodeError = true;
           const ebtErrMsg = ebtErr instanceof Error ? ebtErr.message : String(ebtErr);
           output = { error: ebtErrMsg, success: false, templateId: ebtTemplateId };
-          logger.error({ runId, ebtErr, ebtTemplateId }, "wf-executor: execute_baseline_template failed");
+          log.error({ runId, ebtErr, ebtTemplateId }, "wf-executor: execute_baseline_template failed");
         }
         break;
       }
 
       default:
-        logger.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");
+        log.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");
         nodeError = true;
         output = { error: true, reason: `unknown node type: ${node.type}` };
     }
@@ -8398,7 +8399,7 @@ export async function executeWorkflowRun(
 ): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
-  if (!run) { logger.warn({ runId }, "wf-executor: run not found"); return; }
+  if (!run) { log.warn({ runId }, "wf-executor: run not found"); return; }
 
   // Establish one AsyncLocalStorage correlation context per RUN so every event
   // dispatched while this run executes shares a single correlationId. An
@@ -8476,7 +8477,7 @@ async function executeWorkflowRunInner(
 
       // Periodically check external cancellation
       const freshStatus = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
-      if (freshStatus[0]?.status === "cancelled") { logger.info({ runId, nodeId }, "wf-executor: cancelled mid-execution"); return; }
+      if (freshStatus[0]?.status === "cancelled") { log.info({ runId, nodeId }, "wf-executor: cancelled mid-execution"); return; }
 
       // ── Skip path: node is reachable only through skipped predecessors ──
       if (item.skip) {
@@ -8499,7 +8500,7 @@ async function executeWorkflowRunInner(
 
       // Approval gate paused — exit BFS cleanly; run status already set to awaiting_approval
       if (pauseForApproval) {
-        logger.info({ runId, nodeId }, "wf-executor: run paused at approval_gate");
+        log.info({ runId, nodeId }, "wf-executor: run paused at approval_gate");
         return;
       }
 
@@ -8536,7 +8537,7 @@ async function executeWorkflowRunInner(
             errorMessage: (output.error as string) ?? `Node ${nodeId} failed`,
             branchPath: branchPath as unknown as string[],
           }).where(eq(wfRunsTable.id, runId));
-          logger.warn({ runId, nodeId }, "wf-executor: node error, no handler — run failed");
+          log.warn({ runId, nodeId }, "wf-executor: node error, no handler — run failed");
           return;
         }
         continue;
@@ -8631,7 +8632,7 @@ async function executeWorkflowRunInner(
         const collectedResults: Record<string, unknown>[] = [];
         const startIds = itemEdges.map(e => e.target).filter(id => itemSubgraphIds.has(id));
 
-        logger.info({ runId, nodeId, itemsTotal, subgraphSize: itemSubgraphIds.size },
+        log.info({ runId, nodeId, itemsTotal, subgraphSize: itemSubgraphIds.size },
           "wf-executor: foreach starting iterations");
 
         for (let i = 0; i < foreachItems.length; i++) {
@@ -8689,7 +8690,7 @@ async function executeWorkflowRunInner(
               status: "failed", finishedAt: new Date(), errorMessage: errMsg,
               branchPath: branchPath as unknown as string[],
             }).where(eq(wfRunsTable.id, runId));
-            logger.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
+            log.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
               "wf-executor: foreach — node error in loop body, no handler — run failed");
             return;
           }
@@ -8698,7 +8699,7 @@ async function executeWorkflowRunInner(
           // {{collectedResults}} downstream contains per-iteration node outputs only.
           collectedResults.push(iterResult.lastOutput);
 
-          logger.info({ runId, nodeId, iteration: i, itemsTotal },
+          log.info({ runId, nodeId, iteration: i, itemsTotal },
             "wf-executor: foreach iteration complete");
         }
 
@@ -8749,7 +8750,7 @@ async function executeWorkflowRunInner(
         const startIds   = bodyEdges.map(e => e.target).filter(id => bodySubgraphIds.has(id));
         const forCollectedResults: Record<string, unknown>[] = [];
 
-        logger.info({ runId, nodeId, iterLimit, subgraphSize: bodySubgraphIds.size },
+        log.info({ runId, nodeId, iterLimit, subgraphSize: bodySubgraphIds.size },
           "wf-executor: for — starting iterations");
 
         for (let i = 0; i < iterLimit; i++) {
@@ -8795,7 +8796,7 @@ async function executeWorkflowRunInner(
               status: "failed", finishedAt: new Date(), errorMessage: errMsg,
               branchPath: branchPath as unknown as string[],
             }).where(eq(wfRunsTable.id, runId));
-            logger.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
+            log.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
               "wf-executor: for — node error in loop body, no handler — run failed");
             return;
           }
@@ -8803,7 +8804,7 @@ async function executeWorkflowRunInner(
           // Accumulate per-iteration output so {{collectedResults}} is available downstream.
           forCollectedResults.push(iterResult.lastOutput);
 
-          logger.info({ runId, nodeId, iteration: i, iterLimit },
+          log.info({ runId, nodeId, iteration: i, iterLimit },
             "wf-executor: for iteration complete");
         }
 
@@ -8907,11 +8908,11 @@ async function executeWorkflowRunInner(
                 runId, true, opts.inputValues ?? {}, run.definitionId,
               );
               if (result.nodeError) {
-                logger.warn({ runId, nodeId, branch: branch.label },
+                log.warn({ runId, nodeId, branch: branch.label },
                   "wf-executor: parallel dry-run detached branch failed (logged, not propagated)");
               }
             } catch (err) {
-              logger.error({ runId, nodeId, branch: branch.label, err },
+              log.error({ runId, nodeId, branch: branch.label, err },
                 "wf-executor: parallel dry-run detached branch threw");
             }
           }
@@ -8925,14 +8926,14 @@ async function executeWorkflowRunInner(
               runId, false, opts.inputValues ?? {}, run.definitionId,
             ).then(result => {
               if (result.nodeError) {
-                logger.warn({ runId, nodeId, branch: branch.label },
+                log.warn({ runId, nodeId, branch: branch.label },
                   "wf-executor: parallel fire-and-forget branch failed (logged, not propagated)");
               } else {
-                logger.info({ runId, nodeId, branch: branch.label },
+                log.info({ runId, nodeId, branch: branch.label },
                   "wf-executor: parallel fire-and-forget branch completed");
               }
             }).catch(err => {
-              logger.error({ runId, nodeId, branch: branch.label, err },
+              log.error({ runId, nodeId, branch: branch.label, err },
                 "wf-executor: parallel fire-and-forget branch threw");
             });
           }
@@ -8969,7 +8970,7 @@ async function executeWorkflowRunInner(
           }
           if (result.nodeError) {
             parallelFailed = true;
-            logger.warn({ runId, nodeId, branch: branch.label }, "wf-executor: parallel awaited branch failed");
+            log.warn({ runId, nodeId, branch: branch.label }, "wf-executor: parallel awaited branch failed");
           } else {
             branchOutputs[branch.handle] = result.lastOutput;
           }
@@ -8981,7 +8982,7 @@ async function executeWorkflowRunInner(
             errorMessage: `A parallel branch failed`,
             branchPath: branchPath as unknown as string[],
           }).where(eq(wfRunsTable.id, runId));
-          logger.warn({ runId, nodeId }, "wf-executor: parallel — awaited branch failed, run aborted");
+          log.warn({ runId, nodeId }, "wf-executor: parallel — awaited branch failed, run aborted");
           return;
         }
 
@@ -9069,7 +9070,7 @@ async function executeWorkflowRunInner(
         const retryState  = retryBucket[nodeId] ?? { count: 0, lastError: "" };
         let   attempt     = retryState.count + 1;
 
-        logger.info({ runId, retryNodeId: nodeId, attempt, maxAttempts, sourceNodeId },
+        log.info({ runId, retryNodeId: nodeId, attempt, maxAttempts, sourceNodeId },
           "wf-executor: retry — attempt starting");
 
         // Collect exhausted subgraph nodes via DFS from exhausted handle targets.
@@ -9138,7 +9139,7 @@ async function executeWorkflowRunInner(
               errorMessage: `Retry exhausted after ${maxAttempts} attempt(s): ${lastError}`,
               branchPath: branchPath as unknown as string[],
             }).where(eq(wfRunsTable.id, runId));
-            logger.warn({ runId, nodeId, maxAttempts, lastError }, "wf-executor: retry exhausted — no handler — run failed");
+            log.warn({ runId, nodeId, maxAttempts, lastError }, "wf-executor: retry exhausted — no handler — run failed");
             return;
           }
 
@@ -9151,7 +9152,7 @@ async function executeWorkflowRunInner(
           };
           const startIds = exhaustedEdges.map(e => e.target).filter(id => exhaustedSubgraphIds.has(id));
 
-          logger.info({ runId, retryNodeId: nodeId, maxAttempts, subgraphSize: exhaustedSubgraphIds.size },
+          log.info({ runId, retryNodeId: nodeId, maxAttempts, subgraphSize: exhaustedSubgraphIds.size },
             "wf-executor: retry — running exhausted subgraph");
 
           const exResult = await executeItemSubgraph(
@@ -9175,7 +9176,7 @@ async function executeWorkflowRunInner(
               status: "failed", finishedAt: new Date(), errorMessage: errMsg,
               branchPath: branchPath as unknown as string[],
             }).where(eq(wfRunsTable.id, runId));
-            logger.warn({ runId, nodeId, failedNodeId: exResult.failedNodeId },
+            log.warn({ runId, nodeId, failedNodeId: exResult.failedNodeId },
               "wf-executor: retry — node error in exhausted subgraph — run failed");
             return;
           }
@@ -9231,7 +9232,7 @@ async function executeWorkflowRunInner(
     }
 
     await db.update(wfRunsTable).set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
-    logger.info({ runId, steps: branchPath.length }, "wf-executor: run completed");
+    log.info({ runId, steps: branchPath.length }, "wf-executor: run completed");
   } catch (err) {
     const errMsg = String(err);
     // Broadcast phase_gen error to client SSE channel so the UI can show the escape hatch
@@ -9242,7 +9243,7 @@ async function executeWorkflowRunInner(
     }
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
-    logger.warn({ runId, err }, "wf-executor: run failed");
+    log.warn({ runId, err }, "wf-executor: run failed");
   }
 }
 
@@ -9276,13 +9277,13 @@ export async function checkApprovalTimeouts(): Promise<void> {
           message: `approval_gate: approval timed out — run auto-rejected`,
         }).catch(() => { });
 
-        logger.info({ approvalId: row.id, runId: row.run_id }, "approval-gate: timed out, run marked failed");
+        log.info({ approvalId: row.id, runId: row.run_id }, "approval-gate: timed out, run marked failed");
       } catch (innerErr) {
-        logger.warn({ err: innerErr, approvalId: row.id }, "approval-gate: timeout processing failed (non-fatal)");
+        log.warn({ err: innerErr, approvalId: row.id }, "approval-gate: timeout processing failed (non-fatal)");
       }
     }
   } catch (err) {
-    logger.warn({ err }, "approval-gate: timeout check failed (non-fatal)");
+    log.warn({ err }, "approval-gate: timeout check failed (non-fatal)");
   }
 }
 
@@ -9297,7 +9298,7 @@ export async function resumeWorkflowRun(
 ): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
-  if (!run) { logger.warn({ runId }, "resumeWorkflowRun: run not found"); return; }
+  if (!run) { log.warn({ runId }, "resumeWorkflowRun: run not found"); return; }
 
   const versionRows = await db.select().from(wfVersionsTable).where(eq(wfVersionsTable.id, run.versionId)).limit(1);
   const version = versionRows[0];
@@ -9362,7 +9363,7 @@ export async function resumeWorkflowRun(
       if (!node) continue;
 
       const freshStatus = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
-      if (freshStatus[0]?.status === "cancelled") { logger.info({ runId, nodeId }, "wf-executor: cancelled mid-resume"); return; }
+      if (freshStatus[0]?.status === "cancelled") { log.info({ runId, nodeId }, "wf-executor: cancelled mid-resume"); return; }
 
       if (item.skip) {
         await db.insert(wfRunNodeOutputsTable).values({
@@ -9382,7 +9383,7 @@ export async function resumeWorkflowRun(
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
 
       if (pauseForApproval) {
-        logger.info({ runId, nodeId }, "wf-executor: resumed run paused at another approval_gate");
+        log.info({ runId, nodeId }, "wf-executor: resumed run paused at another approval_gate");
         return;
       }
 
@@ -9437,12 +9438,12 @@ export async function resumeWorkflowRun(
     }
 
     await db.update(wfRunsTable).set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
-    logger.info({ runId, steps: branchPath.length }, "wf-executor: resumed run completed");
+    log.info({ runId, steps: branchPath.length }, "wf-executor: resumed run completed");
   } catch (err) {
     const errMsg = String(err);
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__resume__", level: "error", message: `Resume executor error: ${errMsg}` }).catch(() => { });
-    logger.warn({ runId, err }, "wf-executor: resumed run failed");
+    log.warn({ runId, err }, "wf-executor: resumed run failed");
   }
 }
 
@@ -9479,7 +9480,7 @@ export async function triggerScheduledWorkflows(): Promise<void> {
         [trigger.definition_id],
       );
       if (parseInt(inProgress.rows[0]?.cnt ?? "0", 10) > 0) {
-        logger.warn({ triggerId: trigger.id, definitionId: trigger.definition_id }, "wf-engine: skipping scheduled trigger — run already in progress");
+        log.warn({ triggerId: trigger.id, definitionId: trigger.definition_id }, "wf-engine: skipping scheduled trigger — run already in progress");
         continue;
       }
 
@@ -9494,7 +9495,7 @@ export async function triggerScheduledWorkflows(): Promise<void> {
       if ((fanOutMode === "per_record" || fanOutMode === "batched") && fanOutQuery) {
         const safeQ = safeFanOutQuery(fanOutQuery);
         if (!safeQ) {
-          logger.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
+          log.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
         } else {
           try {
             const records = await pool.query(safeQ);
@@ -9502,17 +9503,17 @@ export async function triggerScheduledWorkflows(): Promise<void> {
               for (const row of records.rows) {
                 await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, row as Record<string, unknown>);
               }
-              logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
+              log.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
             } else {
               // batched: one run with all rows
               await fireWorkflowForDefinition(
                 trigger.definition_id, "schedule", `trigger:${trigger.id}`,
                 { records: records.rows as Record<string, unknown>[] },
               );
-              logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: batched fan-out fired");
+              log.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: batched fan-out fired");
             }
           } catch (err) {
-            logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query execution failed (non-fatal)");
+            log.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query execution failed (non-fatal)");
           }
         }
       } else {
@@ -9529,11 +9530,11 @@ export async function triggerScheduledWorkflows(): Promise<void> {
           status: runId ? "fired" : "skipped",
           payload: (trigger.config.payload as Record<string, unknown>) ?? {},
           durationMs,
-        }).catch((err: unknown) => { logger.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record trigger event (non-fatal)"); });
+        }).catch((err: unknown) => { log.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record trigger event (non-fatal)"); });
       }
     }
   } catch (err) {
-    logger.warn({ err }, "wf-executor: scheduled trigger scan failed (non-fatal)");
+    log.warn({ err }, "wf-executor: scheduled trigger scan failed (non-fatal)");
   }
 }
 
@@ -9569,7 +9570,7 @@ export async function fireStartupTriggers(): Promise<void> {
       );
 
       if ((existing.rowCount ?? 0) > 0) {
-        logger.info(
+        log.info(
           { triggerId: trigger.id, definitionId: trigger.definition_id },
           "wf-engine: startup trigger skipped — already fired this boot",
         );
@@ -9583,14 +9584,14 @@ export async function fireStartupTriggers(): Promise<void> {
         {},
       );
 
-      logger.info({ triggerId: trigger.id, definitionId: trigger.definition_id, runId }, "wf-engine: startup trigger fired");
+      log.info({ triggerId: trigger.id, definitionId: trigger.definition_id, runId }, "wf-engine: startup trigger fired");
     }
 
     if (rows.rowCount && rows.rowCount > 0) {
-      logger.info({ count: rows.rowCount }, "wf-engine: all startup triggers fired");
+      log.info({ count: rows.rowCount }, "wf-engine: all startup triggers fired");
     }
   } catch (err) {
-    logger.warn({ err }, "wf-engine: fireStartupTriggers failed (non-fatal)");
+    log.warn({ err }, "wf-engine: fireStartupTriggers failed (non-fatal)");
   }
 }
 
@@ -9616,7 +9617,7 @@ export async function emitWorkflowEvent(
   // Depth guard — suppress runaway chains and log a diagnostic warning
   if (chainDepth > MAX_WORKFLOW_CHAIN_DEPTH) {
     const chainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
-    logger.warn(
+    log.warn(
       { eventType, chainDepth, maxDepth: MAX_WORKFLOW_CHAIN_DEPTH, sourceDefinitionId: srcDefId, chainDefIds },
       "wf-executor: chain depth exceeded MAX_WORKFLOW_CHAIN_DEPTH — suppressing further event emissions to prevent runaway chain",
     );
@@ -9634,7 +9635,7 @@ export async function emitWorkflowEvent(
       const filterName = (cfg.eventName ?? cfg.eventType) as string | undefined;
       if (!filterName || filterName === eventType) {
         if (srcDefId != null && trigger.definitionId === srcDefId) {
-          logger.info({ definitionId: srcDefId, eventType }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
+          log.info({ definitionId: srcDefId, eventType }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
           continue;
         }
         // Thread chain depth and definition ID history through payload so the
@@ -9657,11 +9658,11 @@ export async function emitWorkflowEvent(
           status: runId ? "fired" : "skipped",
           payload: emitPayload,
           durationMs: durationMsEvt,
-        }).catch((err: unknown) => { logger.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record event trigger event (non-fatal)"); });
+        }).catch((err: unknown) => { log.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record event trigger event (non-fatal)"); });
       }
     }
   } catch (err) {
-    logger.warn({ err, eventType }, "wf-engine: emitWorkflowEvent failed (non-fatal)");
+    log.warn({ err, eventType }, "wf-engine: emitWorkflowEvent failed (non-fatal)");
   }
 }
 
@@ -9687,7 +9688,7 @@ export async function fireWorkflowForDefinition(
           eq(wfVersionsTable.status, "published"),
         )).orderBy(desc(wfVersionsTable.versionNumber)).limit(1);
     const version = versionRows[0];
-    if (!version) { logger.warn({ definitionId, versionId: opts.versionId }, "wf-executor: no version found"); return null; }
+    if (!version) { log.warn({ definitionId, versionId: opts.versionId }, "wf-executor: no version found"); return null; }
 
     // Fetch definition for concurrency limit
     const defRows = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, definitionId)).limit(1);
@@ -9697,7 +9698,7 @@ export async function fireWorkflowForDefinition(
     // Enforce concurrency BEFORE inserting (prevents noisy failed runs)
     const runningCount = await countRunningRuns(definitionId);
     if (runningCount >= concurrencyLimit) {
-      logger.warn({ definitionId, runningCount, concurrencyLimit }, "wf-executor: concurrency limit reached — run rejected at admission");
+      log.warn({ definitionId, runningCount, concurrencyLimit }, "wf-executor: concurrency limit reached — run rejected at admission");
       return null;
     }
 
@@ -9710,13 +9711,13 @@ export async function fireWorkflowForDefinition(
 
     setImmediate(() => {
       executeWorkflowRun(runId, { inputValues: opts.inputValues }).catch(err => {
-        logger.warn({ err, runId }, "wf-executor: detached run failed (non-fatal)");
+        log.warn({ err, runId }, "wf-executor: detached run failed (non-fatal)");
       });
     });
 
     return runId;
   } catch (err) {
-    logger.warn({ err, definitionId }, "wf-executor: fireWorkflowForDefinition failed (non-fatal)");
+    log.warn({ err, definitionId }, "wf-executor: fireWorkflowForDefinition failed (non-fatal)");
     return null;
   }
 }
@@ -9737,7 +9738,7 @@ export async function fireWorkflowsForEvent(
   // Depth guard — suppress runaway chains and log a diagnostic warning
   if (chainDepth > MAX_WORKFLOW_CHAIN_DEPTH) {
     const chainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
-    logger.warn(
+    log.warn(
       { eventName, chainDepth, maxDepth: MAX_WORKFLOW_CHAIN_DEPTH, sourceDefinitionId: srcDefId, chainDefIds },
       "wf-executor: chain depth exceeded MAX_WORKFLOW_CHAIN_DEPTH — suppressing further event emissions to prevent runaway chain",
     );
@@ -9758,7 +9759,7 @@ export async function fireWorkflowsForEvent(
     await Promise.all(
       matching.map(async t => {
         if (srcDefId != null && t.definitionId === srcDefId) {
-          logger.info({ definitionId: srcDefId, eventName }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
+          log.info({ definitionId: srcDefId, eventName }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
           return;
         }
         // Thread chain depth and definition ID history through payload so the
@@ -9782,14 +9783,14 @@ export async function fireWorkflowsForEvent(
     );
 
     if (matching.length > 0) {
-      logger.info(
+      log.info(
         { eventName, triggered: runIds.length, total: matching.length },
         "wf-executor: event dispatched",
       );
     }
     return runIds;
   } catch (err) {
-    logger.warn({ err, eventName }, "wf-executor: fireWorkflowsForEvent failed (non-fatal)");
+    log.warn({ err, eventName }, "wf-executor: fireWorkflowsForEvent failed (non-fatal)");
     return [];
   }
 }
@@ -9865,7 +9866,7 @@ export async function reconcileDuplicatePublishedVersions(): Promise<void> {
 
     if (dupRows.rows.length === 0) return;
 
-    logger.warn(
+    log.warn(
       { definitionIds: dupRows.rows.map(r => r.definition_id) },
       "wf-engine: found workflow definitions with more than one published version — auto-resolving to the highest version number",
     );
@@ -9887,12 +9888,12 @@ export async function reconcileDuplicatePublishedVersions(): Promise<void> {
           .where(inArray(wfVersionsTable.id, archive.map(v => v.id)));
       });
 
-      logger.warn(
+      log.warn(
         { definitionId: row.definition_id, keptVersionId: keep.id, keptVersionNumber: keep.versionNumber, archivedVersionIds: archive.map(v => v.id) },
         "wf-engine: resolved duplicate published versions for definition",
       );
     }
   } catch (err) {
-    logger.warn({ err }, "wf-engine: duplicate published version reconciliation failed (non-fatal)");
+    log.warn({ err }, "wf-engine: duplicate published version reconciliation failed (non-fatal)");
   }
 }

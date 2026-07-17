@@ -1,6 +1,7 @@
 import { db, graphSubscriptionsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.monitor" });
 import {
   graphCredentialsPresent,
   createSubscription,
@@ -20,7 +21,7 @@ function scheduleRenewal(subscriptionId: string, expirationDateTime: string): vo
   const renewAt = expiresAt - RENEWAL_LEAD_MS;
   const delay = Math.max(renewAt - Date.now(), 60_000);
 
-  logger.info({ subscriptionId, renewInMs: delay }, "Graph subscription renewal scheduled");
+  log.info({ subscriptionId, renewInMs: delay }, "Graph subscription renewal scheduled");
 
   renewalTimer = setTimeout(() => {
     void (async () => {
@@ -36,10 +37,10 @@ function scheduleRenewal(subscriptionId: string, expirationDateTime: string): vo
           })
           .where(eq(graphSubscriptionsTable.subscriptionId, subscriptionId));
 
-        logger.info({ subscriptionId }, "Graph subscription renewed");
+        log.info({ subscriptionId }, "Graph subscription renewed");
         scheduleRenewal(renewed.id, renewed.expirationDateTime);
       } catch (err) {
-        logger.error({ err, subscriptionId }, "Graph subscription renewal failed — retrying in 5 min");
+        log.error({ err, subscriptionId }, "Graph subscription renewal failed — retrying in 5 min");
         renewalTimer = setTimeout(() => { void scheduleRenewal(subscriptionId, expirationDateTime); }, RETRY_DELAY_MS);
       }
     })();
@@ -48,13 +49,13 @@ function scheduleRenewal(subscriptionId: string, expirationDateTime: string): vo
 
 export async function initGraphSubscription(): Promise<void> {
   if (!graphCredentialsPresent()) {
-    logger.warn("Graph credentials missing (GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET) — email ingestion disabled");
+    log.warn("Graph credentials missing (GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET) — email ingestion disabled");
     return;
   }
 
   const webhookUrl = buildWebhookUrl();
   if (!webhookUrl) {
-    logger.warn("Cannot determine webhook URL — set REPLIT_DOMAINS or GRAPH_WEBHOOK_URL to enable Graph subscriptions");
+    log.warn("Cannot determine webhook URL — set REPLIT_DOMAINS or GRAPH_WEBHOOK_URL to enable Graph subscriptions");
     return;
   }
 
@@ -68,7 +69,7 @@ export async function initGraphSubscription(): Promise<void> {
     if (existing) {
       const expiresAt = new Date(existing.expirationDateTime).getTime();
       if (expiresAt > Date.now() + RENEWAL_LEAD_MS) {
-        logger.info({ subscriptionId: existing.subscriptionId }, "Existing Graph subscription is still valid");
+        log.info({ subscriptionId: existing.subscriptionId }, "Existing Graph subscription is still valid");
         scheduleRenewal(existing.subscriptionId, existing.expirationDateTime.toISOString());
         return;
       }
@@ -82,7 +83,7 @@ export async function initGraphSubscription(): Promise<void> {
             updatedAt: new Date(),
           })
           .where(eq(graphSubscriptionsTable.subscriptionId, existing.subscriptionId));
-        logger.info({ subscriptionId: renewed.id }, "Graph subscription renewed on startup");
+        log.info({ subscriptionId: renewed.id }, "Graph subscription renewed on startup");
         scheduleRenewal(renewed.id, renewed.expirationDateTime);
         return;
       }
@@ -95,7 +96,7 @@ export async function initGraphSubscription(): Promise<void> {
     const mailUserId = process.env.GRAPH_MAIL_USER_ID ?? "me";
     const sub = await createSubscription(webhookUrl, mailUserId);
     if (!sub) {
-      logger.warn("Could not create Graph subscription — email ingestion will not work until credentials/URL are valid");
+      log.warn("Could not create Graph subscription — email ingestion will not work until credentials/URL are valid");
       return;
     }
 
@@ -105,10 +106,10 @@ export async function initGraphSubscription(): Promise<void> {
       expirationDateTime: new Date(sub.expirationDateTime),
     });
 
-    logger.info({ subscriptionId: sub.id, webhookUrl }, "Graph subscription created");
+    log.info({ subscriptionId: sub.id, webhookUrl }, "Graph subscription created");
     scheduleRenewal(sub.id, sub.expirationDateTime);
   } catch (err) {
-    logger.error({ err }, "initGraphSubscription failed");
+    log.error({ err }, "initGraphSubscription failed");
   }
 }
 

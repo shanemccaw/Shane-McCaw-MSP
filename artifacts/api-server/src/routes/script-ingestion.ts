@@ -35,6 +35,7 @@ import {
 import { eq, and, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "workflow.script" });
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output.ts";
 
@@ -143,9 +144,9 @@ async function runIngestionAnalysis(
       })
       .where(eq(scriptRunResultsTable.id, runResultId));
 
-    logger.info({ runResultId, customerId }, "script-ingestion: AI analysis complete");
+    log.info({ runResultId, customerId }, "script-ingestion: AI analysis complete");
   } catch (err) {
-    logger.warn({ err, runResultId }, "script-ingestion: AI analysis failed (non-fatal) — result stays awaiting_upload");
+    log.warn({ err, runResultId }, "script-ingestion: AI analysis failed (non-fatal) — result stays awaiting_upload");
     await db
       .update(scriptRunResultsTable)
       .set({ status: "failed" })
@@ -194,7 +195,7 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
       .limit(1);
     tokenRow = row;
   } catch (err) {
-    logger.error({ err }, "script-ingestion: DB error during token lookup");
+    log.error({ err }, "script-ingestion: DB error during token lookup");
     res.status(500).json({ error: "Internal server error" });
     return;
   }
@@ -236,7 +237,7 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
   // ── Deterministic viability gate ──
   const viability = checkViability(payload as Record<string, unknown>);
   if (!viability.passed) {
-    logger.warn({ tokenId: tokenRow.id, reason: viability.reason }, "script-ingestion: viability gate failed");
+    log.warn({ tokenId: tokenRow.id, reason: viability.reason }, "script-ingestion: viability gate failed");
     res.status(422).json({ error: "Payload failed viability check", reason: viability.reason });
     return;
   }
@@ -266,7 +267,7 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
       .returning({ id: scriptRunResultsTable.id });
     runResultId = inserted.id;
   } catch (err) {
-    logger.error({ err }, "script-ingestion: failed to insert run result");
+    log.error({ err }, "script-ingestion: failed to insert run result");
     res.status(500).json({ error: "Failed to record ingestion" });
     return;
   }
@@ -278,10 +279,10 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
       .set({ usedAt: new Date(), runResultId })
       .where(eq(scriptDownloadTokensTable.id, tokenRow.id));
   } catch (err) {
-    logger.warn({ err, tokenId: tokenRow.id }, "script-ingestion: failed to mark token as used (non-fatal)");
+    log.warn({ err, tokenId: tokenRow.id }, "script-ingestion: failed to mark token as used (non-fatal)");
   }
 
-  logger.info(
+  log.info(
     { tokenId: tokenRow.id, runResultId, scriptId: tokenRow.scriptId, scriptType, schemaVersion },
     "script-ingestion: ingestion accepted",
   );

@@ -24,6 +24,8 @@ import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 
+const log = logger.child({ channel: "billing" });
+
 const router: IRouter = Router();
 
 function p(val: string | string[] | undefined): string {
@@ -160,7 +162,7 @@ router.post(
       metadata: { stripePriceId: price.id, priceCents: parsed.data.priceCents },
     });
 
-    logger.info({ serviceId, priceId: price.id, priceCents: parsed.data.priceCents }, "plan-management: new Stripe price created");
+    log.info({ serviceId, priceId: price.id, priceCents: parsed.data.priceCents }, "plan-management: new Stripe price created");
 
     res.json({
       ok: true,
@@ -302,7 +304,7 @@ router.post(
       },
     });
 
-    logger.info({ mspId: body.data.mspId, serviceId, newPriceId: body.data.targetStripePriceId }, "plan-management: subscriber migrated");
+    log.info({ mspId: body.data.mspId, serviceId, newPriceId: body.data.targetStripePriceId }, "plan-management: subscriber migrated");
 
     res.json({ ok: true, newPriceId: body.data.targetStripePriceId });
   },

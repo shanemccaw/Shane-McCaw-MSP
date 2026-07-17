@@ -17,6 +17,7 @@ import { db, mspUsersTable, mspCustomersTable } from "@workspace/db";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.sla" });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -344,7 +345,7 @@ export async function startSlaTimer(opts: StartTimerOptions): Promise<{ timerId:
     )
   `);
 
-  logger.info({ timerId, mspId: opts.mspId, customerId: opts.customerId, policyId: opts.policyId }, "sla-engine: timer started");
+  log.info({ timerId, mspId: opts.mspId, customerId: opts.customerId, policyId: opts.policyId }, "sla-engine: timer started");
   return { timerId, alreadyExisted: false };
 }
 
@@ -357,7 +358,7 @@ export async function stopSlaTimer(timerId: string, idempotencyKey?: string): Pr
   `);
   const stopped = result.rows.length > 0;
   if (stopped) {
-    logger.info({ timerId }, "sla-engine: timer stopped");
+    log.info({ timerId }, "sla-engine: timer stopped");
   }
   return stopped;
 }
@@ -401,7 +402,7 @@ export async function fireSlaBreachRecord(opts: FireBreachOptions): Promise<{ br
     WHERE timer_id = ${opts.timerId}
   `);
 
-  logger.info({ breachId, timerId: opts.timerId, elapsedMinutes: opts.elapsedMinutes }, "sla-engine: breach recorded");
+  log.info({ breachId, timerId: opts.timerId, elapsedMinutes: opts.elapsedMinutes }, "sla-engine: breach recorded");
   return { breachId, alreadyExisted: false };
 }
 
@@ -439,7 +440,7 @@ export async function escalateSla(opts: EscalateOptions): Promise<{ escalationId
     )
   `);
 
-  logger.info({ escalationId, breachId: opts.breachId, level: opts.level }, "sla-engine: escalation created");
+  log.info({ escalationId, breachId: opts.breachId, level: opts.level }, "sla-engine: escalation created");
   return { escalationId, alreadyExisted: false };
 }
 
@@ -467,7 +468,7 @@ export async function resolveSlaTimer(
       WHERE breach_id IN (SELECT breach_id FROM sla_breaches WHERE timer_id = ${timerId})
         AND status IN ('pending','in_progress')
     `);
-    logger.info({ timerId }, "sla-engine: timer resolved");
+    log.info({ timerId }, "sla-engine: timer resolved");
   }
 
   return resolved;

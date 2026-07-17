@@ -28,6 +28,7 @@ import {
 } from "@workspace/db";
 import { eq, asc, and, count, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.kanban" });
 import { broadcastKanbanChange } from "./sse-broadcast";
 
 type SpawnedTask = typeof kanbanTasksTable.$inferSelect;
@@ -74,7 +75,7 @@ async function resolveTemplateTaskMetadata(
   const allDlIds      = [...new Set(templateTasks.map(t => t.customerDownloadScriptId).filter((id): id is string => !!id && UUID_RE.test(id)))];
 
   if (allRunIds.some(id => !UUID_RE.test(id))) {
-    logger.warn({ nonUuids: allRunIds.filter(id => !UUID_RE.test(id)) }, "kanban-phase-advance: ignoring non-UUID runbook_id values (legacy slugs)");
+    log.warn({ nonUuids: allRunIds.filter(id => !UUID_RE.test(id)) }, "kanban-phase-advance: ignoring non-UUID runbook_id values (legacy slugs)");
   }
 
   const [instrRows, clRows, artRows, delRows, moduleRunbookRows, scriptRunbookRows, dlScriptRows] = await Promise.all([
@@ -242,7 +243,7 @@ export async function syncProjectProgress(projectId: number): Promise<void> {
     const progress  = total === 0 ? 0 : Math.round((completed / total) * 100);
     await db.update(projectsTable).set({ progress }).where(eq(projectsTable.id, projectId));
   } catch (err) {
-    logger.warn({ err, projectId }, "kanban-phase-advance: syncProjectProgress failed (non-fatal)");
+    log.warn({ err, projectId }, "kanban-phase-advance: syncProjectProgress failed (non-fatal)");
   }
 }
 
@@ -323,7 +324,7 @@ export async function advancePhaseIfComplete(
       }))
     ).returning();
 
-    logger.info(
+    log.info(
       { workflowStepId, nextStepId: nextStep.id, spawnedCount: spawnedTasks.length, projectId },
       "kanban-phase-advance: next phase activated",
     );
@@ -332,7 +333,7 @@ export async function advancePhaseIfComplete(
 
     return { spawnedTasks, nextStepActivated: true };
   } catch (err) {
-    logger.warn({ err, workflowStepId, projectId }, "kanban-phase-advance: phase advance failed (non-fatal)");
+    log.warn({ err, workflowStepId, projectId }, "kanban-phase-advance: phase advance failed (non-fatal)");
     return empty;
   }
 }

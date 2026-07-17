@@ -14,6 +14,7 @@ import { db, scriptRunResultsTable, clientScoresTable, clientM365ProfilesTable, 
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "admin.insights" });
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output.ts";
 import { computeM365Scores, type M365ScoreCategory } from "../lib/m365-scores.ts";
@@ -154,7 +155,7 @@ router.post("/admin/dev/seed-result", requireAdmin, async (req: Request, res: Re
       .returning({ id: scriptRunResultsTable.id });
     runResultId = row.id;
   } catch (err) {
-    logger.error({ err }, "admin-dev-seed: failed to insert script_run_results row");
+    log.error({ err }, "admin-dev-seed: failed to insert script_run_results row");
     res.status(500).json({ error: "Failed to create run result" });
     return;
   }
@@ -176,7 +177,7 @@ router.post("/admin/dev/seed-result", requireAdmin, async (req: Request, res: Re
       packageContext: `Dev Seed: ${label}`,
     });
   } catch (err) {
-    logger.warn({ err, type }, "admin-dev-seed: AI analysis failed (non-fatal)");
+    log.warn({ err, type }, "admin-dev-seed: AI analysis failed (non-fatal)");
   }
 
   const mergedProfileUpdates = { ...aiResult.profileUpdates, ...deterministicUpdates };
@@ -194,21 +195,21 @@ router.post("/admin/dev/seed-result", requireAdmin, async (req: Request, res: Re
     try {
       await applyScoreImpact(clientId, aiResult.scoreImpact);
     } catch (err) {
-      logger.warn({ err, clientId }, "admin-dev-seed: applyScoreImpact failed (non-fatal)");
+      log.warn({ err, clientId }, "admin-dev-seed: applyScoreImpact failed (non-fatal)");
     }
     try {
       await applyProfileUpdates(clientId, mergedProfileUpdates);
     } catch (err) {
-      logger.warn({ err, clientId }, "admin-dev-seed: applyProfileUpdates failed (non-fatal)");
+      log.warn({ err, clientId }, "admin-dev-seed: applyProfileUpdates failed (non-fatal)");
     }
     try {
       await snapshotHealthFromProfile(clientId);
     } catch (err) {
-      logger.warn({ err, clientId }, "admin-dev-seed: snapshotHealthFromProfile failed (non-fatal)");
+      log.warn({ err, clientId }, "admin-dev-seed: snapshotHealthFromProfile failed (non-fatal)");
     }
   }
 
-  logger.info({ runResultId, type, clientId }, "admin-dev-seed: seed result injected");
+  log.info({ runResultId, type, clientId }, "admin-dev-seed: seed result injected");
 
   res.status(201).json({
     runResultId,

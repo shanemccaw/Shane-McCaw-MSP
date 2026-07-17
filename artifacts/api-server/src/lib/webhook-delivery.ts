@@ -14,6 +14,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { db, outboundWebhooksTable, outboundWebhookDeliveriesTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "comms.webhook" });
 import type { DispatchedEvent } from "./event-bus.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ async function attemptDelivery(
       })
       .where(eq(outboundWebhookDeliveriesTable.deliveryId, deliveryId));
 
-    logger.info(
+    log.info(
       { deliveryId, webhookId: target.webhookId, attempt: attemptNumber, statusCode: result.statusCode },
       "webhook-delivery: delivered",
     );
@@ -176,7 +177,7 @@ async function attemptDelivery(
     })
     .where(eq(outboundWebhookDeliveriesTable.deliveryId, deliveryId));
 
-  logger.warn(
+  log.warn(
     {
       deliveryId,
       webhookId: target.webhookId,
@@ -234,7 +235,7 @@ export async function fanOutWebhooks(event: FanOutEventInput): Promise<void> {
   try {
     await fanOutWebhooksUnsafe(event);
   } catch (err) {
-    logger.error({ err, eventType: event.eventType }, "webhook-delivery: fan-out error");
+    log.error({ err, eventType: event.eventType }, "webhook-delivery: fan-out error");
   }
 }
 

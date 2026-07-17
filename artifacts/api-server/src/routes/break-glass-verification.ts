@@ -37,6 +37,7 @@ import {
 import { and, eq, ne, gte, desc } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "auth" });
 import { decryptSecret, encryptSecret } from "../lib/secret-crypto";
 import { graphWriteForTenant, sendMailViaGraph, graphCredentialsPresent } from "../lib/graph";
 import { sendEmailForMspOrThrow } from "../lib/mailer";
@@ -216,7 +217,7 @@ async function sendBreakGlassInvites(
       await sendEmailForMspOrThrow(mspId, email, "Action required: verify your tenant to retrieve a break-glass credential", html);
       sent++;
     } catch (err) {
-      logger.warn({ err, pendingSecretId, email }, "break-glass: invite email failed (non-fatal for this recipient)");
+      log.warn({ err, pendingSecretId, email }, "break-glass: invite email failed (non-fatal for this recipient)");
     }
   }
   return sent;
@@ -248,7 +249,7 @@ async function maybeFireOverrideAlert(customerId: number, tenantDomain: string |
 
     const mailUserId = process.env.GRAPH_MAIL_USER_ID;
     if (!mailUserId || !graphCredentialsPresent()) {
-      logger.warn({ customerId, count: rows.length }, "break-glass: override threshold crossed but platform mailbox not configured — alert skipped");
+      log.warn({ customerId, count: rows.length }, "break-glass: override threshold crossed but platform mailbox not configured — alert skipped");
       return;
     }
 
@@ -268,9 +269,9 @@ async function maybeFireOverrideAlert(customerId: number, tenantDomain: string |
       subject: `[break-glass] ${rows.length} overrides for customer #${customerId} in ${windowHours}h`,
       htmlBody: html,
     });
-    logger.info({ customerId, count: rows.length }, "break-glass: repeated-override alert sent");
+    log.info({ customerId, count: rows.length }, "break-glass: repeated-override alert sent");
   } catch (err) {
-    logger.warn({ err, customerId }, "break-glass: repeated-override alert failed (non-fatal)");
+    log.warn({ err, customerId }, "break-glass: repeated-override alert failed (non-fatal)");
   }
 }
 
@@ -304,7 +305,7 @@ async function exchangeCodeForToken(tenantId: string, code: string): Promise<str
     body: params.toString(),
   });
   if (!res.ok) {
-    logger.warn({ tenantId, status: res.status }, "break-glass: auth-code exchange failed");
+    log.warn({ tenantId, status: res.status }, "break-glass: auth-code exchange failed");
     return null;
   }
   const data = (await res.json()) as { access_token?: string };
@@ -461,7 +462,7 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
     authorize.searchParams.set("state", signState(token));
     return res.redirect(authorize.toString());
   } catch (err) {
-    logger.error({ err }, "break-glass: verify redirect failed");
+    log.error({ err }, "break-glass: verify redirect failed");
     return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`, branding));
   }
 });
@@ -607,7 +608,7 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
         ? `<p>This link has now been disabled after too many attempts. Please ask your provider to send a new one.</p>`
         : `<p>Sign in with an account that holds an active Global Administrator role, then reopen this link.</p>`), branding));
   } catch (err) {
-    logger.error({ err }, "break-glass: callback failed");
+    log.error({ err }, "break-glass: callback failed");
     return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1><p>Please try again later.</p>`, branding));
   }
 });
@@ -665,20 +666,20 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
             const { resumeWorkflowRun } = await import("../lib/workflow-executor");
             await resumeWorkflowRun(secret.runId, gateNodeId, resumePayload, "Break-glass credential delivered and acknowledged");
           } catch (err) {
-            logger.warn({ err, runId: secret.runId }, "break-glass: resume failed (non-fatal)");
+            log.warn({ err, runId: secret.runId }, "break-glass: resume failed (non-fatal)");
           }
         })();
       });
     } else {
-      logger.warn({ pendingSecretId, runId: secret.runId }, "break-glass: pending secret has no gateNodeId — cannot resume run");
+      log.warn({ pendingSecretId, runId: secret.runId }, "break-glass: pending secret has no gateNodeId — cannot resume run");
     }
 
     // Log ONLY non-sensitive delivery metadata — never the value.
-    logger.info({ revealed: true, deliveredToEmail: attempt.invitedEmail, timestamp: new Date().toISOString() }, "break-glass: secret delivered");
+    log.info({ revealed: true, deliveredToEmail: attempt.invitedEmail, timestamp: new Date().toISOString() }, "break-glass: secret delivered");
 
     return res.status(200).send(renderPage("Done", `<h1>Delivery complete</h1><p>The credential has been delivered and the stored copy purged. The paused automation has resumed and is continuing on its own — you can close this window.</p>`, branding));
   } catch (err) {
-    logger.error({ err, pendingSecretId }, "break-glass: acknowledge failed");
+    log.error({ err, pendingSecretId }, "break-glass: acknowledge failed");
     return res.status(500).send(renderPage("Error", `<h1>Something went wrong</h1>`, branding));
   }
 });

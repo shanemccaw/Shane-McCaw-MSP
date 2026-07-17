@@ -19,6 +19,7 @@ import {
 import { eq } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "workflow.script" });
 import { randomUUID, createHash } from "crypto";
 
 const router: IRouter = Router();
@@ -111,7 +112,7 @@ router.get(
         })),
       );
     } catch (err) {
-      logger.error({ err }, "portal-script-library: failed to list scripts");
+      log.error({ err }, "portal-script-library: failed to list scripts");
       res.status(500).json({ error: "Failed to list scripts" });
     }
   },
@@ -170,7 +171,7 @@ router.post(
 
       const augmentedScript = injectTokenIntoScript(script.scriptBody, plaintext, scriptType, schemaVersion);
 
-      logger.info(
+      log.info(
         { tokenId: tokenRow.id, scriptId: id, mspId: user.mspId, customerId },
         "portal-script-library: generated download token",
       );
@@ -184,7 +185,7 @@ router.post(
         scriptBody: augmentedScript,
       });
     } catch (err) {
-      logger.error({ err, scriptId: id }, "portal-script-library: failed to generate download");
+      log.error({ err, scriptId: id }, "portal-script-library: failed to generate download");
       res.status(500).json({ error: "Failed to generate script download" });
     }
   },

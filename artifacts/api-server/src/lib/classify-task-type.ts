@@ -15,6 +15,7 @@ import { db, workflowTemplateStepsTable, workflowTemplatesTable, workflowTemplat
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+const log = logger.child({ channel: "growth.quiz" });
 import { getPrompt } from "./prompt-loader";
 
 const VALID_TYPES = [
@@ -86,7 +87,7 @@ async function callAI(
     if (first && isValidTaskType(first.taskType)) return first.taskType;
     return null;
   } catch (err) {
-    logger.warn({ err }, "classify-task-type: AI call failed");
+    log.warn({ err }, "classify-task-type: AI call failed");
     return null;
   }
 }
@@ -129,7 +130,7 @@ export async function classifyTaskForScriptGeneration(
     if (text.includes("AUTOMATABLE")) return "AUTOMATABLE";
     return "HUMAN_ONLY";
   } catch (err) {
-    logger.warn({ err }, "classifyTaskForScriptGeneration: AI call failed, defaulting to HUMAN_ONLY");
+    log.warn({ err }, "classifyTaskForScriptGeneration: AI call failed, defaulting to HUMAN_ONLY");
     return "HUMAN_ONLY";
   }
 }
@@ -184,6 +185,6 @@ export async function classifyAndUpdateTask(opts: {
         .where(eq(workflowTemplateStepTasksTable.id, taskId));
     }
   } catch (err) {
-    logger.warn({ err }, "classify-task-type: background classification failed");
+    log.warn({ err }, "classify-task-type: background classification failed");
   }
 }

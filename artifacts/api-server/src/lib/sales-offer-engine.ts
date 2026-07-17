@@ -27,6 +27,7 @@ import { eq, and, inArray, isNull, or, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.offer" });
 import { buildTenantProfileAndFindings, fetchSignalRulesAndGroups } from "./priority-engine";
 import { computeTenantSignals, getDisabledSignalKeys } from "./tenant-signals";
 
@@ -301,7 +302,7 @@ export async function persistSalesOfferCandidates(
         await emitOfferEvent(offerId, "offer.generated", { candidate: c }, null);
       }
     } catch (err) {
-      logger.error({ err, idempotencyKey: c.idempotencyKey }, "sales-offer-engine: failed to persist candidate");
+      log.error({ err, idempotencyKey: c.idempotencyKey }, "sales-offer-engine: failed to persist candidate");
     }
   }
 

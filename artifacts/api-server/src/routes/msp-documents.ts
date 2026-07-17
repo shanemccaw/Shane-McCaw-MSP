@@ -28,6 +28,7 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { createRun, executeRun } from "../lib/portal-workflow-engine";
 import { resolveBillingMspId } from "../lib/ai-billing";
@@ -56,7 +57,7 @@ async function ensureDocPipelineWorkflow(): Promise<void> {
       graph: DEFAULT_DOC_PIPELINE_GRAPH as unknown as Record<string, unknown>,
       isActive: true,
     });
-    logger.info({}, "msp-documents: seeded default doc pipeline workflow");
+    log.info({}, "msp-documents: seeded default doc pipeline workflow");
   }
 }
 
@@ -116,7 +117,7 @@ router.post(
 
       // Ensure the workflow definition exists
       await ensureDocPipelineWorkflow().catch((err) =>
-        logger.warn({ err }, "msp-documents: failed to ensure pipeline workflow (non-fatal)"),
+        log.warn({ err }, "msp-documents: failed to ensure pipeline workflow (non-fatal)"),
       );
 
       // Create and enqueue a portal workflow run for the pipeline.

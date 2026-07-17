@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db, servicesTable, mspSubscriptionsTable, mspCustomersTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "tenant.msp-admin" });
 
 export class UpgradeRequiredError extends Error {
   constructor(
@@ -124,7 +125,7 @@ export function requirePlanFeature(feature: string) {
 
       next();
     } catch (err) {
-      logger.error({ err, mspId, feature }, "msp-entitlement: requirePlanFeature failed");
+      log.error({ err, mspId, feature }, "msp-entitlement: requirePlanFeature failed");
       res.status(500).json({ error: "Entitlement check failed" });
     }
   };

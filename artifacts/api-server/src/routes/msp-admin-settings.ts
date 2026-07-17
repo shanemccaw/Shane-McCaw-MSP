@@ -42,6 +42,8 @@ import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 
+const log = logger.child({ channel: "tenant.msp-admin" });
+
 const router: IRouter = Router();
 
 function p(val: string | string[] | undefined): string {
@@ -544,7 +546,7 @@ router.delete(
       mspId,
     });
 
-    logger.info({ mspId, type, sessionId }, "msp-admin: session revoked");
+    log.info({ mspId, type, sessionId }, "msp-admin: session revoked");
     res.json({ ok: true });
   },
 );

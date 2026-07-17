@@ -1,6 +1,7 @@
 import { db, mspsTable, mspUsersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "admin.insights" });
 
 const MSP_SLUG = "shane-mccaw-consulting";
 const PLATFORM_ADMIN_USER_ID = 1;
@@ -32,7 +33,7 @@ export async function seedMspPlatformAdmin(): Promise<void> {
     .limit(1);
 
   if (!msp) {
-    logger.warn("seed-msp: MSP row not found after insert — skipping msp_users seed");
+    log.warn("seed-msp: MSP row not found after insert — skipping msp_users seed");
     return;
   }
 
@@ -47,5 +48,5 @@ export async function seedMspPlatformAdmin(): Promise<void> {
     })
     .onConflictDoNothing({ target: mspUsersTable.userId });
 
-  logger.info({ mspId: msp.id }, "seed-msp: MSP org and PlatformAdmin user ensured");
+  log.info({ mspId: msp.id }, "seed-msp: MSP org and PlatformAdmin user ensured");
 }

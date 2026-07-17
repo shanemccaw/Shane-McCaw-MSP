@@ -22,6 +22,7 @@ import {
 import { eq, asc, inArray } from "drizzle-orm";
 import { getPrompt } from "./prompt-loader.js";
 import { logger } from "./logger.js";
+const log = logger.child({ channel: "workflow.script" });
 
 // ─── Prompt: generate from service ──────────────────────────────────────────
 export const GENERATE_FROM_SERVICE_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer with 20+ years of experience across Azure, Exchange Online, SharePoint, Teams, Intune, Defender, Entra ID, and related services.
@@ -437,7 +438,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       .returning({ id: scriptPackagesTable.id });
     const withPkgId = modRows.map((r) => ({ ...r, packageId: pkg!.id }));
     await db.insert(scriptModulesTable).values(withPkgId);
-    logger.info({ packageId: pkg!.id, moduleCount: modRows.length, service: service.name }, "ps-script-gen: saved package");
+    log.info({ packageId: pkg!.id, moduleCount: modRows.length, service: service.name }, "ps-script-gen: saved package");
     return { scriptId: null, packageId: pkg!.id, title: packageTitle };
   }
 
@@ -459,7 +460,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
     })
     .returning({ id: powershellScriptsTable.id });
 
-  logger.info({ scriptId: saved!.id, service: service.name }, "ps-script-gen: saved single script");
+  log.info({ scriptId: saved!.id, service: service.name }, "ps-script-gen: saved single script");
   return { scriptId: saved!.id, packageId: null, title: scriptTitle };
 }
 
@@ -544,7 +545,7 @@ export async function generateScriptFromDocument(
       .returning({ id: scriptPackagesTable.id });
     const withPkgId = modRows.map((r) => ({ ...r, packageId: pkg!.id }));
     await db.insert(scriptModulesTable).values(withPkgId);
-    logger.info({ packageId: pkg!.id, moduleCount: modRows.length, documentId }, "ps-script-gen: saved package from document");
+    log.info({ packageId: pkg!.id, moduleCount: modRows.length, documentId }, "ps-script-gen: saved package from document");
     return { scriptId: null, packageId: pkg!.id, title: packageTitle };
   }
 
@@ -579,6 +580,6 @@ export async function generateScriptFromDocument(
     })
     .returning({ id: powershellScriptsTable.id });
 
-  logger.info({ scriptId: saved!.id, documentId }, "ps-script-gen: saved script from document");
+  log.info({ scriptId: saved!.id, documentId }, "ps-script-gen: saved script from document");
   return { scriptId: saved!.id, packageId: null, title: scriptTitle };
 }

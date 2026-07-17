@@ -21,6 +21,7 @@ import {
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "workflow.script" });
 import { randomUUID } from "crypto";
 import { createHash } from "crypto";
 
@@ -69,7 +70,7 @@ router.get("/admin/script-library", requireAdmin, async (_req: Request, res: Res
       })),
     );
   } catch (err) {
-    logger.error({ err }, "admin-script-runner: failed to list script library");
+    log.error({ err }, "admin-script-runner: failed to list script library");
     res.status(500).json({ error: "Failed to list script library" });
   }
 });
@@ -97,10 +98,10 @@ router.patch("/admin/script-library/:id/publish", requireAdmin, async (req: Requ
       return;
     }
 
-    logger.info({ scriptId: id, published }, "admin-script-runner: toggled platformPublished");
+    log.info({ scriptId: id, published }, "admin-script-runner: toggled platformPublished");
     res.json(updated);
   } catch (err) {
-    logger.error({ err, id }, "admin-script-runner: failed to update publish state");
+    log.error({ err, id }, "admin-script-runner: failed to update publish state");
     res.status(500).json({ error: "Failed to update publish state" });
   }
 });
@@ -156,7 +157,7 @@ router.get("/admin/script-download-tokens", requireAdmin, async (req: Request, r
       })),
     );
   } catch (err) {
-    logger.error({ err }, "admin-script-runner: failed to list download tokens");
+    log.error({ err }, "admin-script-runner: failed to list download tokens");
     res.status(500).json({ error: "Failed to list download tokens" });
   }
 });
@@ -206,7 +207,7 @@ router.post("/admin/script-download-tokens", requireAdmin, async (req: Request, 
       })
       .returning({ id: scriptDownloadTokensTable.id, expiresAt: scriptDownloadTokensTable.expiresAt });
 
-    logger.info({ tokenId: row.id, scriptId, customerId, mspId }, "admin-script-runner: generated download token");
+    log.info({ tokenId: row.id, scriptId, customerId, mspId }, "admin-script-runner: generated download token");
 
     res.status(201).json({
       tokenId: row.id,
@@ -215,7 +216,7 @@ router.post("/admin/script-download-tokens", requireAdmin, async (req: Request, 
       expiresAt: row.expiresAt,
     });
   } catch (err) {
-    logger.error({ err }, "admin-script-runner: failed to generate download token");
+    log.error({ err }, "admin-script-runner: failed to generate download token");
     res.status(500).json({ error: "Failed to generate download token" });
   }
 });
@@ -246,10 +247,10 @@ router.delete("/admin/script-download-tokens/:tokenId", requireAdmin, async (req
       return;
     }
 
-    logger.info({ tokenId }, "admin-script-runner: revoked download token");
+    log.info({ tokenId }, "admin-script-runner: revoked download token");
     res.json({ revoked: true, tokenId });
   } catch (err) {
-    logger.error({ err, tokenId }, "admin-script-runner: failed to revoke token");
+    log.error({ err, tokenId }, "admin-script-runner: failed to revoke token");
     res.status(500).json({ error: "Failed to revoke token" });
   }
 });

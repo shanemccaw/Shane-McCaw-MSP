@@ -29,6 +29,8 @@ import {
   type ScopeCreepPolicy,
 } from "../lib/scope-creep-engine";
 
+const log = logger.child({ channel: "engine.scope-creep" });
+
 const router: IRouter = Router();
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ router.get("/admin/scope-creep/policies", requireAdmin, async (_req: Request, re
     const policies = await fetchAllPolicies();
     res.json({ policies });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list policies failed");
+    log.error({ err }, "admin-scope-creep: list policies failed");
     res.status(500).json({ error: "Failed to list scope creep policies" });
   }
 });
@@ -103,7 +105,7 @@ router.get("/admin/scope-creep/policies/:id", requireAdmin, async (req: Request,
     if (rows.rows.length === 0) { res.status(404).json({ error: "Policy not found" }); return; }
     res.json({ policy: rowToPolicy(rows.rows[0] as Record<string, unknown>) });
   } catch (err) {
-    logger.error({ err, id }, "admin-scope-creep: get policy failed");
+    log.error({ err, id }, "admin-scope-creep: get policy failed");
     res.status(500).json({ error: "Failed to get policy" });
   }
 });
@@ -133,10 +135,10 @@ router.post("/admin/scope-creep/policies", requireAdmin, async (req: Request, re
       ) RETURNING id
     `);
     const newId = (result.rows[0] as { id: number }).id;
-    logger.info({ id: newId }, "admin-scope-creep: policy created");
+    log.info({ id: newId }, "admin-scope-creep: policy created");
     res.status(201).json({ id: newId });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: create policy failed");
+    log.error({ err }, "admin-scope-creep: create policy failed");
     res.status(500).json({ error: "Failed to create policy" });
   }
 });
@@ -163,7 +165,7 @@ router.patch("/admin/scope-creep/policies/:id", requireAdmin, async (req: Reques
     `);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-scope-creep: update policy failed");
+    log.error({ err, id }, "admin-scope-creep: update policy failed");
     res.status(500).json({ error: "Failed to update policy" });
   }
 });
@@ -174,7 +176,7 @@ router.delete("/admin/scope-creep/policies/:id", requireAdmin, async (req: Reque
     await db.execute(sql`UPDATE scope_creep_policies SET is_active = false, updated_at = NOW() WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-scope-creep: delete policy failed");
+    log.error({ err, id }, "admin-scope-creep: delete policy failed");
     res.status(500).json({ error: "Failed to deactivate policy" });
   }
 });
@@ -197,7 +199,7 @@ router.get("/admin/scope-creep/assignments", requireAdmin, async (req: Request, 
     );
     res.json({ assignments: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list assignments failed");
+    log.error({ err }, "admin-scope-creep: list assignments failed");
     res.status(500).json({ error: "Failed to list assignments" });
   }
 });
@@ -216,10 +218,10 @@ router.post("/admin/scope-creep/assignments", requireAdmin, async (req: Request,
       RETURNING id
     `);
     const id = (result.rows[0] as { id: number }).id;
-    logger.info({ id, mspId: b.mspId, customerId: b.customerId }, "admin-scope-creep: assignment upserted");
+    log.info({ id, mspId: b.mspId, customerId: b.customerId }, "admin-scope-creep: assignment upserted");
     res.status(201).json({ id, idempotencyKey: key });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: create assignment failed");
+    log.error({ err }, "admin-scope-creep: create assignment failed");
     res.status(500).json({ error: "Failed to create assignment" });
   }
 });
@@ -230,7 +232,7 @@ router.delete("/admin/scope-creep/assignments/:id", requireAdmin, async (req: Re
     await db.execute(sql`DELETE FROM scope_creep_assignments WHERE id = ${id}`);
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, id }, "admin-scope-creep: delete assignment failed");
+    log.error({ err, id }, "admin-scope-creep: delete assignment failed");
     res.status(500).json({ error: "Failed to delete assignment" });
   }
 });
@@ -267,7 +269,7 @@ router.get("/admin/scope-creep/detections", requireAdmin, async (req: Request, r
     );
     res.json({ detections: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list detections failed");
+    log.error({ err }, "admin-scope-creep: list detections failed");
     res.status(500).json({ error: "Failed to list detections" });
   }
 });
@@ -290,7 +292,7 @@ router.post("/admin/scope-creep/detections", requireAdmin, async (req: Request, 
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: record detection failed");
+    log.error({ err }, "admin-scope-creep: record detection failed");
     res.status(500).json({ error: "Failed to record detection" });
   }
 });
@@ -302,7 +304,7 @@ router.post("/admin/scope-creep/detections/:detectionId/acknowledge", requireAdm
     const acked = await acknowledgeScopeCreepDetection(detectionId, b.notes as string | undefined);
     res.json({ ok: acked });
   } catch (err) {
-    logger.error({ err, detectionId }, "admin-scope-creep: acknowledge detection failed");
+    log.error({ err, detectionId }, "admin-scope-creep: acknowledge detection failed");
     res.status(500).json({ error: "Failed to acknowledge detection" });
   }
 });
@@ -330,7 +332,7 @@ router.get("/admin/scope-creep/scores", requireAdmin, async (req: Request, res: 
     );
     res.json({ scores: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list scores failed");
+    log.error({ err }, "admin-scope-creep: list scores failed");
     res.status(500).json({ error: "Failed to list scores" });
   }
 });
@@ -347,7 +349,7 @@ router.post("/admin/scope-creep/scores/compute", requireAdmin, async (req: Reque
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: compute score failed");
+    log.error({ err }, "admin-scope-creep: compute score failed");
     res.status(500).json({ error: "Failed to compute score" });
   }
 });
@@ -377,7 +379,7 @@ router.get("/admin/scope-creep/violations", requireAdmin, async (req: Request, r
     );
     res.json({ violations: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list violations failed");
+    log.error({ err }, "admin-scope-creep: list violations failed");
     res.status(500).json({ error: "Failed to list violations" });
   }
 });
@@ -401,7 +403,7 @@ router.post("/admin/scope-creep/violations", requireAdmin, async (req: Request, 
     }
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: fire violation failed");
+    log.error({ err }, "admin-scope-creep: fire violation failed");
     res.status(500).json({ error: "Failed to fire violation" });
   }
 });
@@ -413,7 +415,7 @@ router.post("/admin/scope-creep/violations/:violationId/resolve", requireAdmin, 
     const resolved = await resolveScopeCreepViolation(violationId, b.notes as string | undefined);
     res.json({ ok: resolved });
   } catch (err) {
-    logger.error({ err, violationId }, "admin-scope-creep: resolve violation failed");
+    log.error({ err, violationId }, "admin-scope-creep: resolve violation failed");
     res.status(500).json({ error: "Failed to resolve violation" });
   }
 });
@@ -447,7 +449,7 @@ router.get("/admin/scope-creep/escalations", requireAdmin, async (req: Request, 
     );
     res.json({ escalations: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list escalations failed");
+    log.error({ err }, "admin-scope-creep: list escalations failed");
     res.status(500).json({ error: "Failed to list escalations" });
   }
 });
@@ -471,7 +473,7 @@ router.post("/admin/scope-creep/escalations", requireAdmin, async (req: Request,
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: create escalation failed");
+    log.error({ err }, "admin-scope-creep: create escalation failed");
     res.status(500).json({ error: "Failed to create escalation" });
   }
 });
@@ -506,7 +508,7 @@ router.get("/admin/scope-creep/compliance", requireAdmin, async (req: Request, r
     );
     res.json({ records: rows.rows });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: list compliance records failed");
+    log.error({ err }, "admin-scope-creep: list compliance records failed");
     res.status(500).json({ error: "Failed to list compliance records" });
   }
 });
@@ -539,7 +541,7 @@ router.post("/admin/scope-creep/compliance/snapshot", requireAdmin, async (req: 
     `);
     res.status(201).json({ recordId, ...snapshot });
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: compliance snapshot failed");
+    log.error({ err }, "admin-scope-creep: compliance snapshot failed");
     res.status(500).json({ error: "Failed to compute compliance snapshot" });
   }
 });
@@ -561,7 +563,7 @@ router.post("/admin/scope-creep/evaluate", requireAdmin, async (req: Request, re
     }
     res.json(output);
   } catch (err) {
-    logger.error({ err }, "admin-scope-creep: evaluate failed");
+    log.error({ err }, "admin-scope-creep: evaluate failed");
     res.status(500).json({ error: "Scope creep engine evaluation failed" });
   }
 });

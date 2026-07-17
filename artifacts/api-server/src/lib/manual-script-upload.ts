@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.script" });
 import { runAiAnalyzer } from "./ai-analyzer";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "./parse-m365-script-output";
 import { completeManualScriptKanbanCard } from "./manual-script-kanban";
@@ -175,7 +176,7 @@ export async function processManualScriptUpload(
       customerId: runResult.customerId ?? undefined,
     });
   } catch (aiErr) {
-    logger.warn(
+    log.warn(
       { aiErr, runResultId },
       "manual-script-upload: AI analysis failed (non-fatal)",
     );
@@ -202,7 +203,7 @@ export async function processManualScriptUpload(
     try {
       await applyScoreImpact(runResult.customerId, aiResult.scoreImpact);
     } catch (err) {
-      logger.warn(
+      log.warn(
         { err, customerId: runResult.customerId },
         "manual-script-upload: score impact failed (non-fatal)",
       );
@@ -210,7 +211,7 @@ export async function processManualScriptUpload(
     try {
       await applyProfileUpdates(runResult.customerId, mergedProfileUpdates);
     } catch (err) {
-      logger.warn(
+      log.warn(
         { err, customerId: runResult.customerId },
         "manual-script-upload: profile updates failed (non-fatal)",
       );
@@ -218,13 +219,13 @@ export async function processManualScriptUpload(
   }
 
   completeManualScriptKanbanCard(runResultId).catch((err) => {
-    logger.warn(
+    log.warn(
       { err, runResultId },
       "manual-script-upload: kanban card completion failed (non-fatal)",
     );
   });
 
-  logger.info(
+  log.info(
     { runResultId, scriptId: runResult.scriptId, uploadedBy },
     "manual-script-upload: processed successfully",
   );

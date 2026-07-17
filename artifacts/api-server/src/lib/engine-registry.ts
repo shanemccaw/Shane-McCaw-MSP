@@ -16,6 +16,7 @@ import { randomUUID } from "crypto";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "engine.signals" });
 import {
   computeTenantSignals,
   getDisabledSignalKeys,
@@ -436,11 +437,11 @@ async function writeEngineSnapshot(
           }
         }
       } catch (err) {
-        logger.warn({ err, customerId, engineKey }, "writeEngineSnapshot: drift-based scope creep detection failed (non-fatal)");
+        log.warn({ err, customerId, engineKey }, "writeEngineSnapshot: drift-based scope creep detection failed (non-fatal)");
       }
     }
   } catch (err) {
-    logger.warn({ err, engineKey, customerId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
+    log.warn({ err, engineKey, customerId }, "writeEngineSnapshot: failed to record snapshot (non-fatal)");
   }
 }
 
@@ -471,7 +472,7 @@ for (const def of ENGINE_DEFS) {
           }));
         }
       } catch (err) {
-        logger.warn({ err, customerId, engineKey: def.key }, "def.runForTenant wrapper: failed to generate signal trace");
+        log.warn({ err, customerId, engineKey: def.key }, "def.runForTenant wrapper: failed to generate signal trace");
       }
     }
 
@@ -697,13 +698,13 @@ export async function runEngineManifestForTenant(
   for (const key of targetKeys) {
     const def = getEngineDef(key);
     if (!def) {
-      logger.warn({ engineKey: key, customerId }, "runEngineManifestForTenant: unknown engine key in manifest order, skipping");
+      log.warn({ engineKey: key, customerId }, "runEngineManifestForTenant: unknown engine key in manifest order, skipping");
       continue;
     }
     try {
       results[key] = await def.runForTenant(customerId, ctx);
     } catch (err) {
-      logger.warn({ err, engineKey: key, customerId }, "runEngineManifestForTenant: engine run failed — continuing with remaining engines in manifest order");
+      log.warn({ err, engineKey: key, customerId }, "runEngineManifestForTenant: engine run failed — continuing with remaining engines in manifest order");
       results[key] = null;
     }
   }

@@ -52,6 +52,7 @@ import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "admin.insights" });
 import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "../lib/prompt-loader";
 import { sendMessage } from "../lib/graphEmail";
 import {
@@ -93,7 +94,7 @@ async function broadcastSowChangeForProject(projectId: number): Promise<void> {
       broadcastPresentationScopeChange(p.id, ts);
     }
   } catch (err) {
-    logger.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
+    log.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
   }
 }
 
@@ -110,7 +111,7 @@ async function broadcastDocsChangeForProject(projectId: number): Promise<void> {
       broadcastPresentationDocsChange(p.id);
     }
   } catch (err) {
-    logger.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
+    log.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
   }
 }
 
@@ -156,7 +157,7 @@ async function syncPresentationDocIds(
         .where(eq(quickWinPresentationsTable.id, draft.id));
     }
   } catch (err) {
-    logger.warn({ err, projectId, newDocId }, "syncPresentationDocIds: failed (non-fatal)");
+    log.warn({ err, projectId, newDocId }, "syncPresentationDocIds: failed (non-fatal)");
   }
 }
 
@@ -545,7 +546,7 @@ router.get("/admin/insights/scores", requireAdmin, async (req: Request, res: Res
       conditionalAccessPct, deviceCompliancePct,
     });
   } catch (err) {
-    logger.error({ err }, "insights scores error");
+    log.error({ err }, "insights scores error");
     res.status(500).json({ error: "Failed to load insights scores" });
   }
 });
@@ -600,7 +601,7 @@ router.get("/admin/insights/heatmap", requireAdmin, async (req: Request, res: Re
 
     res.json({ heatmap, domains: DOMAINS });
   } catch (err) {
-    logger.error({ err }, "insights heatmap error");
+    log.error({ err }, "insights heatmap error");
     res.status(500).json({ error: "Failed to load heatmap" });
   }
 });
@@ -615,7 +616,7 @@ router.get("/admin/insights/telemetry-summary", requireAdmin, async (req: Reques
     const runs = await fetchRunsForCustomer(customerId, projectId, limit);
     res.json({ results: runs, total: runs.length });
   } catch (err) {
-    logger.error({ err }, "insights telemetry-summary error");
+    log.error({ err }, "insights telemetry-summary error");
     res.status(500).json({ error: "Failed to load telemetry summary" });
   }
 });
@@ -635,7 +636,7 @@ router.get("/admin/insights/customers", requireAdmin, async (_req: Request, res:
     type Row = { id: number; name: string; email: string; company: string };
     res.json({ customers: (rows as unknown as { rows: Row[] }).rows ?? [] });
   } catch (err) {
-    logger.error({ err }, "insights customers error");
+    log.error({ err }, "insights customers error");
     res.status(500).json({ error: "Failed to load customers" });
   }
 });
@@ -665,7 +666,7 @@ router.get("/admin/insights/projects", requireAdmin, async (req: Request, res: R
       .limit(100);
     res.json({ projects });
   } catch (err) {
-    logger.error({ err }, "insights projects error");
+    log.error({ err }, "insights projects error");
     res.status(500).json({ error: "Failed to load projects" });
   }
 });
@@ -706,7 +707,7 @@ router.get("/admin/insights/documents", requireAdmin, async (req: Request, res: 
 
     res.json({ documents: docs });
   } catch (err) {
-    logger.error({ err }, "insights documents list error");
+    log.error({ err }, "insights documents list error");
     res.status(500).json({ error: "Failed to load documents" });
   }
 });
@@ -722,7 +723,7 @@ router.get("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
     if (!doc) return res.status(404).json({ error: "Document not found" });
     return res.json({ document: doc });
   } catch (err) {
-    logger.error({ err }, "insights document fetch error");
+    log.error({ err }, "insights document fetch error");
     return res.status(500).json({ error: "Failed to load document" });
   }
 });
@@ -775,7 +776,7 @@ router.get("/admin/insights/documents/:id/download", requireAdmin, async (req: R
     res.setHeader("Content-Length", pdfBuffer.length);
     return res.send(pdfBuffer);
   } catch (err) {
-    logger.error({ err }, "insights document download error");
+    log.error({ err }, "insights document download error");
     return res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
@@ -1025,7 +1026,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
           messages: [{ role: "user", content: docStylePrefix + prompt }],
         });
         if (aiResponse.stop_reason === "max_tokens") {
-          logger.warn({ docType, reportDocId }, "insights report: output hit max_tokens — document may be truncated");
+          log.warn({ docType, reportDocId }, "insights report: output hit max_tokens — document may be truncated");
         }
         const htmlContent = extractAiHtml(aiResponse);
 
@@ -1057,16 +1058,16 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
           priceCents:   0,
         });
       } catch (err) {
-        logger.error({ err, docType, reportDocId }, "insights report: background generation failed");
+        log.error({ err, docType, reportDocId }, "insights report: background generation failed");
         await db.update(insightsGeneratedDocumentsTable)
           .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
           .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
-          .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark report doc as failed"));
+          .catch((dbErr) => log.warn({ dbErr }, "insights: failed to mark report doc as failed"));
       }
     })();
     return;
   } catch (err) {
-    logger.error({ err }, "insights document generate error");
+    log.error({ err }, "insights document generate error");
     return res.status(500).json({ error: "Failed to generate document" });
   }
 });
@@ -1138,7 +1139,7 @@ router.post("/admin/insights/documents/payload-preview", requireAdmin, async (re
       profileSample: profileSamplePairs.map(([k, v]) => [k, String(v)]),
     });
   } catch (err) {
-    logger.error({ err }, "insights document payload-preview error");
+    log.error({ err }, "insights document payload-preview error");
     return res.status(500).json({ error: "Failed to assemble payload preview" });
   }
 });
@@ -1196,7 +1197,7 @@ router.put("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
 
     return res.json({ document: updated });
   } catch (err) {
-    logger.error({ err }, "insights document update error");
+    log.error({ err }, "insights document update error");
     return res.status(500).json({ error: "Failed to update document" });
   }
 });
@@ -1217,7 +1218,7 @@ router.delete("/admin/insights/documents/:id", requireAdmin, async (req: Request
     if (toDelete?.projectId) void broadcastDocsChangeForProject(toDelete.projectId);
     return res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "insights document delete error");
+    log.error({ err }, "insights document delete error");
     return res.status(500).json({ error: "Failed to delete document" });
   }
 });
@@ -1295,7 +1296,7 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
     try {
       pdfBuffer = await generateInsightsPdf(doc.title, doc.htmlContent, clientName, new Date(doc.createdAt));
     } catch (pdfErr) {
-      logger.warn({ pdfErr, docId: id }, "insights: PDF generation failed (non-fatal) — will send email without attachment");
+      log.warn({ pdfErr, docId: id }, "insights: PDF generation failed (non-fatal) — will send email without attachment");
     }
 
     const sent = await sendMessage({
@@ -1322,9 +1323,9 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
           pdfBuffer,
           "application/pdf",
         );
-        logger.info({ docId: id, pdfFilename, sharepointUrl }, "insights: document uploaded to SharePoint");
+        log.info({ docId: id, pdfFilename, sharepointUrl }, "insights: document uploaded to SharePoint");
       } catch (spErr) {
-        logger.warn({ spErr, docId: id }, "insights: SharePoint upload failed (non-fatal) — email was still sent");
+        log.warn({ spErr, docId: id }, "insights: SharePoint upload failed (non-fatal) — email was still sent");
       }
     }
 
@@ -1351,7 +1352,7 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl, pdfAttached: !!pdfBuffer });
   } catch (err) {
-    logger.error({ err }, "insights document send error");
+    log.error({ err }, "insights document send error");
     return res.status(500).json({ error: "Failed to send document" });
   }
 });
@@ -1387,7 +1388,7 @@ router.get("/admin/insights/consulting/workstream-check", requireAdmin, async (_
       hasWarnings: unresolvedTitles.length > 0,
     });
   } catch (err) {
-    logger.warn({ err }, "workstream-check: failed");
+    log.warn({ err }, "workstream-check: failed");
     return res.status(500).json({ error: "Failed to run workstream check" });
   }
 });
@@ -1429,7 +1430,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
         .limit(1);
 
       if (!wfDef) {
-        logger.error({ customerId, projectId }, "insights consulting/generate: 'SOW Generation' workflow definition not found");
+        log.error({ customerId, projectId }, "insights consulting/generate: 'SOW Generation' workflow definition not found");
         return res.status(503).json({ error: "SOW Generation workflow is not seeded — please restart the server and retry." });
       }
 
@@ -1669,7 +1670,7 @@ INSTRUCTIONS:
           messages: [{ role: "user", content: docStylePrefix + prompt }],
         });
         if (aiResponse.stop_reason === "max_tokens") {
-          logger.warn({ deliverableType, consultingDocId }, "insights consulting: output hit max_tokens — document may be truncated");
+          log.warn({ deliverableType, consultingDocId }, "insights consulting: output hit max_tokens — document may be truncated");
         }
         const rawHtmlContent2 = extractAiHtml(aiResponse);
 
@@ -1690,7 +1691,7 @@ INSTRUCTIONS:
             sowServerForcedExclude,
           );
           if (removed2.length > 0) {
-            logger.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");
+            log.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");
           }
 
           // Second-pass title-driven purge: catches non-permitted adjustment rows that
@@ -1699,7 +1700,7 @@ INSTRUCTIONS:
             purgedHtml2, rawWs2.map(l => l.title),
           );
           if (removedByTitle2.length > 0) {
-            logger.warn({ consultingDocId, removedTitles: removedByTitle2 }, "consulting_sow: title-purge removed additional non-permitted adjustments");
+            log.warn({ consultingDocId, removedTitles: removedByTitle2 }, "consulting_sow: title-purge removed additional non-permitted adjustments");
           }
           const anyPurged2 = removed2.length > 0 || removedByTitle2.length > 0;
 
@@ -1709,7 +1710,7 @@ INSTRUCTIONS:
           // Validate the cleaned pricing
           const sowValidation2 = validateSowPricing(ws2, adj2, purgedHtml2Final);
           if (!sowValidation2.ok) {
-            logger.warn({ consultingDocId, issues: sowValidation2.issues }, "consulting: pricing validation warnings");
+            log.warn({ consultingDocId, issues: sowValidation2.issues }, "consulting: pricing validation warnings");
           }
 
           htmlContent = ct2 > 0 ? patchSowGrandTotal(purgedHtml2Final, ct2) : purgedHtml2Final;
@@ -1735,7 +1736,7 @@ INSTRUCTIONS:
           const { z: zv } = await import("zod");
           const sowLines2Validation = zv.array(SowPricingLineSchema).safeParse(sowLines2);
           if (!sowLines2Validation.success) {
-            logger.warn({ consultingDocId, issues: sowLines2Validation.error.issues }, "consulting: sowPricingLines failed schema validation — persisting anyway");
+            log.warn({ consultingDocId, issues: sowLines2Validation.error.issues }, "consulting: sowPricingLines failed schema validation — persisting anyway");
           }
         }
 
@@ -1784,16 +1785,16 @@ INSTRUCTIONS:
           priceCents:   sowTotal2 > 0 ? Math.round(sowTotal2 * 100) : 0,
         });
       } catch (err) {
-        logger.error({ err, deliverableType, consultingDocId }, "insights consulting: background generation failed");
+        log.error({ err, deliverableType, consultingDocId }, "insights consulting: background generation failed");
         await db.update(insightsGeneratedDocumentsTable)
           .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
           .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
-          .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark consulting doc as failed"));
+          .catch((dbErr) => log.warn({ dbErr }, "insights: failed to mark consulting doc as failed"));
       }
     })();
     return;
   } catch (err) {
-    logger.error({ err }, "insights consulting generate error");
+    log.error({ err }, "insights consulting generate error");
     return res.status(500).json({ error: "Failed to generate consulting deliverable" });
   }
 });
@@ -1900,7 +1901,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
           excludedCount: allEngagementProjects.length - signalFilteredProjects.length,
         };
       } catch (signalErr) {
-        logger.warn({ signalErr }, "consolidated-sow payload-preview: signal evaluation failed — using all projects");
+        log.warn({ signalErr }, "consolidated-sow payload-preview: signal evaluation failed — using all projects");
       }
       const projectsBlock = signalFilteredProjects.length > 0
         ? signalFilteredProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
@@ -2083,7 +2084,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
 
     return res.json(result);
   } catch (err) {
-    logger.error({ err }, "insights consulting payload-preview error");
+    log.error({ err }, "insights consulting payload-preview error");
     return res.status(500).json({ error: "Failed to assemble consulting payload preview" });
   }
 });
@@ -2180,12 +2181,12 @@ router.post("/admin/insights/consulting/:id/send", requireAdmin, async (req: Req
           pdfBuffer,
           "application/pdf",
         );
-        logger.info({ docId: id, filename, sharepointUrl }, "insights: consulting deliverable uploaded to SharePoint");
+        log.info({ docId: id, filename, sharepointUrl }, "insights: consulting deliverable uploaded to SharePoint");
       } catch (spErr) {
-        logger.warn({ spErr, docId: id }, "insights: SharePoint upload failed (non-fatal) — email was still sent");
+        log.warn({ spErr, docId: id }, "insights: SharePoint upload failed (non-fatal) — email was still sent");
       }
     } else {
-      logger.info({ docId: id, sharepointSiteId }, "insights: SharePoint upload skipped — site not configured or Graph not available");
+      log.info({ docId: id, sharepointSiteId }, "insights: SharePoint upload skipped — site not configured or Graph not available");
     }
 
     // 3. Mark delivered; update pdfUrl with SharePoint URL if we got one
@@ -2207,7 +2208,7 @@ router.post("/admin/insights/consulting/:id/send", requireAdmin, async (req: Req
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl });
   } catch (err) {
-    logger.error({ err }, "insights consulting send error");
+    log.error({ err }, "insights consulting send error");
     return res.status(500).json({ error: "Failed to send document" });
   }
 });
@@ -2221,7 +2222,7 @@ router.get("/admin/insights/automations", requireAdmin, async (_req: Request, re
     const withLabels = automations.map(a => ({ ...a, cronLabel: describeCron(a.cronExpression) }));
     return res.json({ automations: withLabels });
   } catch (err) {
-    logger.error({ err }, "insights automations list error");
+    log.error({ err }, "insights automations list error");
     return res.status(500).json({ error: "Failed to load automations" });
   }
 });
@@ -2375,7 +2376,7 @@ router.post("/admin/insights/automations", requireAdmin, async (req: Request, re
 
     return res.json({ automation });
   } catch (err) {
-    logger.error({ err }, "insights automation create error");
+    log.error({ err }, "insights automation create error");
     return res.status(500).json({ error: "Failed to create automation" });
   }
 });
@@ -2409,7 +2410,7 @@ router.patch("/admin/insights/automations/:id", requireAdmin, async (req: Reques
     if (!updated) return res.status(404).json({ error: "Automation not found" });
     return res.json({ automation: updated });
   } catch (err) {
-    logger.error({ err }, "insights automation update error");
+    log.error({ err }, "insights automation update error");
     return res.status(500).json({ error: "Failed to update automation" });
   }
 });
@@ -2423,7 +2424,7 @@ router.delete("/admin/insights/automations/:id", requireAdmin, async (req: Reque
     await db.delete(insightsAutomationsTable).where(eq(insightsAutomationsTable.id, id));
     return res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "insights automation delete error");
+    log.error({ err }, "insights automation delete error");
     return res.status(500).json({ error: "Failed to delete automation" });
   }
 });
@@ -2469,7 +2470,7 @@ router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Req
       sendEvent("complete", { ok: true, automation: { ...updated, cronLabel: describeCron(updated.cronExpression) } });
     }
   } catch (err) {
-    logger.error({ err }, "insights automation run error");
+    log.error({ err }, "insights automation run error");
     sendEvent("error", { error: "Failed to run automation" });
   } finally {
     res.end();
@@ -2531,7 +2532,7 @@ export async function executeAutomation(
     .returning({ id: insightsAutomationsTable.id });
 
   if (!claimed) {
-    logger.warn({ automationId }, "insights: automation already running — skipping duplicate execution");
+    log.warn({ automationId }, "insights: automation already running — skipping duplicate execution");
     return false;
   }
 
@@ -2545,17 +2546,17 @@ export async function executeAutomation(
           const scriptId = automation.linkedRunbookScriptId;
           const scriptName = `script-${scriptId}`;
           const job = await createScriptJob({ runbookName: scriptName });
-          logger.info(
+          log.info(
             { automationId, scriptId, jobId: job.jobId },
             "insights: automation triggered Azure script job",
           );
           log("info", `Triggered Azure script job ${job.jobId} for script ${scriptId}`);
         } catch (scriptErr) {
-          logger.warn({ scriptErr, automationId }, "insights: Azure script trigger failed (non-fatal)");
+          log.warn({ scriptErr, automationId }, "insights: Azure script trigger failed (non-fatal)");
           log("warn", `Azure script trigger failed (non-fatal): ${String(scriptErr)}`);
         }
       } else {
-        logger.info({ automationId }, "insights: Azure not configured — skipping script trigger");
+        log.info({ automationId }, "insights: Azure not configured — skipping script trigger");
         log("warn", "Azure not configured — script trigger skipped");
       }
     }
@@ -2620,7 +2621,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         .set({ pdfUrl })
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id));
 
-      logger.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and auto-approved");
+      log.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and auto-approved");
       log("info", `Document saved as draft — "${automation.name} — ${reportDate}" (ID ${newDoc!.id})`);
 
       // ── Notify admins that a new report is ready for review ─────────────────
@@ -2647,7 +2648,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
           log("info", `Admin notification sent to ${admins.length} admin(s)`);
         }
       } catch (notifErr) {
-        logger.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");
+        log.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");
         log("warn", "Failed to insert admin notifications (non-fatal)");
       }
 
@@ -2669,7 +2670,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
       .where(eq(insightsAutomationsTable.id, automationId));
 
   } catch (err) {
-    logger.warn({ err, automationId }, "insights: automation execution failed (non-fatal)");
+    log.warn({ err, automationId }, "insights: automation execution failed (non-fatal)");
     log("error", `Automation failed: ${String(err)}`);
     // Persist the partial log even on failure
     await db.update(insightsAutomationsTable)

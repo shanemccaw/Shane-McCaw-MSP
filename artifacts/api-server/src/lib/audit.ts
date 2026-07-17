@@ -1,5 +1,6 @@
 import { db, auditLogsTable } from "@workspace/db";
 import { logger } from "./logger";
+const log = logger.child({ channel: "audit" });
 
 export interface AuditEvent {
   actorUserId?: number | null;
@@ -29,6 +30,6 @@ export async function createAuditLog(event: AuditEvent): Promise<void> {
       metadata: event.metadata ?? null,
     });
   } catch (err) {
-    logger.error({ err, event }, "createAuditLog: failed to write audit entry");
+    log.error({ err, event }, "createAuditLog: failed to write audit entry");
   }
 }

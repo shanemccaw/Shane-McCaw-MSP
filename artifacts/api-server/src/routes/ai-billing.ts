@@ -39,6 +39,7 @@ import {
 } from "../lib/ai-billing.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "billing" });
 
 function p(val: string | string[] | undefined): string {
   return Array.isArray(val) ? (val[0] ?? "") : (val ?? "");
@@ -322,7 +323,7 @@ router.post(
         .set({ stripeCheckoutSessionId: session.id, updatedAt: new Date() })
         .where(eq(mspAiPurchasesTable.purchaseId, purchaseId));
 
-      logger.info({ mspId, purchaseId, sessionId: session.id }, "ai-billing: Stripe checkout created");
+      log.info({ mspId, purchaseId, sessionId: session.id }, "ai-billing: Stripe checkout created");
 
       res.json({
         purchaseId,
@@ -331,7 +332,7 @@ router.post(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.error({ err, mspId, purchaseId }, "ai-billing: Stripe checkout creation failed");
+      log.error({ err, mspId, purchaseId }, "ai-billing: Stripe checkout creation failed");
 
       // Clean up pending purchase
       await db

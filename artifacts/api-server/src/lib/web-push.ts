@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { db, pushSubscriptionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "comms.sms-push" });
 
 let vapidConfigured = false;
 
@@ -30,7 +31,7 @@ export interface WebPushPayload {
 
 export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void> {
   if (!ensureVapid()) {
-    logger.warn("sendWebPushToAdmins: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY not set — skipping");
+    log.warn("sendWebPushToAdmins: VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY not set — skipping");
     return;
   }
 
@@ -47,7 +48,7 @@ export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void
       .innerJoin(usersTable, eq(pushSubscriptionsTable.userId, usersTable.id))
       .where(eq(usersTable.role, "admin"));
   } catch (err) {
-    logger.warn({ err }, "sendWebPushToAdmins: failed to fetch push subscriptions");
+    log.warn({ err }, "sendWebPushToAdmins: failed to fetch push subscriptions");
     return;
   }
 
@@ -75,7 +76,7 @@ export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void
         if (status === 410 || status === 404) {
           staleIds.push(sub.id);
         } else {
-          logger.warn({ err, endpoint: sub.endpoint }, "sendWebPushToAdmins: push send failed");
+          log.warn({ err, endpoint: sub.endpoint }, "sendWebPushToAdmins: push send failed");
         }
       }
     }),
@@ -86,9 +87,9 @@ export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void
       for (const id of staleIds) {
         await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, id));
       }
-      logger.info({ staleIds }, "sendWebPushToAdmins: removed stale push subscriptions");
+      log.info({ staleIds }, "sendWebPushToAdmins: removed stale push subscriptions");
     } catch (err) {
-      logger.warn({ err }, "sendWebPushToAdmins: failed to remove stale subscriptions");
+      log.warn({ err }, "sendWebPushToAdmins: failed to remove stale subscriptions");
     }
   }
 }

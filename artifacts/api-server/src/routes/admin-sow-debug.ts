@@ -4,6 +4,7 @@ import { db, usersTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
 import { getSowDebugRun, listSowDebugRuns } from "../lib/sow-debug-log-buffer";
 
@@ -47,7 +48,7 @@ router.get("/admin/sow-debug/clients", requireAdmin, async (_req: Request, res: 
       })),
     });
   } catch (err) {
-    logger.error({ err }, "admin-sow-debug: failed to load clients");
+    log.error({ err }, "admin-sow-debug: failed to load clients");
     res.status(500).json({ error: "Failed to load clients" });
   }
 });
@@ -82,7 +83,7 @@ router.post("/admin/sow-debug/generate", requireAdmin, async (req: Request, res:
       clientName: result.clientName,
     });
   } catch (err) {
-    logger.error({ err, clientUserId, projectId, correlationId }, "admin-sow-debug: generation failed");
+    log.error({ err, clientUserId, projectId, correlationId }, "admin-sow-debug: generation failed");
     res.status(500).json({
       error: err instanceof Error ? err.message : "SOW generation failed",
       correlationId,

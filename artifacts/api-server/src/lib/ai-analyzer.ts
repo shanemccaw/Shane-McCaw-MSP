@@ -8,6 +8,7 @@
 
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+const log = logger.child({ channel: "admin.content" });
 import { getPrompt } from "./prompt-loader";
 import { db, mspUsersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -46,7 +47,7 @@ export function trackAiUsage(opts: TrackAiUsageOpts): void {
       });
       const costUsd = costCents / 100;
 
-      logger.info({
+      log.info({
         event: "system_action:ai_usage",
         model: opts.model,
         inputTokens: opts.inputTokens,
@@ -67,10 +68,10 @@ export function trackAiUsage(opts: TrackAiUsageOpts): void {
         model: opts.model,
       });
     } catch (err) {
-      logger.error({ err }, "trackAiUsage background task failed to record telemetry");
+      log.error({ err }, "trackAiUsage background task failed to record telemetry");
     }
   }).catch((err) => {
-    logger.error({ err }, "trackAiUsage promise error");
+    log.error({ err }, "trackAiUsage promise error");
   });
 }
 
@@ -181,7 +182,7 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
           resolvedMspId = mspUser.mspId ?? undefined;
         }
       } catch (err) {
-        logger.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId from customerId (non-fatal)");
+        log.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId from customerId (non-fatal)");
       }
     }
 
@@ -193,13 +194,13 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
       customerId: input.customerId,
     });
   } catch (err) {
-    logger.error({ err }, "ai-analyzer: Claude call failed");
+    log.error({ err }, "ai-analyzer: Claude call failed");
     throw err;
   }
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    logger.warn({ raw: raw.slice(0, 300) }, "ai-analyzer: response did not contain parseable JSON");
+    log.warn({ raw: raw.slice(0, 300) }, "ai-analyzer: response did not contain parseable JSON");
     return {
       findings: ["AI analysis could not parse structured findings from this output."],
       recommendations: ["Review the raw script output manually for insights."],
@@ -212,7 +213,7 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
   try {
     parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
   } catch {
-    logger.warn({ raw: raw.slice(0, 300) }, "ai-analyzer: JSON.parse failed");
+    log.warn({ raw: raw.slice(0, 300) }, "ai-analyzer: JSON.parse failed");
     return {
       findings: ["AI analysis returned malformed JSON."],
       recommendations: ["Review the raw script output manually."],

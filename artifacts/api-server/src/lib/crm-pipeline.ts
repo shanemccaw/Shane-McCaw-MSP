@@ -17,6 +17,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "crm" });
 
 /**
  * Find-or-create a Lead for a client user, then set users.linkedLeadId.
@@ -69,10 +70,10 @@ export async function ensureLeadForClient(
       .set({ linkedLeadId: leadId })
       .where(eq(usersTable.id, userId));
 
-    logger.info({ userId, leadId }, "crm-pipeline: linked client user to lead");
+    log.info({ userId, leadId }, "crm-pipeline: linked client user to lead");
     return leadId;
   } catch (err) {
-    logger.warn({ err, userId }, "crm-pipeline: ensureLeadForClient failed (non-fatal)");
+    log.warn({ err, userId }, "crm-pipeline: ensureLeadForClient failed (non-fatal)");
     return 0;
   }
 }
@@ -144,11 +145,11 @@ export async function ensureOpportunityForSow(
         workflowType: "ProposalPrep",
         state: "new",
       });
-      logger.info({ customerId, leadId, docId }, "crm-pipeline: created opportunity from SOW delivery");
+      log.info({ customerId, leadId, docId }, "crm-pipeline: created opportunity from SOW delivery");
     } else {
-      logger.info({ customerId, leadId, docId, oppId: existingOpp.id }, "crm-pipeline: opportunity already exists");
+      log.info({ customerId, leadId, docId, oppId: existingOpp.id }, "crm-pipeline: opportunity already exists");
     }
   } catch (err) {
-    logger.warn({ err, customerId, docId }, "crm-pipeline: ensureOpportunityForSow failed (non-fatal)");
+    log.warn({ err, customerId, docId }, "crm-pipeline: ensureOpportunityForSow failed (non-fatal)");
   }
 }

@@ -40,6 +40,8 @@ import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
+const log = logger.child({ channel: "admin.clients" });
+
 const router: IRouter = Router();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -60,7 +62,7 @@ async function writeAuditLog(opts: {
       adminId: opts.adminId ?? null,
     });
   } catch (err) {
-    logger.warn({ err }, "admin-baseline-templates: audit log write failed (non-fatal)");
+    log.warn({ err }, "admin-baseline-templates: audit log write failed (non-fatal)");
   }
 }
 
@@ -124,7 +126,7 @@ router.get("/admin/baseline-templates", requireAdmin, async (_req: Request, res:
 
     res.json({ templates: templatesWithPacks });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: list failed");
+    log.error({ err }, "admin-baseline-templates: list failed");
     res.status(500).json({ error: "Failed to list baseline templates" });
   }
 });
@@ -139,7 +141,7 @@ router.get("/admin/baseline-templates/audit-log", requireAdmin, async (req: Requ
       .limit(limit);
     res.json({ logs });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: audit log list failed");
+    log.error({ err }, "admin-baseline-templates: audit log list failed");
     res.status(500).json({ error: "Failed to list audit log" });
   }
 });
@@ -157,7 +159,7 @@ router.get("/admin/baseline-templates/testbed-customers", requireAdmin, async (_
       .orderBy(mspCustomersTable.name);
     res.json({ customers: customers.filter(c => Boolean(c.tenantId)) });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: list testbed customers failed");
+    log.error({ err }, "admin-baseline-templates: list testbed customers failed");
     res.status(500).json({ error: "Failed to list testbed customers" });
   }
 });
@@ -173,7 +175,7 @@ router.get("/admin/baseline-templates/:templateId", requireAdmin, async (req: Re
     if (!template) return void res.status(404).json({ error: "Baseline template not found" });
     res.json({ template });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: get failed");
+    log.error({ err }, "admin-baseline-templates: get failed");
     res.status(500).json({ error: "Failed to get baseline template" });
   }
 });
@@ -214,7 +216,7 @@ router.post("/admin/baseline-templates", requireAdmin, async (req: Request, res:
     await writeAuditLog({ action: "create", templateId: template!.templateId, after: template as unknown as Record<string, unknown>, adminId });
     res.status(201).json({ template });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: create failed");
+    log.error({ err }, "admin-baseline-templates: create failed");
     const msg = err instanceof Error && err.message.includes("unique") ? "A template with that templateId already exists" : "Failed to create baseline template";
     res.status(400).json({ error: msg });
   }
@@ -266,7 +268,7 @@ router.patch("/admin/baseline-templates/:templateId", requireAdmin, async (req: 
     await writeAuditLog({ action: "update", templateId, before: existing as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, adminId });
     res.json({ template: updated });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: update failed");
+    log.error({ err }, "admin-baseline-templates: update failed");
     res.status(500).json({ error: "Failed to update baseline template" });
   }
 });
@@ -312,7 +314,7 @@ router.delete("/admin/baseline-templates/:templateId", requireAdmin, async (req:
     await writeAuditLog({ action: "archive", templateId, before: existing as unknown as Record<string, unknown>, after: archived as unknown as Record<string, unknown>, adminId });
     res.json({ archived: true, template: archived });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: archive failed");
+    log.error({ err }, "admin-baseline-templates: archive failed");
     res.status(500).json({ error: "Failed to archive baseline template" });
   }
 });
@@ -352,10 +354,10 @@ router.post("/admin/baseline-templates/:templateId/test", requireAdmin, async (r
     const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId: body.customerId };
     const result = await runBaselineTemplateAgainstTenant(templateId, customer.tenantId, body.customerId, payload);
 
-    logger.info({ templateId, customerId: body.customerId, tenantId: customer.tenantId, success: result.success, adminId: getAdminId(req) }, "admin-baseline-templates: test execution completed");
+    log.info({ templateId, customerId: body.customerId, tenantId: customer.tenantId, success: result.success, adminId: getAdminId(req) }, "admin-baseline-templates: test execution completed");
     res.json({ result, tenant: { customerId: customer.id, name: customer.name } });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: test execution failed");
+    log.error({ err }, "admin-baseline-templates: test execution failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to execute test" });
   }
 });
@@ -370,7 +372,7 @@ router.get("/admin/config-packs", requireAdmin, async (_req: Request, res: Respo
       .orderBy(configPacksTable.packKey);
     res.json({ packs });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: list packs failed");
+    log.error({ err }, "admin-baseline-templates: list packs failed");
     res.status(500).json({ error: "Failed to list config packs" });
   }
 });
@@ -401,7 +403,7 @@ router.get("/admin/config-packs/:packKey", requireAdmin, async (req: Request, re
 
     res.json({ pack, templates: orderedTemplates });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: get pack failed");
+    log.error({ err }, "admin-baseline-templates: get pack failed");
     res.status(500).json({ error: "Failed to get config pack" });
   }
 });
@@ -427,7 +429,7 @@ router.post("/admin/config-packs", requireAdmin, async (req: Request, res: Respo
 
     res.status(201).json({ pack });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: create pack failed");
+    log.error({ err }, "admin-baseline-templates: create pack failed");
     const msg = err instanceof Error && err.message.includes("unique") ? "A pack with that packKey already exists" : "Failed to create config pack";
     res.status(400).json({ error: msg });
   }
@@ -458,7 +460,7 @@ router.patch("/admin/config-packs/:packKey", requireAdmin, async (req: Request, 
 
     res.json({ pack: updated });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: update pack failed");
+    log.error({ err }, "admin-baseline-templates: update pack failed");
     res.status(500).json({ error: "Failed to update config pack" });
   }
 });
@@ -482,7 +484,7 @@ router.delete("/admin/config-packs/:packKey", requireAdmin, async (req: Request,
 
     res.json({ archived: true, pack: archived });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: archive pack failed");
+    log.error({ err }, "admin-baseline-templates: archive pack failed");
     res.status(500).json({ error: "Failed to archive config pack" });
   }
 });
@@ -502,7 +504,7 @@ router.get("/admin/config-packs/:packKey/templates", requireAdmin, async (req: R
       .orderBy(configPackTemplatesTable.sortOrder);
     res.json({ templates: links });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: list pack templates failed");
+    log.error({ err }, "admin-baseline-templates: list pack templates failed");
     res.status(500).json({ error: "Failed to list pack templates" });
   }
 });
@@ -555,7 +557,7 @@ router.patch("/admin/config-packs/:packKey/templates/order", requireAdmin, async
 
     res.json({ updated: true, templates: body.templates });
   } catch (err) {
-    logger.error({ err }, "admin-baseline-templates: update pack template order failed");
+    log.error({ err }, "admin-baseline-templates: update pack template order failed");
     res.status(500).json({ error: "Failed to update pack templates" });
   }
 });

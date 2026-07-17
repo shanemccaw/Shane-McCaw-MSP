@@ -35,6 +35,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.kanban" });
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, findActiveJobForScript } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
@@ -103,7 +104,7 @@ async function alertAutoFireExhausted(opts: {
       playSound: true,
     });
   } catch (pushErr) {
-    logger.warn({ pushErr }, "kanban-auto-fire: push notification failed (non-fatal)");
+    log.warn({ pushErr }, "kanban-auto-fire: push notification failed (non-fatal)");
   }
 
   const defaultSubject = `⚠️ Kanban auto-fire exhausted — "${scriptTitle}" (${failureCount} failures)`;
@@ -157,9 +158,9 @@ async function alertAutoFireExhausted(opts: {
       defaultBodyHtml,
     );
     await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
-    logger.info({ shaneEmail, cardIds, scriptTitle }, "kanban-auto-fire: exhaustion alert email sent");
+    log.info({ shaneEmail, cardIds, scriptTitle }, "kanban-auto-fire: exhaustion alert email sent");
   } catch (emailErr) {
-    logger.warn({ emailErr, cardIds }, "kanban-auto-fire: exhaustion alert email failed (non-fatal)");
+    log.warn({ emailErr, cardIds }, "kanban-auto-fire: exhaustion alert email failed (non-fatal)");
   }
 }
 
@@ -188,7 +189,7 @@ async function alertDocumentAutoFireExhausted(opts: {
       playSound: true,
     });
   } catch (pushErr) {
-    logger.warn({ pushErr }, "kanban-auto-fire: document push notification failed (non-fatal)");
+    log.warn({ pushErr }, "kanban-auto-fire: document push notification failed (non-fatal)");
   }
 
   const defaultSubject = `⚠️ Document auto-fire exhausted — "${docTitle}" (${failureCount} failures)`;
@@ -242,9 +243,9 @@ async function alertDocumentAutoFireExhausted(opts: {
       defaultBodyHtml,
     );
     await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
-    logger.info({ shaneEmail, cardId, docTitle }, "kanban-auto-fire: document exhaustion alert email sent");
+    log.info({ shaneEmail, cardId, docTitle }, "kanban-auto-fire: document exhaustion alert email sent");
   } catch (emailErr) {
-    logger.warn({ emailErr, cardId }, "kanban-auto-fire: document exhaustion alert email failed (non-fatal)");
+    log.warn({ emailErr, cardId }, "kanban-auto-fire: document exhaustion alert email failed (non-fatal)");
   }
 }
 
@@ -331,7 +332,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   )];
 
   if (templateStepIds.length === 0) {
-    logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template steps)");
+    log.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template steps)");
     return null;
   }
 
@@ -353,7 +354,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     .orderBy(asc(workflowTemplateStepTasksTable.order));
 
   if (templateTasks.length === 0) {
-    logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template runbook tasks)");
+    log.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template runbook tasks)");
     return null;
   }
 
@@ -363,7 +364,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   const nonUuidIds = allRunbookIds.filter(id => !UUID_RE.test(id));
 
   if (nonUuidIds.length > 0) {
-    logger.warn({ clientUserId, nonUuidIds }, "kanban-auto-fire: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
+    log.warn({ clientUserId, nonUuidIds }, "kanban-auto-fire: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
   }
 
   const [moduleRows, scriptRows] = await Promise.all([
@@ -401,7 +402,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     if (resolved) stepRunbookMap.set(tt.workflowTemplateStepId, resolved);
   }
 
-  logger.info({ clientUserId, uuidIds, moduleRows: moduleRows.length, scriptRows: scriptRows.length, stepRunbookMap: Object.fromEntries(stepRunbookMap) },
+  log.info({ clientUserId, uuidIds, moduleRows: moduleRows.length, scriptRows: scriptRows.length, stepRunbookMap: Object.fromEntries(stepRunbookMap) },
     "kanban-auto-fire: fallback template resolution");
 
   // Return the first candidate whose step resolves to a runbook
@@ -415,7 +416,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     }
   }
 
-  logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found");
+  log.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found");
   return null;
 }
 
@@ -468,7 +469,7 @@ async function pollJobToCompletion(jobId: string): Promise<{ success: boolean; l
     if (status.status === "New" || status.status === "Queued" || status.status === "Activating") {
       if (!firstQueuedAt) firstQueuedAt = Date.now();
       if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
-        logger.warn(
+        log.warn(
           { jobId, status: status.status, queuedForMinutes: Math.round((Date.now() - firstQueuedAt) / 60_000) },
           "kanban-auto-fire: job still queued after grace period — giving up early (will be reconciled automatically if Azure later completes it)",
         );
@@ -513,9 +514,9 @@ async function runInBackground(
           packageContext: "Automated M365 analysis triggered by client App Registration",
           customerId: clientUserId,
         });
-        logger.info({ runResultId, jobId, scriptTitle }, "kanban-auto-fire: AI analysis completed");
+        log.info({ runResultId, jobId, scriptTitle }, "kanban-auto-fire: AI analysis completed");
       } catch (aiErr) {
-        logger.warn({ aiErr, jobId, scriptTitle }, "kanban-auto-fire: AI analysis failed (non-fatal)");
+        log.warn({ aiErr, jobId, scriptTitle }, "kanban-auto-fire: AI analysis failed (non-fatal)");
       }
     }
 
@@ -537,7 +538,7 @@ async function runInBackground(
           })
           .where(eq(scriptRunResultsTable.id, runResultId));
       } catch (updateErr) {
-        logger.warn({ updateErr, runResultId, jobId }, "kanban-auto-fire: could not update script_run_results (non-fatal)");
+        log.warn({ updateErr, runResultId, jobId }, "kanban-auto-fire: could not update script_run_results (non-fatal)");
       }
     }
 
@@ -547,13 +548,13 @@ async function runInBackground(
     try {
       await applyProfileUpdates(clientUserId, mergedProfileUpdates);
     } catch (profileErr) {
-      logger.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: failed to apply profile updates (non-fatal)");
+      log.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: failed to apply profile updates (non-fatal)");
     }
     if (success) {
       try {
         await snapshotHealthFromProfile(clientUserId);
       } catch (snapErr) {
-        logger.warn({ snapErr, clientUserId, jobId }, "kanban-auto-fire: failed to snapshot health scores (non-fatal)");
+        log.warn({ snapErr, clientUserId, jobId }, "kanban-auto-fire: failed to snapshot health scores (non-fatal)");
       }
     }
 
@@ -580,7 +581,7 @@ async function runInBackground(
             .where(eq(kanbanTasksTable.id, primaryCardId));
         }
       } catch (metaErr) {
-        logger.warn({ metaErr, primaryCardId, jobId }, "kanban-auto-fire: could not save script output to kanban card (non-fatal)");
+        log.warn({ metaErr, primaryCardId, jobId }, "kanban-auto-fire: could not save script output to kanban card (non-fatal)");
       }
     }
 
@@ -596,7 +597,7 @@ async function runInBackground(
           })
           .where(eq(clientAutomationRunsTable.id, automationRunId));
       } catch (arErr) {
-        logger.warn({ arErr, automationRunId, jobId }, "kanban-auto-fire: could not update client_automation_runs (non-fatal)");
+        log.warn({ arErr, automationRunId, jobId }, "kanban-auto-fire: could not update client_automation_runs (non-fatal)");
       }
     }
 
@@ -615,13 +616,13 @@ async function runInBackground(
         for (const t of completedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
       }
 
-      logger.info({ cardIds, jobId }, "kanban-auto-fire: script completed — cards moved to completed");
+      log.info({ cardIds, jobId }, "kanban-auto-fire: script completed — cards moved to completed");
 
       // Phase advance (activates the next workflow phase if every card in this step is done)
       if (workflowStepId != null) {
         const { spawnedTasks } = await advancePhaseIfComplete(workflowStepId, projectId);
         if (spawnedTasks.length > 0) {
-          logger.info({ workflowStepId, projectId, spawnedCount: spawnedTasks.length }, "kanban-auto-fire: next phase activated");
+          log.info({ workflowStepId, projectId, spawnedCount: spawnedTasks.length }, "kanban-auto-fire: next phase activated");
         }
       }
 
@@ -649,7 +650,7 @@ async function runInBackground(
           const meta = (primaryCard?.taskMetadata ?? {}) as Record<string, unknown>;
           currentFailureCount = typeof meta.autoFireFailureCount === "number" ? meta.autoFireFailureCount : 0;
         } catch (readErr) {
-          logger.warn({ readErr, primaryCardId }, "kanban-auto-fire: could not read failure count (defaulting to 0)");
+          log.warn({ readErr, primaryCardId }, "kanban-auto-fire: could not read failure count (defaulting to 0)");
         }
       }
       const { newCount: newFailureCount, exhausted, completionStatus: failCompletionStatus } = computeNextFailureState(currentFailureCount);
@@ -691,7 +692,7 @@ async function runInBackground(
       }
 
       if (exhausted) {
-        logger.warn(
+        log.warn(
           { cardIds, jobId, lastStatus, newFailureCount, clientUserId },
           "kanban-auto-fire: retry budget exhausted — cards reverted to backlog with auto_fire_exhausted; alerting Shane",
         );
@@ -706,7 +707,7 @@ async function runInBackground(
           failureCount: newFailureCount,
         });
       } else {
-        logger.warn(
+        log.warn(
           { cardIds, jobId, lastStatus, newFailureCount, maxFailures: MAX_AUTO_FIRE_FAILURES },
           "kanban-auto-fire: script failed — cards reverted to backlog (will be retried by reconcile loop)",
         );
@@ -715,7 +716,7 @@ async function runInBackground(
 
     await syncProjectProgress(projectId);
   } catch (err) {
-    logger.warn({ err, jobId, cardIds }, "kanban-auto-fire: background run error — recovering cards to backlog");
+    log.warn({ err, jobId, cardIds }, "kanban-auto-fire: background run error — recovering cards to backlog");
 
     // Recovery: when an unexpected exception escapes the polling loop (e.g., Azure
     // network failure, auth error, or mid-poll process restart), cards are still
@@ -771,12 +772,12 @@ async function runInBackground(
         });
       }
 
-      logger.info(
+      log.info(
         { cardIds, jobId, catchFailCount, catchExhausted },
         "kanban-auto-fire: cards reverted to backlog after background polling error",
       );
     } catch (recoverErr) {
-      logger.warn({ recoverErr, cardIds, jobId }, "kanban-auto-fire: catch-block recovery also failed — cards may remain in_progress");
+      log.warn({ recoverErr, cardIds, jobId }, "kanban-auto-fire: catch-block recovery also failed — cards may remain in_progress");
     }
   }
 }
@@ -903,7 +904,7 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
   const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
   const currentFailureCount = typeof prevMeta.autoFireFailureCount === "number" ? prevMeta.autoFireFailureCount : 0;
 
-  logger.info(
+  log.info(
     { clientUserId, cardId: card.id, docType: card.documentGeneration.docType, currentFailureCount },
     "kanban-auto-fire: auto-firing document generation card",
   );
@@ -935,13 +936,13 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
 
-    logger.error(
+    log.error(
       { genErr, clientUserId, cardId: card.id, newCount, exhausted },
       "kanban-auto-fire: document generation failed — card reverted to backlog",
     );
 
     if (exhausted) {
-      logger.warn(
+      log.warn(
         { cardId: card.id, clientUserId, failureCount: newCount },
         "kanban-auto-fire: document retry budget exhausted — alerting Shane",
       );
@@ -976,7 +977,7 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
     if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
   }
 
-  logger.info(
+  log.info(
     { clientUserId, cardId: card.id, documentId },
     "kanban-auto-fire: document generated and card completed",
   );
@@ -985,7 +986,7 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
   if (card.workflowStepId != null) {
     const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
     if (spawnedTasks.length > 0) {
-      logger.info(
+      log.info(
         { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
         "kanban-auto-fire: next phase activated after document generation",
       );
@@ -1018,7 +1019,7 @@ export async function autoFireAllDocumentCards(clientUserId: number): Promise<vo
 
     // ── 1. Fire all non-SOW docs simultaneously ───────────────────────────
     if (nonSow.length > 0) {
-      logger.info(
+      log.info(
         { clientUserId, count: nonSow.length, docTypes: nonSow.map(c => c.documentGeneration.docType) },
         "kanban-auto-fire: firing non-SOW document cards in parallel",
       );
@@ -1045,7 +1046,7 @@ export async function autoFireAllDocumentCards(clientUserId: number): Promise<vo
       // concurrent autoFireAllDocumentCards call or a prior parallel batch).
       const inProgressNonSow = await countInProgressNonSowDocCards(clientUserId);
       if (inProgressNonSow > 0) {
-        logger.info(
+        log.info(
           { clientUserId, inProgressNonSow, sowCount: sow.length },
           "kanban-auto-fire: SOW deferred — non-SOW documents still in progress",
         );
@@ -1054,7 +1055,7 @@ export async function autoFireAllDocumentCards(clientUserId: number): Promise<vo
         return;
       }
 
-      logger.info(
+      log.info(
         { clientUserId, count: sow.length },
         "kanban-auto-fire: all non-SOW docs complete — firing SOW document cards",
       );
@@ -1073,10 +1074,10 @@ export async function autoFireAllDocumentCards(clientUserId: number): Promise<vo
     }
 
     if (nonSow.length === 0 && sow.length === 0) {
-      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog document cards found");
+      log.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog document cards found");
     }
   } catch (err) {
-    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireAllDocumentCards unexpected error (non-fatal)");
+    log.warn({ err, clientUserId }, "kanban-auto-fire: autoFireAllDocumentCards unexpected error (non-fatal)");
   }
 }
 
@@ -1179,7 +1180,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
   const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
   const currentFailureCount = typeof prevMeta.autoFireFailureCount === "number" ? prevMeta.autoFireFailureCount : 0;
 
-  logger.info(
+  log.info(
     { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, currentFailureCount },
     "kanban-auto-fire: auto-firing run_workflow card",
   );
@@ -1214,7 +1215,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
       .where(eq(kanbanTasksTable.id, card.id));
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-    logger.error(
+    log.error(
       { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, newCount, exhausted },
       "kanban-auto-fire: run_workflow no published version — card reverted to backlog",
     );
@@ -1238,7 +1239,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
   const runningCount = Number(cntRow?.cnt ?? 0);
 
   if (runningCount >= concurrencyLimit) {
-    logger.info(
+    log.info(
       { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, runningCount, concurrencyLimit },
       "kanban-auto-fire: run_workflow concurrency limit reached — deferring card back to backlog",
     );
@@ -1296,7 +1297,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
       .where(eq(kanbanTasksTable.id, card.id));
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-    logger.error({ insertErr, clientUserId, cardId: card.id, newCount, exhausted },
+    log.error({ insertErr, clientUserId, cardId: card.id, newCount, exhausted },
       "kanban-auto-fire: run_workflow failed to create run — card reverted to backlog");
     return;
   }
@@ -1326,7 +1327,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
       .where(eq(kanbanTasksTable.id, card.id));
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-    logger.error({ execErr, clientUserId, cardId: card.id, childRunId, newCount, exhausted },
+    log.error({ execErr, clientUserId, cardId: card.id, childRunId, newCount, exhausted },
       "kanban-auto-fire: run_workflow execution threw — card reverted to backlog");
     return;
   }
@@ -1360,7 +1361,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
       .where(eq(kanbanTasksTable.id, card.id));
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-    logger.error({ clientUserId, cardId: card.id, childRunId, status: finalRun.status, newCount, exhausted },
+    log.error({ clientUserId, cardId: card.id, childRunId, status: finalRun.status, newCount, exhausted },
       "kanban-auto-fire: run_workflow run ended in failure — card reverted to backlog");
     return;
   }
@@ -1381,7 +1382,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
     if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
   }
 
-  logger.info(
+  log.info(
     { clientUserId, cardId: card.id, childRunId },
     "kanban-auto-fire: run_workflow card completed — sub-workflow triggered",
   );
@@ -1389,7 +1390,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
   if (card.workflowStepId != null) {
     const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
     if (spawnedTasks.length > 0) {
-      logger.info(
+      log.info(
         { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
         "kanban-auto-fire: next phase activated after run_workflow",
       );
@@ -1409,11 +1410,11 @@ export async function autoFireRunWorkflowCards(clientUserId: number): Promise<vo
   try {
     const allBacklog = await findAllBacklogRunWorkflowCards(clientUserId);
     if (allBacklog.length === 0) {
-      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog run_workflow cards found");
+      log.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog run_workflow cards found");
       return;
     }
 
-    logger.info(
+    log.info(
       { clientUserId, count: allBacklog.length },
       "kanban-auto-fire: firing run_workflow cards in parallel",
     );
@@ -1430,20 +1431,20 @@ export async function autoFireRunWorkflowCards(clientUserId: number): Promise<vo
 
     await Promise.allSettled(allBacklog.map(card => fireRunWorkflowCard(clientUserId, card)));
   } catch (err) {
-    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireRunWorkflowCards unexpected error (non-fatal)");
+    log.warn({ err, clientUserId }, "kanban-auto-fire: autoFireRunWorkflowCards unexpected error (non-fatal)");
   }
 }
 
 export async function autoFireFirstBacklogScript(clientUserId: number): Promise<void> {
   if (!isAzureConfigured()) {
-    logger.warn({ clientUserId }, "kanban-auto-fire: Azure not configured — skipping auto-fire");
+    log.warn({ clientUserId }, "kanban-auto-fire: Azure not configured — skipping auto-fire");
     return;
   }
 
   try {
     const card = await findFirstBacklogScriptCard(clientUserId);
     if (!card) {
-      logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found");
+      log.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found");
       return;
     }
 
@@ -1459,7 +1460,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       .limit(1);
 
     if (!appReg) {
-      logger.warn({ clientUserId }, "kanban-auto-fire: no verified App Registration found");
+      log.warn({ clientUserId }, "kanban-auto-fire: no verified App Registration found");
       return;
     }
 
@@ -1467,7 +1468,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     try {
       clientSecret = await getSecretValue(appReg.keyVaultSecretName);
     } catch (kvErr) {
-      logger.error({ kvErr, clientUserId }, "kanban-auto-fire: Key Vault fetch failed");
+      log.error({ kvErr, clientUserId }, "kanban-auto-fire: Key Vault fetch failed");
       return;
     }
 
@@ -1487,7 +1488,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     // adopt it instead of stacking another one on the queue.
     const existingJobId = await findActiveJobForScript(card.linkedRunbook.scriptId).catch(() => null);
     if (existingJobId) {
-      logger.info(
+      log.info(
         { clientUserId, existingJobId, scriptId: card.linkedRunbook.scriptId },
         "kanban-auto-fire: adopting existing active Azure job — skipping duplicate submission",
       );
@@ -1550,7 +1551,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       const createFailRevertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
       for (const t of createFailRevertedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
 
-      logger.error(
+      log.error(
         { azErr, clientUserId, scriptId: card.linkedRunbook.scriptId, createFailCount, createFailExhausted },
         "kanban-auto-fire: Azure job creation failed — cards reverted to backlog with retry budget",
       );
@@ -1585,7 +1586,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       for (const t of stampedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
     }
 
-    logger.info(
+    log.info(
       { clientUserId, jobId, scriptId: card.linkedRunbook.scriptId, cardIds: siblingIds },
       "kanban-auto-fire: job started — polling in background",
     );
@@ -1606,7 +1607,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
         .returning({ id: scriptRunResultsTable.id });
       runResultId = resultRow?.id;
     } catch (resultErr) {
-      logger.warn({ resultErr, jobId }, "kanban-auto-fire: could not insert script_run_results placeholder (non-fatal)");
+      log.warn({ resultErr, jobId }, "kanban-auto-fire: could not insert script_run_results placeholder (non-fatal)");
     }
 
     // Insert a client_automation_runs row so the CRM navigation progress widget shows this script.
@@ -1624,13 +1625,13 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
         .returning({ id: clientAutomationRunsTable.id });
       automationRunId = arRow?.id;
     } catch (arErr) {
-      logger.warn({ arErr, jobId }, "kanban-auto-fire: could not insert client_automation_runs row (non-fatal)");
+      log.warn({ arErr, jobId }, "kanban-auto-fire: could not insert client_automation_runs row (non-fatal)");
     }
 
     // Detached — does NOT block the HTTP response
     void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId, card.linkedRunbook.scriptTitle, automationRunId);
   } catch (err) {
-    logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
+    log.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
   }
 }
 
@@ -1672,7 +1673,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
 
     if (stuck.length === 0) return;
 
-    logger.info({ count: stuck.length }, "kanban-auto-fire: reconciling orphaned in_progress cards");
+    log.info({ count: stuck.length }, "kanban-auto-fire: reconciling orphaned in_progress cards");
 
     // Group by jobId
     const byJob = new Map<string, typeof stuck>();
@@ -1700,7 +1701,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
             .where(inArray(kanbanTasksTable.id, cardIds));
           const fixed = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
           for (const t of fixed) broadcastKanbanChange(projectId, { action: "updated", task: t });
-          logger.info({ cardIds, jobId }, "kanban-auto-fire: fixed sibling-stampede victims (column→completed)");
+          log.info({ cardIds, jobId }, "kanban-auto-fire: fixed sibling-stampede victims (column→completed)");
           processedClientIds.add(clientUserId);
           continue;
         }
@@ -1715,7 +1716,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
             .where(eq(scriptRunResultsTable.jobId, jobId))
             .limit(1);
           void runInBackground(jobId, cardIds, projectId, workflowStepId, clientUserId, runRow?.id, "(reconciled)", undefined);
-          logger.info({ jobId, cardIds }, "kanban-auto-fire: re-spawned poller for job still running in Azure");
+          log.info({ jobId, cardIds }, "kanban-auto-fire: re-spawned poller for job still running in Azure");
           continue;
         }
 
@@ -1768,9 +1769,9 @@ export async function reconcileOrphanedRuns(): Promise<void> {
         }
 
         await syncProjectProgress(projectId);
-        logger.info({ jobId, success, cardIds }, "kanban-auto-fire: reconciled orphaned job");
+        log.info({ jobId, success, cardIds }, "kanban-auto-fire: reconciled orphaned job");
       } catch (err) {
-        logger.warn({ err, jobId }, "kanban-auto-fire: could not reconcile this job (non-fatal)");
+        log.warn({ err, jobId }, "kanban-auto-fire: could not reconcile this job (non-fatal)");
       }
     }
 
@@ -1781,7 +1782,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
       void autoFireRunWorkflowCards(clientUserId);
     }
   } catch (err) {
-    logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
+    log.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
   }
 }
 
@@ -1832,7 +1833,7 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
 
     if (candidates.length === 0) return;
 
-    logger.info({ count: candidates.length }, "kanban-auto-fire: checking late-arriving completions for stuck-queued failures");
+    log.info({ count: candidates.length }, "kanban-auto-fire: checking late-arriving completions for stuck-queued failures");
 
     const byJob = new Map<string, typeof candidates>();
     for (const card of candidates) {
@@ -1871,7 +1872,7 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
               customerId: clientUserId,
             });
           } catch (aiErr) {
-            logger.warn({ aiErr, jobId }, "kanban-auto-fire: late-completion AI analysis failed (non-fatal)");
+            log.warn({ aiErr, jobId }, "kanban-auto-fire: late-completion AI analysis failed (non-fatal)");
           }
         }
         const deterministicUpdates = parseM365ScriptOutput(output);
@@ -1881,7 +1882,7 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
           await applyProfileUpdates(clientUserId, mergedProfileUpdates);
           await snapshotHealthFromProfile(clientUserId);
         } catch (profileErr) {
-          logger.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: late-completion profile update failed (non-fatal)");
+          log.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: late-completion profile update failed (non-fatal)");
         }
 
         const [runRow] = await db
@@ -1944,12 +1945,12 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
         await syncProjectProgress(projectId);
         processedClientIds.add(clientUserId);
 
-        logger.info(
+        log.info(
           { cardIds, jobId },
           "kanban-auto-fire: late-arriving completion corrected a false stuck-queued failure",
         );
       } catch (err) {
-        logger.warn({ err, jobId }, "kanban-auto-fire: could not reconcile late stuck-queued job (non-fatal)");
+        log.warn({ err, jobId }, "kanban-auto-fire: could not reconcile late stuck-queued job (non-fatal)");
       }
     }
 
@@ -1959,7 +1960,7 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
       void autoFireRunWorkflowCards(clientUserId);
     }
   } catch (err) {
-    logger.warn({ err }, "kanban-auto-fire: reconcileLateStuckQueuedCompletions failed (non-fatal)");
+    log.warn({ err }, "kanban-auto-fire: reconcileLateStuckQueuedCompletions failed (non-fatal)");
   }
 }
 
@@ -2054,7 +2055,7 @@ export async function reconcileStalledPhases(): Promise<void> {
         const toRevert = [...stuckCards, ...staleAutoFire];
         if (toRevert.length > 0) {
           const toRevertIds = toRevert.map(c => c.id);
-          logger.warn(
+          log.warn(
             {
               stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId,
               stuckIds: stuckCards.map(c => c.id), staleIds: staleAutoFire.map(c => c.id),
@@ -2120,7 +2121,7 @@ export async function reconcileStalledPhases(): Promise<void> {
 
       if (staleDocToRevert.length > 0) {
         const staleDocIds = staleDocToRevert.map(c => c.id);
-        logger.warn(
+        log.warn(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId, staleDocIds },
           "kanban-auto-fire: reconcileStalledPhases — reverting stale in_progress document cards to backlog",
         );
@@ -2166,7 +2167,7 @@ export async function reconcileStalledPhases(): Promise<void> {
         .limit(1);
 
       if (backlogCard) {
-        logger.info(
+        log.info(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
           "kanban-auto-fire: detected stalled phase — no active in_progress cards but backlog script cards exist",
         );
@@ -2189,7 +2190,7 @@ export async function reconcileStalledPhases(): Promise<void> {
         .limit(1);
 
       if (backlogDocCard) {
-        logger.info(
+        log.info(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
           "kanban-auto-fire: detected stalled phase — backlog document_generation cards need auto-fire",
         );
@@ -2221,7 +2222,7 @@ export async function reconcileStalledPhases(): Promise<void> {
 
       if (staleRwToRevert.length > 0) {
         const staleRwIds = staleRwToRevert.map(c => c.id);
-        logger.warn(
+        log.warn(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId, staleRwIds },
           "kanban-auto-fire: reconcileStalledPhases — reverting stale in_progress run_workflow cards to backlog",
         );
@@ -2265,7 +2266,7 @@ export async function reconcileStalledPhases(): Promise<void> {
         .limit(1);
 
       if (backlogRwCard) {
-        logger.info(
+        log.info(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
           "kanban-auto-fire: detected stalled phase — backlog run_workflow cards need auto-fire",
         );
@@ -2279,6 +2280,6 @@ export async function reconcileStalledPhases(): Promise<void> {
       void autoFireRunWorkflowCards(clientUserId);
     }
   } catch (err) {
-    logger.warn({ err }, "kanban-auto-fire: reconcileStalledPhases failed (non-fatal)");
+    log.warn({ err }, "kanban-auto-fire: reconcileStalledPhases failed (non-fatal)");
   }
 }

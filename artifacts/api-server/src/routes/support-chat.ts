@@ -35,6 +35,8 @@ import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 
+const log = logger.child({ channel: "growth.booking" });
+
 const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -193,7 +195,7 @@ async function escalateToAdmin(opts: {
       .limit(1);
 
     if (!adminUser) {
-      logger.warn("support-chat: no admin user found for escalation");
+      log.warn("support-chat: no admin user found for escalation");
       return;
     }
 
@@ -237,7 +239,7 @@ async function escalateToAdmin(opts: {
       });
     }
   } catch (err) {
-    logger.error({ err }, "support-chat: escalation error");
+    log.error({ err }, "support-chat: escalation error");
   }
 }
 
@@ -275,7 +277,7 @@ router.post(
         };
       }
     } catch (err) {
-      logger.error({ err }, "support-chat: failed to build grounded context");
+      log.error({ err }, "support-chat: failed to build grounded context");
       groundedCtx = { identity: "platform user", summary: "Platform data temporarily unavailable." };
     }
 
@@ -293,7 +295,7 @@ router.post(
       const block = response.content[0];
       fullReply = block.type === "text" ? block.text : "";
     } catch (err) {
-      logger.error({ err }, "support-chat: Anthropic call failed");
+      log.error({ err }, "support-chat: Anthropic call failed");
       res.status(503).json({
         error: "The AI assistant is temporarily unavailable. Please try again shortly.",
       });

@@ -31,6 +31,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "auth" });
 
 const router: IRouter = Router();
 
@@ -113,7 +114,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Microsoft declined callback — surface a clear message
   if (error === "access_denied" || error_subcode === "cancel") {
-    logger.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
+    log.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
 
     if (state && !UUID_RE.test(state)) {
       // Burn the invite token on decline too
@@ -143,7 +144,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Success callback must include tenant + admin_consent=True
   if (!tenant || admin_consent?.toLowerCase() !== "true") {
-    logger.warn({ tenant, admin_consent, state }, "Consent callback: unexpected parameters");
+    log.warn({ tenant, admin_consent, state }, "Consent callback: unexpected parameters");
     res.status(400).send("Invalid consent callback parameters.");
     return;
   }
@@ -168,7 +169,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!row) {
-      logger.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
+      log.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
       res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
       return;
     }
@@ -206,7 +207,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       },
     });
 
-  logger.info({ tenant, customerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
+  log.info({ tenant, customerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
 
   // MSP-channel customers start "onboarding" and flip to "active" exactly on
   // consent granted (business rule, confirmed). Only applies to the invite-token
@@ -226,7 +227,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         ),
       )
       .catch((err: unknown) => {
-        logger.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
+        log.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
       });
   }
 
@@ -268,9 +269,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         });
 
       successRedirect += `&session=${encodeURIComponent(state)}`;
-      logger.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
+      log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
     } else {
-      logger.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
+      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
     }
   }
 
@@ -328,7 +329,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     resolvedPackageKey = packageKey;
 
     if (packageKey == null) {
-      logger.warn(
+      log.warn(
         { tenant, isCheckoutSession, hasInviteRecord: inviteRecord != null },
         "consent.granted: packageKey unresolvable — skipping event emission",
       );
@@ -338,10 +339,10 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         packageKey,
         ...(clientId != null ? { clientId } : {}),
       });
-      logger.info({ tenant, packageKey, clientId }, "consent.granted: event emitted");
+      log.info({ tenant, packageKey, clientId }, "consent.granted: event emitted");
     }
   } catch (err) {
-    logger.warn({ err, tenant }, "consent.granted: event emission error — non-fatal, redirect proceeds");
+    log.warn({ err, tenant }, "consent.granted: event emission error — non-fatal, redirect proceeds");
   }
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
@@ -354,9 +355,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         packageKey: resolvedPackageKey ?? "default",
         triggeredByUserId: undefined,
       });
-      logger.info({ tenant }, "consent.granted: diagnostics run started");
+      log.info({ tenant }, "consent.granted: diagnostics run started");
     } catch (diagErr) {
-      logger.warn({ err: diagErr, tenant }, "consent.granted: diagnostics run failed (non-fatal)");
+      log.warn({ err: diagErr, tenant }, "consent.granted: diagnostics run failed (non-fatal)");
     }
   })();
 

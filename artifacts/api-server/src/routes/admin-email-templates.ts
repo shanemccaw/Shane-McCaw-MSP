@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { sendEmailOrThrow, brandedEmail } from "../lib/mailer";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "comms.email" });
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
@@ -229,10 +230,10 @@ router.post("/admin/email-templates/:slug/test", requireAdmin, async (req: Reque
   try {
     const fullHtml = await brandedEmail(bodyWithVars);
     await sendEmailOrThrow(adminEmail, `[TEST] ${subjectWithVars}`, fullHtml, { skipWrapper: true });
-    logger.info({ slug, to: adminEmail }, "Test email sent for template");
+    log.info({ slug, to: adminEmail }, "Test email sent for template");
     res.json({ ok: true, sentTo: adminEmail });
   } catch (err) {
-    logger.error({ err, slug }, "Failed to send test email");
+    log.error({ err, slug }, "Failed to send test email");
     res.status(503).json({ error: err instanceof Error ? err.message : "Failed to send test email" });
   }
 });
@@ -311,10 +312,10 @@ Write the email body HTML now. Output ONLY the HTML — no explanation, no markd
     });
 
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    logger.info({ slug }, "AI email body generated");
+    log.info({ slug }, "AI email body generated");
     res.json({ bodyHtml: text.trim() });
   } catch (err) {
-    logger.error({ err, slug }, "AI generate failed");
+    log.error({ err, slug }, "AI generate failed");
     res.status(503).json({ error: err instanceof Error ? err.message : "AI generation failed" });
   }
 });

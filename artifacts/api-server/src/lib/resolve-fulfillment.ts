@@ -25,6 +25,7 @@ import { fulfillmentTypesTable, fulfillmentIdempotencyTable } from "@workspace/d
 import { eq } from "drizzle-orm";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { logger } from "./logger";
+const log = logger.child({ channel: "billing" });
 
 export interface ResolveFulfillmentInput {
   /** Key into fulfillment_types (e.g. "assessment", "retainer") */
@@ -69,7 +70,7 @@ export async function resolveFulfillment(
     .limit(1);
 
   if (!fulfillmentType) {
-    logger.warn(
+    log.warn(
       { fulfillmentTypeKey, idempotencyKey, trigger },
       "resolve-fulfillment: unknown fulfillmentTypeKey — event not emitted",
     );
@@ -77,7 +78,7 @@ export async function resolveFulfillment(
   }
 
   if (!fulfillmentType.isActive) {
-    logger.info(
+    log.info(
       { fulfillmentTypeKey, idempotencyKey, trigger },
       "resolve-fulfillment: fulfillmentType is inactive — event not emitted",
     );
@@ -92,7 +93,7 @@ export async function resolveFulfillment(
     .limit(1);
 
   if (existing) {
-    logger.info(
+    log.info(
       { fulfillmentTypeKey, idempotencyKey, trigger },
       "resolve-fulfillment: idempotency hit — skipping duplicate emission",
     );
@@ -121,7 +122,7 @@ export async function resolveFulfillment(
 
   if (!inserted.length) {
     // Another concurrent call won the race
-    logger.info(
+    log.info(
       { fulfillmentTypeKey, idempotencyKey, trigger },
       "resolve-fulfillment: concurrent idempotency race — skipping duplicate emission",
     );
@@ -133,7 +134,7 @@ export async function resolveFulfillment(
   const eventName = `fulfillment.${fulfillmentTypeKey}`;
   await emitWorkflowEvent(eventName, fullPayload);
 
-  logger.info(
+  log.info(
     { eventName, fulfillmentTypeKey, idempotencyKey, trigger },
     "resolve-fulfillment: emitted fulfillment event",
   );

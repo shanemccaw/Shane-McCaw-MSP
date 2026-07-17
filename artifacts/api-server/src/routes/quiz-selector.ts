@@ -5,6 +5,7 @@ import { eq, sql, count } from "drizzle-orm";
 import { db, quizAnalyticsEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "growth.quiz" });
 
 const router = Router();
 
@@ -53,7 +54,7 @@ router.post("/quiz-selector/result", submitLimiter, async (req, res) => {
     });
     return res.status(201).json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "quiz-selector POST /result failed");
+    log.error({ err }, "quiz-selector POST /result failed");
     return res.status(500).json({ error: "Failed to record result" });
   }
 });

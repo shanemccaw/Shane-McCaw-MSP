@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.signals" });
 import { startSlaTimer } from "./sla-engine";
 
 /**
@@ -513,13 +514,13 @@ export function computeTenantSignals(
     const slaSignalKeys = [...firedSignals].filter(k => k.startsWith("sla:"));
     if (slaSignalKeys.length > 0) {
       triggerSlaTimersForFiredSignals(context.customerId, context.mspId, slaSignalKeys)
-        .catch(err => logger.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget SLA timer trigger failed"));
+        .catch(err => log.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget SLA timer trigger failed"));
     }
   }
 
   if (context) {
     recordSignalTransitions(context.customerId, context.mspId, firedSignals)
-      .catch(err => logger.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget signal transition recording failed"));
+      .catch(err => log.warn({ err, customerId: context.customerId, mspId: context.mspId }, "computeTenantSignals: fire-and-forget signal transition recording failed"));
   }
 
   return { firedSignals, trace };
@@ -551,12 +552,12 @@ async function triggerSlaTimersForFiredSignals(
         idempotencyKey: `sla-signal:${customerId}:${signalKey}`,
       });
 
-      logger.info(
+      log.info(
         { signalKey, policyId: row.policyId, timerId, alreadyExisted },
         "computeTenantSignals: SLA timer triggered for fired signal",
       );
     } catch (err) {
-      logger.warn(
+      log.warn(
         { err, signalKey, customerId, mspId },
         "triggerSlaTimersForFiredSignals: failed to process signal key",
       );
@@ -586,7 +587,7 @@ async function recordSignalTransitions(
           VALUES (${customerId}, ${mspId}, ${signalKey}, NOW())
         `);
       } catch (err) {
-        logger.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
+        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
       }
     }
 
@@ -598,11 +599,11 @@ async function recordSignalTransitions(
           WHERE customer_id = ${customerId} AND signal_key = ${signalKey} AND resolved_at IS NULL
         `);
       } catch (err) {
-        logger.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
+        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
       }
     }
   } catch (err) {
-    logger.warn({ err, customerId, mspId }, "recordSignalTransitions: failed to fetch open signal rows");
+    log.warn({ err, customerId, mspId }, "recordSignalTransitions: failed to fetch open signal rows");
   }
 }
 
@@ -624,7 +625,7 @@ export async function getStabilizedSignals(customerId: number): Promise<Set<stri
     `);
     return new Set((rows.rows as { signalKey: string }[]).map(r => r.signalKey));
   } catch (err) {
-    logger.warn({ err, customerId }, "getStabilizedSignals: failed to query stabilized signals");
+    log.warn({ err, customerId }, "getStabilizedSignals: failed to query stabilized signals");
     return new Set();
   }
 }

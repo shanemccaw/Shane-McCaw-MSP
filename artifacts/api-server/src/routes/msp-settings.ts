@@ -70,7 +70,9 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
-import { logger } from "../lib/logger.ts";
+import { logger } from "../lib/log.ts";
+const log = log.child({ channel: "tenant.msp-admin" });
+
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
@@ -349,7 +351,7 @@ router.put("/msp/settings/connector/exchange", requireRole("MSPAdmin"), async (r
       purpose: "exchange-online-client-secret",
     });
   } else {
-    logger.warn({ mspId }, "msp-settings: Key Vault not configured — EXO credentials not stored");
+    log.warn({ mspId }, "msp-settings: Key Vault not configured — EXO credentials not stored");
   }
 
   const values = {
@@ -1103,7 +1105,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
 
   // ── Declined ────────────────────────────────────────────────────────────────
   if (error === "access_denied" || error_subcode === "cancel") {
-    logger.warn({ tenant, state, error }, "MSP mailbox consent: admin declined");
+    log.warn({ tenant, state, error }, "MSP mailbox consent: admin declined");
     if (state) {
       await db
         .update(mspMailboxConsentStatesTable)
@@ -1116,7 +1118,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
 
   // ── Success validation ──────────────────────────────────────────────────────
   if (!tenant || admin_consent?.toLowerCase() !== "true" || !state) {
-    logger.warn({ tenant, admin_consent, state }, "MSP mailbox consent: unexpected callback params");
+    log.warn({ tenant, admin_consent, state }, "MSP mailbox consent: unexpected callback params");
     res.status(400).send("Invalid consent callback parameters.");
     return;
   }
@@ -1136,7 +1138,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
     .limit(1);
 
   if (!stateRow) {
-    logger.warn({ state, tenant }, "MSP mailbox consent: state token invalid, expired, or already used");
+    log.warn({ state, tenant }, "MSP mailbox consent: state token invalid, expired, or already used");
     res.status(400).send("This consent link has expired or has already been used. Please request a new one.");
     return;
   }
@@ -1173,7 +1175,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
       },
     });
 
-  logger.info({ mspId: stateRow.mspId, tenant, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
+  log.info({ mspId: stateRow.mspId, tenant, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
 
   const returnPath = stateRow.returnPath ?? "/settings/connector";
   res.redirect(`${portalBase}/portal${returnPath}?mailbox_consent=success`);
@@ -1397,7 +1399,7 @@ router.post("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Reques
     metadata: { email, mspRole: parsed.data.mspRole },
   });
 
-  logger.info({ mspId, email, role: parsed.data.mspRole }, "msp-settings: invite created");
+  log.info({ mspId, email, role: parsed.data.mspRole }, "msp-settings: invite created");
   res.status(201).json(invite);
 });
 

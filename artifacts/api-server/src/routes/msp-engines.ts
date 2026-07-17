@@ -21,6 +21,8 @@ import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { ENGINE_DEFS } from "../lib/engine-registry";
 
+const log = logger.child({ channel: "tenant.portal" });
+
 const router: IRouter = Router();
 
 // ── Plan feature gate ─────────────────────────────────────────────────────────
@@ -135,7 +137,7 @@ router.get(
         rules: ruleRows.rows,
       });
     } catch (err) {
-      logger.error({ err, engineKey: key }, "msp-engines: configuration fetch failed");
+      log.error({ err, engineKey: key }, "msp-engines: configuration fetch failed");
       res.status(500).json({ error: "Failed to fetch engine configuration" });
     }
   },
@@ -190,10 +192,10 @@ router.post(
         ) RETURNING id
       `);
       const id = (result.rows[0] as { id: number }).id;
-      logger.info({ id, engineKey: key, mspId }, "msp-engines: MSP rule created");
+      log.info({ id, engineKey: key, mspId }, "msp-engines: MSP rule created");
       res.status(201).json({ id });
     } catch (err) {
-      logger.error({ err, engineKey: key }, "msp-engines: create rule failed");
+      log.error({ err, engineKey: key }, "msp-engines: create rule failed");
       res.status(500).json({ error: "Failed to create rule" });
     }
   },
@@ -223,7 +225,7 @@ router.delete(
       `);
       res.json({ ok: true });
     } catch (err) {
-      logger.error({ err, ruleId }, "msp-engines: delete rule failed");
+      log.error({ err, ruleId }, "msp-engines: delete rule failed");
       res.status(500).json({ error: "Failed to delete rule" });
     }
   },

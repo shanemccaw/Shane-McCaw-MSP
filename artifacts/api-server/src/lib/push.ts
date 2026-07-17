@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+const log = logger.child({ channel: "comms.sms-push" });
 
 interface ExpoPushMessage {
   to: string;
@@ -45,9 +46,9 @@ export async function sendPushNotifications(
     });
 
     if (!res.ok) {
-      logger.warn({ status: res.status }, "Expo push API returned non-OK status");
+      log.warn({ status: res.status }, "Expo push API returned non-OK status");
     }
   } catch (err) {
-    logger.warn({ err }, "Failed to send push notification (non-fatal)");
+    log.warn({ err }, "Failed to send push notification (non-fatal)");
   }
 }

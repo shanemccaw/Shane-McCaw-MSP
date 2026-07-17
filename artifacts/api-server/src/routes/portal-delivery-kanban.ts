@@ -32,6 +32,7 @@ import { broadcastKanbanChange } from "../lib/sse-broadcast.ts";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { executeMonitoringPackage } from "../lib/monitor-executor.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "engine.kanban" });
 
 const router = Router();
 
@@ -282,7 +283,7 @@ router.post("/portal/delivery-kanban-tasks/:id/run-workflow", requireAdmin, asyn
     return;
   }
 
-  logger.info({ taskId: id, workflowDefId, runId }, "delivery-kanban: admin fired run-workflow");
+  log.info({ taskId: id, workflowDefId, runId }, "delivery-kanban: admin fired run-workflow");
   res.json({ ok: true, runId, workflowName: def.name });
 });
 
@@ -333,10 +334,10 @@ router.post("/portal/delivery-kanban-tasks/:id/run-monitoring", requireAdmin, as
 
   try {
     const result = await executeMonitoringPackage({ packageKey, tenantId, triggerId });
-    logger.info({ taskId: id, packageKey, tenantId, runStatus: result.runStatus }, "delivery-kanban: admin fired run-monitoring");
+    log.info({ taskId: id, packageKey, tenantId, runStatus: result.runStatus }, "delivery-kanban: admin fired run-monitoring");
     res.json({ ok: true, packageKey, runStatus: result.runStatus, checksRan: result.checks.length });
   } catch (err) {
-    logger.warn({ err, taskId: id, packageKey }, "delivery-kanban: run-monitoring failed");
+    log.warn({ err, taskId: id, packageKey }, "delivery-kanban: run-monitoring failed");
     res.status(500).json({ error: "Monitoring package execution failed" });
   }
 });

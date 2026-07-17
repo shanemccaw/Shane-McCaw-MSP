@@ -46,6 +46,7 @@ import { eq, and, desc, count, or } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { checkMspMinTierSatisfied } from "../lib/msp-entitlement.ts";
 import { detectProductType } from "../lib/productTypeConfig.ts";
 import { z } from "zod";
@@ -93,7 +94,7 @@ async function emitSowEvent(
       payload,
     });
   } catch (err) {
-    logger.warn({ err, sowId, eventName }, "msp-sow: failed to emit SOW event (non-fatal)");
+    log.warn({ err, sowId, eventName }, "msp-sow: failed to emit SOW event (non-fatal)");
   }
 }
 
@@ -116,7 +117,7 @@ async function emitMspEvent(
       ownerType: customerId ? "customer" : "msp",
     });
   } catch (err) {
-    logger.warn({ err, eventType }, "msp-sow: failed to emit MSP event (non-fatal)");
+    log.warn({ err, eventType }, "msp-sow: failed to emit MSP event (non-fatal)");
   }
 }
 
@@ -297,7 +298,7 @@ router.post(
         sowId: sow.sowId, offerId, amountCents: offer.adjustedPriceCents,
       }, req.user!.id);
 
-      logger.info({ sowId: sow.sowId, offerId, mspId }, "msp-sow: SOW created from offer acceptance");
+      log.info({ sowId: sow.sowId, offerId, mspId }, "msp-sow: SOW created from offer acceptance");
 
       res.status(201).json({
         outcome: "sow_created",
@@ -329,7 +330,7 @@ router.post(
     try {
       stripeKey = getStripeKey();
     } catch (err) {
-      logger.warn({ err }, "msp-sow: Stripe not configured for offer checkout");
+      log.warn({ err }, "msp-sow: Stripe not configured for offer checkout");
       apiErr(res, 503, "Payment service not configured. Contact support.");
       return;
     }
@@ -389,7 +390,7 @@ router.post(
 
       const session = await stripe.checkout.sessions.create(sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]);
 
-      logger.info({ sessionId: session.id, offerId, mspId, serviceClass }, "msp-sow: Stripe checkout session created");
+      log.info({ sessionId: session.id, offerId, mspId, serviceClass }, "msp-sow: Stripe checkout session created");
 
       res.json({
         outcome: "checkout_required",
@@ -397,7 +398,7 @@ router.post(
         sessionId: session.id,
       });
     } catch (err) {
-      logger.error({ err, offerId, mspId }, "msp-sow: Stripe checkout session creation failed");
+      log.error({ err, offerId, mspId }, "msp-sow: Stripe checkout session creation failed");
       apiErr(res, 500, "Failed to create checkout session");
     }
   },
@@ -471,7 +472,7 @@ router.post(
 
     await emitSowEvent(sow.sowId, "sow.created", req.user!.id, req.user!.mspRole ?? req.user!.role);
 
-    logger.info({ sowId: sow.sowId, mspId }, "msp-sow: standalone SOW created");
+    log.info({ sowId: sow.sowId, mspId }, "msp-sow: standalone SOW created");
     res.status(201).json(sow);
   },
 );
@@ -658,7 +659,7 @@ router.post(
       sowId, signerName, amountCents: sow.amountCents,
     }, user.id);
 
-    logger.info({ sowId, mspId: sow.mspId, signerName }, "msp-sow: SOW signed");
+    log.info({ sowId, mspId: sow.mspId, signerName }, "msp-sow: SOW signed");
 
     // Charge now requires MSP approval (spec: MSP_Full_Catalog_Purchase_Charging_Spec_v1,
     // Phase 1) — no longer auto-fires here. Fires the "MSP SOW Charge Approval" seeded
@@ -667,7 +668,7 @@ router.post(
     void emitWorkflowEvent("sow.signed", {
       sowId, mspId: sow.mspId, amountCents: sow.amountCents, actorUserId: user.id,
     }).catch((err) => {
-      logger.warn({ err, sowId }, "msp-sow: failed to fire sow.signed workflow event (charge approval will not trigger)");
+      log.warn({ err, sowId }, "msp-sow: failed to fire sow.signed workflow event (charge approval will not trigger)");
     });
 
     res.json({ ok: true, status: "signed", message: "SOW signed successfully. Awaiting MSP approval to charge." });
@@ -707,7 +708,7 @@ router.post(
       await triggerMspCharge(sowId, mspId, sow.amountCents, req.user!.id);
       res.json({ ok: true, message: "Charge initiated" });
     } catch (err) {
-      logger.error({ err, sowId }, "msp-sow: manual charge trigger failed");
+      log.error({ err, sowId }, "msp-sow: manual charge trigger failed");
       apiErr(res, 500, "Failed to initiate charge. Check Stripe configuration.");
     }
   },
@@ -873,11 +874,11 @@ router.post(
       sowId: sow.sowId, signerName, amountCents: sow.amountCents, viaShareLink: true,
     }, null);
 
-    logger.info({ sowId: sow.sowId, signerName }, "msp-sow: SOW signed via public share link");
+    log.info({ sowId: sow.sowId, signerName }, "msp-sow: SOW signed via public share link");
 
     // Auto-trigger MSP charge
     void triggerMspCharge(sow.sowId, sow.mspId, sow.amountCents, null).catch((err) => {
-      logger.warn({ err, sowId: sow.sowId }, "msp-sow: auto-charge after public sign failed");
+      log.warn({ err, sowId: sow.sowId }, "msp-sow: auto-charge after public sign failed");
     });
 
     res.json({ ok: true, status: "signed" });
@@ -986,7 +987,7 @@ router.post(
       })
       .onConflictDoNothing();
 
-    logger.info({ mspId: customer.mspId, customerId, userId: user.id }, "msp-sow: clickwrap accepted");
+    log.info({ mspId: customer.mspId, customerId, userId: user.id }, "msp-sow: clickwrap accepted");
     res.json({ ok: true });
   },
 );
@@ -1026,7 +1027,7 @@ export async function triggerMspCharge(
   try {
     stripeKey = getStripeKey();
   } catch {
-    logger.warn({ sowId }, "msp-sow: Stripe not configured — cannot charge MSP");
+    log.warn({ sowId }, "msp-sow: Stripe not configured — cannot charge MSP");
     await db.update(mspSowsTable).set({
       status: "failed",
       failureReason: "Stripe not configured",
@@ -1096,20 +1097,20 @@ export async function triggerMspCharge(
       await emitSowEvent(sowId, "sow.paid", actorUserId, "system", { stripePaymentIntentId: pi.id, amountCents });
       await emitMspEvent(mspId, null, "msp.sow.paid", { sowId, stripePaymentIntentId: pi.id, amountCents }, actorUserId);
       await unlockFulfillment(sowId, mspId);
-      logger.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
+      log.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
       return { success: true, status: "paid", stripePaymentIntentId: pi.id };
     } else {
       // Requires further action (3DS, etc.) — surface as operator task
       await emitSowEvent(sowId, "sow.charge_pending", actorUserId, "system", {
         stripePaymentIntentId: pi.id, status: pi.status,
       });
-      logger.warn({ sowId, piStatus: pi.status }, "msp-sow: charge requires action — operator task needed");
-      logger.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
+      log.warn({ sowId, piStatus: pi.status }, "msp-sow: charge requires action — operator task needed");
+      log.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
       return { success: false, status: "pending_action", stripePaymentIntentId: pi.id };
     }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
-    logger.error({ err, sowId, mspId }, "msp-sow: Stripe charge failed");
+    log.error({ err, sowId, mspId }, "msp-sow: Stripe charge failed");
 
     await db.update(mspSowsTable).set({
       status: "failed",
@@ -1168,7 +1169,7 @@ async function unlockFulfillment(sowId: string, mspId: number): Promise<void> {
         eq(fulfillmentQueueTable.sourceId, sowId),
       ));
   } catch (err) {
-    logger.warn({ err, sowId, mspId }, "msp-sow: failed to unlock fulfillment queue (non-fatal)");
+    log.warn({ err, sowId, mspId }, "msp-sow: failed to unlock fulfillment queue (non-fatal)");
   }
 }
 

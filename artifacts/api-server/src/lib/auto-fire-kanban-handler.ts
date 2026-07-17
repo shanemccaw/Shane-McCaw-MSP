@@ -8,6 +8,7 @@
 
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire.ts";
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "engine.kanban" });
 
 export async function handleAutoFireKanban(
   payload: Record<string, unknown>,
@@ -21,17 +22,17 @@ export async function handleAutoFireKanban(
 
   if (action === "script" || action === "both") {
     void autoFireFirstBacklogScript(clientUserId).catch((err: unknown) => {
-      logger.warn({ err, clientUserId }, "auto_fire_kanban: script error (non-fatal)");
+      log.warn({ err, clientUserId }, "auto_fire_kanban: script error (non-fatal)");
     });
   }
   if (action === "document" || action === "both") {
     void autoFireDocumentCard(clientUserId).catch((err: unknown) => {
-      logger.warn({ err, clientUserId }, "auto_fire_kanban: document error (non-fatal)");
+      log.warn({ err, clientUserId }, "auto_fire_kanban: document error (non-fatal)");
     });
   }
   if (action === "workflow" || action === "both") {
     void autoFireRunWorkflowCards(clientUserId).catch((err: unknown) => {
-      logger.warn({ err, clientUserId }, "auto_fire_kanban: run_workflow error (non-fatal)");
+      log.warn({ err, clientUserId }, "auto_fire_kanban: run_workflow error (non-fatal)");
     });
   }
 

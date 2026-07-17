@@ -40,6 +40,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "tenant.msp-admin" });
 import { z } from "zod";
 
 const router: IRouter = Router();
@@ -127,7 +128,7 @@ router.post(
       createdByUserId: req.user!.id,
     });
 
-    logger.info({ mspId, customerEmail, serviceId, ttl }, "msp-onboarding: link generated");
+    log.info({ mspId, customerEmail, serviceId, ttl }, "msp-onboarding: link generated");
 
     const baseUrl = process.env.SITE_URL ?? "";
     const link = `${baseUrl}/onboarding/${token}`;
@@ -557,7 +558,7 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
     throw err;
   }
 
-  logger.info({ userId: acceptedUserId, mspId: row.mspId, role: row.mspRole }, "msp-invite: invite accepted");
+  log.info({ userId: acceptedUserId, mspId: row.mspId, role: row.mspRole }, "msp-invite: invite accepted");
 
   // Issue auth tokens so the accepting user lands on the portal dashboard
   // without a separate login step (same pattern as auth.ts login flow).
@@ -611,7 +612,7 @@ router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req:
         return;
       }
     } catch (tokenErr) {
-      logger.warn({ err: tokenErr }, "msp-invite: failed to issue tokens, continuing without auto-login");
+      log.warn({ err: tokenErr }, "msp-invite: failed to issue tokens, continuing without auto-login");
     }
   }
 

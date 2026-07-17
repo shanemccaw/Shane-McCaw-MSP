@@ -25,6 +25,7 @@ import {
 import { eq, and, desc, ne } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { extractAiHtml, parseSowPricing } from "./sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream-normalizer";
@@ -671,7 +672,7 @@ export async function generateAndDeliverDocument(
   });
 
   if (aiResponse.stop_reason === "max_tokens") {
-    logger.warn(
+    log.warn(
       { clientUserId, projectId, docType, outputLen: (aiResponse.content[0] as { text: string }).text?.length },
       "document-generator: output hit max_tokens — document may be truncated. Consider raising max_tokens or shortening prompt.",
     );
@@ -687,7 +688,7 @@ export async function generateAndDeliverDocument(
   const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
 
   if (testMode) {
-    logger.info(
+    log.info(
       { clientUserId, projectId, category, docType },
       "document-generator: test-draft generation complete (no persistence)",
     );
@@ -723,7 +724,7 @@ export async function generateAndDeliverDocument(
     .set({ pdfUrl })
     .where(eq(insightsGeneratedDocumentsTable.id, doc.id));
 
-  logger.info(
+  log.info(
     { clientUserId, projectId, documentId: doc.id, category, docType },
     "document-generator: document generated and auto-delivered",
   );

@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.monitor" });
 import { db, tenantConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable, usersTable, mspsTable } from "@workspace/db";
 import { eq, ne, and, or, gt, isNull } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
@@ -134,7 +135,7 @@ export async function getAccessTokenForTenant(tenantId: string): Promise<string>
       (res.status === 400 && (text.includes("invalid_grant") || text.includes("AADSTS65001") || text.includes("consent_required")));
 
     if (isConsentError) {
-      logger.warn({ tenantId, status: res.status }, "Graph token: consent revoked for tenant");
+      log.warn({ tenantId, status: res.status }, "Graph token: consent revoked for tenant");
       throw new ConsentRevokedError(tenantId);
     }
 
@@ -213,7 +214,7 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
       metadata: { tenantId, autoRevoked: true, source: "graph_401_response" },
     });
   } catch (err) {
-    logger.error({ err, tenantId }, "markTenantConsentRevoked: DB update failed");
+    log.error({ err, tenantId }, "markTenantConsentRevoked: DB update failed");
   }
 }
 
@@ -340,7 +341,7 @@ export async function graphFetchForTenant(
 
   if (res.status === 401) {
     const text = await res.text();
-    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — auto-revoking consent");
+    log.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — auto-revoking consent");
     tenantTokenCache.delete(tenantId);
     await markTenantConsentRevoked(tenantId);
     throw new ConsentRevokedError(tenantId);
@@ -351,7 +352,7 @@ export async function graphFetchForTenant(
   if (res.status === 400 || res.status === 403) {
     const text = await res.text();
     if (isConsentErrorBody(text)) {
-      logger.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error in body — auto-revoking consent");
+      log.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error in body — auto-revoking consent");
       tenantTokenCache.delete(tenantId);
       await markTenantConsentRevoked(tenantId);
       throw new ConsentRevokedError(tenantId);
@@ -396,7 +397,7 @@ export async function graphFetchForTenant(
         }
       }
     } catch (err) {
-      logger.error({ err, tenantId, path }, "Error applying graph response overrides");
+      log.error({ err, tenantId, path }, "Error applying graph response overrides");
     }
   }
 
@@ -431,7 +432,7 @@ export async function graphWriteForTenant(
 
   if (res.status === 401) {
     const text = await res.text();
-    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant write call: 401 — auto-revoking consent");
+    log.warn({ tenantId, status: 401, body: text }, "Graph tenant write call: 401 — auto-revoking consent");
     tenantTokenCache.delete(tenantId);
     await markTenantConsentRevoked(tenantId);
     throw new ConsentRevokedError(tenantId);
@@ -441,7 +442,7 @@ export async function graphWriteForTenant(
   if (res.status === 400 || res.status === 403) {
     const text = await res.text();
     if (isConsentErrorBody(text)) {
-      logger.warn({ tenantId, status: res.status, body: text }, "Graph tenant write call: consent error in body — auto-revoking consent");
+      log.warn({ tenantId, status: res.status, body: text }, "Graph tenant write call: consent error in body — auto-revoking consent");
       tenantTokenCache.delete(tenantId);
       await markTenantConsentRevoked(tenantId);
       throw new ConsentRevokedError(tenantId);
@@ -510,12 +511,12 @@ export async function getMailMessage(userId: string, messageId: string): Promise
     if (res.status === 404) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getMailMessage failed");
+      log.warn({ status: res.status, body: text }, "Graph getMailMessage failed");
       return null;
     }
     return await res.json() as GraphMessage;
   } catch (err) {
-    logger.error({ err }, "Graph getMailMessage error");
+    log.error({ err }, "Graph getMailMessage error");
     return null;
   }
 }
@@ -548,12 +549,12 @@ export async function getMailMessageBody(userId: string, messageId: string): Pro
     if (res.status === 404) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getMailMessageBody failed");
+      log.warn({ status: res.status, body: text }, "Graph getMailMessageBody failed");
       return null;
     }
     return await res.json() as GraphMessageBody;
   } catch (err) {
-    logger.error({ err }, "Graph getMailMessageBody error");
+    log.error({ err }, "Graph getMailMessageBody error");
     return null;
   }
 }
@@ -580,12 +581,12 @@ export async function createSubscription(webhookUrl: string, mailUserId: string)
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph createSubscription failed");
+      log.warn({ status: res.status, body: text }, "Graph createSubscription failed");
       return null;
     }
     return await res.json() as GraphSubscription;
   } catch (err) {
-    logger.error({ err }, "Graph createSubscription error");
+    log.error({ err }, "Graph createSubscription error");
     return null;
   }
 }
@@ -600,12 +601,12 @@ export async function renewSubscription(subscriptionId: string): Promise<GraphSu
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph renewSubscription failed");
+      log.warn({ status: res.status, body: text }, "Graph renewSubscription failed");
       return null;
     }
     return await res.json() as GraphSubscription;
   } catch (err) {
-    logger.error({ err }, "Graph renewSubscription error");
+    log.error({ err }, "Graph renewSubscription error");
     return null;
   }
 }
@@ -666,7 +667,7 @@ async function isDesignatedAdminContact(email: string): Promise<boolean> {
       }
     }
   } catch (err) {
-    logger.error({ err }, "isDesignatedAdminContact: error checking admin contacts");
+    log.error({ err }, "isDesignatedAdminContact: error checking admin contacts");
   }
 
   return adminEmails.includes(normalizedEmail);
@@ -689,10 +690,10 @@ export async function sendMailViaGraph(opts: {
   if (store?.isTestbed) {
     const isAllowed = await isDesignatedAdminContact(opts.to);
     if (!isAllowed) {
-      logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Email to non-admin suppressed");
+      log.info({ to: opts.to, subject: opts.subject }, "[Simulator] Email to non-admin suppressed");
       return;
     }
-    logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real email dispatch to admin contact");
+    log.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real email dispatch to admin contact");
   }
 
   const toRecipients: GraphMailRecipient[] = [
@@ -750,10 +751,10 @@ export async function sendMailViaGraphForMsp(opts: {
   if (store?.isTestbed) {
     const isAllowed = await isDesignatedAdminContact(opts.to);
     if (!isAllowed) {
-      logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] MSP Email to non-admin suppressed");
+      log.info({ to: opts.to, subject: opts.subject }, "[Simulator] MSP Email to non-admin suppressed");
       return;
     }
-    logger.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real MSP email dispatch to admin contact");
+    log.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real MSP email dispatch to admin contact");
   }
 
   const token = await getAccessTokenForTenant(opts.mspTenantId);
@@ -840,13 +841,13 @@ export async function createM365Group(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph createM365Group failed");
+      log.warn({ status: res.status, body: text }, "Graph createM365Group failed");
       return null;
     }
     const data = await res.json() as { id: string };
     return { id: data.id };
   } catch (err) {
-    logger.error({ err }, "Graph createM365Group error");
+    log.error({ err }, "Graph createM365Group error");
     return null;
   }
 }
@@ -860,7 +861,7 @@ export async function addGroupOwner(
     const userRes = await graphFetch(`/users/${encodeURIComponent(ownerUpn)}?$select=id`);
     if (!userRes.ok) {
       const text = await userRes.text();
-      logger.warn({ status: userRes.status, body: text, ownerUpn }, "addGroupOwner: failed to resolve user UPN");
+      log.warn({ status: userRes.status, body: text, ownerUpn }, "addGroupOwner: failed to resolve user UPN");
       return false;
     }
     const user = await userRes.json() as { id: string };
@@ -876,10 +877,10 @@ export async function addGroupOwner(
     const body = await addRes.text();
     if (addRes.status === 400 && body.includes("already exist")) return true;
 
-    logger.warn({ status: addRes.status, body, groupId, ownerUpn }, "addGroupOwner: Graph API returned error");
+    log.warn({ status: addRes.status, body, groupId, ownerUpn }, "addGroupOwner: Graph API returned error");
     return false;
   } catch (err) {
-    logger.error({ err, groupId, ownerUpn }, "addGroupOwner error");
+    log.error({ err, groupId, ownerUpn }, "addGroupOwner error");
     return false;
   }
 }
@@ -892,13 +893,13 @@ export async function getGroupFromSiteId(
     if (res.status === 404 || res.status === 400) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getGroupFromSiteId failed");
+      log.warn({ status: res.status, body: text }, "Graph getGroupFromSiteId failed");
       return null;
     }
     const data = await res.json() as { id: string };
     return { id: data.id };
   } catch (err) {
-    logger.error({ err }, "Graph getGroupFromSiteId error");
+    log.error({ err }, "Graph getGroupFromSiteId error");
     return null;
   }
 }
@@ -913,13 +914,13 @@ export async function getGroupSiteUrl(
     if (res.status === 404 || res.status === 400) return null;
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getGroupSiteUrl failed");
+      log.warn({ status: res.status, body: text }, "Graph getGroupSiteUrl failed");
       return null;
     }
     const data = await res.json() as { id: string; webUrl: string };
     return { id: data.id, webUrl: data.webUrl };
   } catch (err) {
-    logger.error({ err }, "Graph getGroupSiteUrl error");
+    log.error({ err }, "Graph getGroupSiteUrl error");
     return null;
   }
 }
@@ -936,13 +937,13 @@ export async function getSiteByUrl(
     );
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getSiteByUrl failed");
+      log.warn({ status: res.status, body: text }, "Graph getSiteByUrl failed");
       return null;
     }
     const data = await res.json() as { id: string; webUrl: string };
     return { id: data.id, webUrl: data.webUrl };
   } catch (err) {
-    logger.error({ err }, "Graph getSiteByUrl error");
+    log.error({ err }, "Graph getSiteByUrl error");
     return null;
   }
 }
@@ -962,7 +963,7 @@ export async function getDriveItemDownloadUrl(
     );
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getDriveItemDownloadUrl failed");
+      log.warn({ status: res.status, body: text }, "Graph getDriveItemDownloadUrl failed");
       return null;
     }
     const data = await res.json() as {
@@ -972,12 +973,12 @@ export async function getDriveItemDownloadUrl(
     };
     const downloadUrl = data["@microsoft.graph.downloadUrl"];
     if (!downloadUrl) {
-      logger.warn({ siteId, itemId }, "Graph getDriveItemDownloadUrl: no downloadUrl in response");
+      log.warn({ siteId, itemId }, "Graph getDriveItemDownloadUrl: no downloadUrl in response");
       return null;
     }
     return { downloadUrl, name: data.name, mimeType: data.file?.mimeType ?? null };
   } catch (err) {
-    logger.error({ err }, "Graph getDriveItemDownloadUrl error");
+    log.error({ err }, "Graph getDriveItemDownloadUrl error");
     return null;
   }
 }
@@ -995,7 +996,7 @@ export async function listDriveItems(
     );
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph listDriveItems failed");
+      log.warn({ status: res.status, body: text }, "Graph listDriveItems failed");
       return [];
     }
     const data = await res.json() as { value: Array<{
@@ -1017,7 +1018,7 @@ export async function listDriveItems(
       lastModified: item.lastModifiedDateTime,
     }));
   } catch (err) {
-    logger.error({ err }, "Graph listDriveItems error");
+    log.error({ err }, "Graph listDriveItems error");
     return [];
   }
 }
@@ -1041,13 +1042,13 @@ export async function createProjectFolder(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph createProjectFolder failed");
+      log.warn({ status: res.status, body: text }, "Graph createProjectFolder failed");
       return null;
     }
     const data = await res.json() as { webUrl?: string };
     return data.webUrl ?? null;
   } catch (err) {
-    logger.error({ err }, "Graph createProjectFolder error");
+    log.error({ err }, "Graph createProjectFolder error");
     return null;
   }
 }
@@ -1070,7 +1071,7 @@ export async function ensureSharePointFolderAtRoot(siteId: string, folderName: s
   if (!res.ok) {
     const text = await res.text();
     if (res.status !== 409 && !text.includes("nameAlreadyExists")) {
-      logger.warn({ status: res.status, body: text, folderName }, "Graph ensureSharePointFolderAtRoot: non-fatal creation failure");
+      log.warn({ status: res.status, body: text, folderName }, "Graph ensureSharePointFolderAtRoot: non-fatal creation failure");
     }
   }
 }
@@ -1094,7 +1095,7 @@ async function ensureContractsFolder(siteId: string, token: string): Promise<voi
     const text = await res.text();
     // 409 nameAlreadyExists means the folder is already there — that's fine
     if (res.status !== 409 && !text.includes("nameAlreadyExists")) {
-      logger.warn({ status: res.status, body: text }, "Graph ensureContractsFolder: non-fatal creation failure");
+      log.warn({ status: res.status, body: text }, "Graph ensureContractsFolder: non-fatal creation failure");
     }
   }
 }
@@ -1125,13 +1126,13 @@ export async function uploadFileToClientContracts(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph uploadFileToClientContracts failed");
+      log.warn({ status: res.status, body: text }, "Graph uploadFileToClientContracts failed");
       return null;
     }
     const data = await res.json() as { id: string; webUrl: string };
     return { webUrl: data.webUrl, fileId: data.id };
   } catch (err) {
-    logger.error({ err }, "Graph uploadFileToClientContracts error");
+    log.error({ err }, "Graph uploadFileToClientContracts error");
     return null;
   }
 }
@@ -1164,13 +1165,13 @@ export async function uploadFileToSharePoint(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph uploadFileToSharePoint failed");
+      log.warn({ status: res.status, body: text }, "Graph uploadFileToSharePoint failed");
       return null;
     }
     const data = await res.json() as { webUrl: string };
     return data.webUrl ?? null;
   } catch (err) {
-    logger.error({ err }, "Graph uploadFileToSharePoint error");
+    log.error({ err }, "Graph uploadFileToSharePoint error");
     return null;
   }
 }
@@ -1204,7 +1205,7 @@ export async function getCalendarView(
     );
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph getCalendarView failed");
+      log.warn({ status: res.status, body: text }, "Graph getCalendarView failed");
       return [];
     }
     const data = await res.json() as {
@@ -1216,7 +1217,7 @@ export async function getCalendarView(
       end: new Date(ev.end.dateTime + (ev.end.timeZone === "UTC" ? "Z" : "")).toISOString(),
     }));
   } catch (err) {
-    logger.error({ err }, "Graph getCalendarView error");
+    log.error({ err }, "Graph getCalendarView error");
     return [];
   }
 }
@@ -1267,7 +1268,7 @@ export async function createCalendarEvent(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph createCalendarEvent failed");
+      log.warn({ status: res.status, body: text }, "Graph createCalendarEvent failed");
       return null;
     }
     const data = await res.json() as { id?: string; onlineMeeting?: { joinUrl?: string } };
@@ -1277,7 +1278,7 @@ export async function createCalendarEvent(
       joinUrl: data.onlineMeeting?.joinUrl ?? null,
     };
   } catch (err) {
-    logger.error({ err }, "Graph createCalendarEvent error");
+    log.error({ err }, "Graph createCalendarEvent error");
     return null;
   }
 }
@@ -1305,7 +1306,7 @@ export async function getActivityApiToken(tenantId: string): Promise<string | nu
   const clientId = process.env.MT_APP_CLIENT_ID;
   const clientSecret = process.env.MT_APP_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    logger.warn({ tenantId }, "getActivityApiToken: MT_APP_CLIENT_ID/MT_APP_CLIENT_SECRET not configured");
+    log.warn({ tenantId }, "getActivityApiToken: MT_APP_CLIENT_ID/MT_APP_CLIENT_SECRET not configured");
     return null;
   }
 
@@ -1323,7 +1324,7 @@ export async function getActivityApiToken(tenantId: string): Promise<string | nu
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ tenantId, status: res.status, body: text }, "getActivityApiToken: token request failed");
+      log.warn({ tenantId, status: res.status, body: text }, "getActivityApiToken: token request failed");
       return null;
     }
     const data = await res.json() as { access_token: string; expires_in: number };
@@ -1331,7 +1332,7 @@ export async function getActivityApiToken(tenantId: string): Promise<string | nu
     activityTokenCache.set(tenantId, entry);
     return entry.token;
   } catch (err) {
-    logger.warn({ tenantId, err }, "getActivityApiToken: fetch error");
+    log.warn({ tenantId, err }, "getActivityApiToken: fetch error");
     return null;
   }
 }
@@ -1374,7 +1375,7 @@ export async function ensureActivityApiSubscription(
       if (text.includes("AF20024")) {
         return { contentType, status: "enabled", webhook: null };
       }
-      logger.warn({ tenantId, contentType, status: res.status, body: text }, "ensureActivityApiSubscription: start failed");
+      log.warn({ tenantId, contentType, status: res.status, body: text }, "ensureActivityApiSubscription: start failed");
       return null;
     }
 
@@ -1385,7 +1386,7 @@ export async function ensureActivityApiSubscription(
       webhook: (data.webhook as { authId?: string; address?: string; expiration?: string } | null | undefined) ?? null,
     };
   } catch (err) {
-    logger.warn({ tenantId, contentType, err }, "ensureActivityApiSubscription: error");
+    log.warn({ tenantId, contentType, err }, "ensureActivityApiSubscription: error");
     return null;
   }
 }
@@ -1423,13 +1424,13 @@ export async function listActivityContent(
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ tenantId, contentType, status: res.status, body: text }, "listActivityContent: failed");
+      log.warn({ tenantId, contentType, status: res.status, body: text }, "listActivityContent: failed");
       return [];
     }
     const blobs = await res.json() as ActivityContentBlob[] | null;
     return Array.isArray(blobs) ? blobs : [];
   } catch (err) {
-    logger.warn({ tenantId, contentType, err }, "listActivityContent: error");
+    log.warn({ tenantId, contentType, err }, "listActivityContent: error");
     return [];
   }
 }
@@ -1455,13 +1456,13 @@ export async function fetchActivityBlob(tenantId: string, blobUri: string): Prom
   try {
     const res = await fetch(blobUri, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
-      logger.warn({ tenantId, blobUri, status: res.status }, "fetchActivityBlob: failed");
+      log.warn({ tenantId, blobUri, status: res.status }, "fetchActivityBlob: failed");
       return [];
     }
     const events = await res.json() as ActivityEvent[] | null;
     return Array.isArray(events) ? events : [];
   } catch (err) {
-    logger.warn({ tenantId, blobUri, err }, "fetchActivityBlob: error");
+    log.warn({ tenantId, blobUri, err }, "fetchActivityBlob: error");
     return [];
   }
 }
@@ -1486,12 +1487,12 @@ export async function createSiteFolder(
     });
     if (!res.ok) {
       const text = await res.text();
-      logger.warn({ status: res.status, body: text }, "Graph createSiteFolder failed");
+      log.warn({ status: res.status, body: text }, "Graph createSiteFolder failed");
       return false;
     }
     return true;
   } catch (err) {
-    logger.error({ err }, "Graph createSiteFolder error");
+    log.error({ err }, "Graph createSiteFolder error");
     return false;
   }
 }

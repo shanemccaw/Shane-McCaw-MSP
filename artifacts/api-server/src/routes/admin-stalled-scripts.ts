@@ -15,6 +15,7 @@ import { db, kanbanTasksTable, projectsTable, usersTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "workflow.script" });
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get(
         })),
       });
     } catch (err) {
-      logger.error({ err }, "admin-stalled-scripts: failed to fetch stalled cards");
+      log.error({ err }, "admin-stalled-scripts: failed to fetch stalled cards");
       res.status(500).json({ error: "Failed to fetch stalled script cards" });
     }
   },

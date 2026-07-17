@@ -15,6 +15,7 @@ import crypto from "crypto";
 import { db, mspIdempotencyStoreTable } from "@workspace/db";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "system.core" });
 
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 24 hours
 
@@ -62,7 +63,7 @@ export async function checkIdempotency(
     if (!row) return null;
 
     if (row.requestHash !== requestHash) {
-      logger.warn(
+      log.warn(
         { idempotencyKey, mspId },
         "idempotency: key reused with different request body — treating as conflict",
       );
@@ -71,7 +72,7 @@ export async function checkIdempotency(
 
     return { statusCode: row.statusCode, responseBody: row.responseBody as Record<string, unknown> };
   } catch (err) {
-    logger.error({ err, idempotencyKey }, "idempotency: check failed (non-fatal, proceeding)");
+    log.error({ err, idempotencyKey }, "idempotency: check failed (non-fatal, proceeding)");
     return null;
   }
 }
@@ -102,7 +103,7 @@ export async function recordIdempotency(
       })
       .onConflictDoNothing();
   } catch (err) {
-    logger.error({ err, idempotencyKey }, "idempotency: record failed (non-fatal)");
+    log.error({ err, idempotencyKey }, "idempotency: record failed (non-fatal)");
   }
 }
 

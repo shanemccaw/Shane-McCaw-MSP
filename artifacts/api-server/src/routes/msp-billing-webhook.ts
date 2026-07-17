@@ -21,6 +21,7 @@ import { db, mspsTable, mspSubscriptionsTable, mspUsersTable, usersTable, mspEve
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
 
@@ -40,14 +41,14 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
     "";
 
   if (!webhookSecret) {
-    logger.warn({}, "msp-billing-webhook: no webhook secret configured — skipping signature verification");
+    log.warn({}, "msp-billing-webhook: no webhook secret configured — skipping signature verification");
   }
 
   let stripeKey: string;
   try {
     stripeKey = getStripeKey();
   } catch (err) {
-    logger.warn({ err }, "msp-billing-webhook: Stripe not configured, ignoring event");
+    log.warn({ err }, "msp-billing-webhook: Stripe not configured, ignoring event");
     res.status(200).json({ received: true });
     return;
   }
@@ -63,12 +64,12 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
       event = JSON.parse((req.body as Buffer).toString()) as import("stripe").Stripe.Event;
     }
   } catch (err) {
-    logger.warn({ err }, "msp-billing-webhook: signature verification failed");
+    log.warn({ err }, "msp-billing-webhook: signature verification failed");
     res.status(400).json({ error: "Webhook signature verification failed" });
     return;
   }
 
-  logger.info({ eventType: event.type, eventId: event.id }, "msp-billing-webhook: received event");
+  log.info({ eventType: event.type, eventId: event.id }, "msp-billing-webhook: received event");
 
   try {
     switch (event.type) {
@@ -93,10 +94,10 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
         break;
 
       default:
-        logger.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
+        log.info({ eventType: event.type }, "msp-billing-webhook: unhandled event type (ok)");
     }
   } catch (err) {
-    logger.error({ err, eventType: event.type }, "msp-billing-webhook: event handler failed");
+    log.error({ err, eventType: event.type }, "msp-billing-webhook: event handler failed");
     // Return 200 to prevent Stripe from retrying indefinitely for transient errors.
     // Idempotent re-processing on retry is safe for all handlers below.
   }
@@ -153,7 +154,7 @@ async function handleCheckoutCompleted(
   const serviceId = parseInt(metadata.service_id ?? "", 10);
 
   if (isNaN(serviceId)) {
-    logger.error({ sessionId: session.id }, "msp-billing-webhook: missing service_id in checkout metadata");
+    log.error({ sessionId: session.id }, "msp-billing-webhook: missing service_id in checkout metadata");
     return;
   }
 
@@ -165,7 +166,7 @@ async function handleCheckoutCompleted(
     : session.customer?.id;
 
   if (!subscriptionId) {
-    logger.error({ sessionId: session.id }, "msp-billing-webhook: no subscription in completed session");
+    log.error({ sessionId: session.id }, "msp-billing-webhook: no subscription in completed session");
     return;
   }
 
@@ -201,7 +202,7 @@ async function handleCheckoutCompleted(
     // valid acceptance flag. Provisioning is refused. Return 200 to Stripe so
     // it does not retry — this is a data integrity issue on our side, not a
     // transient failure.
-    logger.error(
+    log.error(
       {
         sessionId: session.id,
         currentAgreementVersion: currentAgreement.version,
@@ -214,7 +215,7 @@ async function handleCheckoutCompleted(
 
   if (currentAgreement && agreementVersion !== currentAgreement.version) {
     // Accepted flag is set but for a stale version — also a hard block.
-    logger.error(
+    log.error(
       {
         sessionId: session.id,
         currentVersion: currentAgreement.version,
@@ -233,7 +234,7 @@ async function handleCheckoutCompleted(
     .limit(1);
 
   if (existingSub) {
-    logger.info({ subscriptionId }, "msp-billing-webhook: MSP already provisioned for this subscription (idempotent)");
+    log.info({ subscriptionId }, "msp-billing-webhook: MSP already provisioned for this subscription (idempotent)");
     return;
   }
 
@@ -252,7 +253,7 @@ async function handleCheckoutCompleted(
     .returning({ id: mspsTable.id, name: mspsTable.name });
 
   if (!msp) {
-    logger.error({ companyName, slug }, "msp-billing-webhook: failed to insert MSP row");
+    log.error({ companyName, slug }, "msp-billing-webhook: failed to insert MSP row");
     return;
   }
 
@@ -303,20 +304,20 @@ async function handleCheckoutCompleted(
       .limit(1);
 
     if (!verifiedAcceptance) {
-      logger.error(
+      log.error(
         { mspId: msp.id, userId: provisionedUserId, agreementVersion },
         "msp-billing-webhook: BLOCKED — acceptance row could not be verified; provisioned event will NOT be emitted",
       );
       return;
     }
 
-    logger.info(
+    log.info(
       { mspId: msp.id, userId: provisionedUserId, agreementVersion },
       "msp-billing-webhook: MSA acceptance row recorded and verified",
     );
   } else if (currentAgreement && provisionedUserId === null) {
     // Agreement required but no user was provisioned — can't write acceptance row
-    logger.error(
+    log.error(
       { mspId: msp.id, contactEmail, agreementVersion },
       "msp-billing-webhook: BLOCKED — agreement required but no userId was provisioned; provisioned event will NOT be emitted",
     );
@@ -341,7 +342,7 @@ async function handleCheckoutCompleted(
     ownerType: "platform",
   });
 
-  logger.info(
+  log.info(
     { mspId: msp.id, slug, subscriptionId, serviceId, agreementVersion: agreementVersion || null },
     "msp-billing-webhook: MSP provisioned successfully",
   );
@@ -384,10 +385,10 @@ async function provisionMspAdminUser(
       });
     }
 
-    logger.info({ mspId, userId: user.id, email: normalizedEmail }, "msp-billing-webhook: MSPAdmin user provisioned");
+    log.info({ mspId, userId: user.id, email: normalizedEmail }, "msp-billing-webhook: MSPAdmin user provisioned");
     return user.id;
   } catch (err) {
-    logger.warn({ err, mspId, email }, "msp-billing-webhook: admin user provisioning failed (non-fatal)");
+    log.warn({ err, mspId, email }, "msp-billing-webhook: admin user provisioning failed (non-fatal)");
     return null;
   }
 }
@@ -412,7 +413,7 @@ async function handleSubscriptionUpdated(subscription: import("stripe").Stripe.S
     updatedAt: now,
   }).where(eq(mspSubscriptionsTable.id, sub.id));
 
-  logger.info({ subscriptionId: subscription.id, status: subscription.status, mspId: sub.mspId }, "msp-billing-webhook: subscription updated");
+  log.info({ subscriptionId: subscription.id, status: subscription.status, mspId: sub.mspId }, "msp-billing-webhook: subscription updated");
 }
 
 // ── customer.subscription.deleted ─────────────────────────────────────────────
@@ -449,7 +450,7 @@ async function handleSubscriptionDeleted(subscription: import("stripe").Stripe.S
     ownerType: "platform",
   });
 
-  logger.info({ subscriptionId: subscription.id, mspId: sub.mspId }, "msp-billing-webhook: subscription deleted, MSP suspended");
+  log.info({ subscriptionId: subscription.id, mspId: sub.mspId }, "msp-billing-webhook: subscription deleted, MSP suspended");
 }
 
 // ── invoice.payment_succeeded ─────────────────────────────────────────────────
@@ -497,7 +498,7 @@ async function handlePaymentSucceeded(invoice: import("stripe").Stripe.Invoice):
       ownerType: "platform",
     });
 
-    logger.info({ subscriptionId, mspId: sub.mspId, clearedDunningState: sub.dunningState }, "msp-billing-webhook: dunning cleared on payment success");
+    log.info({ subscriptionId, mspId: sub.mspId, clearedDunningState: sub.dunningState }, "msp-billing-webhook: dunning cleared on payment success");
   }
 }
 
@@ -549,7 +550,7 @@ async function handlePaymentFailed(invoice: import("stripe").Stripe.Invoice): Pr
     ownerType: "platform",
   });
 
-  logger.info(
+  log.info(
     { subscriptionId, mspId: sub.mspId, paymentFailedAt: failedAt.toISOString() },
     "msp-billing-webhook: payment failed — dunning clock started",
   );

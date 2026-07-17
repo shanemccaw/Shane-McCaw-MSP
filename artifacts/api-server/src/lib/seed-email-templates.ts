@@ -1,6 +1,7 @@
 import { db, emailTemplatesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "comms.email" });
 
 interface TemplateDefinition {
   slug: string;
@@ -786,7 +787,7 @@ export async function seedEmailTemplates(): Promise<void> {
 
     if (existing) {
       if (existing.isCustomized) {
-        logger.debug({ slug: tpl.slug }, "Email template skipped by seeder — customized via Admin Panel");
+        log.debug({ slug: tpl.slug }, "Email template skipped by seeder — customized via Admin Panel");
         continue;
       }
 
@@ -807,7 +808,7 @@ export async function seedEmailTemplates(): Promise<void> {
           .update(emailTemplatesTable)
           .set({ isCustomized: true })
           .where(eq(emailTemplatesTable.slug, tpl.slug));
-        logger.info(
+        log.info(
           { slug: tpl.slug },
           "Email template differs from code baseline — marking as customized and preserving existing content",
         );
@@ -818,7 +819,7 @@ export async function seedEmailTemplates(): Promise<void> {
         .update(emailTemplatesTable)
         .set({ subject: tpl.subject, bodyHtml: tpl.bodyHtml, variables: tpl.variables, recipientType: tpl.recipientType })
         .where(eq(emailTemplatesTable.slug, tpl.slug));
-      logger.debug({ slug: tpl.slug }, "Email template upserted (updated)");
+      log.debug({ slug: tpl.slug }, "Email template upserted (updated)");
       continue;
     }
 
@@ -831,6 +832,6 @@ export async function seedEmailTemplates(): Promise<void> {
       recipientType: tpl.recipientType,
       isCustomized: false,
     });
-    logger.info({ slug: tpl.slug }, "Email template seeded");
+    log.info({ slug: tpl.slug }, "Email template seeded");
   }
 }

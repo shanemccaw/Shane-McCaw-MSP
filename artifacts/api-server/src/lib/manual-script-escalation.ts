@@ -23,6 +23,8 @@ import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 import { getEmailTemplateOrFallback, sendEmailOrThrow } from "./mailer";
 
+const log = logger.child({ channel: "workflow.script" });
+
 const ESCALATION_THRESHOLD_BUSINESS_DAYS = 5;
 const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -206,7 +208,7 @@ async function markCardsAlerted(cardIds: number[]): Promise<void> {
         .set({ taskMetadata: meta })
         .where(eq(kanbanTasksTable.id, id));
     } catch (err) {
-      logger.warn({ err, kanbanTaskId: id }, "escalation: failed to mark card as alerted");
+      log.warn({ err, kanbanTaskId: id }, "escalation: failed to mark card as alerted");
     }
   }
 }
@@ -291,18 +293,18 @@ export async function checkManualScriptEscalations(): Promise<EscalationResult> 
   try {
     overdueCards = await findOverdueCards();
   } catch (err) {
-    logger.error({ err }, "escalation: failed to query overdue cards");
+    log.error({ err }, "escalation: failed to query overdue cards");
     throw err;
   }
 
   const totalChecked = overdueCards.length;
 
   if (overdueCards.length === 0) {
-    logger.info("escalation: no overdue manual script cards found");
+    log.info("escalation: no overdue manual script cards found");
     return { checked: 0, alerted: 0, cardIds: [] };
   }
 
-  logger.info(
+  log.info(
     { count: overdueCards.length, cardIds: overdueCards.map((c) => c.id) },
     "escalation: found overdue manual script cards — sending alert",
   );
@@ -329,7 +331,7 @@ export async function checkManualScriptEscalations(): Promise<EscalationResult> 
   );
   await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
 
-  logger.info(
+  log.info(
     { to: shaneEmail, count: overdueCards.length },
     "escalation: alert email confirmed sent",
   );

@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, asc, inArray, and, sql, isNotNull, isNull } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "workflow.script" });
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
 import {
@@ -264,7 +265,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
       : fullText.replace(/```(?:powershell)?\s*/gi, "").replace(/```\s*/g, "").trim();
 
     if (scriptBody.length < 20) {
-      logger.warn(
+      log.warn(
         { rawResponsePrefix: fullText.slice(0, 500) },
         "generate endpoint: scriptBody extraction yielded empty/short result; applying safe fallback",
       );
@@ -282,7 +283,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
     // character-window check would give false positives). Emit SSE error so the editor
     // is never overwritten with non-PS text.
     if (!hasPsKeywordsFullText(scriptBody)) {
-      logger.error(
+      log.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
       );
@@ -305,7 +306,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
     sendSSE({ type: "done", payload: { script: scriptBody, permissions } });
     res.end();
   } catch (err) {
-    logger.error({ err }, "PS script generation failed");
+    log.error({ err }, "PS script generation failed");
     sendError(err instanceof Error ? err.message : "AI generation failed");
   }
 });
@@ -772,7 +773,7 @@ Group these into logical PowerShell scripts.`;
               groups = parsed as Array<{ description: string; tasks: string[] }>;
             }
           } catch (err) {
-            logger.warn({ err, phase: step.title }, "generate-from-service: planning call failed, falling back to single group");
+            log.warn({ err, phase: step.title }, "generate-from-service: planning call failed, falling back to single group");
           }
 
           // Fallback if planning call failed or returned nonsense
@@ -806,7 +807,7 @@ Group these into logical PowerShell scripts.`;
       }
 
       sendSSE({ type: "phase", label: `Generating ${allGroups.length} scripts…`, pct: 28 });
-      logger.info({ groupCount: allGroups.length, service: service.name }, "generate-from-service: planning complete");
+      log.info({ groupCount: allGroups.length, service: service.name }, "generate-from-service: planning complete");
 
       // ── Phase 2: parallel generation calls ───────────────────────────────────
       // All groups are generated concurrently so the total wall-clock time is
@@ -873,7 +874,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
             };
           }
 
-          logger.warn(
+          log.warn(
             { description: group.description, filename: group.filename, textPreview: rawText.slice(0, 300) },
             "generate-from-service: group script failed PS keyword check, skipping",
           );
@@ -885,7 +886,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         if (result.status === "fulfilled" && result.value) {
           generatedModules.push(result.value);
         } else if (result.status === "rejected") {
-          logger.warn({ err: result.reason }, "generate-from-service: generation call failed, skipping");
+          log.warn({ err: result.reason }, "generate-from-service: generation call failed, skipping");
         }
       }
 
@@ -917,7 +918,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
           .insert(powershellScriptsTable)
           .values({ title: `${service.name} — ${m.description}`, category: "m365", scriptBody: m.content, permissions: mergedPerms, tags: [] })
           .returning();
-        logger.info({ scriptId: savedSingle.id, service: service.name }, "generate-from-service: saved single script from plan+generate");
+        log.info({ scriptId: savedSingle.id, service: service.name }, "generate-from-service: saved single script from plan+generate");
         sendSSE({
           type: "done",
           payload: {
@@ -962,7 +963,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
       const fnToId = new Map(insertedMods.map((r) => [r.filename, r.id]));
       const modulesWithIds = generatedModules.map((m) => ({ ...m, id: fnToId.get(m.filename) }));
 
-      logger.info({ packageId: pkg.id, moduleCount: modulesWithIds.length, service: service.name }, "generate-from-service: plan+generate package saved");
+      log.info({ packageId: pkg.id, moduleCount: modulesWithIds.length, service: service.name }, "generate-from-service: plan+generate package saved");
 
       sendSSE({
         type: "done",
@@ -1016,7 +1017,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
     // Parse the JSON envelope (metadata only — no script content inside the JSON).
     const rawJson = extractEnvelopeJson(accumulated);
     if (!rawJson || typeof rawJson !== "object" || Array.isArray(rawJson)) {
-      logger.warn(
+      log.warn(
         { textLength: accumulated.length, textPrefix: accumulated.slice(0, 400) },
         "generate-from-service: failed to parse JSON envelope from AI response",
       );
@@ -1039,7 +1040,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         typeof parsed["explanation"] === "string"
           ? parsed["explanation"]
           : "All tasks in this workflow require human judgment or action and cannot be automated with PowerShell.";
-      logger.info({ service: service.name }, "generate-from-service: all tasks human-only");
+      log.info({ service: service.name }, "generate-from-service: all tasks human-only");
       sendSSE({ type: "done", payload: { type: "human-only", title, explanation, humanOnlyTasks } });
       res.end();
       return;
@@ -1080,7 +1081,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         .filter((m) => m.content.length > 0);
 
       if (validModules.length === 0) {
-        logger.warn(
+        log.warn(
           { psScriptKeys: [...psScripts.keys()], textLength: accumulated.length },
           "generate-from-service: no modules with content found",
         );
@@ -1090,7 +1091,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
       }
 
       if (validModules.some((m) => !hasPsKeywordsFullText(m.content))) {
-        logger.error(
+        log.error(
           { moduleCount: validModules.length },
           "generate-from-service: one or more modules contain no PS keywords — refusing to send",
         );
@@ -1169,7 +1170,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         id: filenameToId.get(m.filename),
       }));
 
-      logger.info(
+      log.info(
         { packageId: pkg.id, moduleCount: validModulesWithIds.length, service: service.name },
         "generate-from-service: saved package",
       );
@@ -1340,14 +1341,14 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
             });
           }
 
-          logger.info(
+          log.info(
             { serviceId, taskAssociations },
             "generate-from-service: completed Kanban association",
           );
         }
       } catch (assocErr) {
         // Non-fatal: log but do not fail the whole generation.
-        logger.warn({ assocErr }, "generate-from-service: Kanban association step failed (non-fatal)");
+        log.warn({ assocErr }, "generate-from-service: Kanban association step failed (non-fatal)");
       }
 
       sendSSE({ type: "done", payload: { type: "package", packageId: pkg.id, title: packageTitle, modules: validModulesWithIds, humanOnlyTasks, permissions, taskAssociations } });
@@ -1360,7 +1361,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
     const scriptBody = fenceScript || (typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "");
 
     if (scriptBody.length < 20 || !hasPsKeywordsFullText(scriptBody)) {
-      logger.error(
+      log.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300), psScriptCount: psScripts.size },
         "generate-from-service: scriptBody is empty or contains no PS keywords",
       );
@@ -1385,7 +1386,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         })
         .returning();
 
-      logger.info(
+      log.info(
         { scriptId: saved.id, service: service.name },
         "generate-from-service: saved manual script",
       );
@@ -1426,7 +1427,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
       })
       .returning();
 
-    logger.info(
+    log.info(
       { scriptId: savedSingle.id, service: service.name },
       "generate-from-service: saved single script",
     );
@@ -1451,7 +1452,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
     });
     res.end();
   } catch (err) {
-    logger.error({ err }, "generate-from-service failed");
+    log.error({ err }, "generate-from-service failed");
     if (res.headersSent) {
       res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Generation failed" })}\n\n`);
       res.end();
@@ -1573,7 +1574,7 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
     ].filter(Boolean).join("\n");
 
     const systemPrompt = await getPrompt("ps-engineer-from-task", GENERATE_FROM_TASK_SYSTEM);
-    logger.info({ taskId, title: task.title }, "generate-from-task: calling Claude");
+    log.info({ taskId, title: task.title }, "generate-from-task: calling Claude");
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -1586,7 +1587,7 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
 
     const jsonFenceMatch = rawText.match(/```json\s*([\s\S]*?)```/);
     if (!jsonFenceMatch) {
-      logger.error({ rawText: rawText.slice(0, 500) }, "generate-from-task: no JSON fence");
+      log.error({ rawText: rawText.slice(0, 500) }, "generate-from-task: no JSON fence");
       res.status(500).json({ error: "AI returned unrecognised format. Please try again." });
       return;
     }
@@ -1594,7 +1595,7 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
     try {
       parsed = JSON.parse(jsonFenceMatch[1]!) as Record<string, unknown>;
     } catch {
-      logger.error({ raw: jsonFenceMatch[1]?.slice(0, 300) }, "generate-from-task: JSON parse failed");
+      log.error({ raw: jsonFenceMatch[1]?.slice(0, 300) }, "generate-from-task: JSON parse failed");
       res.status(500).json({ error: "AI returned malformed JSON. Please try again." });
       return;
     }
@@ -1614,7 +1615,7 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
       const explanation = typeof parsed["explanation"] === "string"
         ? parsed["explanation"]
         : "This task requires human action and cannot be automated.";
-      logger.info({ taskId }, "generate-from-task: human-only");
+      log.info({ taskId }, "generate-from-task: human-only");
       res.json({ type: "human-only", title, explanation });
       return;
     }
@@ -1625,7 +1626,7 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
       : "";
 
     if (scriptBody.length < 20 || !hasPsKeywordsFullText(scriptBody)) {
-      logger.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-task: empty/no PS keywords");
+      log.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-task: empty/no PS keywords");
       res.status(500).json({ error: "AI returned an unreadable script. Please try again." });
       return;
     }
@@ -1646,10 +1647,10 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
       [saved.id, taskId],
     );
 
-    logger.info({ scriptId: saved.id, taskId, runbookId: saved.id }, "generate-from-task: saved and linked");
+    log.info({ scriptId: saved.id, taskId, runbookId: saved.id }, "generate-from-task: saved and linked");
     res.json({ type, scriptId: saved.id, title: saved.title, runbookId: saved.id });
   } catch (err) {
-    logger.error({ err }, "generate-from-task failed");
+    log.error({ err }, "generate-from-task failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
   }
 });
@@ -1678,10 +1679,10 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
       [scriptId, script.source_task_id],
     );
     const assigned = updateResult.rowCount ?? 0;
-    logger.info({ scriptId, assigned, taskId: script.source_task_id, runbookId: scriptId }, "assign-task: runbook_id set");
+    log.info({ scriptId, assigned, taskId: script.source_task_id, runbookId: scriptId }, "assign-task: runbook_id set");
     res.json({ assigned, taskId: script.source_task_id });
   } catch (err) {
-    logger.error({ err }, "Failed to assign script to task");
+    log.error({ err }, "Failed to assign script to task");
     res.status(500).json({ error: "Failed to assign script to task" });
   }
 });
@@ -1721,7 +1722,7 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
 
     res.json([...scriptEntries, ...moduleEntries]);
   } catch (err) {
-    logger.error({ err }, "Failed to list published PS scripts");
+    log.error({ err }, "Failed to list published PS scripts");
     res.status(500).json({ error: "Failed to list published scripts" });
   }
 });
@@ -1751,7 +1752,7 @@ router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Respons
       sourceTaskId: r.source_task_id,
     })));
   } catch (err) {
-    logger.error({ err }, "Failed to list PS scripts");
+    log.error({ err }, "Failed to list PS scripts");
     res.status(500).json({ error: "Failed to list scripts" });
   }
 });
@@ -1789,7 +1790,7 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
 
     res.status(201).json(created);
   } catch (err) {
-    logger.error({ err }, "Failed to save PS script");
+    log.error({ err }, "Failed to save PS script");
     res.status(500).json({ error: "Failed to save script" });
   }
 });
@@ -1838,7 +1839,7 @@ router.post("/admin/ps-scripts/packages", requireAdmin, async (req: Request, res
     // Return in the same shape as the GET /packages list items (with empty modules)
     res.status(201).json({ ...created, modules: [] });
   } catch (err) {
-    logger.error({ err }, "Failed to create script package");
+    log.error({ err }, "Failed to create script package");
     res.status(500).json({ error: "Failed to create package" });
   }
 });
@@ -1879,7 +1880,7 @@ router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res
 
     res.json(result);
   } catch (err) {
-    logger.error({ err }, "Failed to list script packages");
+    log.error({ err }, "Failed to list script packages");
     res.status(500).json({ error: "Failed to list packages" });
   }
 });
@@ -1929,7 +1930,7 @@ router.get("/admin/ps-scripts/packages/:id/inherited-permissions", requireAdmin,
     const permissions = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
     res.json({ permissions });
   } catch (err) {
-    logger.error({ err }, "Failed to fetch inherited permissions");
+    log.error({ err }, "Failed to fetch inherited permissions");
     res.status(500).json({ error: "Failed to fetch inherited permissions" });
   }
 });
@@ -1955,7 +1956,7 @@ router.patch("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request
     if (!updated) { res.status(404).json({ error: "Package not found" }); return; }
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "Failed to update script package");
+    log.error({ err }, "Failed to update script package");
     res.status(500).json({ error: "Failed to update package" });
   }
 });
@@ -1970,7 +1971,7 @@ router.delete("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Reques
     await db.delete(scriptPackagesTable).where(eq(scriptPackagesTable.id, pkgId));
     res.status(204).end();
   } catch (err) {
-    logger.error({ err }, "Failed to delete script package");
+    log.error({ err }, "Failed to delete script package");
     res.status(500).json({ error: "Failed to delete package" });
   }
 });
@@ -2010,7 +2011,7 @@ router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: 
       .returning();
     res.status(201).json(created);
   } catch (err) {
-    logger.error({ err }, "Failed to add module to package");
+    log.error({ err }, "Failed to add module to package");
     res.status(500).json({ error: "Failed to add module" });
   }
 });
@@ -2044,7 +2045,7 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
     if (!updated) { res.status(404).json({ error: "Module not found" }); return; }
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "Failed to update script module");
+    log.error({ err }, "Failed to update script module");
     res.status(500).json({ error: "Failed to update module" });
   }
 });
@@ -2072,10 +2073,10 @@ router.post("/admin/ps-scripts/modules/:id/assign-tasks", requireAdmin, async (r
       [moduleId, sourceTaskIds],
     );
     const assigned = updateResult.rowCount ?? 0;
-    logger.info({ moduleId, assigned }, "assign-tasks: runbook_id set on source tasks");
+    log.info({ moduleId, assigned }, "assign-tasks: runbook_id set on source tasks");
     res.json({ assigned });
   } catch (err) {
-    logger.error({ err }, "Failed to assign module to tasks");
+    log.error({ err }, "Failed to assign module to tasks");
     res.status(500).json({ error: "Failed to assign module to tasks" });
   }
 });
@@ -2089,7 +2090,7 @@ router.delete("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request
     await db.delete(scriptModulesTable).where(eq(scriptModulesTable.id, moduleId));
     res.status(204).end();
   } catch (err) {
-    logger.error({ err }, "Failed to delete script module");
+    log.error({ err }, "Failed to delete script module");
     res.status(500).json({ error: "Failed to delete module" });
   }
 });
@@ -2128,7 +2129,7 @@ router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Requ
       .returning();
     res.status(201).json(created);
   } catch (err) {
-    logger.error({ err }, "Failed to add module to script package");
+    log.error({ err }, "Failed to add module to script package");
     res.status(500).json({ error: "Failed to add module" });
   }
 });
@@ -2140,7 +2141,7 @@ router.delete("/admin/script-packages/:id/modules/:moduleId", requireAdmin, asyn
     await db.delete(scriptModulesTable).where(eq(scriptModulesTable.id, moduleId));
     res.status(204).end();
   } catch (err) {
-    logger.error({ err }, "Failed to delete script module");
+    log.error({ err }, "Failed to delete script module");
     res.status(500).json({ error: "Failed to delete module" });
   }
 });
@@ -2212,7 +2213,7 @@ ${scriptBody}
 
     res.json({ appPermissionDetails: appPermissions, delegatedPermissionDetails: delegatedPermissions });
   } catch (err) {
-    logger.error({ err }, "analyze-permissions: failed");
+    log.error({ err }, "analyze-permissions: failed");
     res.status(500).json({ error: "Failed to analyze permissions" });
   }
 });
@@ -2247,7 +2248,7 @@ router.post("/admin/ps-scripts/:id/associate-to-package", requireAdmin, async (r
 
     res.status(201).json(mod);
   } catch (err) {
-    logger.error({ err }, "Failed to associate script to package");
+    log.error({ err }, "Failed to associate script to package");
     res.status(500).json({ error: "Failed to associate script" });
   }
 });
@@ -2270,7 +2271,7 @@ router.get("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
         : script.permissions,
     });
   } catch (err) {
-    logger.error({ err }, "Failed to fetch PS script");
+    log.error({ err }, "Failed to fetch PS script");
     res.status(500).json({ error: "Failed to fetch script" });
   }
 });
@@ -2308,7 +2309,7 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
 
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "Failed to update PS script");
+    log.error({ err }, "Failed to update PS script");
     res.status(500).json({ error: "Failed to update script" });
   }
 });
@@ -2322,7 +2323,7 @@ router.delete("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: R
     await db.delete(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
     res.status(204).end();
   } catch (err) {
-    logger.error({ err }, "Failed to delete PS script");
+    log.error({ err }, "Failed to delete PS script");
     res.status(500).json({ error: "Failed to delete script" });
   }
 });
@@ -2407,7 +2408,7 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
     } else {
       // Closing fence missing (unexpected truncation) — grab everything before the
       // fix-summary or json block as a best-effort fallback.
-      logger.warn(
+      log.warn(
         { rawResponsePrefix: fullText.slice(0, 500) },
         "fix endpoint: no closing powershell fence found; using marker-based fallback",
       );
@@ -2423,7 +2424,7 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
     // Heuristic guard: if the result contains no recognisable PowerShell keyword,
     // the AI returned only prose. Serving that would replace the editor with non-PS text.
     if (!hasPsKeywordsFullText(fixedScript)) {
-      logger.error(
+      log.error(
         { fixedScriptPrefix: fixedScript.slice(0, 300) },
         "fix endpoint: result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
@@ -2447,7 +2448,7 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
 
     res.json({ fixedScript, fixSummary, permissions });
   } catch (err) {
-    logger.error({ err }, "PS script fix failed");
+    log.error({ err }, "PS script fix failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "AI fix failed" });
   }
 });
@@ -2496,7 +2497,7 @@ ${scriptContent.trim()}
     const explanation = ("This script" + block.text).trim();
     res.json({ explanation });
   } catch (err) {
-    logger.error({ err }, "PS script explain failed");
+    log.error({ err }, "PS script explain failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Explain failed" });
   }
 });
@@ -2568,7 +2569,7 @@ Rules:
 
     const rawModules = extractJsonArray(block.text);
     if (!rawModules || rawModules.length === 0) {
-      logger.warn({ text: block.text.slice(0, 500) }, "ps-scripts/modularize: failed to parse JSON array from AI");
+      log.warn({ text: block.text.slice(0, 500) }, "ps-scripts/modularize: failed to parse JSON array from AI");
       res.status(500).json({ error: "AI response did not contain a valid module array" });
       return;
     }
@@ -2592,7 +2593,7 @@ Rules:
     // Serving that to the client would overwrite the editor with non-PS text.
     const hasProseOnly = validModules.some((m) => !hasPsKeywordsFullText(m.content));
     if (hasProseOnly) {
-      logger.error(
+      log.error(
         { moduleCount: validModules.length },
         "modularize endpoint: one or more modules contain no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
@@ -2618,10 +2619,10 @@ Rules:
       })),
     );
 
-    logger.info({ packageId: pkg.id, moduleCount: validModules.length }, "ps-scripts/modularize: saved package");
+    log.info({ packageId: pkg.id, moduleCount: validModules.length }, "ps-scripts/modularize: saved package");
     res.json({ packageId: pkg.id, title: packageTitle, modules: validModules });
   } catch (err) {
-    logger.error({ err }, "PS script modularize failed");
+    log.error({ err }, "PS script modularize failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Modularization failed" });
   }
 });
@@ -2706,10 +2707,10 @@ router.post("/admin/ps-scripts/:id/publish-to-prod", requireAdmin, async (req: R
 
     await prodPool.end();
 
-    logger.info({ scriptId, title: script.title }, "admin-ps-scripts: published to prod DB");
+    log.info({ scriptId, title: script.title }, "admin-ps-scripts: published to prod DB");
     res.json({ ok: true, scriptId, title: script.title });
   } catch (err) {
-    logger.error({ err, scriptId }, "admin-ps-scripts: publish-to-prod failed");
+    log.error({ err, scriptId }, "admin-ps-scripts: publish-to-prod failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
   }
 });
@@ -2794,10 +2795,10 @@ router.post("/admin/ps-scripts/packages/:id/publish-to-prod", requireAdmin, asyn
 
     await prodPool.end();
 
-    logger.info({ packageId, title: pkg.title, moduleCount: mods.length }, "admin-ps-scripts: package published to prod DB");
+    log.info({ packageId, title: pkg.title, moduleCount: mods.length }, "admin-ps-scripts: package published to prod DB");
     res.json({ ok: true, packageId, title: pkg.title, moduleCount: mods.length });
   } catch (err) {
-    logger.error({ err, packageId }, "admin-ps-scripts: packages publish-to-prod failed");
+    log.error({ err, packageId }, "admin-ps-scripts: packages publish-to-prod failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish package to production" });
   }
 });
@@ -2978,7 +2979,7 @@ Write complete PowerShell scripts for every automatable task in this document, f
     }
 
     if (!hasPsKeywordsFullText(scriptBody)) {
-      logger.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-document: no PS keywords found — refusing to send");
+      log.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-document: no PS keywords found — refusing to send");
       sendError("AI returned a summary instead of a script. Please try again.");
       return;
     }
@@ -2997,7 +2998,7 @@ Write complete PowerShell scripts for every automatable task in this document, f
     sendSSE({ type: "done", payload: { script: scriptBody, permissions } });
     res.end();
   } catch (err) {
-    logger.error({ err }, "generate-from-document: generation failed");
+    log.error({ err }, "generate-from-document: generation failed");
     sendError(err instanceof Error ? err.message : "AI generation failed");
   }
 });

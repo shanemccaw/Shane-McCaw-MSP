@@ -1,6 +1,7 @@
 import { db, articlesTable } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "admin.content" });
 
 const SEED_ARTICLES = [
   {
@@ -315,8 +316,8 @@ export async function seedArticles(): Promise<void> {
       .insert(articlesTable)
       .values(SEED_ARTICLES.map(a => ({ ...a, isPublished: true })))
       .onConflictDoNothing();
-    logger.info({ count: SEED_ARTICLES.length }, "articles: seeded default articles");
+    log.info({ count: SEED_ARTICLES.length }, "articles: seeded default articles");
   } catch (err) {
-    logger.warn({ err }, "articles: seed failed (non-fatal)");
+    log.warn({ err }, "articles: seed failed (non-fatal)");
   }
 }

@@ -10,6 +10,7 @@
  */
 
 import { logger } from "./logger.ts";
+const log = logger.child({ channel: "integration.azure" });
 
 /** Always returns false — Azure script execution has been retired. */
 export function isAzureConfigured(): boolean {
@@ -18,7 +19,7 @@ export function isAzureConfigured(): boolean {
 
 /** No-op stub. isAzureConfigured() is false so this should never be called. */
 export async function pushScriptToAzure(_scriptName: string, _psCode: string): Promise<void> {
-  logger.warn("azure-automation: pushScriptToAzure called on retired stub — skipping");
+  log.warn("azure-automation: pushScriptToAzure called on retired stub — skipping");
 }
 
 /** No-op stub. */

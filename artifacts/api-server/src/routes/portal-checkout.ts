@@ -47,6 +47,7 @@ import { getStripeKey, getMspDefaultPaymentMethod } from "../lib/stripe.ts";
 import { resolveFulfillment } from "../lib/resolve-fulfillment.ts";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "billing" });
 import { transitionOfferState } from "../lib/sales-offer-engine.ts";
 import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-broadcast.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
@@ -99,7 +100,7 @@ async function emitSowEvent(
       payload,
     });
   } catch (err) {
-    logger.warn({ err, sowId, eventName }, "portal-checkout: failed to emit SOW event (non-fatal)");
+    log.warn({ err, sowId, eventName }, "portal-checkout: failed to emit SOW event (non-fatal)");
   }
 }
 
@@ -126,7 +127,7 @@ async function emitMspEvent(
       ownerType: customerId ? "customer" : "msp",
     });
   } catch (err) {
-    logger.warn({ err, eventType }, "portal-checkout: failed to emit MSP event (non-fatal)");
+    log.warn({ err, eventType }, "portal-checkout: failed to emit MSP event (non-fatal)");
   }
 }
 
@@ -389,7 +390,7 @@ router.post(
             threshold,
             date: todayStart.toISOString().slice(0, 10),
           }).catch((err) => {
-            logger.warn({ err, mspId }, "portal-checkout: failed to emit MSP free-checkout alert");
+            log.warn({ err, mspId }, "portal-checkout: failed to emit MSP free-checkout alert");
           });
         }
       }
@@ -415,10 +416,10 @@ router.post(
           },
         });
       } else {
-        logger.warn({ offerId, serviceName }, "portal-checkout: free checkout — no fulfillmentTypeKey on service; event not emitted");
+        log.warn({ offerId, serviceName }, "portal-checkout: free checkout — no fulfillmentTypeKey on service; event not emitted");
       }
 
-      logger.info({ offerId, customerId, mspId, serviceName }, "portal-checkout: free checkout completed");
+      log.info({ offerId, customerId, mspId, serviceName }, "portal-checkout: free checkout completed");
       res.json({ outcome: "free_activated", message: "Your service has been activated." });
       return;
     }
@@ -443,7 +444,7 @@ router.post(
         return;
       }
       if (!body.agreementVersion || body.agreementVersion !== currentAgreement.version) {
-        logger.warn(
+        log.warn(
           { customerId, offerId, providedVersion: body.agreementVersion ?? null, currentVersion: currentAgreement.version },
           "portal-checkout: agreement version mismatch — blocking checkout",
         );
@@ -455,7 +456,7 @@ router.post(
         return;
       }
     } else {
-      logger.warn({ offerId, customerId }, "portal-checkout: no current platform agreement published — proceeding without agreement gate");
+      log.warn({ offerId, customerId }, "portal-checkout: no current platform agreement published — proceeding without agreement gate");
     }
 
     const agreementMeta = currentAgreement
@@ -559,7 +560,7 @@ router.post(
         }, actorId);
       }
 
-      logger.info({ sowId: sow.sowId, offerId, customerId }, "portal-checkout: SOW created from customer offer acceptance");
+      log.info({ sowId: sow.sowId, offerId, customerId }, "portal-checkout: SOW created from customer offer acceptance");
 
       const baseUrl = process.env["REPLIT_DOMAINS"]
         ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]?.trim()}`
@@ -580,7 +581,7 @@ router.post(
     try {
       stripeKey = getStripeKey();
     } catch {
-      logger.warn({ offerId }, "portal-checkout: Stripe not configured");
+      log.warn({ offerId }, "portal-checkout: Stripe not configured");
       apiErr(res, 503, "Payment service not configured. Please contact support.");
       return;
     }
@@ -727,7 +728,7 @@ router.post(
         });
       }
 
-      logger.info(
+      log.info(
         { offerId, customerId, targetMspId, serviceClass, wholesaleCostCents },
         "portal-checkout: programmatic Card-on-File billing completed successfully",
       );
@@ -739,7 +740,7 @@ router.post(
         paymentIntentId: stripePaymentIntentId,
       });
     } catch (err) {
-      logger.error({ err, offerId, customerId }, "portal-checkout: direct billing failed");
+      log.error({ err, offerId, customerId }, "portal-checkout: direct billing failed");
       apiErr(res, 500, `Failed to process card-on-file charge: ${(err as Error).message}`);
     }
   },
@@ -769,14 +770,14 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response): Promi
     "";
 
   if (!webhookSecret) {
-    logger.warn({}, "portal-checkout: webhook secret not configured — skipping signature verification");
+    log.warn({}, "portal-checkout: webhook secret not configured — skipping signature verification");
   }
 
   let stripeKey: string;
   try {
     stripeKey = getStripeKey();
   } catch (err) {
-    logger.warn({ err }, "portal-checkout: Stripe not configured, ignoring webhook event");
+    log.warn({ err }, "portal-checkout: Stripe not configured, ignoring webhook event");
     res.status(200).json({ received: true });
     return;
   }
@@ -792,12 +793,12 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response): Promi
       event = JSON.parse((req.body as Buffer).toString()) as import("stripe").Stripe.Event;
     }
   } catch (err) {
-    logger.warn({ err }, "portal-checkout: webhook signature verification failed");
+    log.warn({ err }, "portal-checkout: webhook signature verification failed");
     res.status(400).json({ error: "Webhook signature verification failed" });
     return;
   }
 
-  logger.info({ eventType: event.type, eventId: event.id }, "portal-checkout: received Stripe event");
+  log.info({ eventType: event.type, eventId: event.id }, "portal-checkout: received Stripe event");
 
   // Acknowledge immediately — Stripe requires a quick 2xx
   res.status(200).json({ received: true });
@@ -813,7 +814,7 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response): Promi
         break;
     }
   } catch (err) {
-    logger.error({ err, eventType: event.type, eventId: event.id }, "portal-checkout: webhook handler failed");
+    log.error({ err, eventType: event.type, eventId: event.id }, "portal-checkout: webhook handler failed");
   }
 });
 
@@ -827,7 +828,7 @@ async function handleCheckoutCompleted(
 
   // Skip incomplete payments
   if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
-    logger.info(
+    log.info(
       { sessionId: session.id, paymentStatus: session.payment_status },
       "portal-checkout: checkout completed but payment not confirmed — skipping fulfillment",
     );
@@ -842,7 +843,7 @@ async function handleCheckoutCompleted(
   const mspId = parseInt(meta["mspId"] ?? "", 10) || null;
 
   if (isNaN(offerId) || isNaN(customerId)) {
-    logger.warn({ sessionId: session.id, meta }, "portal-checkout: missing required metadata fields — skipping");
+    log.warn({ sessionId: session.id, meta }, "portal-checkout: missing required metadata fields — skipping");
     return;
   }
 
@@ -866,19 +867,19 @@ async function handleCheckoutCompleted(
         checkboxConfirmed: true,
       }).onConflictDoNothing();
 
-      logger.info(
+      log.info(
         { actorUserId, agreementVersion, agreementId, mspId, sessionId: session.id },
         "portal-checkout: customer agreement acceptance recorded",
       );
     } catch (err) {
-      logger.warn({ err, sessionId: session.id }, "portal-checkout: failed to insert agreement acceptance (non-fatal)");
+      log.warn({ err, sessionId: session.id }, "portal-checkout: failed to insert agreement acceptance (non-fatal)");
     }
   }
 
   const idempotencyKey = `portal_offer_checkout:session:${session.id}`;
 
   if (!fulfillmentTypeKey) {
-    logger.warn({ sessionId: session.id, offerId }, "portal-checkout: no fulfillmentTypeKey in metadata — skipping resolveFulfillment");
+    log.warn({ sessionId: session.id, offerId }, "portal-checkout: no fulfillmentTypeKey in metadata — skipping resolveFulfillment");
     return;
   }
 
@@ -930,7 +931,7 @@ async function handleCheckoutCompleted(
     },
   });
 
-  logger.info(
+  log.info(
     { result, offerId, customerId, sessionId: session.id },
     "portal-checkout: resolveFulfillment completed after Stripe checkout",
   );

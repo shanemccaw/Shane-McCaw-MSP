@@ -1,6 +1,7 @@
 import { db, invoicesTable, usersTable, projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "integration.azure" });
 import { graphCredentialsPresent, createSiteFolder, uploadFileToSharePoint } from "./graph";
 import { generateInvoicePdf } from "./invoice-pdf";
 
@@ -18,7 +19,7 @@ const SITE_POLL_INTERVAL_MS = 6_000;
  */
 export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void> {
   if (!graphCredentialsPresent()) {
-    logger.warn({ invoiceId }, "uploadInvoiceToSharePoint: Graph credentials missing — skipping");
+    log.warn({ invoiceId }, "uploadInvoiceToSharePoint: Graph credentials missing — skipping");
     return;
   }
 
@@ -26,7 +27,7 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
     // ── Fetch invoice ────────────────────────────────────────────────────────
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1);
     if (!invoice) {
-      logger.warn({ invoiceId }, "uploadInvoiceToSharePoint: invoice not found");
+      log.warn({ invoiceId }, "uploadInvoiceToSharePoint: invoice not found");
       return;
     }
 
@@ -45,7 +46,7 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
     }
 
     if (!client?.sharepointSiteId) {
-      logger.warn(
+      log.warn(
         { invoiceId, clientUserId: invoice.clientUserId, attempts: SITE_POLL_ATTEMPTS },
         "uploadInvoiceToSharePoint: client has no SharePoint site after polling — skipping",
       );
@@ -102,7 +103,7 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
     );
 
     if (!webUrl) {
-      logger.warn({ invoiceId, folderPath }, "uploadInvoiceToSharePoint: upload returned null");
+      log.warn({ invoiceId, folderPath }, "uploadInvoiceToSharePoint: upload returned null");
       return;
     }
 
@@ -112,8 +113,8 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
       .set({ sharepointFileUrl: webUrl })
       .where(eq(invoicesTable.id, invoiceId));
 
-    logger.info({ invoiceId, webUrl }, "uploadInvoiceToSharePoint: invoice PDF uploaded to SharePoint");
+    log.info({ invoiceId, webUrl }, "uploadInvoiceToSharePoint: invoice PDF uploaded to SharePoint");
   } catch (err) {
-    logger.error({ err, invoiceId }, "uploadInvoiceToSharePoint: unexpected error");
+    log.error({ err, invoiceId }, "uploadInvoiceToSharePoint: unexpected error");
   }
 }

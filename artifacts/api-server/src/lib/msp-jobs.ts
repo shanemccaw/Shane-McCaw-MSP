@@ -24,6 +24,7 @@ import { randomUUID } from "crypto";
 import { db, mspJobQueueTable, mspDlqStoreTable } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.run" });
 import { runWithRequestContext } from "./request-context.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,7 +81,7 @@ export async function enqueueJob(
     scheduledAt: opts.scheduledAt ?? new Date(),
     correlationId: opts.correlationId ? opts.correlationId as unknown as string : undefined,
   });
-  logger.info({ jobId, jobType, mspId: opts.mspId }, "msp-jobs: enqueued");
+  log.info({ jobId, jobType, mspId: opts.mspId }, "msp-jobs: enqueued");
   return jobId;
 }
 
@@ -167,7 +168,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
             mspId: row.msp_id ?? undefined,
             customerId: row.customer_id ?? undefined,
           });
-          logger.warn({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: no handler — parked in DLQ");
+          log.warn({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: no handler — parked in DLQ");
           return;
         }
 
@@ -187,7 +188,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
             SET status = 'completed', completed_at = NOW(), result = ${JSON.stringify(result)}::jsonb
             WHERE id = ${row.id}
           `);
-          logger.info({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: completed");
+          log.info({ jobId: row.job_id, jobType: row.job_type }, "msp-jobs: completed");
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err);
           const errorStack = err instanceof Error ? err.stack : undefined;
@@ -211,7 +212,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
               mspId: row.msp_id ?? undefined,
               customerId: row.customer_id ?? undefined,
             });
-            logger.error({ jobId: row.job_id, jobType: row.job_type, errorMessage }, "msp-jobs: exhausted retries — parked in DLQ");
+            log.error({ jobId: row.job_id, jobType: row.job_type, errorMessage }, "msp-jobs: exhausted retries — parked in DLQ");
           } else {
             // Schedule retry with exponential back-off (2^attempt * 30s)
             const backoffSec = Math.pow(2, newAttemptCount) * 30;
@@ -223,7 +224,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
                   scheduled_at = ${retryAt.toISOString()}
               WHERE id = ${row.id}
             `);
-            logger.warn({ jobId: row.job_id, jobType: row.job_type, backoffSec }, "msp-jobs: failed — scheduling retry");
+            log.warn({ jobId: row.job_id, jobType: row.job_type, backoffSec }, "msp-jobs: failed — scheduling retry");
           }
         }
           },
@@ -231,7 +232,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
       }
     });
   } catch (err) {
-    logger.error({ err }, "msp-jobs: processJobs transaction failed");
+    log.error({ err }, "msp-jobs: processJobs transaction failed");
   }
 }
 
@@ -245,7 +246,7 @@ export async function processJobs(batchSize = 5): Promise<void> {
  */
 export function startJobWorker(pollIntervalMs = 5_000, batchSize = 5): void {
   if (workerInterval !== null) return;
-  logger.info({ pollIntervalMs, batchSize }, "msp-jobs: worker started");
+  log.info({ pollIntervalMs, batchSize }, "msp-jobs: worker started");
   workerInterval = setInterval(() => { void processJobs(batchSize); }, pollIntervalMs);
   // Don't let the interval block process exit
   if (workerInterval.unref) workerInterval.unref();
@@ -258,7 +259,7 @@ export function stopJobWorker(): void {
   if (workerInterval !== null) {
     clearInterval(workerInterval);
     workerInterval = null;
-    logger.info({}, "msp-jobs: worker stopped");
+    log.info({}, "msp-jobs: worker stopped");
   }
 }
 

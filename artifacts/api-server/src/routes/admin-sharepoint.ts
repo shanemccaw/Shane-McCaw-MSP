@@ -14,6 +14,8 @@ import {
   getSiteByUrl,
 } from "../lib/graph";
 
+const log = logger.child({ channel: "integration.azure" });
+
 const router: IRouter = Router();
 
 const HUB_SITE_URL_KEY = "sharepoint_hub_site_url";
@@ -57,7 +59,7 @@ router.post("/admin/sharepoint/hub-config", requireAdmin, async (req: Request, r
           .onConflictDoUpdate({ target: settingsTable.key, set: { value: siteId, updatedAt: new Date() } });
       }
     } catch (err) {
-      logger.warn({ err }, "Could not resolve SharePoint hub site ID from URL");
+      log.warn({ err }, "Could not resolve SharePoint hub site ID from URL");
     }
   }
 
@@ -86,7 +88,7 @@ router.get("/admin/sharepoint/hub/items", requireAdmin, async (req: Request, res
     const items = await listDriveItems(siteId, folderPath);
     res.json({ items });
   } catch (err) {
-    logger.warn({ err, siteId, folderPath }, "listDriveItems failed");
+    log.warn({ err, siteId, folderPath }, "listDriveItems failed");
     res.status(502).json({ error: "Could not fetch SharePoint items", items: [] });
   }
 });
@@ -130,7 +132,7 @@ router.put("/admin/sharepoint/template-site", requireAdmin, async (req: Request,
           .onConflictDoUpdate({ target: settingsTable.key, set: { value: null, updatedAt: new Date() } });
       }
     } catch (err) {
-      logger.warn({ err }, "Could not resolve SharePoint template site ID from URL");
+      log.warn({ err }, "Could not resolve SharePoint template site ID from URL");
     }
   }
 
@@ -170,7 +172,7 @@ router.get("/admin/sharepoint/templates/items", requireAdmin, async (req: Reques
     }));
     res.json({ items });
   } catch (err) {
-    logger.warn({ err, siteId, folderPath }, "listDriveItems for templates failed");
+    log.warn({ err, siteId, folderPath }, "listDriveItems for templates failed");
     res.status(502).json({ error: "Could not fetch template files", items: [] });
   }
 });
@@ -290,7 +292,7 @@ router.post("/admin/clients/:id/sharepoint/provision", requireAdmin, async (req:
     try {
       await provisionClientSite(id, client.company ?? client.name ?? client.email, req.log);
     } catch (err) {
-      logger.error({ err, clientId: id }, "Manual SharePoint provisioning failed");
+      log.error({ err, clientId: id }, "Manual SharePoint provisioning failed");
     }
   })();
 });

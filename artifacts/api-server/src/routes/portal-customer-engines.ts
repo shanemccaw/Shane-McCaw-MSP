@@ -23,6 +23,7 @@ import { getRequestContext } from "../lib/request-context.ts";
 import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "tenant.portal" });
 import { db, tenantEngineSnapshotsTable, mspCustomersTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
@@ -186,7 +187,7 @@ router.get(
         updatedAt: output.timestamp,
       });
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: sla-status failed");
+      log.error({ err, customerId }, "portal-customer-engines: sla-status failed");
       res.status(500).json({ error: "Unable to load your service status right now. Please try again shortly." });
     }
   },
@@ -244,7 +245,7 @@ router.get(
         updatedAt: output.timestamp,
       });
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: scope-status failed");
+      log.error({ err, customerId }, "portal-customer-engines: scope-status failed");
       res.status(500).json({ error: "Unable to load your project status right now. Please try again shortly." });
     }
   },
@@ -461,7 +462,7 @@ router.get(
         mspId: req.user!.mspId
       });
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: dashboard failed");
+      log.error({ err, customerId }, "portal-customer-engines: dashboard failed");
       res.status(500).json({ error: "Unable to load dashboard data." });
     }
   },
@@ -508,7 +509,7 @@ router.get(
         enabledModules: Array.from(enabledModules),
       });
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: assessment-results failed");
+      log.error({ err, customerId }, "portal-customer-engines: assessment-results failed");
       res.status(500).json({ error: "Unable to load assessment results." });
     }
   },
@@ -551,7 +552,7 @@ router.post(
       try {
         stripeKey = getStripeKey();
       } catch (err) {
-        logger.warn({ err }, "Stripe not configured during customer offboarding");
+        log.warn({ err }, "Stripe not configured during customer offboarding");
       }
 
       // 2. Cancel Stripe subscriptions
@@ -563,9 +564,9 @@ router.post(
           if (cs.stripeSubscriptionId) {
             try {
               await stripe.subscriptions.cancel(cs.stripeSubscriptionId);
-              logger.info({ stripeSubscriptionId: cs.stripeSubscriptionId }, "Cancelled stripe subscription during customer offboarding");
+              log.info({ stripeSubscriptionId: cs.stripeSubscriptionId }, "Cancelled stripe subscription during customer offboarding");
             } catch (err) {
-              logger.error({ err, stripeSubscriptionId: cs.stripeSubscriptionId }, "Failed to cancel Stripe subscription");
+              log.error({ err, stripeSubscriptionId: cs.stripeSubscriptionId }, "Failed to cancel Stripe subscription");
             }
           }
         }
@@ -629,7 +630,7 @@ router.post(
 
       res.json({ ok: true, customerStatus: "inactive" });
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: offboard failed");
+      log.error({ err, customerId }, "portal-customer-engines: offboard failed");
       res.status(500).json({ error: "Failed to complete offboarding process" });
     }
   }
@@ -716,7 +717,7 @@ router.get(
 
       res.json(exportData);
     } catch (err) {
-      logger.error({ err, customerId }, "portal-customer-engines: customer-export failed");
+      log.error({ err, customerId }, "portal-customer-engines: customer-export failed");
       res.status(500).json({ error: "Failed to generate data export" });
     }
   }

@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { eq, asc, ilike, or } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 
 const navy  = rgb(0.039, 0.145, 0.251);
 const blue  = rgb(0,     0.471, 0.831);
@@ -132,7 +133,7 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   })();
 
   if (!service) {
-    logger.warn({ serviceName }, "generateServiceOverviewPdf: service not found");
+    log.warn({ serviceName }, "generateServiceOverviewPdf: service not found");
     return null;
   }
 

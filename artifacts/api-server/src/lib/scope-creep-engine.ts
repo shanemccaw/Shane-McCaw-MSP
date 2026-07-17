@@ -19,6 +19,7 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.scope-creep" });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -370,7 +371,7 @@ export async function recordScopeCreepDetection(
     )
   `);
 
-  logger.info(
+  log.info(
     { detectionId, mspId: opts.mspId, customerId: opts.customerId, type: opts.detectionType, changePct: opts.changePct },
     "scope-creep-engine: detection recorded",
   );
@@ -423,7 +424,7 @@ export async function computeAndPersistScore(
     )
   `);
 
-  logger.info(
+  log.info(
     { scoreId, customerId: opts.customerId, compositeScore: engineOutput.score.compositeScore },
     "scope-creep-engine: score persisted",
   );
@@ -487,7 +488,7 @@ export async function evaluatePolicyEscalations(
     results.push({ ...result, level: rule.level, type: rule.type });
   }
 
-  logger.info(
+  log.info(
     { violationId, compositeScore, triggeredRules: triggered.length },
     "scope-creep-engine: policy escalation evaluation complete",
   );
@@ -500,7 +501,7 @@ export async function fireScopeCreepViolation(
 ): Promise<{ violationId: string | null; severity: string | null; alreadyExisted: boolean; belowThreshold: boolean }> {
   // Threshold enforcement: do not fire violation if score has not crossed threshold
   if (opts.compositeScore < opts.threshold) {
-    logger.debug(
+    log.debug(
       { customerId: opts.customerId, compositeScore: opts.compositeScore, threshold: opts.threshold },
       "scope-creep-engine: violation skipped — composite score below threshold",
     );
@@ -531,7 +532,7 @@ export async function fireScopeCreepViolation(
     )
   `);
 
-  logger.info(
+  log.info(
     { violationId, customerId: opts.customerId, severity, compositeScore: opts.compositeScore },
     "scope-creep-engine: violation fired",
   );
@@ -546,7 +547,7 @@ export async function fireScopeCreepViolation(
       opts.customerId,
       opts.traceId,
     ).catch(err => {
-      logger.warn({ err, violationId }, "scope-creep-engine: policy escalation evaluation failed (non-fatal)");
+      log.warn({ err, violationId }, "scope-creep-engine: policy escalation evaluation failed (non-fatal)");
     });
   }
 
@@ -597,7 +598,7 @@ export async function escalateScopeCreep(
     )
   `);
 
-  logger.info(
+  log.info(
     { escalationId, violationId: opts.violationId, level: opts.level, flagSowAmendment: opts.flagSowAmendment, flagPricingReview: opts.flagPricingReview },
     "scope-creep-engine: escalation created",
   );
@@ -624,7 +625,7 @@ export async function resolveScopeCreepViolation(
       SET status = 'resolved', resolved_at = NOW()
       WHERE violation_id = ${violationId} AND status IN ('pending', 'in_progress')
     `);
-    logger.info({ violationId }, "scope-creep-engine: violation resolved");
+    log.info({ violationId }, "scope-creep-engine: violation resolved");
   }
 
   return resolved;
@@ -642,7 +643,7 @@ export async function acknowledgeScopeCreepDetection(
   `);
   const acked = result.rows.length > 0;
   if (acked) {
-    logger.info({ detectionId }, "scope-creep-engine: detection acknowledged");
+    log.info({ detectionId }, "scope-creep-engine: detection acknowledged");
   }
   return acked;
 }
@@ -838,5 +839,5 @@ export async function ensureScopeCreepTables(): Promise<void> {
     )
   `);
 
-  logger.info("scope-creep-engine: tables ensured");
+  log.info("scope-creep-engine: tables ensured");
 }

@@ -31,6 +31,7 @@ import {
   broadcastCustomerOfferChange,
 } from "../lib/sse-broadcast";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.offer" });
 import type { AuthUser } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -122,7 +123,7 @@ router.get("/portal/offers/sse", (req: Request, res: Response): void => {
 
   registerCustomerOfferSSEClient(customerId, res, () => {
     clearInterval(heartbeat);
-    logger.debug({ customerId }, "portal-offers: customer SSE client disconnected");
+    log.debug({ customerId }, "portal-offers: customer SSE client disconnected");
   });
 });
 
@@ -153,7 +154,7 @@ router.get(
 
       res.json({ offers: rows.map(toCustomerOffer) });
     } catch (err) {
-      logger.error({ err }, "GET /api/portal/offers failed");
+      log.error({ err }, "GET /api/portal/offers failed");
       res.status(500).json({ error: "Failed to load offers" });
     }
   },
@@ -201,7 +202,7 @@ router.get(
 
       res.json({ offer: toCustomerOffer(row) });
     } catch (err) {
-      logger.error({ err }, "GET /api/portal/offers/:id failed");
+      log.error({ err }, "GET /api/portal/offers/:id failed");
       res.status(500).json({ error: "Failed to load offer" });
     }
   },
@@ -261,7 +262,7 @@ router.post(
         res.status(422).json({ error: message });
         return;
       }
-      logger.error({ err }, "POST /api/portal/offers/:id/accept failed");
+      log.error({ err }, "POST /api/portal/offers/:id/accept failed");
       res.status(500).json({ error: "Failed to accept offer" });
     }
   },
@@ -323,7 +324,7 @@ router.post(
         res.status(422).json({ error: message });
         return;
       }
-      logger.error({ err }, "POST /api/portal/offers/:id/reject failed");
+      log.error({ err }, "POST /api/portal/offers/:id/reject failed");
       res.status(500).json({ error: "Failed to reject offer" });
     }
   },

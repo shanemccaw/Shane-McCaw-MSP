@@ -36,6 +36,7 @@ import { requireRole } from "../middlewares/requireAuth.ts";
 import { requirePlanFeature } from "../lib/msp-entitlement.ts";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "tenant.msp-admin" });
 import { getRequestContext } from "../lib/request-context.ts";
 import { z } from "zod";
 
@@ -172,7 +173,7 @@ router.get(
         .orderBy(monitoringPackagesTable.label);
       res.json({ packages });
     } catch (err) {
-      logger.error({ err, mspId }, "msp-sales-bundles: list monitoring packages failed");
+      log.error({ err, mspId }, "msp-sales-bundles: list monitoring packages failed");
       res.status(500).json({ error: "Failed to list monitoring packages" });
     }
   },
@@ -224,7 +225,7 @@ router.get(
       const internalCostCents = breakdown.reduce((s, b) => s + (b.platformCostCents ?? 0), 0);
       res.json({ packageKeys, internalCostCents, breakdown });
     } catch (err) {
-      logger.error({ err, mspId }, "msp-sales-bundles: pricing preview failed");
+      log.error({ err, mspId }, "msp-sales-bundles: pricing preview failed");
       res.status(500).json({ error: "Failed to compute pricing preview" });
     }
   },
@@ -266,7 +267,7 @@ router.get(
 
       res.json({ bundles, total: Number(total), limit, offset });
     } catch (err) {
-      logger.error({ err, mspId }, "msp-sales-bundles: list failed");
+      log.error({ err, mspId }, "msp-sales-bundles: list failed");
       res.status(500).json({ error: "Failed to list sales bundles" });
     }
   },
@@ -348,7 +349,7 @@ router.post(
 
       res.status(201).json({ bundle });
     } catch (err) {
-      logger.error({ err, mspId }, "msp-sales-bundles: create failed");
+      log.error({ err, mspId }, "msp-sales-bundles: create failed");
       res.status(500).json({ error: "Failed to create sales bundle" });
     }
   },
@@ -399,7 +400,7 @@ router.get(
 
       res.json({ bundle, packages, activeAssignmentCount: Number(assignmentCount) });
     } catch (err) {
-      logger.error({ err, mspId, bundleId }, "msp-sales-bundles: get failed");
+      log.error({ err, mspId, bundleId }, "msp-sales-bundles: get failed");
       res.status(500).json({ error: "Failed to get bundle" });
     }
   },
@@ -490,7 +491,7 @@ router.patch(
 
       res.json({ bundle: updated });
     } catch (err) {
-      logger.error({ err, mspId, bundleId }, "msp-sales-bundles: patch failed");
+      log.error({ err, mspId, bundleId }, "msp-sales-bundles: patch failed");
       res.status(500).json({ error: "Failed to update bundle" });
     }
   },
@@ -544,7 +545,7 @@ router.delete(
 
       res.json({ ok: true });
     } catch (err) {
-      logger.error({ err, mspId, bundleId }, "msp-sales-bundles: delete failed");
+      log.error({ err, mspId, bundleId }, "msp-sales-bundles: delete failed");
       res.status(500).json({ error: "Failed to delete bundle" });
     }
   },
@@ -594,7 +595,7 @@ router.get(
 
       res.json({ assignments });
     } catch (err) {
-      logger.error({ err, mspId, bundleId }, "msp-sales-bundles: list assignments failed");
+      log.error({ err, mspId, bundleId }, "msp-sales-bundles: list assignments failed");
       res.status(500).json({ error: "Failed to list assignments" });
     }
   },
@@ -696,7 +697,7 @@ router.post(
 
       res.status(201).json({ assignment });
     } catch (err) {
-      logger.error({ err, mspId, bundleId }, "msp-sales-bundles: assign failed");
+      log.error({ err, mspId, bundleId }, "msp-sales-bundles: assign failed");
       res.status(500).json({ error: "Failed to assign bundle" });
     }
   },
@@ -762,7 +763,7 @@ router.delete(
 
       res.json({ assignment: updated });
     } catch (err) {
-      logger.error({ err, mspId, bundleId, assignmentId }, "msp-sales-bundles: revoke assignment failed");
+      log.error({ err, mspId, bundleId, assignmentId }, "msp-sales-bundles: revoke assignment failed");
       res.status(500).json({ error: "Failed to revoke assignment" });
     }
   },

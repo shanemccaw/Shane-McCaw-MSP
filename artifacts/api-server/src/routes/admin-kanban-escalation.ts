@@ -16,6 +16,7 @@ import { checkManualScriptEscalations } from "../lib/manual-script-escalation";
 import { reconcileStalledPhases } from "../lib/kanban-auto-fire";
 import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.kanban" });
 import { db } from "@workspace/db";
 import { projectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -43,7 +44,7 @@ router.post(
             : `Alert sent for ${result.alerted} overdue card${result.alerted !== 1 ? "s" : ""}.`,
       });
     } catch (err) {
-      logger.error({ err }, "admin-kanban-escalation: unexpected error");
+      log.error({ err }, "admin-kanban-escalation: unexpected error");
       res.status(500).json({ error: "Failed to run escalation check" });
     }
   },
@@ -71,7 +72,7 @@ router.post(
       req.log.info({ clientUserId }, "admin triggered auto-fire via workflow event for client");
       res.json({ ok: true, message: `Auto-fire triggered for clientUserId ${clientUserId}` });
     } catch (err) {
-      logger.error({ err, clientUserId }, "admin-kanban-escalation: trigger-auto-fire unexpected error");
+      log.error({ err, clientUserId }, "admin-kanban-escalation: trigger-auto-fire unexpected error");
       res.status(500).json({ error: "Failed to trigger auto-fire" });
     }
   },
@@ -92,7 +93,7 @@ router.post(
       req.log.info({}, "admin triggered reconcile-stalled-phases");
       res.json({ ok: true, message: "Stalled-phase reconciliation complete — check server logs for details" });
     } catch (err) {
-      logger.error({ err }, "admin-kanban-escalation: reconcile-stalled-phases unexpected error");
+      log.error({ err }, "admin-kanban-escalation: reconcile-stalled-phases unexpected error");
       res.status(500).json({ error: "Failed to run stalled-phase reconciler" });
     }
   },
@@ -142,7 +143,7 @@ router.get("/admin/kanban/boards", requireAdmin, async (_req: Request, res: Resp
       ...projectBoards,
     ]);
   } catch (err) {
-    logger.error({ err }, "admin-kanban: failed to list boards");
+    log.error({ err }, "admin-kanban: failed to list boards");
     res.status(500).json({ error: "Failed to list boards" });
   }
 });

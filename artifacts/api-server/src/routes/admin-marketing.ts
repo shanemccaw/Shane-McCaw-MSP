@@ -14,6 +14,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
 import { fetchTopQueries } from "../lib/search-console";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "admin.content" });
 import { getPrompt } from "../lib/prompt-loader.ts";
 import { z } from "zod";
 
@@ -340,7 +341,7 @@ Respond with a JSON array (no markdown):
 
     res.json(inserted);
   } catch (e) {
-    if (e instanceof AiResponseError) { logger.warn({ err: e }, "AI parse failed on /recommended-leads/generate"); res.json(aiErrorResponse(e)); return; }
+    if (e instanceof AiResponseError) { log.warn({ err: e }, "AI parse failed on /recommended-leads/generate"); res.json(aiErrorResponse(e)); return; }
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
@@ -692,7 +693,7 @@ Respond with a JSON array only (no markdown):
 
     res.json(suggestions);
   } catch (e) {
-    if (e instanceof AiResponseError) { logger.warn({ err: e }, "AI parse failed on /generate/task-suggestions"); res.json(aiErrorResponse(e)); return; }
+    if (e instanceof AiResponseError) { log.warn({ err: e }, "AI parse failed on /generate/task-suggestions"); res.json(aiErrorResponse(e)); return; }
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
@@ -3537,7 +3538,7 @@ Return JSON:
     res.json({ ...parsed, trafficSpikeDetected: trafficSpike, trafficSpikeNote });
   } catch (e) {
     if (e instanceof AiResponseError) {
-      logger.warn({ err: e }, "AI parse failed on /analytics/insights");
+      log.warn({ err: e }, "AI parse failed on /analytics/insights");
       res.json({ ...aiErrorResponse(e), summary: "AI analysis could not be generated — please try again", wins: [], gaps: [], recommendations: [], revenueAlert: "", trafficSpikeDetected: false, trafficSpikeNote: null });
       return;
     }

@@ -6,6 +6,8 @@ import { matchSenderToUser, extractDomain } from "../lib/email-domain-match";
 import { logger } from "../lib/logger";
 import { sendPushNotifications } from "../lib/push";
 
+const log = logger.child({ channel: "comms.webhook" });
+
 const router: IRouter = Router();
 
 const GRAPH_MAIL_USER_ID = process.env.GRAPH_MAIL_USER_ID ?? "me";
@@ -54,7 +56,7 @@ router.post("/graph/webhook", async (req: Request, res: Response) => {
     if (notification.changeType !== "created") continue;
 
     if (notification.clientState && notification.clientState !== EXPECTED_CLIENT_STATE) {
-      logger.warn({ subscriptionId: notification.subscriptionId }, "Graph webhook: clientState mismatch — ignoring notification");
+      log.warn({ subscriptionId: notification.subscriptionId }, "Graph webhook: clientState mismatch — ignoring notification");
       continue;
     }
 
@@ -63,7 +65,7 @@ router.post("/graph/webhook", async (req: Request, res: Response) => {
       notification.resourceData?.["@odata.id"]?.split("messages/")[1];
 
     if (!messageId) {
-      logger.warn({ notification }, "Graph webhook: could not extract message ID");
+      log.warn({ notification }, "Graph webhook: could not extract message ID");
       continue;
     }
 
@@ -83,7 +85,7 @@ async function ingestMessage(messageId: string): Promise<void> {
 
     const message = await getMailMessage(GRAPH_MAIL_USER_ID, messageId);
     if (!message) {
-      logger.warn({ messageId }, "Graph ingestMessage: could not fetch message");
+      log.warn({ messageId }, "Graph ingestMessage: could not fetch message");
       return;
     }
 
@@ -105,7 +107,7 @@ async function ingestMessage(messageId: string): Promise<void> {
       linkedUserId,
     }).onConflictDoNothing();
 
-    logger.info({ messageId, senderAddress, linkedUserId }, "Email ingested from Graph");
+    log.info({ messageId, senderAddress, linkedUserId }, "Email ingested from Graph");
 
     // Send push notification to all registered admin devices
     const tokenRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
@@ -123,7 +125,7 @@ async function ingestMessage(messageId: string): Promise<void> {
       );
     }
   } catch (err) {
-    logger.error({ err, messageId }, "Graph ingestMessage error");
+    log.error({ err, messageId }, "Graph ingestMessage error");
   }
 }
 

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.sla" });
 import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine";
 import { registerMspEngineEventClient } from "../lib/sse-broadcast";
 
@@ -41,7 +42,7 @@ router.get("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request,
     `);
     res.json({ policies: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: list policies failed");
+    log.error({ err, mspId }, "msp-sla: list policies failed");
     res.status(500).json({ error: "Failed to list SLA policies" });
   }
 });
@@ -71,7 +72,7 @@ router.get("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Requ
     }
     res.json({ policy: rows.rows[0] });
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-sla: get policy failed");
+    log.error({ err, mspId, id }, "msp-sla: get policy failed");
     res.status(500).json({ error: "Failed to get SLA policy" });
   }
 });
@@ -101,10 +102,10 @@ router.post("/msp/sla/policies", requireRole("MSPOperator"), async (req: Request
       ) RETURNING id
     `);
     const newId = (result.rows[0] as { id: number }).id;
-    logger.info({ id: newId, mspId }, "msp-sla: policy created");
+    log.info({ id: newId, mspId }, "msp-sla: policy created");
     res.status(201).json({ id: newId });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: create policy failed");
+    log.error({ err, mspId }, "msp-sla: create policy failed");
     res.status(500).json({ error: "Failed to create SLA policy" });
   }
 });
@@ -153,7 +154,7 @@ router.patch("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Re
         ) RETURNING id
       `);
       const newId = (result.rows[0] as { id: number }).id;
-      logger.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created");
+      log.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created");
       res.status(201).json({ id: newId, override: true });
     } else {
       await db.execute(sql`
@@ -173,7 +174,7 @@ router.patch("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: Re
       res.json({ ok: true });
     }
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-sla: update policy failed");
+    log.error({ err, mspId, id }, "msp-sla: update policy failed");
     res.status(500).json({ error: "Failed to update SLA policy" });
   }
 });
@@ -211,7 +212,7 @@ router.delete("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: R
         ) RETURNING id
       `);
       const newId = (result.rows[0] as { id: number }).id;
-      logger.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created (deactivated)");
+      log.info({ id: newId, mspId, originalId: id }, "msp-sla: policy override created (deactivated)");
       res.status(201).json({ id: newId, override: true });
     } else {
       await db.execute(sql`
@@ -220,7 +221,7 @@ router.delete("/msp/sla/policies/:id", requireRole("MSPOperator"), async (req: R
       res.json({ ok: true });
     }
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-sla: delete policy failed");
+    log.error({ err, mspId, id }, "msp-sla: delete policy failed");
     res.status(500).json({ error: "Failed to deactivate SLA policy" });
   }
 });
@@ -277,7 +278,7 @@ router.get("/msp/sla/timers", requireRole("MSPOperator"), async (req: Request, r
     );
     res.json({ timers: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: list timers failed");
+    log.error({ err, mspId }, "msp-sla: list timers failed");
     res.status(500).json({ error: "Failed to list SLA timers" });
   }
 });
@@ -324,7 +325,7 @@ router.get("/msp/sla/breaches", requireRole("MSPOperator"), async (req: Request,
     );
     res.json({ breaches: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: list breaches failed");
+    log.error({ err, mspId }, "msp-sla: list breaches failed");
     res.status(500).json({ error: "Failed to list SLA breaches" });
   }
 });
@@ -348,7 +349,7 @@ router.get("/msp/sla/escalations", requireRole("MSPOperator"), async (req: Reque
     `);
     res.json({ escalations: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: list escalations failed");
+    log.error({ err, mspId }, "msp-sla: list escalations failed");
     res.status(500).json({ error: "Failed to list SLA escalations" });
   }
 });
@@ -382,7 +383,7 @@ router.get("/msp/sla/compliance", requireRole("MSPOperator"), async (req: Reques
     );
     res.json({ records: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: list compliance failed");
+    log.error({ err, mspId }, "msp-sla: list compliance failed");
     res.status(500).json({ error: "Failed to list SLA compliance records" });
   }
 });
@@ -397,7 +398,7 @@ router.post("/msp/sla/evaluate", requireRole("MSPOperator"), async (req: Request
     const output = await runSlaEngineForMsp(mspId);
     res.json(output);
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: evaluate failed");
+    log.error({ err, mspId }, "msp-sla: evaluate failed");
     res.status(500).json({ error: "SLA engine evaluation failed" });
   }
 });
@@ -424,7 +425,7 @@ router.post(
       const resolved = await resolveSlaTimer(timerId, b.notes as string | undefined);
       res.json({ resolved });
     } catch (err) {
-      logger.error({ err, mspId, timerId }, "msp-sla: resolve timer failed");
+      log.error({ err, mspId, timerId }, "msp-sla: resolve timer failed");
       res.status(500).json({ error: "Failed to resolve timer" });
     }
   },
@@ -471,7 +472,7 @@ router.get("/msp/sla/summary", requireRole("MSPOperator"), async (req: Request, 
         : null,
     });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: summary failed");
+    log.error({ err, mspId }, "msp-sla: summary failed");
     res.status(500).json({ error: "Failed to load SLA summary" });
   }
 });
@@ -530,7 +531,7 @@ router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Reques
 
     res.json({ tasks, total: tasks.length });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-sla: operator tasks failed");
+    log.error({ err, mspId }, "msp-sla: operator tasks failed");
     res.status(500).json({ error: "Failed to load operator tasks" });
   }
 });
@@ -560,7 +561,7 @@ router.get("/msp/sla/events/stream", requireRole("MSPOperator"), (req: Request, 
 
   registerMspEngineEventClient(mspId, res, () => {
     clearInterval(heartbeat);
-    logger.debug({ mspId }, "msp-sla: SSE client disconnected");
+    log.debug({ mspId }, "msp-sla: SSE client disconnected");
   });
 });
 

@@ -17,6 +17,7 @@ import { db, outboundWebhooksTable, outboundWebhookDeliveriesTable } from "@work
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import { generateWebhookSecret, getDeliveryLog } from "../lib/webhook-delivery.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "comms.webhook" });
 import { EVENT_TYPES } from "../lib/event-bus.ts";
 
 const router = Router();
@@ -178,7 +179,7 @@ router.post("/portal/webhooks", requireAuth, async (req: Request, res: Response)
     return;
   }
 
-  logger.info(
+  log.info(
     { webhookId: row.webhookId, label, mspId: ctx.mspId, customerId: ctx.customerId },
     "webhooks: created",
   );
@@ -368,7 +369,7 @@ router.post(
       .set({ secret: newSecret, secretPrefix: newPrefix, updatedAt: new Date() })
       .where(eq(outboundWebhooksTable.webhookId, webhookId));
 
-    logger.info({ webhookId }, "webhooks: secret rotated");
+    log.info({ webhookId }, "webhooks: secret rotated");
 
     // Return new secret once — caller must store it
     res.json({ secret: newSecret, secretPrefix: newPrefix });

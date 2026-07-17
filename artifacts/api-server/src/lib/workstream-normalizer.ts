@@ -15,6 +15,7 @@
  */
 
 import { logger } from "./logger";
+const log = logger.child({ channel: "growth.quiz" });
 
 export type WorkstreamKey =
   | "Governance Remediation"
@@ -166,7 +167,7 @@ export function resolveWorkstreamKeys(projectTitles: string[]): {
       resolvedSet.add(key);
     } else {
       unresolvedTitles.push(title);
-      logger.warn(
+      log.warn(
         { rawTitle: title },
         "workstream-normalizer: unknown project title — no canonical workstream key matched; adjustment eligibility may be incomplete",
       );

@@ -20,6 +20,7 @@ import { db, servicesTable, mspSubscriptionsTable, mspsTable, platformAgreements
 import { eq } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "tenant.msp-admin" });
 
 const router: IRouter = Router();
 
@@ -68,7 +69,7 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
 
     res.json({ tiers });
   } catch (err) {
-    logger.error({ err }, "msp-signup: tiers query failed");
+    log.error({ err }, "msp-signup: tiers query failed");
     res.status(500).json({ error: "Failed to load subscription tiers" });
   }
 });
@@ -143,7 +144,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
         return;
       }
       if (!agreementVersion || agreementVersion !== currentAgreement.version) {
-        logger.warn(
+        log.warn(
           {
             contactEmail: contactEmail.trim(),
             providedVersion: agreementVersion ?? null,
@@ -160,7 +161,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
       }
     } else {
       // No published agreement yet — proceed but log a warning for visibility
-      logger.warn(
+      log.warn(
         { contactEmail: contactEmail.trim() },
         "msp-signup: no current platform agreement published — proceeding without agreement gate",
       );
@@ -286,7 +287,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
 
     const session = await stripe.checkout.sessions.create(sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]);
 
-    logger.info(
+    log.info(
       {
         sessionId: session.id,
         companyName: companyName.trim(),
@@ -298,7 +299,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
 
     res.json({ checkoutUrl: session.url, sessionId: session.id });
   } catch (err) {
-    logger.error({ err }, "msp-signup: start failed");
+    log.error({ err }, "msp-signup: start failed");
     res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
@@ -362,7 +363,7 @@ router.get("/msp/signup/success", async (req: Request, res: Response) => {
       });
     }
   } catch (err) {
-    logger.error({ err, sessionId }, "msp-signup: success check failed");
+    log.error({ err, sessionId }, "msp-signup: success check failed");
     res.status(500).json({ error: "Failed to check provisioning status" });
   }
 });

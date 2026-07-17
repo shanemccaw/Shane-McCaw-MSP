@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.scope-creep" });
 import {
   runScopeCreepEngineForMsp,
   fireScopeCreepViolation,
@@ -48,7 +49,7 @@ router.get("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req: 
     `);
     res.json({ policies: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: list policies failed");
+    log.error({ err, mspId }, "msp-scope-creep: list policies failed");
     res.status(500).json({ error: "Failed to list policies" });
   }
 });
@@ -81,7 +82,7 @@ router.get("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async (r
     }
     res.json({ policy: rows.rows[0] });
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-scope-creep: get policy failed");
+    log.error({ err, mspId, id }, "msp-scope-creep: get policy failed");
     res.status(500).json({ error: "Failed to get policy" });
   }
 });
@@ -115,10 +116,10 @@ router.post("/msp/scope-creep/policies", requireRole("MSPOperator"), async (req:
       ) RETURNING id
     `);
     const newId = (result.rows[0] as { id: number }).id;
-    logger.info({ id: newId, mspId }, "msp-scope-creep: policy created");
+    log.info({ id: newId, mspId }, "msp-scope-creep: policy created");
     res.status(201).json({ id: newId });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: create policy failed");
+    log.error({ err, mspId }, "msp-scope-creep: create policy failed");
     res.status(500).json({ error: "Failed to create policy" });
   }
 });
@@ -177,7 +178,7 @@ router.patch("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async 
         ) RETURNING id
       `);
       const newId = (result.rows[0] as { id: number }).id;
-      logger.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created");
+      log.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created");
       res.status(201).json({ id: newId, override: true });
     } else {
       await db.execute(sql`
@@ -199,7 +200,7 @@ router.patch("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async 
       res.json({ ok: true });
     }
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-scope-creep: update policy failed");
+    log.error({ err, mspId, id }, "msp-scope-creep: update policy failed");
     res.status(500).json({ error: "Failed to update policy" });
   }
 });
@@ -244,7 +245,7 @@ router.delete("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async
         ) RETURNING id
       `);
       const newId = (result.rows[0] as { id: number }).id;
-      logger.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created (deactivated)");
+      log.info({ id: newId, mspId, originalId: id }, "msp-scope-creep: policy override created (deactivated)");
       res.status(201).json({ id: newId, override: true });
     } else {
       await db.execute(sql`
@@ -253,7 +254,7 @@ router.delete("/msp/scope-creep/policies/:id", requireRole("MSPOperator"), async
       res.json({ ok: true });
     }
   } catch (err) {
-    logger.error({ err, mspId, id }, "msp-scope-creep: delete policy failed");
+    log.error({ err, mspId, id }, "msp-scope-creep: delete policy failed");
     res.status(500).json({ error: "Failed to deactivate policy" });
   }
 });
@@ -288,7 +289,7 @@ router.get("/msp/scope-creep/detections", requireRole("MSPOperator"), async (req
     );
     res.json({ detections: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: list detections failed");
+    log.error({ err, mspId }, "msp-scope-creep: list detections failed");
     res.status(500).json({ error: "Failed to list detections" });
   }
 });
@@ -322,7 +323,7 @@ router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req
     );
     res.json({ violations: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: list violations failed");
+    log.error({ err, mspId }, "msp-scope-creep: list violations failed");
     res.status(500).json({ error: "Failed to list violations" });
   }
 });
@@ -348,7 +349,7 @@ router.get("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (re
     `);
     res.json({ escalations: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: list escalations failed");
+    log.error({ err, mspId }, "msp-scope-creep: list escalations failed");
     res.status(500).json({ error: "Failed to list escalations" });
   }
 });
@@ -382,7 +383,7 @@ router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req
     );
     res.json({ records: rows.rows });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: list compliance failed");
+    log.error({ err, mspId }, "msp-scope-creep: list compliance failed");
     res.status(500).json({ error: "Failed to list compliance records" });
   }
 });
@@ -449,7 +450,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
 
     res.json({ ...output, autoFired: autoFire ? autoFired : undefined });
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: evaluate failed");
+    log.error({ err, mspId }, "msp-scope-creep: evaluate failed");
     res.status(500).json({ error: "Scope creep engine evaluation failed" });
   }
 });
@@ -477,7 +478,7 @@ router.post(
       const resolved = await resolveScopeCreepViolation(violationId, b.notes as string | undefined);
       res.json({ resolved });
     } catch (err) {
-      logger.error({ err, mspId, violationId }, "msp-scope-creep: resolve violation failed");
+      log.error({ err, mspId, violationId }, "msp-scope-creep: resolve violation failed");
       res.status(500).json({ error: "Failed to resolve violation" });
     }
   },
@@ -514,7 +515,7 @@ router.post("/msp/scope-creep/escalations", requireRole("MSPOperator"), async (r
     });
     res.status(result.alreadyExisted ? 200 : 201).json(result);
   } catch (err) {
-    logger.error({ err, mspId }, "msp-scope-creep: create escalation failed");
+    log.error({ err, mspId }, "msp-scope-creep: create escalation failed");
     res.status(500).json({ error: "Failed to create escalation" });
   }
 });

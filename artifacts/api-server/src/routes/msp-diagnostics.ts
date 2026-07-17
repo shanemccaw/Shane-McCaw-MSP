@@ -36,6 +36,7 @@ import {
 import { eq, and, desc, count, or, sql } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "tenant.portal" });
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-broadcast";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
@@ -133,13 +134,13 @@ router.post(
       // 5. Fire-and-forget: run the full diagnostics pipeline.
       void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId })
         .catch((err: unknown) => {
-          logger.error({ err, runId }, "msp-diagnostics: async run failed");
+          log.error({ err, runId }, "msp-diagnostics: async run failed");
         });
 
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
       const message = err instanceof Error ? err.message : String(err);
-      logger.error({ err }, "POST /msp/customers/:id/diagnostics/run error");
+      log.error({ err }, "POST /msp/customers/:id/diagnostics/run error");
       if (!res.headersSent) res.status(status).json({ error: message });
     }
   },
@@ -195,7 +196,7 @@ router.get(
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
       const message = err instanceof Error ? err.message : String(err);
-      logger.error({ err }, "GET /msp/customers/:id/monitoring-package error");
+      log.error({ err }, "GET /msp/customers/:id/monitoring-package error");
       res.status(status).json({ error: message });
     }
   },
@@ -240,7 +241,7 @@ router.get(
       res.json({ runs, total, limit, offset });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
-      logger.error({ err }, "GET /msp/customers/:id/diagnostics error");
+      log.error({ err }, "GET /msp/customers/:id/diagnostics error");
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
   },
@@ -286,7 +287,7 @@ router.get(
       res.json({ run, findings });
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
-      logger.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId error");
+      log.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId error");
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
   },
@@ -349,7 +350,7 @@ router.get(
       res.flushHeaders();
 
       registerDiagnosticsRunSSEClient(runId, res, () => {
-        logger.info({ runId, customerId }, "diagnostics SSE client disconnected");
+        log.info({ runId, customerId }, "diagnostics SSE client disconnected");
       });
 
       const heartbeat = setInterval(() => {
@@ -359,7 +360,7 @@ router.get(
       res.on("close", () => clearInterval(heartbeat));
 
     } catch (err) {
-      logger.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId/sse error");
+      log.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId/sse error");
       if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
     }
   },
@@ -428,7 +429,7 @@ router.get(
 
       res.json({ run: latestRun, findings });
     } catch (err) {
-      logger.error({ err }, "GET /portal/diagnostics/latest error");
+      log.error({ err }, "GET /portal/diagnostics/latest error");
       res.status(500).json({ error: "Internal server error" });
     }
   },
@@ -492,7 +493,7 @@ router.get(
 
       res.json({ pillars, asOfDate });
     } catch (err) {
-      logger.error({ err }, "GET /portal/health-benchmark error");
+      log.error({ err }, "GET /portal/health-benchmark error");
       res.status(500).json({ error: "Internal server error" });
     }
   },
@@ -540,7 +541,7 @@ router.get(
 
       res.json({ run, findings });
     } catch (err) {
-      logger.error({ err }, "GET /portal/diagnostics/runs/:runId error");
+      log.error({ err }, "GET /portal/diagnostics/runs/:runId error");
       res.status(500).json({ error: "Internal server error" });
     }
   },
@@ -651,7 +652,7 @@ router.get(
         evaluatedAt: latestRun.completedAt?.toISOString() ?? latestRun.createdAt.toISOString(),
       });
     } catch (err) {
-      logger.error({ err }, "GET /portal/assessment-results/:serviceSlug error");
+      log.error({ err }, "GET /portal/assessment-results/:serviceSlug error");
       res.status(500).json({ error: "Internal server error" });
     }
   }

@@ -25,6 +25,8 @@ import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
 import { getAccessToken } from "./graph";
 
+const log = logger.child({ channel: "integration.azure" });
+
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
 // ── Token cache (per connector) ────────────────────────────────────────────────
@@ -108,7 +110,7 @@ async function resolveConnectorSecret(
   }
   if (connector.clientSecretPlain) {
     if (process.env.NODE_ENV === "production") {
-      logger.warn(
+      log.warn(
         { connectorId: connector.connectorId },
         "sharepoint-connector: using plaintext client secret in production — configure clientSecretRef instead",
       );
@@ -184,7 +186,7 @@ export async function uploadToSharePoint(opts: UploadOptions): Promise<UploadRes
   const checksum = computeChecksum(opts.buffer);
 
   if (opts.existingFileId && opts.existingFileUrl) {
-    logger.info(
+    log.info(
       { fileId: opts.existingFileId, checksum },
       "sharepoint-connector: deduplication hit — skipping upload",
     );
@@ -213,7 +215,7 @@ export async function uploadToSharePoint(opts: UploadOptions): Promise<UploadRes
 
   const endpoint = `${GRAPH_BASE}/sites/${opts.siteId}/drive/root:/${encodedPath}:/content`;
 
-  logger.info(
+  log.info(
     { siteId: opts.siteId, folderPath: opts.folderPath, filename: opts.filename, mode },
     "sharepoint-connector: uploading file",
   );
@@ -236,7 +238,7 @@ export async function uploadToSharePoint(opts: UploadOptions): Promise<UploadRes
 
   const data = (await res.json()) as { id: string; webUrl: string; size?: number };
 
-  logger.info(
+  log.info(
     { fileId: data.id, webUrl: data.webUrl, checksum },
     "sharepoint-connector: upload complete",
   );
@@ -291,7 +293,7 @@ export async function ensureSharePointFolder(opts: {
         text.includes("nameAlreadyExists") ||
         text.includes("409");
       if (!isAlreadyExists) {
-        logger.warn(
+        log.warn(
           { status: res.status, body: text.slice(0, 200), folderPart: part },
           "sharepoint-connector: ensureFolder non-fatal failure",
         );

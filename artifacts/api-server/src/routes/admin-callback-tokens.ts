@@ -27,6 +27,7 @@ import {
 import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "auth" });
 import { createHash } from "crypto";
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output.ts";
@@ -93,7 +94,7 @@ async function runCallbackAnalysis(
       customerId: customerId ?? undefined,
     });
   } catch (aiErr) {
-    logger.warn({ aiErr, resultId }, "admin-callback-tokens: AI analysis failed (non-fatal)");
+    log.warn({ aiErr, resultId }, "admin-callback-tokens: AI analysis failed (non-fatal)");
   }
 
   // Deterministic extraction overrides AI guesses for known fields
@@ -112,7 +113,7 @@ async function runCallbackAnalysis(
       })
       .where(eq(scriptRunResultsTable.id, resultId));
   } catch (updateErr) {
-    logger.error({ updateErr, resultId }, "admin-callback-tokens: failed to persist AI analysis results");
+    log.error({ updateErr, resultId }, "admin-callback-tokens: failed to persist AI analysis results");
     return;
   }
 
@@ -147,7 +148,7 @@ async function runCallbackAnalysis(
         await db.insert(clientScoresTable).values({ clientId: customerId, ...updated });
       }
     } catch (scoreErr) {
-      logger.warn({ scoreErr, customerId, resultId }, "admin-callback-tokens: score impact failed (non-fatal)");
+      log.warn({ scoreErr, customerId, resultId }, "admin-callback-tokens: score impact failed (non-fatal)");
     }
   }
 
@@ -170,7 +171,7 @@ async function runCallbackAnalysis(
         await db.insert(clientM365ProfilesTable).values({ clientId: customerId, profile: merged });
       }
     } catch (profileErr) {
-      logger.warn({ profileErr, customerId, resultId }, "admin-callback-tokens: profile updates failed (non-fatal)");
+      log.warn({ profileErr, customerId, resultId }, "admin-callback-tokens: profile updates failed (non-fatal)");
     }
   }
 
@@ -208,7 +209,7 @@ async function runCallbackAnalysis(
       );
     }
   } catch (notifErr) {
-    logger.warn({ notifErr, resultId }, "admin-callback-tokens: admin notification failed (non-fatal)");
+    log.warn({ notifErr, resultId }, "admin-callback-tokens: admin notification failed (non-fatal)");
   }
 
   try {
@@ -219,10 +220,10 @@ async function runCallbackAnalysis(
       playSound: true,
     });
   } catch (pushErr) {
-    logger.warn({ pushErr, resultId }, "admin-callback-tokens: web push failed (non-fatal)");
+    log.warn({ pushErr, resultId }, "admin-callback-tokens: web push failed (non-fatal)");
   }
 
-  logger.info({ resultId, customerId }, "admin-callback-tokens: callback analysis complete");
+  log.info({ resultId, customerId }, "admin-callback-tokens: callback analysis complete");
 }
 
 // ─── PUBLIC: inbound callback from a customer-run .ps1 ───────────────────────
@@ -382,21 +383,21 @@ router.post("/script-callback", async (req: Request, res: Response) => {
             .set({ column: "completed" })
             .where(eq(kanbanTasksTable.id, task.id));
 
-          logger.info({ taskId: task.id, projectId: task.projectId }, "admin-callback-tokens: moved kanban task to completed");
+          log.info({ taskId: task.id, projectId: task.projectId }, "admin-callback-tokens: moved kanban task to completed");
 
           if (task.workflowStepId && task.projectId) {
             advancePhaseIfComplete(task.workflowStepId, task.projectId).catch((err) => {
-              logger.error({ err, taskId: task.id }, "admin-callback-tokens: advancePhaseIfComplete failed");
+              log.error({ err, taskId: task.id }, "admin-callback-tokens: advancePhaseIfComplete failed");
             });
             syncProjectProgress(task.projectId).catch((err) => {
-              logger.error({ err, projectId: task.projectId }, "admin-callback-tokens: syncProjectProgress failed");
+              log.error({ err, projectId: task.projectId }, "admin-callback-tokens: syncProjectProgress failed");
             });
           }
         }
       }
     }
 
-    logger.info(
+    log.info(
       { tokenId: tokenRow.id, clientUserId: tokenRow.clientUserId, resultId },
       "admin-callback-tokens: customer script auto-callback received"
     );
@@ -406,7 +407,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
     // Fire-and-forget: run AI analysis, notify admins, and emit workflow event
     if (resultId !== null) {
       runCallbackAnalysis(resultId, body, linkage.customerId, linkage.libraryScriptId).catch((err) => {
-        logger.error({ err, resultId }, "admin-callback-tokens: runCallbackAnalysis unhandled error");
+        log.error({ err, resultId }, "admin-callback-tokens: runCallbackAnalysis unhandled error");
       });
 
       // Look up the script name then fire the workflow event
@@ -430,11 +431,11 @@ router.post("/script-callback", async (req: Request, res: Response) => {
           results: body,
         });
       })().catch((err) => {
-        logger.error({ err, resultId }, "admin-callback-tokens: customer.script_result event failed");
+        log.error({ err, resultId }, "admin-callback-tokens: customer.script_result event failed");
       });
     }
   } catch (err) {
-    logger.error({ err }, "admin-callback-tokens: script-callback error");
+    log.error({ err }, "admin-callback-tokens: script-callback error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -476,7 +477,7 @@ router.get("/admin/projects/:projectId/customer-upload-task-ids", requireAdmin, 
     const taskIds = [...new Set(rows.map(r => r.kanbanTaskId).filter((id): id is number => id !== null))];
     res.json({ taskIds });
   } catch (err) {
-    logger.error({ err, projectId }, "admin-callback-tokens: failed to get customer-upload task ids");
+    log.error({ err, projectId }, "admin-callback-tokens: failed to get customer-upload task ids");
     res.status(500).json({ error: "Failed to fetch task ids" });
   }
 });
@@ -527,7 +528,7 @@ router.get("/admin/callback-tokens", requireAdmin, async (req: Request, res: Res
 
     res.json(result);
   } catch (err) {
-    logger.error({ err, clientId: clientIdRaw }, "admin-callback-tokens: failed to list tokens");
+    log.error({ err, clientId: clientIdRaw }, "admin-callback-tokens: failed to list tokens");
     res.status(500).json({ error: "Failed to list tokens" });
   }
 });
@@ -569,7 +570,7 @@ router.delete("/admin/callback-tokens/:id", requireAdmin, async (req: Request, r
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err, tokenId: id }, "admin-callback-tokens: failed to revoke token");
+    log.error({ err, tokenId: id }, "admin-callback-tokens: failed to revoke token");
     res.status(500).json({ error: "Failed to revoke token" });
   }
 });

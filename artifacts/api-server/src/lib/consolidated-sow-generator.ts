@@ -28,6 +28,7 @@ import { computeTenantEngineScores } from "./msp-engine";
 import { computePricingEngine } from "./engine-registry";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "./prompt-loader";
 import {
   extractAiHtml,
@@ -206,7 +207,7 @@ export async function syncPresentationDocIds(
         .where(eq(quickWinPresentationsTable.id, draft.id));
     }
   } catch (err) {
-    logger.warn({ err, projectId, newDocId }, "syncPresentationDocIds: failed (non-fatal)");
+    log.warn({ err, projectId, newDocId }, "syncPresentationDocIds: failed (non-fatal)");
   }
 }
 
@@ -221,7 +222,7 @@ export async function broadcastSowChangeForProject(projectId: number): Promise<v
       broadcastPresentationScopeChange(p.id, ts);
     }
   } catch (err) {
-    logger.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
+    log.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
   }
 }
 
@@ -235,7 +236,7 @@ export async function broadcastDocsChangeForProject(projectId: number): Promise<
       broadcastPresentationDocsChange(p.id);
     }
   } catch (err) {
-    logger.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
+    log.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
   }
 }
 
@@ -386,7 +387,7 @@ export async function generateConsolidatedSowDocument(
     params.onRowCreated?.(docId);
   }
 
-  logger.info(
+  log.info(
     { ...logCtx, docId, engagementProjectCount: allEngagementProjects.length },
     "consolidated-sow-generator: starting signal evaluation",
   );
@@ -429,12 +430,12 @@ export async function generateConsolidatedSowDocument(
         effectiveOverride,
       );
       if (!included && reason) {
-        logger.debug({ ...logCtx, projectTitle: p.title, reason },
+        log.debug({ ...logCtx, projectTitle: p.title, reason },
           "consolidated-sow-generator: project excluded by signal gate (pre-computed override)");
       }
       return included;
     });
-    logger.info({ ...logCtx, docId, signalCount: signalsOverride.size },
+    log.info({ ...logCtx, docId, signalCount: signalsOverride.size },
       "consolidated-sow-generator: using pre-computed signals override — skipped DB signal evaluation");
     pushSowDebugLog(correlationId, "info", "Using pre-computed signals override — skipped DB signal evaluation", { signalCount: signalsOverride.size });
     setSowDebugSignals(correlationId, {
@@ -471,7 +472,7 @@ export async function generateConsolidatedSowDocument(
     if (conflicts.length > 0) {
       signalFilterMeta = { clean: false, conflictCount: conflicts.length, conflicts };
       for (const conflict of conflicts) {
-        logger.warn(
+        log.warn(
           { ...logCtx, ruleIds: conflict.ruleIds, conflictDescription: conflict.description },
           "consolidated-sow-generator: signal rule conflict detected — project list may be incorrect",
         );
@@ -504,7 +505,7 @@ export async function generateConsolidatedSowDocument(
       for (const key of firedSignals) {
         if (key.startsWith("adj:")) firedAdjSignalKeys.add(key);
       }
-      logger.info(
+      log.info(
         { ...logCtx, firedAdjSignalKeys: [...firedAdjSignalKeys] },
         "consolidated-sow-generator: adjustment signal evaluation complete",
       );
@@ -516,7 +517,7 @@ export async function generateConsolidatedSowDocument(
       const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [];
       const legacyTriggers = triggers.filter(t => !knownSignalKeys.has(t));
       if (legacyTriggers.length > 0) {
-        logger.warn(
+        log.warn(
           { ...logCtx, projectTitle: p.title, legacyTriggers, allTriggers: triggers },
           "consolidated-sow-generator: [DEPRECATION] project has non-signal triggeredBy string(s) — " +
           "migrate all entries to canonical signal keys (e.g. hasGovernanceGaps, hasSecurityGaps). " +
@@ -530,7 +531,7 @@ export async function generateConsolidatedSowDocument(
         firedSignals,
       );
       if (!included && reason) {
-        logger.debug({ ...logCtx, projectTitle: p.title, reason },
+        log.debug({ ...logCtx, projectTitle: p.title, reason },
           "consolidated-sow-generator: project excluded by signal gate");
       }
       return included;
@@ -540,7 +541,7 @@ export async function generateConsolidatedSowDocument(
       .filter(p => !signalFilteredProjects.includes(p))
       .map(p => p.title);
     if (excludedTitles.length > 0) {
-      logger.info({ ...logCtx, excludedTitles, firedSignals: [...firedSignals] },
+      log.info({ ...logCtx, excludedTitles, firedSignals: [...firedSignals] },
         "consolidated-sow-generator: signal filter excluded projects");
     }
     pushSowDebugLog(correlationId, "info", "DB signal evaluation complete", {
@@ -560,12 +561,12 @@ export async function generateConsolidatedSowDocument(
     pushSowDebugLog(correlationId, "error", "Signal evaluation failed — aborting SOW generation", {
       error: signalErr instanceof Error ? signalErr.message : String(signalErr),
     });
-    logger.error({ ...logCtx, docId, signalErr }, "consolidated-sow-generator: signal evaluation failed — aborting SOW generation");
+    log.error({ ...logCtx, docId, signalErr }, "consolidated-sow-generator: signal evaluation failed — aborting SOW generation");
     if (!testMode) {
       await db.update(insightsGeneratedDocumentsTable)
         .set({ status: "failed", errorMessage: ("Signal evaluation failed: " + (signalErr instanceof Error ? signalErr.message : String(signalErr))).slice(0, 500), updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, docId))
-        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
+        .catch(dbErr => log.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
     }
     throw new Error("SOW generation failed: could not evaluate tenant signals — please retry");
   }
@@ -633,7 +634,7 @@ export async function generateConsolidatedSowDocument(
 
     engineValues = { finalPrice, priorityScore, architectureHealthScore, driftScore, forecastScore, crmScore, mspPortfolioScore, pricingBreakdown };
 
-    logger.info(
+    log.info(
       { ...logCtx, docId, ...engineValues },
       "consolidated-sow-generator: engine pre-computation complete",
     );
@@ -655,7 +656,7 @@ export async function generateConsolidatedSowDocument(
       `mspPortfolioScore: ${mspPortfolioScore}`,
     ].join("\n");
   } catch (engineErr) {
-    logger.error(
+    log.error(
       { ...logCtx, docId, engineErr },
       "consolidated-sow-generator: engine pre-computation failed — aborting generation rather than proceeding without pre-computed engine values",
     );
@@ -663,7 +664,7 @@ export async function generateConsolidatedSowDocument(
       await db.update(insightsGeneratedDocumentsTable)
         .set({ status: "failed", errorMessage: ("Engine pre-computation failed: " + (engineErr instanceof Error ? engineErr.message : String(engineErr))).slice(0, 500), updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, docId))
-        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after engine pre-computation error"));
+        .catch(dbErr => log.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after engine pre-computation error"));
     }
     throw new Error("SOW generation failed: could not compute intelligence engine values — please retry");
   }
@@ -848,7 +849,7 @@ export async function generateConsolidatedSowDocument(
     priorSowId = prior[0]?.id ?? null;
   }
 
-  logger.info({ ...logCtx, docId }, "consolidated-sow-generator: starting AI generation");
+  log.info({ ...logCtx, docId }, "consolidated-sow-generator: starting AI generation");
 
   try {
   const docStylePrefix = await getDocumentStylePrefix();
@@ -859,7 +860,7 @@ export async function generateConsolidatedSowDocument(
   });
   const aiResponse = await stream.finalMessage();
   if (aiResponse.stop_reason === "max_tokens") {
-    logger.warn({ ...logCtx, docId }, "consolidated-sow-generator: output hit max_tokens — document may be truncated");
+    log.warn({ ...logCtx, docId }, "consolidated-sow-generator: output hit max_tokens — document may be truncated");
   }
 
   const rawHtmlContent = extractAiHtml(aiResponse);
@@ -875,7 +876,7 @@ export async function generateConsolidatedSowDocument(
     rawHtmlContent, rawWs, catalogTitles,
   );
   if (removedHallucinatedTitles.length > 0) {
-    logger.error(
+    log.error(
       { ...logCtx, docId, removedHallucinatedTitles, catalogTitles },
       "consolidated-sow-generator: SIGNAL/PHASE DRIFT — purged AI-hallucinated workstream phase(s) not backed by any fired signal",
     );
@@ -886,14 +887,14 @@ export async function generateConsolidatedSowDocument(
     hasAdjSignalRules ? firedAdjSignalKeys : undefined,
   );
   if (removedTitles.length > 0) {
-    logger.warn({ ...logCtx, docId, removedTitles }, "consolidated-sow-generator: purged non-permitted adjustments");
+    log.warn({ ...logCtx, docId, removedTitles }, "consolidated-sow-generator: purged non-permitted adjustments");
   }
 
   const { html: purgedHtmlTitle, removedTitles: removedByTitle } = purgeAdjustmentsByTitle(
     purgedHtml, rawWs.map(l => l.title),
   );
   if (removedByTitle.length > 0) {
-    logger.warn({ ...logCtx, docId, removedTitles: removedByTitle }, "consolidated-sow-generator: title-purge removed additional adjustments");
+    log.warn({ ...logCtx, docId, removedTitles: removedByTitle }, "consolidated-sow-generator: title-purge removed additional adjustments");
   }
   const anyPurged = removedTitles.length > 0 || removedByTitle.length > 0 || removedHallucinatedTitles.length > 0;
 
@@ -910,7 +911,7 @@ export async function generateConsolidatedSowDocument(
     purgedHtmlTitle, wsAfterPurge, catalogTitles,
   );
   if (renamedTitles.length > 0) {
-    logger.warn({ ...logCtx, docId, renamedTitles }, "consolidated-sow-generator: canonicalized reworded workstream title(s) to match signal catalogue");
+    log.warn({ ...logCtx, docId, renamedTitles }, "consolidated-sow-generator: canonicalized reworded workstream title(s) to match signal catalogue");
   }
 
   // ── HARD ENFORCEMENT — inject any fired-signal phase the AI omitted ────────
@@ -924,7 +925,7 @@ export async function generateConsolidatedSowDocument(
     canonicalizedHtml, wsAfterPurge, catalogProjectsForInjection,
   );
   if (injected.length > 0) {
-    logger.error(
+    log.error(
       { ...logCtx, docId, injectedTitles: injected.map(l => l.title) },
       "consolidated-sow-generator: SIGNAL/PHASE DRIFT — AI omitted fired-signal phase(s); injected deterministic row(s) so they still reach the client",
     );
@@ -941,7 +942,7 @@ export async function generateConsolidatedSowDocument(
     htmlWithInjected, engineValues,
   );
   if (engineValueCorrections.length > 0) {
-    logger.warn(
+    log.warn(
       { ...logCtx, docId, engineValueCorrections },
       "consolidated-sow-generator: ENGINE VALUE DRIFT — AI misreported a pre-computed engine value; corrected in place",
     );
@@ -957,7 +958,7 @@ export async function generateConsolidatedSowDocument(
   // or non-deterministic SOW to the client.
   const phaseDrift = detectSowPhaseDrift(workstreamLines, catalogTitles);
   if (!phaseDrift.ok) {
-    logger.error(
+    log.error(
       { ...logCtx, docId, missingPhases: phaseDrift.missingPhases, hallucinatedPhases: phaseDrift.hallucinatedPhases },
       "consolidated-sow-generator: SIGNAL/PHASE DRIFT — unrecoverable after canonicalization + injection; failing generation",
     );
@@ -971,7 +972,7 @@ export async function generateConsolidatedSowDocument(
     hasAdjSignalRules ? firedAdjSignalKeys : undefined,
   );
   if (!sowValidation.ok) {
-    logger.warn({ ...logCtx, docId, issues: sowValidation.issues }, "consolidated-sow-generator: pricing validation warnings");
+    log.warn({ ...logCtx, docId, issues: sowValidation.issues }, "consolidated-sow-generator: pricing validation warnings");
   }
 
   // ── Engine-value audit trail ────────────────────────────────────────────────
@@ -982,7 +983,7 @@ export async function generateConsolidatedSowDocument(
   // docId here so every generated SOW has a queryable, permanent record of the
   // exact deterministic values Claude was given — enabling after-the-fact
   // audit of whether a document's content is consistent with them.
-  logger.info(
+  log.info(
     { ...logCtx, docId, ...engineValues, sowGrandTotal: computedTotal },
     "consolidated-sow-generator: engine-value audit trail — values supplied to AI for this document",
   );
@@ -999,11 +1000,11 @@ export async function generateConsolidatedSowDocument(
 
   const sowLinesValidation = z.array(SowPricingLineSchema).safeParse(sowLines);
   if (!sowLinesValidation.success) {
-    logger.warn({ ...logCtx, docId, issues: sowLinesValidation.error.issues }, "consolidated-sow-generator: sowPricingLines schema warning — persisting anyway");
+    log.warn({ ...logCtx, docId, issues: sowLinesValidation.error.issues }, "consolidated-sow-generator: sowPricingLines schema warning — persisting anyway");
   }
 
   if (testMode) {
-    logger.info({ ...logCtx, sowTotal }, "consolidated-sow-generator: test-draft generation complete (no persistence)");
+    log.info({ ...logCtx, sowTotal }, "consolidated-sow-generator: test-draft generation complete (no persistence)");
     pushSowDebugLog(correlationId, "info", "Test-draft generation complete (no persistence)", { sowTotal });
     finishSowDebugRun(correlationId, "success");
     return { docId: -1, clientName, sowTotal, htmlContent, correlationId };
@@ -1036,19 +1037,19 @@ export async function generateConsolidatedSowDocument(
     void syncPresentationDocIds(projectId, docId, "consolidated_sow");
   }
 
-  logger.info({ ...logCtx, docId, sowTotal }, "consolidated-sow-generator: completed successfully");
+  log.info({ ...logCtx, docId, sowTotal }, "consolidated-sow-generator: completed successfully");
   pushSowDebugLog(correlationId, "info", "Completed successfully", { docId, sowTotal });
   finishSowDebugRun(correlationId, "success");
   return { docId, clientName, sowTotal, correlationId };
   } catch (err) {
-    logger.error({ ...logCtx, docId, err }, "consolidated-sow-generator: AI generation failed");
+    log.error({ ...logCtx, docId, err }, "consolidated-sow-generator: AI generation failed");
     pushSowDebugLog(correlationId, "error", "AI generation failed", { error: err instanceof Error ? err.message : String(err) });
     finishSowDebugRun(correlationId, "failed", err instanceof Error ? err.message : String(err));
     if (!testMode) {
       await db.update(insightsGeneratedDocumentsTable)
         .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, docId))
-        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed"));
+        .catch(dbErr => log.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed"));
     }
     throw err;
   }

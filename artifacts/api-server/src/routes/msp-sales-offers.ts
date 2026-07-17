@@ -47,6 +47,8 @@ import { logger } from "../lib/logger";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import type { AuthUser } from "../middlewares/requireAuth";
 
+const log = logger.child({ channel: "engine.offer" });
+
 const router: IRouter = Router();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ router.get(
 
       res.json({ offers, limit, offset });
     } catch (err) {
-      logger.error({ err, mspId }, "GET /api/msp/sales-offers failed");
+      log.error({ err, mspId }, "GET /api/msp/sales-offers failed");
       apiErr(res, 500, "Failed to list offers");
     }
   },
@@ -143,7 +145,7 @@ router.get("/msp/sales-offers/sse", (req: Request, res: Response): void => {
 
   registerMspOfferSSEClient(mspId, res, () => {
     clearInterval(heartbeat);
-    logger.debug({ mspId }, "msp-sales-offers: SSE client disconnected");
+    log.debug({ mspId }, "msp-sales-offers: SSE client disconnected");
   });
 });
 
@@ -176,14 +178,14 @@ router.post(
         broadcastMspOfferChange(mspId, { offersGenerated: insertedIds.length, tenantId: Number(customerId) });
       }
 
-      logger.info({ mspId, customerId, insertedCount: insertedIds.length }, "POST /api/msp/sales-offers/generate completed");
+      log.info({ mspId, customerId, insertedCount: insertedIds.length }, "POST /api/msp/sales-offers/generate completed");
       res.status(201).json({
         insertedOfferIds: insertedIds,
         candidateCount: engineOutput.candidates.length,
         firedSignals: engineOutput.firedSignals,
       });
     } catch (err) {
-      logger.error({ err, mspId }, "POST /api/msp/sales-offers/generate failed");
+      log.error({ err, mspId }, "POST /api/msp/sales-offers/generate failed");
       apiErr(res, 500, "Failed to generate sales offers");
     }
   },
@@ -203,7 +205,7 @@ router.post(
       const expired = await expireStaleSalesOffers();
       res.json({ expired });
     } catch (err) {
-      logger.error({ err, mspId }, "POST /api/msp/sales-offers/expire-stale failed");
+      log.error({ err, mspId }, "POST /api/msp/sales-offers/expire-stale failed");
       apiErr(res, 500, "Failed to expire stale offers");
     }
   },
@@ -231,7 +233,7 @@ router.get(
       if (!offer) { apiErr(res, 404, "Offer not found"); return; }
       res.json({ offer });
     } catch (err) {
-      logger.error({ err, mspId }, "GET /api/msp/sales-offers/:id failed");
+      log.error({ err, mspId }, "GET /api/msp/sales-offers/:id failed");
       apiErr(res, 500, "Failed to fetch offer");
     }
   },
@@ -265,7 +267,7 @@ router.get(
 
       res.json({ events });
     } catch (err) {
-      logger.error({ err, mspId }, "GET /api/msp/sales-offers/:id/events failed");
+      log.error({ err, mspId }, "GET /api/msp/sales-offers/:id/events failed");
       apiErr(res, 500, "Failed to fetch offer events");
     }
   },
@@ -315,7 +317,7 @@ router.patch(
       broadcastMspOfferChange(mspId, { offerId: id, state: updated.state });
       res.json({ offer: updated });
     } catch (err) {
-      logger.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id failed");
+      log.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id failed");
       apiErr(res, 500, "Failed to update offer");
     }
   },
@@ -363,7 +365,7 @@ router.patch(
         res.status(422).json({ error: message });
         return;
       }
-      logger.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id/state failed");
+      log.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id/state failed");
       apiErr(res, 500, "Failed to transition offer state");
     }
   },
@@ -398,7 +400,7 @@ router.delete(
       broadcastMspOfferChange(mspId, { offerId: id, deleted: true });
       res.json({ deleted: true, id });
     } catch (err) {
-      logger.error({ err, mspId }, "DELETE /api/msp/sales-offers/:id failed");
+      log.error({ err, mspId }, "DELETE /api/msp/sales-offers/:id failed");
       apiErr(res, 500, "Failed to delete offer");
     }
   },

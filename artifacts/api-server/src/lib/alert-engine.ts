@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, and, isNull, desc, sql, gt } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.alert" });
 import { sendWebPushToAdmins } from "./web-push";
 import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
 
@@ -250,7 +251,7 @@ async function getConditionValue(
       default:                   return 0;
     }
   } catch (err) {
-    logger.warn({ err, conditionType }, "alert-engine: condition eval failed");
+    log.warn({ err, conditionType }, "alert-engine: condition eval failed");
     return 0;
   }
 }
@@ -335,7 +336,7 @@ async function deliverAlert(opts: {
         });
         emailOk = true;
       } catch (err) {
-        logger.warn({ err, ruleKey: opts.ruleKey }, "alert-engine: email delivery failed");
+        log.warn({ err, ruleKey: opts.ruleKey }, "alert-engine: email delivery failed");
       }
     }
   }
@@ -349,7 +350,7 @@ async function deliverAlert(opts: {
       });
       pushOk = true;
     } catch (err) {
-      logger.warn({ err, ruleKey: opts.ruleKey }, "alert-engine: push delivery failed");
+      log.warn({ err, ruleKey: opts.ruleKey }, "alert-engine: push delivery failed");
     }
   }
 
@@ -407,7 +408,7 @@ export async function evaluateRules(): Promise<void> {
       const eventId = evtRes.rows[0]?.id;
       if (!eventId) continue;
 
-      logger.warn(
+      log.warn(
         { ruleKey: rule.rule_key, severity: rule.severity, value, threshold: rule.threshold },
         "alert-engine: alert fired",
       );
@@ -423,12 +424,12 @@ export async function evaluateRules(): Promise<void> {
         deliveryPush: rule.delivery_push,
       });
 
-      logger.info(
+      log.info(
         { ruleKey: rule.rule_key, eventId, email, push },
         "alert-engine: alert delivered",
       );
     } catch (err) {
-      logger.error({ err, ruleKey: rule.rule_key }, "alert-engine: rule evaluation error");
+      log.error({ err, ruleKey: rule.rule_key }, "alert-engine: rule evaluation error");
     }
   }
 }
@@ -463,8 +464,8 @@ export async function ensureAlertEngineReady(): Promise<void> {
   try {
     await ensureAlertTables();
     await seedDefaultRules();
-    logger.info("alert-engine: tables ensured, default rules seeded");
+    log.info("alert-engine: tables ensured, default rules seeded");
   } catch (err) {
-    logger.warn({ err }, "alert-engine: startup init failed (non-fatal)");
+    log.warn({ err }, "alert-engine: startup init failed (non-fatal)");
   }
 }

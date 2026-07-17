@@ -25,6 +25,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, markTenantConsentRevoked } from "./graph";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.monitor" });
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -310,7 +311,7 @@ export function applyMapping(
           return !Number.isNaN(signInTime) && signInTime < cutoff;
         }).length;
         if (!sawSignInActivity) {
-          logger.warn({ targetField, sourceField }, "monitor-executor: countIfLastSignInOlderThan found no signInActivity data on any item — check may be missing $select=signInActivity on its Graph endpoint");
+          log.warn({ targetField, sourceField }, "monitor-executor: countIfLastSignInOlderThan found no signInActivity data on any item — check may be missing $select=signInActivity on its Graph endpoint");
         }
         break;
       }
@@ -424,7 +425,7 @@ export async function graphFetchPaginated(
   }
 
   if (pageCount >= NEXT_LINK_MAX_PAGES) {
-    logger.warn({ tenantId, endpoint, pages: pageCount }, "monitor-executor: NEXT_LINK_MAX_PAGES safety cap reached — pagination truncated");
+    log.warn({ tenantId, endpoint, pages: pageCount }, "monitor-executor: NEXT_LINK_MAX_PAGES safety cap reached — pagination truncated");
   }
 
   return { items, pageCount, rawResponse };
@@ -520,7 +521,7 @@ export async function executeMonitorCheck(opts: {
     if (check.outputSchema) {
       const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
       if (!valid) {
-        logger.warn({ checkKey: check.key, errors }, "monitor-executor: output schema validation failed");
+        log.warn({ checkKey: check.key, errors }, "monitor-executor: output schema validation failed");
         extracted._schemaErrors = errors;
         extracted._schemaValid = false;
       } else {
@@ -592,7 +593,7 @@ export async function executeMonitorCheck(opts: {
     }
 
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logger.error({ err, checkKey: check.key, tenantId }, "monitor-executor: check failed");
+    log.error({ err, checkKey: check.key, tenantId }, "monitor-executor: check failed");
 
     const [row] = await db
       .insert(tenantMonitorProfilesTable)

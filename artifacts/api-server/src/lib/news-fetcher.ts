@@ -7,6 +7,7 @@
  */
 
 import { logger } from "./logger.js";
+const log = logger.child({ channel: "admin.content" });
 
 export interface NewsItem {
   title: string;
@@ -108,7 +109,7 @@ async function fetchViaNewsApi(topics: string[], maxResults: number): Promise<Ne
 
   const resp = await fetch(url, { headers: { "X-Api-Key": apiKey } });
   if (!resp.ok) {
-    logger.warn({ status: resp.status }, "news-fetcher: NewsAPI returned non-200");
+    log.warn({ status: resp.status }, "news-fetcher: NewsAPI returned non-200");
     return [];
   }
 
@@ -151,7 +152,7 @@ async function fetchViaRss(maxResults: number): Promise<NewsItem[]> {
       const parsed = parseRssItems(xml, feed.name, perFeed);
       items.push(...parsed);
     } catch (err) {
-      logger.warn({ err, feedUrl: feed.url }, "news-fetcher: RSS feed fetch error (skipped)");
+      log.warn({ err, feedUrl: feed.url }, "news-fetcher: RSS feed fetch error (skipped)");
     }
     if (items.length >= maxResults) break;
   }
@@ -172,17 +173,17 @@ export async function fetchNewsHeadlines(
     try {
       const items = await fetchViaNewsApi(effectiveTopics, effectiveMax);
       if (items.length > 0) {
-        logger.info({ count: items.length }, "news-fetcher: fetched via NewsAPI");
+        log.info({ count: items.length }, "news-fetcher: fetched via NewsAPI");
         return items;
       }
     } catch (err) {
-      logger.warn({ err }, "news-fetcher: NewsAPI fetch failed, falling back to RSS");
+      log.warn({ err }, "news-fetcher: NewsAPI fetch failed, falling back to RSS");
     }
   } else {
-    logger.info("news-fetcher: NEWS_API_KEY absent — using RSS fallback");
+    log.info("news-fetcher: NEWS_API_KEY absent — using RSS fallback");
   }
 
   const rssItems = await fetchViaRss(effectiveMax);
-  logger.info({ count: rssItems.length }, "news-fetcher: fetched via RSS fallback");
+  log.info({ count: rssItems.length }, "news-fetcher: fetched via RSS fallback");
   return rssItems;
 }

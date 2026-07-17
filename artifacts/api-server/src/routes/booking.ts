@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "growth.booking" });
 import { graphCredentialsPresent, getCalendarView, createCalendarEvent } from "../lib/graph";
 import { sendEmailFromTemplate } from "../lib/mailer";
 
@@ -144,14 +145,14 @@ router.get("/booking/slots", async (req: Request, res: Response) => {
   }
 
   if (!graphCredentialsPresent()) {
-    logger.warn("Graph credentials missing — returning empty slots for booking");
+    log.warn("Graph credentials missing — returning empty slots for booking");
     res.json({ slots: [] });
     return;
   }
 
   const userId = process.env.GRAPH_MAIL_USER_ID;
   if (!userId) {
-    logger.warn("GRAPH_MAIL_USER_ID not set — returning empty slots");
+    log.warn("GRAPH_MAIL_USER_ID not set — returning empty slots");
     res.json({ slots: [] });
     return;
   }
@@ -230,14 +231,14 @@ router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
       location: "Microsoft Teams",
     });
     if (!eventResult) {
-      logger.warn({ name, email, startIso }, "createCalendarEvent returned null — slot may be unavailable");
+      log.warn({ name, email, startIso }, "createCalendarEvent returned null — slot may be unavailable");
       res.status(409).json({ error: "That time slot is no longer available. Please choose another." });
       return;
     }
     joinUrl = eventResult.joinUrl;
-    logger.info({ name, email, slotLabel, eventId: eventResult.eventId, joinUrl }, "Booking created on calendar");
+    log.info({ name, email, slotLabel, eventId: eventResult.eventId, joinUrl }, "Booking created on calendar");
   } else {
-    logger.warn({ name, email, slotLabel }, "Graph not configured — booking stored without calendar event");
+    log.warn({ name, email, slotLabel }, "Graph not configured — booking stored without calendar event");
   }
 
   // Confirmation email to the customer

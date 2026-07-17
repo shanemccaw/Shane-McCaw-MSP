@@ -45,6 +45,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.doc-pipeline" });
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { sendMailViaGraph } from "./graph";
@@ -328,7 +329,7 @@ export async function handleGenerateReport(ctx: NodeExecutionContext): Promise<R
             .set({ status: "delivered", deliveredAt: new Date(), deliveryEmail: toEmail, updatedAt: new Date() })
             .where(eq(mspReportRunsTable.runId, confirmedRunId));
         } catch (emailErr) {
-          logger.warn({ err: emailErr, runId: confirmedRunId }, "generate_report: email delivery failed (non-fatal)");
+          log.warn({ err: emailErr, runId: confirmedRunId }, "generate_report: email delivery failed (non-fatal)");
           // Keep as "generated" even if email fails — PDF is still downloadable in-app
           await db
             .update(mspReportRunsTable)
@@ -350,7 +351,7 @@ export async function handleGenerateReport(ctx: NodeExecutionContext): Promise<R
         .where(eq(mspReportRunsTable.runId, confirmedRunId));
     }
 
-    logger.info({ runId: confirmedRunId, title, docType: def.docType }, "generate_report: completed");
+    log.info({ runId: confirmedRunId, title, docType: def.docType }, "generate_report: completed");
 
     return {
       runId: confirmedRunId,
@@ -365,7 +366,7 @@ export async function handleGenerateReport(ctx: NodeExecutionContext): Promise<R
     // runId may be null if the run row hadn't been created/resolved yet (e.g. definition lookup failed
     // before we could set it to "generating"). In that case we skip the update — the engine will
     // still write the DLQ entry and operator task using the workflow run record.
-    logger.error({ err, runId }, "generate_report: generation failed");
+    log.error({ err, runId }, "generate_report: generation failed");
     if (runId) {
       await db
         .update(mspReportRunsTable)

@@ -20,6 +20,7 @@ import { logger } from "../lib/logger";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+const log = logger.child({ channel: "notification" });
 
 // ── GET /api/admin/observability/service-health ───────────────────────────────
 
@@ -128,7 +129,7 @@ router.get("/admin/observability/service-health", requireAdmin, async (req: Requ
       },
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability/service-health failed");
+    log.error({ err }, "GET /admin/observability/service-health failed");
     res.status(500).json({ error: "Failed to fetch service health" });
   }
 });
@@ -176,7 +177,7 @@ router.get("/admin/observability/event-bus", requireAdmin, async (req: Request, 
       })),
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability/event-bus failed");
+    log.error({ err }, "GET /admin/observability/event-bus failed");
     res.status(500).json({ error: "Failed to fetch event bus stats" });
   }
 });
@@ -282,7 +283,7 @@ router.get("/admin/observability/platform-revenue", requireAdmin, async (req: Re
       },
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability/platform-revenue failed");
+    log.error({ err }, "GET /admin/observability/platform-revenue failed");
     res.status(500).json({ error: "Failed to fetch platform revenue" });
   }
 });
@@ -323,7 +324,7 @@ router.get("/admin/observability/alert-rules", requireAdmin, async (_req: Reques
       })),
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability/alert-rules failed");
+    log.error({ err }, "GET /admin/observability/alert-rules failed");
     res.status(500).json({ error: "Failed to fetch alert rules" });
   }
 });
@@ -362,7 +363,7 @@ router.post("/admin/observability/alert-rules", requireAdmin, async (req: Reques
       res.status(409).json({ error: "An alert rule with that key already exists" });
       return;
     }
-    logger.error({ err }, "POST /admin/observability/alert-rules failed");
+    log.error({ err }, "POST /admin/observability/alert-rules failed");
     res.status(500).json({ error: "Failed to create alert rule" });
   }
 });
@@ -410,7 +411,7 @@ router.patch("/admin/observability/alert-rules/:id", requireAdmin, async (req: R
     if (!result.rows.length) { res.status(404).json({ error: "Alert rule not found" }); return; }
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/observability/alert-rules/:id failed");
+    log.error({ err }, "PATCH /admin/observability/alert-rules/:id failed");
     res.status(500).json({ error: "Failed to update alert rule" });
   }
 });
@@ -428,7 +429,7 @@ router.delete("/admin/observability/alert-rules/:id", requireAdmin, async (req: 
     if (!result.rows.length) { res.status(404).json({ error: "Alert rule not found" }); return; }
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "DELETE /admin/observability/alert-rules/:id failed");
+    log.error({ err }, "DELETE /admin/observability/alert-rules/:id failed");
     res.status(500).json({ error: "Failed to delete alert rule" });
   }
 });
@@ -483,7 +484,7 @@ router.get("/admin/observability/alert-events", requireAdmin, async (req: Reques
       })),
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability/alert-events failed");
+    log.error({ err }, "GET /admin/observability/alert-events failed");
     res.status(500).json({ error: "Failed to fetch alert events" });
   }
 });
@@ -508,7 +509,7 @@ router.patch("/admin/observability/alert-events/:id/resolve", requireAdmin, asyn
     }
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "PATCH /admin/observability/alert-events/:id/resolve failed");
+    log.error({ err }, "PATCH /admin/observability/alert-events/:id/resolve failed");
     res.status(500).json({ error: "Failed to resolve alert event" });
   }
 });
@@ -562,7 +563,7 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
         });
         emailOk = true;
       } catch (err) {
-        logger.warn({ err }, "alert test: email delivery failed");
+        log.warn({ err }, "alert test: email delivery failed");
       }
     }
 
@@ -575,7 +576,7 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
         });
         pushOk = true;
       } catch (err) {
-        logger.warn({ err }, "alert test: push delivery failed");
+        log.warn({ err }, "alert test: push delivery failed");
       }
     }
 
@@ -586,7 +587,7 @@ router.post("/admin/observability/alert-rules/:id/test", requireAdmin, async (re
 
     res.json({ ok: true, eventId, emailOk, pushOk });
   } catch (err) {
-    logger.error({ err }, "POST /admin/observability/alert-rules/:id/test failed");
+    log.error({ err }, "POST /admin/observability/alert-rules/:id/test failed");
     res.status(500).json({ error: "Failed to send test alert" });
   }
 });
@@ -707,7 +708,7 @@ router.get("/admin/observability", requireAdmin, async (req: Request, res: Respo
       },
     });
   } catch (err) {
-    logger.error({ err }, "GET /admin/observability failed");
+    log.error({ err }, "GET /admin/observability failed");
     res.status(500).json({ error: "Failed to fetch observability telemetry" });
   }
 });
@@ -764,7 +765,7 @@ function startInternalHeartbeat() {
       if (aiCost1h > 100000) alerts.push(`High AI cost spike detected: ${(aiCost1h / 100).toFixed(2)} USD in the last hour`);
 
       if (alerts.length > 0) {
-        logger.warn({ alerts }, "Heartbeat alerts triggered");
+        log.warn({ alerts }, "Heartbeat alerts triggered");
         
         const mailUserId = process.env.GRAPH_MAIL_USER_ID;
         if (mailUserId) {
@@ -776,12 +777,12 @@ function startInternalHeartbeat() {
               subject: `[SYSTEM ALERT] Platform Threshold Breach`,
               htmlBody: `<p>The following synthetic heartbeat checks failed or breached thresholds:</p>
                         <ul>${alerts.map(a => `<li>${a}</li>`).join("")}</ul>`,
-            }).catch(e => logger.error({ err: e }, "Failed to route heartbeat alert via Graph"));
+            }).catch(e => log.error({ err: e }, "Failed to route heartbeat alert via Graph"));
           }
         }
       }
     } catch (err) {
-      logger.error({ err }, "Internal synthetic heartbeat failed");
+      log.error({ err }, "Internal synthetic heartbeat failed");
     }
   }, 5 * 60 * 1000); // 5 minutes
 }

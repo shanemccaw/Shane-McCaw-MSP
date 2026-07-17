@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "engine.monitor" });
 import { normaliseProfileUpdates } from "./parse-m365-script-output";
 import { computeM365Scores, type M365ScoreCategory } from "./m365-scores";
 
@@ -79,5 +80,5 @@ export async function snapshotHealthFromProfile(clientId: number): Promise<void>
     }))
   );
 
-  logger.info({ clientId, scoreCategories: Object.keys(scores).length }, "m365-profile-update: health snapshot recorded");
+  log.info({ clientId, scoreCategories: Object.keys(scores).length }, "m365-profile-update: health snapshot recorded");
 }

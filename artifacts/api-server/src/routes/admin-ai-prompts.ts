@@ -3,6 +3,7 @@ import { db, aiPromptsTable, aiPromptVersionsTable } from "@workspace/db";
 import { eq, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "admin.content" });
 import { getDefaultPromptMeta } from "../lib/prompt-loader";
 import { generateAndDeliverDocument } from "../lib/document-generator";
 import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
@@ -86,7 +87,7 @@ router.put("/admin/ai-prompts/:id", requireAdmin, async (req: Request, res: Resp
 
   await recordVersion(id, trimmed, "draft");
 
-  logger.info({ id, key: updated.key }, "admin-ai-prompts: draft saved");
+  log.info({ id, key: updated.key }, "admin-ai-prompts: draft saved");
   res.json({ prompt: updated });
 });
 
@@ -119,7 +120,7 @@ router.post("/admin/ai-prompts/:id/publish", requireAdmin, async (req: Request, 
 
   await recordVersion(id, bodyToPublish, "publish");
 
-  logger.info({ id, key: updated!.key }, "admin-ai-prompts: prompt published");
+  log.info({ id, key: updated!.key }, "admin-ai-prompts: prompt published");
   res.json({ prompt: updated });
 });
 
@@ -143,7 +144,7 @@ router.post("/admin/ai-prompts/:id/reset", requireAdmin, async (req: Request, re
 
   await recordVersion(id, row.defaultBody, "reset");
 
-  logger.info({ id }, "admin-ai-prompts: prompt reset to default");
+  log.info({ id }, "admin-ai-prompts: prompt reset to default");
   res.json({ prompt: updated });
 });
 
@@ -171,7 +172,7 @@ router.post("/admin/ai-prompts/:id/revert/:versionId", requireAdmin, async (req:
 
   await recordVersion(id, version.body, "publish");
 
-  logger.info({ id, versionId }, "admin-ai-prompts: reverted to prior version and published it");
+  log.info({ id, versionId }, "admin-ai-prompts: reverted to prior version and published it");
   res.json({ prompt: updated });
 });
 
@@ -258,7 +259,7 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
 
     res.status(400).json({ error: "This prompt does not support Test Draft — it isn't used by a document or SOW generation flow" });
   } catch (err) {
-    logger.error({ id, key, err }, "admin-ai-prompts: test-draft generation failed");
+    log.error({ id, key, err }, "admin-ai-prompts: test-draft generation failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Test generation failed" });
   }
 });
@@ -322,7 +323,7 @@ router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request,
 
   if (updated) {
     await recordVersion(updated.id, trimmedBody, "publish");
-    logger.info({ key }, "admin-ai-prompts: prompt updated by key");
+    log.info({ key }, "admin-ai-prompts: prompt updated by key");
     res.json({ prompt: updated });
     return;
   }
@@ -352,7 +353,7 @@ router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request,
 
   await recordVersion(inserted!.id, trimmedBody, "publish");
 
-  logger.info({ key }, "admin-ai-prompts: prompt created via by-key upsert");
+  log.info({ key }, "admin-ai-prompts: prompt created via by-key upsert");
   res.json({ prompt: inserted });
 });
 

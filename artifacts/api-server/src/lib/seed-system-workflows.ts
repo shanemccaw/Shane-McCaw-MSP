@@ -14,6 +14,7 @@
 
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+const log = logger.child({ channel: "workflow.run" });
 import { computeNextCronRun } from "./workflow-executor";
 
 interface SystemWorkflowSeed {
@@ -1882,7 +1883,7 @@ export async function seedSystemWorkflows(): Promise<void> {
            VALUES ($1, 1, 'v1 — Default (system)', 'published', $2::jsonb, true)`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId, name: seed.name }, "seed-system-workflows: pinned default v1");
+        log.info({ defId, name: seed.name }, "seed-system-workflows: pinned default v1");
       } else if (seed.name === "Weekly Article Generator") {
         // One-time patch: ensure the publish_article node has draftOnly: true.
         // This fixes already-seeded environments where v1 was created before
@@ -1913,7 +1914,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              )`,
           [defId],
         );
-        logger.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
+        log.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
       } else if (seed.name === "SOW Generation Auto-Retry") {
         // Patch v1: fix old graphs seeded before the sql_query handler was implemented.
         //  1. sql_query node: adds age_ms to SELECT so the condition can gate on recency
@@ -1962,7 +1963,7 @@ export async function seedSystemWorkflows(): Promise<void> {
             JSON.stringify("status != 'generating' || age_ms > 300000"),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query, condition, and edge handles");
+        log.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query, condition, and edge handles");
 
         // Patch v2: upgrade the age threshold from 120 000 ms (2 min) to 300 000 ms (5 min).
         // Fires only on graphs that already have the new SELECT (with age_ms) but still
@@ -1993,7 +1994,7 @@ export async function seedSystemWorkflows(): Promise<void> {
             JSON.stringify([{ data: { nodeType: "condition", expression: "status != 'generating' || age_ms > 120000" } }]),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry age threshold 120000 → 300000");
+        log.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry age threshold 120000 → 300000");
 
         // Patch v3: insert calc_pricing node between generate and emit.
         // Guard: fires only when the calc_pricing node is not already present.
@@ -2043,7 +2044,7 @@ export async function seedSystemWorkflows(): Promise<void> {
             }]),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — inserted calc_pricing node");
+        log.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — inserted calc_pricing node");
 
         // Patch v4: circuit breaker. Without this, a deterministically-failing
         // generation (e.g. AI/signal drift that can never self-resolve) retries
@@ -2130,7 +2131,7 @@ export async function seedSystemWorkflows(): Promise<void> {
             ]),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — added fail-count circuit breaker");
+        log.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — added fail-count circuit breaker");
       } else if (seed.name === "SOW Generation") {
         // Patch v1: fix contract mismatches between the original seeded graph and the
         // workflow executor field conventions. Guard fires when gen_sow still uses
@@ -2181,7 +2182,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"gen_sow","data":{"clientUserId":"{{clientUserId}}"}}]'`,
           [defId, JSON.stringify("{{clientUserId}}")],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Generation — fixed clientId field contract for generate_document, update_m365_profile, and update_intelligence_tables nodes");
+        log.info({ defId }, "seed-system-workflows: patched SOW Generation — fixed clientId field contract for generate_document, update_m365_profile, and update_intelligence_tables nodes");
       } else if (seed.name === "Presentation Phase Generator") {
         // Patch v1: replace deprecated system_action nodes with composable sql_query nodes.
         // Guard: fires when the save node still carries type:"system_action".
@@ -2229,7 +2230,7 @@ export async function seedSystemWorkflows(): Promise<void> {
             JSON.stringify(["{{value.projectTitle}}", "{{presentationId}}"]),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Presentation Phase Generator — replaced system_action nodes with sql_query");
+        log.info({ defId }, "seed-system-workflows: patched Presentation Phase Generator — replaced system_action nodes with sql_query");
       } else if (seed.name === "__system__: Orphan Reconciliation") {
         // Patch v1: replace system_action node with reconcile_orphaned_runs typed node.
         // Guard: fires when the act node still uses type:"system_action".
@@ -2260,7 +2261,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Orphan Reconciliation — replaced system_action with reconcile_orphaned_runs");
+        log.info({ defId }, "seed-system-workflows: patched Orphan Reconciliation — replaced system_action with reconcile_orphaned_runs");
       } else if (seed.name === "__system__: Late Auto-Fire Reconciliation") {
         // Patch v1: replace system_action node with reconcile_orphaned_runs typed node (task: reconcile_late_stuck_queued).
         await pool.query(
@@ -2290,7 +2291,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Late Auto-Fire Reconciliation — replaced system_action with reconcile_orphaned_runs");
+        log.info({ defId }, "seed-system-workflows: patched Late Auto-Fire Reconciliation — replaced system_action with reconcile_orphaned_runs");
       } else if (seed.name === "__system__: Workflow Cleanup") {
         // Patch v1: replace system_action node with sql_query DELETE and replace edges.
         // Guard: fires when the act node still uses type:"system_action".
@@ -2302,7 +2303,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Workflow Cleanup — replaced system_action with sql_query");
+        log.info({ defId }, "seed-system-workflows: patched Workflow Cleanup — replaced system_action with sql_query");
       } else if (seed.name === "__system__: Escalation Check") {
         // Patch v1: replace single system_action node with sql_query + condition + create_notification graph.
         // Guard: fires when the act node still uses type:"system_action".
@@ -2314,7 +2315,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Escalation Check — replaced system_action with composable sql_query + condition + notification graph");
+        log.info({ defId }, "seed-system-workflows: patched Escalation Check — replaced system_action with composable sql_query + condition + notification graph");
       } else if (seed.name === "__system__: Monthly Insights") {
         // Patch v1: replace single system_action node with fix_stale + claim sql_queries + condition + notification graph.
         // Guard: fires when the act node still uses type:"system_action".
@@ -2326,7 +2327,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Monthly Insights — replaced system_action with sql_query + condition + notification graph");
+        log.info({ defId }, "seed-system-workflows: patched Monthly Insights — replaced system_action with sql_query + condition + notification graph");
       } else if (seed.name === "__system__: Kanban Auto-fire") {
         // Patch v1: replace single system_action node with condition + monitor_execute_package graph.
         // Guard: fires when the act node still uses type:"system_action".
@@ -2338,7 +2339,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + kanban_auto_fire");
+        log.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + kanban_auto_fire");
         // Patch v2: rename monitor_execute_package execute node → kanban_auto_fire (type collision fix).
         // Guard: fires only when execute node still has the old type name.
         await pool.query(
@@ -2349,7 +2350,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"execute","type":"monitor_execute_package"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire v2 — renamed execute node type monitor_execute_package → kanban_auto_fire");
+        log.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire v2 — renamed execute node type monitor_execute_package → kanban_auto_fire");
       } else if (seed.name === "MSP Dunning State Machine") {
         // Patch v1: replace system_action node with msp_dunning_advance typed node.
         // Guard: fires when the dunning node still uses type:"system_action".
@@ -2361,7 +2362,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"dunning","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched MSP Dunning State Machine — replaced system_action with msp_dunning_advance");
+        log.info({ defId }, "seed-system-workflows: patched MSP Dunning State Machine — replaced system_action with msp_dunning_advance");
       } else if (seed.name === "MSP Overage Metering") {
         // Patch v1: replace system_action node with msp_overage_meter typed node.
         // Guard: fires when the meter node still uses type:"system_action".
@@ -2373,7 +2374,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"meter","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched MSP Overage Metering — replaced system_action with msp_overage_meter");
+        log.info({ defId }, "seed-system-workflows: patched MSP Overage Metering — replaced system_action with msp_overage_meter");
       } else if (seed.name === "Run Assessment") {
         // Patch v1: upgrade graphs seeded without monitor_get_package (find_object → execute_pkg directly).
         // Guard: fires when execute_pkg node takes its packageKey from resolve_pkg (not get_pkg),
@@ -2386,7 +2387,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"execute_pkg","data":{"packageKey":"{{steps.resolve_pkg.packageKey}}"}}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched On Purchase — added monitor_get_package between find_object and monitor_execute_package");
+        log.info({ defId }, "seed-system-workflows: patched On Purchase — added monitor_get_package between find_object and monitor_execute_package");
         // Patch v2: remove the purchase.completed trigger — document generation now lives in its
         // own workflow ("On Purchase — Generate Engagement Documents"), gated on actual payment.
         // This workflow should only run on consent.granted (telemetry, pre-payment).
@@ -2400,7 +2401,7 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId],
         );
         if ((purchaseTriggerDeleted.rowCount ?? 0) > 0) {
-          logger.info({ defId }, "seed-system-workflows: removed purchase.completed trigger from On Purchase — Run Monitoring Package (now consent.granted-only)");
+          log.info({ defId }, "seed-system-workflows: removed purchase.completed trigger from On Purchase — Run Monitoring Package (now consent.granted-only)");
         }
       } else if (seed.name === "__system__: Live Activity Monitor") {
         // Patch v2: fix the dead /delivery/engines/msp linkPath placeholder (Bug #1) and
@@ -2414,7 +2415,7 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"notify","data":{"linkPath":"/delivery/engines/msp"}}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Live Activity Monitor — fixed dead linkPath, added send_alert_email node");
+        log.info({ defId }, "seed-system-workflows: patched Live Activity Monitor — fixed dead linkPath, added send_alert_email node");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
@@ -2459,12 +2460,12 @@ export async function seedSystemWorkflows(): Promise<void> {
             [defId, JSON.stringify({ cron: seed.cron }), nextRun],
           );
         }
-        logger.info({ defId, name: seed.name, triggerType: seed.triggerType }, "seed-system-workflows: trigger created");
+        log.info({ defId, name: seed.name, triggerType: seed.triggerType }, "seed-system-workflows: trigger created");
       }
     }
 
-    logger.info({ count: SYSTEM_WORKFLOWS.length }, "seed-system-workflows: all system workflows seeded");
+    log.info({ count: SYSTEM_WORKFLOWS.length }, "seed-system-workflows: all system workflows seeded");
   } catch (err) {
-    logger.warn({ err }, "seed-system-workflows: seeding failed (non-fatal)");
+    log.warn({ err }, "seed-system-workflows: seeding failed (non-fatal)");
   }
 }

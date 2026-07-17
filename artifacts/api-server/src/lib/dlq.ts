@@ -8,6 +8,7 @@
 import { db, mspDlqStoreTable } from "@workspace/db";
 import { eq, isNull, desc, and, sql } from "drizzle-orm";
 import { logger } from "./logger";
+const log = logger.child({ channel: "system.dlq" });
 
 export interface DlqEnqueueOptions {
   eventType: string;
@@ -44,14 +45,14 @@ export async function enqueueDlq(opts: DlqEnqueueOptions): Promise<string | null
       })
       .returning({ dlqId: mspDlqStoreTable.dlqId });
 
-    logger.warn(
+    log.warn(
       { dlqId: row?.dlqId, eventType: opts.eventType },
       "dlq: item enqueued",
     );
 
     return row?.dlqId ?? null;
   } catch (err) {
-    logger.error({ err, eventType: opts.eventType }, "dlq: enqueue failed (non-fatal)");
+    log.error({ err, eventType: opts.eventType }, "dlq: enqueue failed (non-fatal)");
     return null;
   }
 }

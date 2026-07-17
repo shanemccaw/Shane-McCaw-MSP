@@ -46,6 +46,7 @@ import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-n
 import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "workflow.run" });
 import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
 import { registerAdminWorkflowEventClient } from "../lib/sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -318,7 +319,7 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
       .returning();
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "Failed to patch definition");
+    log.error({ err }, "Failed to patch definition");
     sendError(res, 500, "Failed to update workflow");
   }
 });
@@ -986,7 +987,7 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
     const dryRun = body.data.dryRun;
     setImmediate(() => {
       executeWorkflowRun(runId, { inlineGraph, dryRun, inputValues }).catch(err => {
-        logger.warn({ err, runId }, "workflows: draft test-run execution failed (non-fatal)");
+        log.warn({ err, runId }, "workflows: draft test-run execution failed (non-fatal)");
       });
     });
 
@@ -1347,7 +1348,7 @@ router.post("/admin/workflows/pending-approvals/:id/decide", requireAdmin, async
       const decisionNote = body.data.note;
       setImmediate(() => {
         resumeWorkflowRun(approval.runId, approval.nodeId, resumePayload, decisionNote).catch(err => {
-          logger.warn({ err, runId: approval.runId }, "pending-approvals: resume failed (non-fatal)");
+          log.warn({ err, runId: approval.runId }, "pending-approvals: resume failed (non-fatal)");
         });
       });
       req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals: approved, resuming run");

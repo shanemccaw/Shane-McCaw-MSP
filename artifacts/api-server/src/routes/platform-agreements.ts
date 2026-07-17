@@ -21,6 +21,8 @@ import { eq, desc, and } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 
+const log = logger.child({ channel: "auth" });
+
 const router: IRouter = Router();
 
 // ── Public: fetch the current active agreement ────────────────────────────────
@@ -39,7 +41,7 @@ router.get("/platform/agreement/current", async (_req: Request, res: Response) =
     }
     res.json({ agreement });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to fetch current agreement");
+    log.error({ err }, "platform-agreements: failed to fetch current agreement");
     res.status(500).json({ error: "Failed to fetch agreement" });
   }
 });
@@ -80,7 +82,7 @@ router.get("/platform/agreement/acceptance-status", requireAuth, async (req: Req
       version: current.version,
     });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to check acceptance status");
+    log.error({ err }, "platform-agreements: failed to check acceptance status");
     res.status(500).json({ error: "Failed to check acceptance status" });
   }
 });
@@ -142,14 +144,14 @@ router.post("/platform/agreement/accept", requireAuth, async (req: Request, res:
       checkboxConfirmed: true,
     });
 
-    logger.info(
+    log.info(
       { userId: user.id, mspId, version: current.version, ip, role: effectiveRole },
       "platform-agreements: acceptance recorded",
     );
 
     res.json({ ok: true });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to record acceptance");
+    log.error({ err }, "platform-agreements: failed to record acceptance");
     res.status(500).json({ error: "Failed to record acceptance" });
   }
 });
@@ -164,7 +166,7 @@ router.get("/admin/platform-agreements", requireRole("PlatformAdmin"), async (_r
       .orderBy(desc(platformAgreementsTable.createdAt));
     res.json({ agreements });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to list");
+    log.error({ err }, "platform-agreements: failed to list");
     res.status(500).json({ error: "Failed to list agreements" });
   }
 });
@@ -193,7 +195,7 @@ router.post("/admin/platform-agreements", requireRole("PlatformAdmin"), async (r
 
     res.status(201).json({ agreement: created });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to create");
+    log.error({ err }, "platform-agreements: failed to create");
     res.status(500).json({ error: "Failed to create agreement version" });
   }
 });
@@ -232,7 +234,7 @@ router.put("/admin/platform-agreements/:id", requireRole("PlatformAdmin"), async
 
     res.json({ agreement: updated });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to update");
+    log.error({ err }, "platform-agreements: failed to update");
     res.status(500).json({ error: "Failed to update agreement" });
   }
 });
@@ -269,10 +271,10 @@ router.patch("/admin/platform-agreements/:id/publish", requireRole("PlatformAdmi
         .where(eq(platformAgreementsTable.id, id));
     });
 
-    logger.info({ id, version: target.version, userId: req.user!.id }, "platform-agreements: version published");
+    log.info({ id, version: target.version, userId: req.user!.id }, "platform-agreements: version published");
     res.json({ ok: true, version: target.version });
   } catch (err) {
-    logger.error({ err }, "platform-agreements: failed to publish");
+    log.error({ err }, "platform-agreements: failed to publish");
     res.status(500).json({ error: "Failed to publish agreement" });
   }
 });

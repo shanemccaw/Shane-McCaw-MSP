@@ -4,6 +4,7 @@ import fs from "fs";
 import multer from "multer";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger.ts";
+const log = logger.child({ channel: "admin.content" });
 
 const router: IRouter = Router();
 
@@ -15,7 +16,7 @@ const GENERATED_IMAGES_DIR = path.join(UPLOADS_BASE, "generated-images");
 const MEDIA_LIBRARY_DIR = path.join(UPLOADS_BASE, "media-library");
 
 fs.mkdirSync(MEDIA_LIBRARY_DIR, { recursive: true });
-logger.info({ dir: MEDIA_LIBRARY_DIR }, "media-library: directory ready");
+log.info({ dir: MEDIA_LIBRARY_DIR }, "media-library: directory ready");
 
 const ALLOWED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"]);
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -84,7 +85,7 @@ router.get("/admin/media-library", requireAdmin, (_req: Request, res: Response) 
     const all = [...uploaded, ...generated].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json(all);
   } catch (err) {
-    logger.error({ err }, "media-library: failed to list images");
+    log.error({ err }, "media-library: failed to list images");
     res.status(500).json({ error: "Failed to list media library" });
   }
 });
@@ -120,7 +121,7 @@ router.post(
       size: req.file.size,
       createdAt: new Date().toISOString(),
     };
-    logger.info({ filename: req.file.filename }, "media-library: image uploaded");
+    log.info({ filename: req.file.filename }, "media-library: image uploaded");
     res.status(201).json(item);
   },
 );
@@ -141,10 +142,10 @@ router.delete("/admin/media-library/:filename", requireAdmin, (req: Request, res
   }
   try {
     fs.unlinkSync(filePath);
-    logger.info({ filename }, "media-library: image deleted");
+    log.info({ filename }, "media-library: image deleted");
     res.json({ success: true });
   } catch (err) {
-    logger.error({ err, filename }, "media-library: failed to delete image");
+    log.error({ err, filename }, "media-library: failed to delete image");
     res.status(500).json({ error: "Failed to delete image" });
   }
 });

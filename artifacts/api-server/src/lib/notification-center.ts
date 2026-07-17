@@ -10,6 +10,7 @@ import { db, notificationsTable, usersTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { broadcastNotification, broadcastUnreadCount } from "./sse-broadcast";
 import { logger } from "./logger";
+const log = logger.child({ channel: "notification" });
 
 export type NotificationRecipient =
   | { type: "platform_admin" }
@@ -118,7 +119,7 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
 
     return notifId ?? null;
   } catch (err) {
-    logger.warn({ err }, "notification-center: failed to create notification (non-fatal)");
+    log.warn({ err }, "notification-center: failed to create notification (non-fatal)");
     return null;
   }
 }
@@ -163,10 +164,10 @@ export async function pruneOldPersonalNotifications(): Promise<number> {
         ),
       );
     const count = (result as unknown as { rowCount?: number }).rowCount ?? 0;
-    if (count > 0) logger.info({ count }, "notification-center: pruned old personal notifications");
+    if (count > 0) log.info({ count }, "notification-center: pruned old personal notifications");
     return count;
   } catch (err) {
-    logger.warn({ err }, "notification-center: prune job failed (non-fatal)");
+    log.warn({ err }, "notification-center: prune job failed (non-fatal)");
     return 0;
   }
 }

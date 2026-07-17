@@ -39,6 +39,7 @@ import {
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "engine.monitor" });
 import { applyMapping, classifySeverity, validateOutputShape } from "../lib/monitor-executor";
 import type { SeverityRule, MappingRule } from "../lib/monitor-executor";
 
@@ -66,7 +67,7 @@ async function writeAuditLog(opts: {
       note: opts.note ?? null,
     });
   } catch (err) {
-    logger.warn({ err }, "admin-monitor-checks: audit log write failed (non-fatal)");
+    log.warn({ err }, "admin-monitor-checks: audit log write failed (non-fatal)");
   }
 }
 
@@ -84,7 +85,7 @@ router.get("/admin/monitor-checks", requireAdmin, async (_req: Request, res: Res
       .orderBy(monitorChecksTable.key);
     res.json({ checks });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: list failed");
+    log.error({ err }, "admin-monitor-checks: list failed");
     res.status(500).json({ error: "Failed to list monitor checks" });
   }
 });
@@ -99,7 +100,7 @@ router.get("/admin/monitor-checks/audit-log", requireAdmin, async (req: Request,
       .limit(limit);
     res.json({ logs });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: audit log list failed");
+    log.error({ err }, "admin-monitor-checks: audit log list failed");
     res.status(500).json({ error: "Failed to list audit log" });
   }
 });
@@ -115,7 +116,7 @@ router.get("/admin/monitor-checks/:key", requireAdmin, async (req: Request, res:
     if (!check) return void res.status(404).json({ error: "Monitor check not found" });
     res.json({ check });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: get failed");
+    log.error({ err }, "admin-monitor-checks: get failed");
     res.status(500).json({ error: "Failed to get monitor check" });
   }
 });
@@ -156,7 +157,7 @@ router.post("/admin/monitor-checks", requireAdmin, async (req: Request, res: Res
     await writeAuditLog({ action: "create", checkKey: check!.key, after: check as unknown as Record<string, unknown>, adminUserId: adminId });
     res.status(201).json({ check });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: create failed");
+    log.error({ err }, "admin-monitor-checks: create failed");
     const msg = err instanceof Error && err.message.includes("unique") ? "A check with that key already exists" : "Failed to create monitor check";
     res.status(400).json({ error: msg });
   }
@@ -203,7 +204,7 @@ router.patch("/admin/monitor-checks/:key", requireAdmin, async (req: Request, re
     await writeAuditLog({ action: "update", checkKey: key, before: existing as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, adminUserId: adminId });
     res.json({ check: updated });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: update failed");
+    log.error({ err }, "admin-monitor-checks: update failed");
     res.status(500).json({ error: "Failed to update monitor check" });
   }
 });
@@ -252,7 +253,7 @@ router.delete("/admin/monitor-checks/:key", requireAdmin, async (req: Request, r
     await writeAuditLog({ action: "archive", checkKey: key, before: existing as unknown as Record<string, unknown>, after: archived as unknown as Record<string, unknown>, adminUserId: adminId });
     res.json({ archived: true, check: archived });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: delete failed");
+    log.error({ err }, "admin-monitor-checks: delete failed");
     res.status(500).json({ error: "Failed to archive monitor check" });
   }
 });
@@ -313,7 +314,7 @@ router.post("/admin/monitor-checks/:key/ingest-script-output", requireAdmin, asy
 
     res.json({ ingested: true, valid, errors, severityMatched });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: ingest-script-output failed");
+    log.error({ err }, "admin-monitor-checks: ingest-script-output failed");
     res.status(500).json({ error: "Failed to ingest script output" });
   }
 });
@@ -328,7 +329,7 @@ router.get("/admin/monitoring-packages", requireAdmin, async (_req: Request, res
       .orderBy(monitoringPackagesTable.key);
     res.json({ packages });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: list packages failed");
+    log.error({ err }, "admin-monitor-checks: list packages failed");
     res.status(500).json({ error: "Failed to list monitoring packages" });
   }
 });
@@ -359,7 +360,7 @@ router.get("/admin/monitoring-packages/:key", requireAdmin, async (req: Request,
 
     res.json({ package: pkg, checks: orderedChecks });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: get package failed");
+    log.error({ err }, "admin-monitor-checks: get package failed");
     res.status(500).json({ error: "Failed to get monitoring package" });
   }
 });
@@ -389,7 +390,7 @@ router.post("/admin/monitoring-packages", requireAdmin, async (req: Request, res
     await writeAuditLog({ action: "create", packageKey: pkg!.key, after: pkg as unknown as Record<string, unknown>, adminUserId: adminId });
     res.status(201).json({ package: pkg });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: create package failed");
+    log.error({ err }, "admin-monitor-checks: create package failed");
     const msg = err instanceof Error && err.message.includes("unique") ? "A package with that key already exists" : "Failed to create monitoring package";
     res.status(400).json({ error: msg });
   }
@@ -422,7 +423,7 @@ router.patch("/admin/monitoring-packages/:key", requireAdmin, async (req: Reques
     await writeAuditLog({ action: "update", packageKey: key, before: existing as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, adminUserId: adminId });
     res.json({ package: updated });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: update package failed");
+    log.error({ err }, "admin-monitor-checks: update package failed");
     res.status(500).json({ error: "Failed to update monitoring package" });
   }
 });
@@ -448,7 +449,7 @@ router.delete("/admin/monitoring-packages/:key", requireAdmin, async (req: Reque
     await writeAuditLog({ action: "archive", packageKey: key, before: existing as unknown as Record<string, unknown>, after: archived as unknown as Record<string, unknown>, adminUserId: adminId });
     res.json({ archived: true, package: archived });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: archive package failed");
+    log.error({ err }, "admin-monitor-checks: archive package failed");
     res.status(500).json({ error: "Failed to archive monitoring package" });
   }
 });
@@ -465,7 +466,7 @@ router.get("/admin/monitoring-packages/:key/checks", requireAdmin, async (req: R
       .orderBy(monitoringPackageChecksTable.sortOrder);
     res.json({ checks: links });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: list package checks failed");
+    log.error({ err }, "admin-monitor-checks: list package checks failed");
     res.status(500).json({ error: "Failed to list package checks" });
   }
 });
@@ -506,7 +507,7 @@ router.put("/admin/monitoring-packages/:key/checks", requireAdmin, async (req: R
     await writeAuditLog({ action: "update_checks", packageKey: key, after: { checkKeys: body.checkKeys }, adminUserId: adminId });
     res.json({ updated: true, checkKeys: body.checkKeys });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: update package checks failed");
+    log.error({ err }, "admin-monitor-checks: update package checks failed");
     res.status(500).json({ error: "Failed to update package checks" });
   }
 });
@@ -539,7 +540,7 @@ router.get("/admin/monitor-checks/profiles", requireAdmin, async (req: Request, 
 
     res.json({ profiles: enrichedProfiles });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: list all profiles failed");
+    log.error({ err }, "admin-monitor-checks: list all profiles failed");
     res.status(500).json({ error: "Failed to list tenant monitor profiles" });
   }
 });
@@ -558,7 +559,7 @@ router.get("/admin/monitor-checks/profiles/:tenantId", requireAdmin, async (req:
       .limit(limit);
     res.json({ profiles });
   } catch (err) {
-    logger.error({ err }, "admin-monitor-checks: list profiles failed");
+    log.error({ err }, "admin-monitor-checks: list profiles failed");
     res.status(500).json({ error: "Failed to list tenant monitor profiles" });
   }
 });

@@ -35,6 +35,7 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "tenant.portal" });
 import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine";
@@ -162,7 +163,7 @@ router.get(
 
       res.json({ definitions: defs, total: defs.length });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET definitions failed");
+      log.error({ err }, "msp-reports: GET definitions failed");
       res.status(500).json({ error: "Failed to fetch report definitions" });
     }
   },
@@ -218,7 +219,7 @@ router.post(
 
       res.status(201).json({ definition: def });
     } catch (err) {
-      logger.error({ err }, "msp-reports: POST definitions failed");
+      log.error({ err }, "msp-reports: POST definitions failed");
       res.status(500).json({ error: "Failed to create report definition" });
     }
   },
@@ -247,7 +248,7 @@ router.get(
       if (!def) { res.status(404).json({ error: "Report definition not found" }); return; }
       res.json({ definition: def });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET definition failed");
+      log.error({ err }, "msp-reports: GET definition failed");
       res.status(500).json({ error: "Failed to fetch definition" });
     }
   },
@@ -282,7 +283,7 @@ router.patch(
       if (!updated) { res.status(404).json({ error: "Report definition not found" }); return; }
       res.json({ definition: updated });
     } catch (err) {
-      logger.error({ err }, "msp-reports: PATCH definition failed");
+      log.error({ err }, "msp-reports: PATCH definition failed");
       res.status(500).json({ error: "Failed to update definition" });
     }
   },
@@ -311,7 +312,7 @@ router.delete(
       if (!deleted) { res.status(404).json({ error: "Report definition not found" }); return; }
       res.json({ ok: true });
     } catch (err) {
-      logger.error({ err }, "msp-reports: DELETE definition failed");
+      log.error({ err }, "msp-reports: DELETE definition failed");
       res.status(500).json({ error: "Failed to delete definition" });
     }
   },
@@ -385,11 +386,11 @@ router.post(
           });
           await executeRun(wfRunId);
         } catch (err) {
-          logger.error({ err, runId: run.runId }, "msp-reports: workflow engine dispatch error");
+          log.error({ err, runId: run.runId }, "msp-reports: workflow engine dispatch error");
         }
       })();
     } catch (err) {
-      logger.error({ err }, "msp-reports: trigger failed");
+      log.error({ err }, "msp-reports: trigger failed");
       res.status(500).json({ error: "Failed to trigger report" });
     }
   },
@@ -438,7 +439,7 @@ router.get(
 
       res.json({ runs, total: runs.length });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET runs failed");
+      log.error({ err }, "msp-reports: GET runs failed");
       res.status(500).json({ error: "Failed to fetch runs" });
     }
   },
@@ -482,7 +483,7 @@ router.get(
       if (!run) { res.status(404).json({ error: "Run not found" }); return; }
       res.json({ run });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET run failed");
+      log.error({ err }, "msp-reports: GET run failed");
       res.status(500).json({ error: "Failed to fetch run" });
     }
   },
@@ -550,7 +551,7 @@ router.get(
 
       res.status(404).json({ error: "PDF not available" });
     } catch (err) {
-      logger.error({ err }, "msp-reports: download failed");
+      log.error({ err }, "msp-reports: download failed");
       res.status(500).json({ error: "Failed to download report" });
     }
   },
@@ -636,7 +637,7 @@ router.get(
         hasData: customersWithWaste > 0,
       });
     } catch (err) {
-      logger.error({ err }, "msp-reports: license-waste failed");
+      log.error({ err }, "msp-reports: license-waste failed");
       res.status(500).json({ error: "Failed to fetch license waste data" });
     }
   },
@@ -660,7 +661,7 @@ router.get(
 
       res.json({ canvases, total: canvases.length });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET canvases failed");
+      log.error({ err }, "msp-reports: GET canvases failed");
       res.status(500).json({ error: "Failed to fetch canvases" });
     }
   },
@@ -693,7 +694,7 @@ router.post(
 
       res.status(201).json(canvas);
     } catch (err) {
-      logger.error({ err }, "msp-reports: POST canvases failed");
+      log.error({ err }, "msp-reports: POST canvases failed");
       res.status(500).json({ error: "Failed to create canvas" });
     }
   },
@@ -725,7 +726,7 @@ router.put(
       if (!updated) { res.status(404).json({ error: "Canvas not found" }); return; }
       res.json(updated);
     } catch (err) {
-      logger.error({ err }, "msp-reports: PUT canvases failed");
+      log.error({ err }, "msp-reports: PUT canvases failed");
       res.status(500).json({ error: "Failed to update canvas" });
     }
   },
@@ -748,7 +749,7 @@ router.delete(
       if (!deleted) { res.status(404).json({ error: "Canvas not found" }); return; }
       res.json({ success: true });
     } catch (err) {
-      logger.error({ err }, "msp-reports: DELETE canvases failed");
+      log.error({ err }, "msp-reports: DELETE canvases failed");
       res.status(500).json({ error: "Failed to delete canvas" });
     }
   },
@@ -820,7 +821,7 @@ router.post(
       res.json({ success: true, recipient: recipientEmail, customerId: targetCustomerId });
     } catch (err) {
       console.error("EXPLICIT ROUTE ERROR:", err);
-      logger.error({ err }, "msp-reports: POST canvases/:id/send-test failed");
+      log.error({ err }, "msp-reports: POST canvases/:id/send-test failed");
       res.status(500).json({ error: "Failed to send test email" });
     }
   }
@@ -844,7 +845,7 @@ router.get(
 
       res.json({ schedules, total: schedules.length });
     } catch (err) {
-      logger.error({ err }, "msp-reports: GET schedules failed");
+      log.error({ err }, "msp-reports: GET schedules failed");
       res.status(500).json({ error: "Failed to fetch schedules" });
     }
   },
@@ -877,7 +878,7 @@ router.post(
 
       res.status(201).json(schedule);
     } catch (err) {
-      logger.error({ err }, "msp-reports: POST schedules failed");
+      log.error({ err }, "msp-reports: POST schedules failed");
       res.status(500).json({ error: "Failed to create schedule" });
     }
   },
@@ -911,7 +912,7 @@ router.put(
       if (!updated) { res.status(404).json({ error: "Schedule not found" }); return; }
       res.json(updated);
     } catch (err) {
-      logger.error({ err }, "msp-reports: PUT schedules failed");
+      log.error({ err }, "msp-reports: PUT schedules failed");
       res.status(500).json({ error: "Failed to update schedule" });
     }
   },
@@ -934,7 +935,7 @@ router.delete(
       if (!deleted) { res.status(404).json({ error: "Schedule not found" }); return; }
       res.json({ success: true });
     } catch (err) {
-      logger.error({ err }, "msp-reports: DELETE schedules failed");
+      log.error({ err }, "msp-reports: DELETE schedules failed");
       res.status(500).json({ error: "Failed to delete schedule" });
     }
   },

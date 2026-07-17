@@ -7,6 +7,7 @@ import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, users
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+const log = logger.child({ channel: "growth.quiz" });
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
@@ -463,7 +464,7 @@ router.post("/quiz/chat", chatLimiter, async (req, res) => {
     if (!block || block.type !== "text") return res.status(500).json({ error: "Unexpected AI response" });
     return res.json({ content: block.text });
   } catch (err) {
-    logger.error({ err }, "quiz/chat: AI call failed");
+    log.error({ err }, "quiz/chat: AI call failed");
     return res.status(500).json({ error: "AI service unavailable" });
   }
 });
@@ -555,7 +556,7 @@ Respond ONLY with valid JSON in this exact shape:
       }
     }
   } catch (err) {
-    logger.warn({ err }, "quiz/submit: scoring AI call failed, using defaults");
+    log.warn({ err }, "quiz/submit: scoring AI call failed, using defaults");
   }
 
   const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
@@ -582,7 +583,7 @@ Respond ONLY with valid JSON in this exact shape:
     }).returning({ id: quizLeadsTable.id });
     leadId = inserted?.id ?? null;
   } catch (err) {
-    logger.error({ err }, "quiz/submit: DB insert failed");
+    log.error({ err }, "quiz/submit: DB insert failed");
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
   }
 
@@ -626,7 +627,7 @@ Respond ONLY with valid JSON in this exact shape:
   try {
     resendToken = leadId !== null ? makeResendToken(leadId) : null;
   } catch (err) {
-    logger.warn({ err }, "quiz/submit: could not generate resend token");
+    log.warn({ err }, "quiz/submit: could not generate resend token");
   }
   const resultsUrl = leadId !== null && resendToken !== null
     ? `https://shanemccaw.consulting/quiz/results/${leadId}?token=${resendToken}`
@@ -709,7 +710,7 @@ Respond ONLY with valid JSON in this exact shape:
         [{ filename: cfg.pdfFilename, content: pdfBuffer }],
       );
     } catch (err) {
-      logger.warn({ err }, "quiz/submit: PDF email failed");
+      log.warn({ err }, "quiz/submit: PDF email failed");
     }
   })();
 
@@ -817,7 +818,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
 
     return res.json({ success: true });
   } catch (err) {
-    logger.warn({ err }, "quiz/resend-pdf: failed");
+    log.warn({ err }, "quiz/resend-pdf: failed");
     return res.status(500).json({ error: "Failed to send the report. Please try again." });
   }
 });
@@ -888,7 +889,7 @@ router.get("/quiz/monitoring-tiers", monitoringTiersLimiter, async (_req, res) =
 
     return res.json(tiers);
   } catch (err) {
-    logger.warn({ err }, "quiz/monitoring-tiers: DB query failed");
+    log.warn({ err }, "quiz/monitoring-tiers: DB query failed");
     return res.status(500).json({ error: "Failed to fetch monitoring tiers" });
   }
 });
