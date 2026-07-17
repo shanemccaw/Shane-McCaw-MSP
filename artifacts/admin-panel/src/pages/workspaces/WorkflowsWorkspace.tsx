@@ -4,6 +4,7 @@ import RunHistoryPage from "@/pages/workflows/RunHistoryPage";
 import RunDetailPage from "@/pages/workflows/RunDetailPage";
 import TriggersPage from "@/pages/workflows/TriggersPage";
 import JsonViewer from "@/pages/workflows/JsonViewer";
+import GraphApiResultsPage from "@/pages/workflows/GraphApiResultsPage";
 import WorkspaceLayout, { type WorkspaceNavItem } from "@/components/WorkspaceLayout";
 import { useLocation } from "wouter";
 
@@ -41,6 +42,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+      </svg>
+    ),
+  },
+  {
+    label: "Graph API Cache",
+    path: "/workflows/graph-api-results",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
       </svg>
     ),
   },
@@ -112,6 +122,18 @@ export default function WorkflowsWorkspace({ section, params }: { section: strin
         navItems={NAV_ITEMS}
       >
         <JsonViewer />
+      </WorkspaceLayout>
+    );
+  }
+
+  if (section === "graph-api-results") {
+    return (
+      <WorkspaceLayout
+        title="Workflows"
+        subtitle="Design, automate & monitor"
+        navItems={NAV_ITEMS}
+      >
+        <GraphApiResultsPage />
       </WorkspaceLayout>
     );
   }

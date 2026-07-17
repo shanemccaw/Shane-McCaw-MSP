@@ -33,6 +33,7 @@ import {
   monitoringPackageChecksTable,
   monitorCheckAuditLogTable,
   tenantMonitorProfilesTable,
+  usersTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -506,6 +507,40 @@ router.put("/admin/monitoring-packages/:key/checks", requireAdmin, async (req: R
   } catch (err) {
     logger.error({ err }, "admin-monitor-checks: update package checks failed");
     res.status(500).json({ error: "Failed to update package checks" });
+  }
+});
+
+// ── Tenant profiles list across ALL tenants ───────────────────────────────────────
+
+router.get("/admin/monitor-checks/profiles", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Number((req.query as Record<string, string>).limit ?? "200"), 1000);
+    const profiles = await db
+      .select()
+      .from(tenantMonitorProfilesTable)
+      .orderBy(desc(tenantMonitorProfilesTable.collectedAt))
+      .limit(limit);
+
+    const clients = await db
+      .select({ id: usersTable.id, name: usersTable.name, company: usersTable.company })
+      .from(usersTable)
+      .where(eq(usersTable.role, "client"));
+
+    const clientMap = new Map(clients.map(c => [String(c.id), c]));
+
+    const enrichedProfiles = profiles.map(p => {
+      const client = clientMap.get(p.tenantId);
+      return {
+        ...p,
+        clientName: client?.name ?? "Unknown Client",
+        clientCompany: client?.company ?? "Unknown Company",
+      };
+    });
+
+    res.json({ profiles: enrichedProfiles });
+  } catch (err) {
+    logger.error({ err }, "admin-monitor-checks: list all profiles failed");
+    res.status(500).json({ error: "Failed to list tenant monitor profiles" });
   }
 });
 
