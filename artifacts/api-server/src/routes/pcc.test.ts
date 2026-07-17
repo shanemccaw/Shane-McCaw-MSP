@@ -67,15 +67,40 @@ describe('Platform Command Center (PCC) API & Runner Integration Tests', () => {
     expect(skipTest.status).toBe('SKIPPED');
   });
 
-  it('POST /api/pcc/inject should perform parameter-aware injection', async () => {
-    const payload = { customerId: 'cus_testing_123', amountTotal: 2500 };
-    const res = await request(testApp)
+  it('POST /api/pcc/inject should perform parameter-aware injection and validate schemas', async () => {
+    // Valid Stripe Checkout success
+    const validPayload = { customerId: 'cus_testing_123', amountTotal: 2500, subscriptionId: 'sub_123' };
+    const resSuccess = await request(testApp)
       .post('/api/pcc/inject')
-      .send({ eventType: 'stripe.checkout.success', payload })
+      .send({ eventType: 'stripe.checkout.success', payload: validPayload })
       .expect(200);
 
-    expect(res.body.status).toBe('INJECTED');
-    expect(res.body.eventType).toBe('stripe.checkout.success');
-    expect(res.body.payload.customerId).toBe('cus_testing_123');
+    expect(resSuccess.body.status).toBe('INJECTED');
+
+    // Invalid Stripe Checkout failure missing reason
+    const invalidPayload = { customerId: 'cus_testing_123' };
+    const resFail = await request(testApp)
+      .post('/api/pcc/inject')
+      .send({ eventType: 'stripe.checkout.failure', payload: invalidPayload })
+      .expect(200);
+
+    expect(resFail.body.status).toBe('FAILED');
+    expect(resFail.body.why).toContain('Missing customerId or failureReason');
+  });
+
+  it('POST /api/pcc/run should run all tests including non-prod safe when environment is test', async () => {
+    stateManager.setEnvironment('test');
+
+    const res = await request(testApp)
+      .post('/api/pcc/run')
+      .send({})
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    
+    // Verify event-stripe-checkout is executed (not skipped) and passes
+    const stripeResult = res.body.results.find((r: any) => r.testId === 'event-stripe-checkout');
+    expect(stripeResult).toBeDefined();
+    expect(stripeResult.status).toBe('PASS');
   });
 });

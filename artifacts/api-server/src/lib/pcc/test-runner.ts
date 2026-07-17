@@ -128,8 +128,8 @@ export class PccTestRunner {
         } else if (test.taxonomy === 'EventInjection') {
           // Trigger mock event injection
           const injPayload = test.id === 'event-stripe-checkout'
-            ? { customerId: 'cus_998', amountTotal: 14900 }
-            : { policyVersion: 'v2026.1' };
+            ? { customerId: 'cus_998', amountTotal: 14900, subscriptionId: 'sub_enterprise_998' }
+            : { policyVersion: 'v2026.1', consentTypes: ['marketing', 'analytics'] };
           const inj = this.eventInjector.inject(test.id === 'event-stripe-checkout' ? 'stripe.checkout.success' : 'consent.granted', injPayload);
           if (inj.status === 'FAILED') {
             status = 'FAIL';
