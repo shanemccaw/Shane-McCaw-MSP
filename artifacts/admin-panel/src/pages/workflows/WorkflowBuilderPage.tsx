@@ -154,6 +154,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   for:             { bg: "#160A2E", border: "#A855F7", icon: "⟳",  label: "For"                 },
   retry:           { bg: "#1A1100", border: "#F59E0B", icon: "🔁",  label: "Retry"               },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  graph_write_operation:     { bg: "#0B1E1B", border: "#14B8A6", icon: "🖋️", label: "Graph Write Operation" },
+  execute_baseline_template: { bg: "#0D1527", border: "#3B82F6", icon: "📑", label: "Execute Baseline Template" },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   // ── Calendar (Exchange / Microsoft Graph) ──
   check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
@@ -396,6 +398,21 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "approved",     label: "true — always set when execution continues past the gate" },
     { key: "decisionNote", label: "Optional note left by the approving admin" },
     { key: "approvalId",   label: "ID of the pending_approvals record" },
+  ],
+  graph_write_operation: [
+    { key: "success",   label: "true if the write operation succeeded" },
+    { key: "status",    label: "HTTP status code returned by Graph API" },
+    { key: "data",      label: "Response body/data returned by Graph API" },
+    { key: "errorType", label: "Error categorization slug if failed" },
+  ],
+  execute_baseline_template: [
+    { key: "success",          label: "true if the template execution succeeded" },
+    { key: "status",           label: "HTTP status code returned by Graph API" },
+    { key: "data",             label: "Response body/data returned by Graph API" },
+    { key: "errorType",        label: "Error categorization slug if failed" },
+    { key: "templateId",       label: "Template ID slug that was executed" },
+    { key: "label",            label: "Display label of the template" },
+    { key: "missingVariables", label: "JSON array of missing required variables (if any)" },
   ],
   // Calendar (Exchange via Microsoft Graph)
   check_exchange_calendar_availability: [
@@ -735,6 +752,32 @@ function WfNode(props: NodeProps) {
             <span className="text-emerald-400">Continue on Approve</span>
           </div>
         </>
+      ) : ["graph_write_operation", "execute_baseline_template"].includes(nodeType) ? (
+        (() => {
+          const handles = ["success", "insufficient_privilege", "conflict", "bad_request", "unexpected"];
+          const total = handles.length;
+          const pct = (i: number) => `${((i + 1) / (total + 1)) * 100}%`;
+          return (
+            <>
+              {handles.map((h, i) => (
+                <Handle
+                  key={h}
+                  type="source"
+                  position={Position.Bottom}
+                  id={h}
+                  style={{ left: pct(i), background: h === "success" ? "#22C55E" : "#EF4444", border: "none" }}
+                />
+              ))}
+              <div className="flex mt-1 px-0.5" style={{ gap: 0 }}>
+                {handles.map(h => (
+                  <span key={h} className={`text-[8px] font-semibold flex-1 text-center truncate ${h === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                    {h === "success" ? "Success" : h === "insufficient_privilege" ? "No Privs" : h === "conflict" ? "Conflict" : h === "bad_request" ? "Bad Req" : "Unexp"}
+                  </span>
+                ))}
+              </div>
+            </>
+          );
+        })()
       ) : nodeType === "switch_case" ? (
         (() => {
           const cases = (data.cases as Array<{ id: string; matchValue: string; label: string }> | undefined) ?? [];
@@ -1061,6 +1104,13 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "monitor_execute_package",     label: "Execute Monitor Package", description: "Run all checks in a monitoring package against a tenant via the Microsoft Graph API. Emits per-check progress and outputs runStatus, checksOk/Error, and checkResults.", tags: ["monitoring", "execute", "package", "checks", "msp", "graph", "tenant", "consent"] },
       { type: "monitor_poll_activity",       label: "Poll Activity",           description: "Poll the O365 Management Activity API for new audit events since the stored watermark. Records critical events and advances the watermark on success.", tags: ["monitoring", "activity", "audit", "poll", "o365", "tenant", "msp"] },
       { type: "monitor_subscription_ensure", label: "Ensure Subscription",     description: "Start or re-confirm an O365 Management Activity API subscription for a tenant and content type. Safe to call repeatedly — idempotent upsert.", tags: ["monitoring", "subscription", "o365", "activity", "tenant", "msp"] },
+    ],
+  },
+  {
+    name: "MSP / Baseline Actions",
+    nodes: [
+      { type: "graph_write_operation",     label: "Graph Write Operation",     description: "Executes a Microsoft Graph API write call (POST, PATCH, or PUT) against a customer tenant. Resolves the tenant's Graph tenantId from the customerId. On success routes via the 'success' handle; on failure routes via 'insufficient_privilege', 'conflict', 'bad_request', or 'unexpected' handles. dry-run is explicitly blocked — the node returns a skip indicator instead of executing.", tags: ["graph", "write", "microsoft", "azure", "tenant", "msp", "baseline"] },
+      { type: "execute_baseline_template", label: "Execute Baseline Template", description: "Looks up a platform-authored baseline action template by its templateId slug, resolves {{variable}} placeholders in the body using the current run context, validates all requiredVariables, and delegates execution to graphWriteForTenant. Records the outcome in baseline_action_template_audit_log. Routes via 'success' or error-type handles identical to graph_write_operation. dry-run is explicitly blocked.", tags: ["template", "baseline", "microsoft", "azure", "tenant", "msp", "execute"] },
     ],
   },
   {
@@ -4971,6 +5021,90 @@ function NodeConfigPanel({
                 Rejection and timeout both <span className="text-red-400 font-semibold">fail the run</span> — no downstream nodes execute on rejection.
               </p>
             </div>
+          </>
+        )}
+
+        {nodeType === "graph_write_operation" && (
+          <>
+            <PayloadField
+              label="Customer ID"
+              hint="MSP customer ID used to resolve the Graph tenant. Supports templates."
+              value={(node.data.customerId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, customerId: v })}
+              placeholder="{{customerId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Endpoint"
+              hint="Graph API path (e.g. '/policies/authorizationPolicy'). May contain {{variable}} placeholders."
+              value={(node.data.endpoint as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, endpoint: v })}
+              placeholder="/v1.0/..."
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Method</label>
+              <select
+                value={(node.data.method as string) ?? "POST"}
+                onChange={e => onChange(node.id, { ...node.data, method: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {["POST", "PATCH", "PUT"].map(m => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <PayloadField
+              label="Body (JSON)"
+              hint="JSON body to send. May be a static object or a {{steps.*}} reference to an object."
+              value={typeof node.data.body === "string" ? node.data.body : JSON.stringify(node.data.body ?? {}, null, 2)}
+              onChange={v => onChange(node.id, { ...node.data, body: v })}
+              placeholder='{"key": "value"}'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Expected Status Codes"
+              hint="HTTP status codes treated as success (JSON array, default: [200, 201, 204])."
+              value={typeof node.data.expectedStatusCodes === "string" ? node.data.expectedStatusCodes : JSON.stringify(node.data.expectedStatusCodes ?? [200, 201, 204])}
+              onChange={v => {
+                let finalVal: any = v;
+                try {
+                  const parsed = JSON.parse(v);
+                  if (Array.isArray(parsed)) {
+                    finalVal = parsed.map(Number).filter(n => !isNaN(n));
+                  }
+                } catch {
+                  finalVal = v;
+                }
+                onChange(node.id, { ...node.data, expectedStatusCodes: finalVal });
+              }}
+              placeholder="[200, 201, 204]"
+              ancestorOutputs={ancestorOutputs}
+            />
+          </>
+        )}
+
+        {nodeType === "execute_baseline_template" && (
+          <>
+            <PayloadField
+              label="Customer ID"
+              hint="MSP customer ID used to resolve the Graph tenant. Supports templates."
+              value={(node.data.customerId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, customerId: v })}
+              placeholder="{{customerId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Template ID"
+              hint="Stable slug of the baseline action template (e.g. 'entra-security-defaults-enable'). Supports templates."
+              value={(node.data.templateId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, templateId: v })}
+              placeholder="entra-security-defaults-enable"
+              ancestorOutputs={ancestorOutputs}
+            />
           </>
         )}
 

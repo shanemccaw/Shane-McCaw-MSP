@@ -82,6 +82,8 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   parallel:        { bg: "#041620", border: "#06B6D4", icon: "⇉",  label: "Parallel"            },
   join:            { bg: "#041620", border: "#06B6D4", icon: "⤤",  label: "Join"                },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  graph_write_operation:     { bg: "#0B1E1B", border: "#14B8A6", icon: "🖋️", label: "Graph Write Operation" },
+  execute_baseline_template: { bg: "#0D1527", border: "#3B82F6", icon: "📑", label: "Execute Baseline Template" },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
   create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
