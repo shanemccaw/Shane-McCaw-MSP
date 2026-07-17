@@ -36,7 +36,7 @@ import {
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 
-export type ModalType = "execute-scenario" | "edit-script" | "new-script" | null;
+export type ModalType = "execute-scenario" | "edit-script" | "new-script" | "engine-trace" | null;
 
 interface ModalContextType {
   activeModal: ModalType;
@@ -82,12 +82,74 @@ function ModalContainer() {
 
   return (
     <Dialog open={activeModal !== null} onOpenChange={(open) => { if (!open) closeModal(); }}>
-      <DialogContent className="max-w-2xl bg-slate-950 border border-slate-800 text-slate-100 shadow-2xl p-6 rounded-xl">
+      <DialogContent className={`${activeModal === "engine-trace" ? "max-w-3xl" : "max-w-2xl"} bg-slate-950 border border-slate-800 text-slate-100 shadow-2xl p-6 rounded-xl`}>
         {activeModal === "execute-scenario" && <ExecuteScenarioModal />}
         {activeModal === "edit-script" && <ScriptEditorModal isNew={false} />}
         {activeModal === "new-script" && <ScriptEditorModal isNew={true} />}
+        {activeModal === "engine-trace" && <EngineTraceModal />}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function EngineTraceModal() {
+  const { modalData, closeModal } = useModal();
+  if (!modalData) return null;
+  const { engineName, data } = modalData;
+
+  return (
+    <div className="space-y-4 font-sans text-sm">
+      <DialogHeader>
+        <DialogTitle className="text-slate-200 text-base font-semibold">{engineName} Evaluation Trace</DialogTitle>
+        <DialogDescription className="text-slate-500 text-xs">
+          Interactive trace of evaluated rules and tenant profile state.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 font-mono text-sm max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800">
+        <section className="space-y-1.5">
+          <h4 className="text-slate-400 uppercase text-[10px] tracking-wider font-bold">Input Tenant Profile</h4>
+          <pre className="bg-slate-900 border border-slate-800 p-3 rounded-lg text-emerald-400 overflow-x-auto text-[11px] max-h-48 overflow-y-auto leading-relaxed">
+            {JSON.stringify(data?.rawInput || {}, null, 2)}
+          </pre>
+        </section>
+        
+        <section className="space-y-1.5">
+          <h4 className="text-slate-400 uppercase text-[10px] tracking-wider font-bold">Rule Logic Path</h4>
+          {data?.trace && data.trace.length > 0 ? (
+            <div className="border-l-2 border-slate-800 pl-4 space-y-3">
+              {data.trace.map((step: any, i: number) => (
+                <div key={i} className="text-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold text-xs">{step.ruleId}:</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${
+                      step.outcome === "FIRED" 
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25" 
+                        : "bg-slate-900 text-slate-500 border border-slate-800"
+                    }`}>
+                      {step.outcome}
+                    </span>
+                  </div>
+                  <small className="text-slate-400 block mt-1 leading-normal font-sans text-[11px]">{step.reasoning}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-slate-500 text-xs italic font-sans">No evaluation trace logs generated for this engine run.</div>
+          )}
+        </section>
+      </div>
+
+      <div className="flex justify-end pt-3 border-t border-slate-900">
+        <Button 
+          variant="outline" 
+          onClick={closeModal}
+          className="bg-transparent border-slate-800 hover:bg-slate-900 hover:text-slate-100 text-xs"
+        >
+          Close
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -449,7 +449,174 @@ for (const def of ENGINE_DEFS) {
   def.runForTenant = async (tenantId: number, ctx?: EngineContext) => {
     const result = await originalRunForTenant(tenantId, ctx);
     void writeEngineSnapshot(def.key, tenantId, result);
-    return result;
+
+    let trace: any[] = [];
+    let rawInput: any = {};
+    if (tenantId > 0) {
+      try {
+        const testInput = await buildEngineTestInputForTenant(tenantId);
+        if (testInput) {
+          rawInput = testInput.mergedProfile;
+          const { trace: signalTrace } = computeTenantSignals(
+            testInput.mergedProfile,
+            testInput.parsedFindings,
+            testInput.rules,
+            testInput.groups,
+            testInput.disabledSignalKeys
+          );
+          trace = signalTrace.map(t => ({
+            ruleId: `${t.signalKey}${t.groupId ? ` (Group ${t.groupId})` : ""}${t.ruleId ? ` [Rule #${t.ruleId}]` : ""}`,
+            outcome: t.result ? "FIRED" : "RESOLVED/SKIPPED",
+            reasoning: t.reason,
+          }));
+        }
+      } catch (err) {
+        logger.warn({ err, tenantId, engineKey: def.key }, "def.runForTenant wrapper: failed to generate signal trace");
+      }
+    }
+
+    let scoreVal = 0;
+    if (result && typeof result === "object") {
+      if ("score" in result) {
+        if (typeof (result as any).score === "number") {
+          scoreVal = (result as any).score;
+        } else if (typeof (result as any).score === "object" && (result as any).score !== null && "totalPricingImpact" in (result as any).score) {
+          scoreVal = (result as any).score.totalPricingImpact;
+        }
+      }
+    }
+
+    let display = {
+      title: def.label,
+      status: "INFO",
+      impact: "No active signals detected.",
+      recommendation: "Review configuration baseline.",
+    };
+
+    switch (def.key) {
+      case "priority": {
+        const count = (result as any)?.breakdown?.length ?? 0;
+        display = {
+          title: "Priority Engine",
+          status: scoreVal > 70 ? "CRITICAL_ATTENTION" : (scoreVal > 30 ? "WARNING" : "STABLE"),
+          impact: `Active priority score at ${scoreVal} across ${count} signals.`,
+          recommendation: count > 0 ? `Review top priority signals: ${(result as any)?.breakdown?.[0]?.signalKey || "none"}` : "No action required.",
+        };
+        break;
+      }
+      case "pricing": {
+        const pricingImpact = (result as any)?.score?.totalPricingImpact ?? 0;
+        const valueContribution = (result as any)?.score?.totalPricingValueContribution ?? 0;
+        display = {
+          title: "Pricing Engine",
+          status: pricingImpact > 1000 ? "HIGH_REVENUE_IMPACT" : "OPTIMIZED",
+          impact: `Pricing Impact: $${pricingImpact}. Value Contribution: $${valueContribution}.`,
+          recommendation: "Optimize client scope and adjustments to capture potential revenue.",
+        };
+        break;
+      }
+      case "health": {
+        display = {
+          title: "Architecture Health",
+          status: scoreVal < 60 ? "CRITICAL_RISK" : (scoreVal < 85 ? "NEEDS_ATTENTION" : "HEALTHY"),
+          impact: `Tenant overall health index evaluated at ${scoreVal}%.`,
+          recommendation: "Remediate open governance and licensing configuration items.",
+        };
+        break;
+      }
+      case "security": {
+        display = {
+          title: "Security Posture",
+          status: scoreVal > 75 ? "CRITICAL_RISK" : (scoreVal > 30 ? "WARN" : "SECURE"),
+          impact: `Security posture risk score of ${scoreVal} based on active vulnerability indicators.`,
+          recommendation: "Enforce MFA and deploy Conditional Access baseline rules.",
+        };
+        break;
+      }
+      case "drift": {
+        const trend = (result as any)?.trendDirection ?? "flat";
+        display = {
+          title: "Configuration Drift",
+          status: scoreVal > 30 ? "DRIFT_DETECTED" : "STABLE",
+          impact: `Configuration drift score is ${scoreVal} with a ${trend} trend.`,
+          recommendation: "Sync tenant baseline configurations with the global MSP profile.",
+        };
+        break;
+      }
+      case "forecasting": {
+        display = {
+          title: "Forecasting Engine",
+          status: scoreVal > 50 ? "ACCELERATING" : "STABLE",
+          impact: `Forecasted metric trend score is ${scoreVal}.`,
+          recommendation: "Resource allocation review recommended for upcoming period.",
+        };
+        break;
+      }
+      case "crm": {
+        display = {
+          title: "CRM Intent & Pain Score",
+          status: "PROSPECT_ENGAGEMENT",
+          impact: "Telemetry signals identify target buying and pain indicators.",
+          recommendation: "Initiate outreach with tailored product upgrade offer packages.",
+        };
+        break;
+      }
+      case "msp": {
+        display = {
+          title: "MSP Portfolio Engine",
+          status: "PORTFOLIO_SUMMARY",
+          impact: "Aggregated portfolio health, drift, and risk metrics compiled.",
+          recommendation: "Audit tenant level dashboards for specific anomalies.",
+        };
+        break;
+      }
+      case "sla": {
+        display = {
+          title: "SLA Compliance",
+          status: "SLA_BREACH_RISK",
+          impact: "Active SLA timer warnings detected for tenant workflows.",
+          recommendation: "Prioritize overdue and high-impact support tickets.",
+        };
+        break;
+      }
+      case "scope_creep": {
+        display = {
+          title: "Scope Creep Engine",
+          status: "SCOPE_EXPANSION",
+          impact: "Unbilled work patterns detected exceeding the SOW baseline.",
+          recommendation: "Initiate SOW amendment workflow and pricing adjustment.",
+        };
+        break;
+      }
+      case "monitoring": {
+        display = {
+          title: "Monitoring Engine",
+          status: "MONITORING_ACTIVE",
+          impact: "Telemetry monitors executed.",
+          recommendation: "Review failed checks in monitoring tab.",
+        };
+        break;
+      }
+      case "sales_offer": {
+        display = {
+          title: "Sales Offer Engine",
+          status: "OFFER_GENERATION",
+          impact: "Diagnostic findings converted to offer candidates.",
+          recommendation: "Finalize MSP billing consent and present checkout options.",
+        };
+        break;
+      }
+    }
+
+    const wrappedResult = {
+      ...(typeof result === "object" && result !== null ? result : {}),
+      rawInput,
+      trace,
+      display,
+      raw: result,
+    };
+
+    return wrappedResult;
   };
 }
 

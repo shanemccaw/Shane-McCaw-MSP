@@ -37,7 +37,11 @@ interface SavedScript {
   isDestructive: boolean;
 }
 
-export function SimulatorLeftTree() {
+export function SimulatorLeftTree(props?: {
+  selectedCustomerId?: string;
+  onSelectCustomer?: (id: string) => void;
+  currentStep?: number;
+}) {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
   

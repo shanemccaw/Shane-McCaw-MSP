@@ -1,6 +1,6 @@
 // artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Play,
   Pause,
@@ -22,6 +22,7 @@ import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
 import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
+import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
 
 export function SimulatorStudioPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -29,6 +30,49 @@ export function SimulatorStudioPage() {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [timeMultiplier, setTimeMultiplier] = useState<number>(1);
   const [simDate, setSimDate] = useState<string>(new Date().toISOString());
+
+  // Step change dispatch log effect
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("simulator-log", {
+      detail: {
+        type: "info",
+        message: `Simulation clock advanced: Day ${currentStep} (${simDate})`
+      }
+    }));
+  }, [currentStep, simDate]);
+
+  // Simulation ticking effect
+  useEffect(() => {
+    let timer: any = null;
+    if (isReplaying) {
+      const intervalMs = timeMultiplier === 60 ? 1000 : (timeMultiplier === 10 ? 3000 : 5000);
+      timer = setInterval(() => {
+        setCurrentStep(prev => {
+          if (prev >= 90) {
+            setIsReplaying(false);
+            window.dispatchEvent(new CustomEvent("simulator-log", {
+              detail: {
+                type: "success",
+                message: "Simulation run completed (Day 90 reached)."
+              }
+            }));
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, intervalMs);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isReplaying, timeMultiplier]);
+
+  // Calculate dynamic simDate based on currentStep
+  useEffect(() => {
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() - 90 + currentStep);
+    setSimDate(baseDate.toLocaleDateString() + " " + baseDate.toLocaleTimeString());
+  }, [currentStep]);
 
   return (
     <SimulatorActivityProvider>
@@ -200,21 +244,19 @@ export function SimulatorStudioPage() {
               </div>
 
               {/* Bound Drawer Output Scrollers */}
-              <div className="flex-1 bg-[#04060c] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-900 p-2.5 font-mono text-[11px] leading-relaxed select-textSelection text-slate-300">
-                <TabsContent value="stdout" className="mt-0 focus-visible:outline-none">
-                  <div className="text-slate-500">{"// Streaming engine trace lookbacks via sequential call chain..."}</div>
-                  <div className="text-emerald-400">{"[INFO] Initializing sequence step metrics lookback boundary check..."}</div>
-                  <div className="text-slate-400">{"[TRACE] runForTenant() matching testbed customer flag dynamic condition context."}</div>
+              <div className="flex-1 bg-[#04060c] min-h-0 relative">
+                <TabsContent value="stdout" className="mt-0 focus-visible:outline-none h-full">
+                  <SqlTerminalPanel />
                 </TabsContent>
 
-                <TabsContent value="sql_terminal" className="mt-0 focus-visible:outline-none text-purple-400">
+                <TabsContent value="sql_terminal" className="mt-0 focus-visible:outline-none p-2.5 font-mono text-[11px] text-purple-400 overflow-y-auto h-full scrollbar-thin scrollbar-thumb-slate-900">
                   <div><span className="text-slate-500">studio-db-snapshot-inspect#</span> SELECT customer_id, captured_at, engine_scores FROM tenant_engine_snapshots WHERE is_testbed = true ORDER BY captured_at DESC;</div>
                   <div className="text-slate-400 mt-1 font-sans text-[10px]">
                     {"(0 rows returned - Select verified testbed picker item node from left explorer hierarchy)"}
                   </div>
                 </TabsContent>
 
-                <TabsContent value="event_bus" className="mt-0 focus-visible:outline-none text-amber-400">
+                <TabsContent value="event_bus" className="mt-0 focus-visible:outline-none p-2.5 font-mono text-[11px] text-amber-400 overflow-y-auto h-full scrollbar-thin scrollbar-thumb-slate-900">
                   <div>{"[EVENT BUS] Awaiting active generation cycle execution..."}</div>
                   <div className="text-slate-500">{"// Published fired signals will auto-buffer package and bundle metrics targets down here natively."}</div>
                 </TabsContent>

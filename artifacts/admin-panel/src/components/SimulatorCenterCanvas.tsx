@@ -45,7 +45,11 @@ interface Msp {
   isTestbed: boolean;
 }
 
-export function SimulatorCenterCanvas() {
+export function SimulatorCenterCanvas(props?: {
+  customerId?: string;
+  simDate?: string;
+  isReplaying?: boolean;
+}) {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 

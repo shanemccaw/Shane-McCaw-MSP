@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Terminal, Trash2, ShieldAlert, CheckCircle, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSimulatorActivity } from "@/contexts/SimulatorActivityContext";
 
 interface LogEntry {
   id: string;
@@ -10,50 +11,10 @@ interface LogEntry {
 }
 
 export function SqlTerminalPanel() {
-  const [logs, setLogs] = useState<LogEntry[]>([
-    {
-      id: "init",
-      type: "info",
-      message: "Simulator Studio log terminal initialized. Ready for database & telemetry triggers.",
-      timestamp: new Date().toLocaleTimeString(),
-    }
-  ]);
+  const { logs, clearLogs } = useSimulatorActivity();
   const [filter, setFilter] = useState<"all" | "error" | "success">("all");
   
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleLogEvent = (e: CustomEvent) => {
-      const { type, message } = e.detail;
-      const newEntry: LogEntry = {
-        id: Math.random().toString(36).substring(7),
-        type: type || "info",
-        message,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setLogs(prev => [...prev, newEntry]);
-    };
-
-    window.addEventListener("simulator-log", handleLogEvent as EventListener);
-    
-    // Also listen for event fired in ModalContext
-    const handleEventFired = (e: CustomEvent) => {
-      const { eventId } = e.detail;
-      const newEntry: LogEntry = {
-        id: Math.random().toString(36).substring(7),
-        type: "success",
-        message: `Fired simulation scenario: ${eventId}`,
-        timestamp: new Date().toLocaleTimeString(),
-      };
-      setLogs(prev => [...prev, newEntry]);
-    };
-    window.addEventListener("simulator-event-fired", handleEventFired as EventListener);
-
-    return () => {
-      window.removeEventListener("simulator-log", handleLogEvent as EventListener);
-      window.removeEventListener("simulator-event-fired", handleEventFired as EventListener);
-    };
-  }, []);
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -118,7 +79,7 @@ export function SqlTerminalPanel() {
         </div>
 
         <button
-          onClick={() => setLogs([])}
+          onClick={clearLogs}
           className="text-slate-500 hover:text-slate-300 transition-colors p-1 hover:bg-slate-900 rounded"
           title="Clear Console Logs"
         >

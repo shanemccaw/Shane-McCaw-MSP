@@ -2,8 +2,23 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Play, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Play, Loader2, AlertCircle, CheckCircle2, Copy, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useModal } from "@/contexts/ModalContext";
+
+function getStatusBadgeStyle(status: string): string {
+  const s = status ? status.toUpperCase() : "";
+  if (s.includes("CRITICAL") || s.includes("RISK") || s.includes("EXPANSION") || s.includes("BREACH") || s.includes("FAIL")) {
+    return "bg-rose-950/40 text-rose-400 border border-rose-500/25";
+  }
+  if (s.includes("WARN") || s.includes("ATTENTION") || s.includes("ACCELERATING") || s.includes("ENGAGEMENT")) {
+    return "bg-amber-950/40 text-amber-400 border border-amber-500/25";
+  }
+  if (s.includes("HEALTHY") || s.includes("SECURE") || s.includes("OPTIMIZED") || s.includes("COMPLIANT") || s.includes("STABLE")) {
+    return "bg-emerald-950/40 text-emerald-400 border border-emerald-500/25";
+  }
+  return "bg-slate-900 text-slate-400 border border-slate-800";
+}
 
 interface Testbed {
   id: number;
@@ -32,6 +47,7 @@ interface EngineRunResult {
 // be re-added. If tenantId is missing the backend hard-errors.
 export function SimulatorEnginesPanel() {
   const { fetchWithAuth } = useAuth();
+  const { openModal } = useModal();
   const [testbeds, setTestbeds] = useState<Testbed[]>([]);
   const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
 
@@ -149,7 +165,7 @@ export function SimulatorEnginesPanel() {
                     className={`p-3 rounded border text-xs ${
                       isError
                         ? "bg-rose-950/20 border-rose-900/50 text-rose-300"
-                        : "bg-slate-950 border-slate-800 text-slate-300"
+                        : "bg-[#0b101c] border-slate-800 text-slate-300"
                     }`}
                   >
                     {isError ? (
@@ -157,14 +173,66 @@ export function SimulatorEnginesPanel() {
                         <AlertCircle className="w-4 h-4 shrink-0" /> {(result as { error: string }).error}
                       </div>
                     ) : (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-emerald-400 font-semibold">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Real run — tenant #{(result as EngineRunResult).tenantId}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            Tenant #{(result as EngineRunResult).tenantId} Succeeded
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6 hover:bg-slate-800 hover:text-slate-100 text-slate-400" 
+                              onClick={() => {
+                                const data = (result as EngineRunResult).output;
+                                navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+                                toast.success("Copied raw JSON to clipboard");
+                              }}
+                              title="Copy Raw JSON"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-6 w-6 hover:bg-slate-800 hover:text-slate-100 text-slate-400" 
+                              onClick={() => {
+                                const data = (result as EngineRunResult).output as any;
+                                openModal("engine-trace", { engineName: engine.label, data });
+                              }}
+                              title="View Evaluation Trace"
+                            >
+                              <FileText className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <pre className="whitespace-pre-wrap font-mono text-[10px] text-slate-400 max-h-48 overflow-y-auto">
-                          {JSON.stringify((result as EngineRunResult).output, null, 2)}
-                        </pre>
+
+                        {/* Human Readable Premium Preview Card */}
+                        <div className="bg-[#050810] border border-slate-800/80 rounded-lg p-3 space-y-2.5">
+                          <div className="flex items-center justify-between border-b border-slate-900 pb-1.5">
+                            <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wide">
+                              {((result as EngineRunResult).output as any)?.display?.title || engine.label}
+                            </span>
+                            {((result as EngineRunResult).output as any)?.display?.status && (
+                              <Badge className={`rounded font-mono font-bold text-[9px] uppercase tracking-wider px-1.5 py-0.5 ${
+                                getStatusBadgeStyle(((result as EngineRunResult).output as any)?.display?.status)
+                              }`}>
+                                {((result as EngineRunResult).output as any)?.display?.status}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="space-y-1 text-[11px]">
+                            <div className="flex gap-1.5 items-start">
+                              <span className="text-slate-500 font-bold tracking-wide select-none">IMPACT:</span>
+                              <span className="text-slate-300 leading-normal">{((result as EngineRunResult).output as any)?.display?.impact || "No active signals detected."}</span>
+                            </div>
+                            <div className="flex gap-1.5 items-start">
+                              <span className="text-slate-500 font-bold tracking-wide select-none">ACTION:</span>
+                              <span className="text-slate-300 leading-normal">{((result as EngineRunResult).output as any)?.display?.recommendation || "Review baseline configurations."}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>

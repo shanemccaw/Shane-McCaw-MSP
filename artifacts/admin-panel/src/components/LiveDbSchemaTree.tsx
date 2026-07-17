@@ -104,9 +104,9 @@ export function LiveDbSchemaTree() {
                     <div key={col.name} className="flex items-start justify-between py-1 px-1.5 rounded hover:bg-slate-900/60">
                       <div className="flex items-center space-x-1.5 min-w-0">
                         {col.isPk ? (
-                          <Key className="w-3 h-3 text-amber-400 shrink-0" title="Primary Key" />
+                          <span title="Primary Key"><Key className="w-3 h-3 text-amber-400 shrink-0" /></span>
                         ) : col.foreignKey ? (
-                          <LinkIcon className="w-3 h-3 text-cyan-400 shrink-0" title={col.foreignKey} />
+                          <span title={col.foreignKey}><LinkIcon className="w-3 h-3 text-cyan-400 shrink-0" /></span>
                         ) : (
                           <div className="w-3 h-3 shrink-0" />
                         )}

@@ -13,7 +13,10 @@ interface Testbed {
 
 const PORTAL_URL_STORAGE_KEY = "simulator-portal-mirror-base-url";
 
-export function SimulatorPortalMirror() {
+export function SimulatorPortalMirror(props?: {
+  customerId?: string;
+  simDate?: string;
+}) {
   const { fetchWithAuth } = useAuth();
   const [testbeds, setTestbeds] = useState<Testbed[]>([]);
   const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
