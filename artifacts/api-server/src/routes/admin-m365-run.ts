@@ -37,6 +37,7 @@ import { parseM365ScriptOutput } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
 import { createAuditLog } from "../lib/audit";
 import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update";
+import { resolveBillingMspId } from "../lib/ai-billing";
 
 const router: IRouter = Router();
 
@@ -271,6 +272,7 @@ async function processRunInBackground(
   kanbanTaskId?: number,
   automationRunId?: number,
   siblingTaskIds?: number[],
+  mspId?: number | null,
 ): Promise<void> {
   // All kanban task IDs to update (siblings share the same run outcome).
   const kanbanIds: number[] = siblingTaskIds?.length
@@ -325,6 +327,8 @@ async function processRunInBackground(
         scriptOutput: jobOutput,
         aiInstructions,
         packageContext,
+        mspId: mspId ?? undefined,
+        customerId,
       });
     } catch (err) {
       logger.warn({ err, libraryScriptId, jobId }, "admin-m365-run: AI analysis failed (non-fatal)");
@@ -734,6 +738,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   }
 
   // Kick off background processing (detached — do NOT await)
+  const mspId = resolveBillingMspId(req.user as any);
   void processRunInBackground(
     runResultId,
     jobId,
@@ -744,6 +749,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     kanbanTaskId,
     automationRunId,
     siblingTaskIds,
+    mspId,
   );
 
   res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });

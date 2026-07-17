@@ -86,7 +86,12 @@ async function runCallbackAnalysis(
   };
 
   try {
-    aiResult = await runAiAnalyzer({ scriptOutput, aiInstructions, packageContext });
+    aiResult = await runAiAnalyzer({
+      scriptOutput,
+      aiInstructions,
+      packageContext,
+      customerId: customerId ?? undefined,
+    });
   } catch (aiErr) {
     logger.warn({ aiErr, resultId }, "admin-callback-tokens: AI analysis failed (non-fatal)");
   }

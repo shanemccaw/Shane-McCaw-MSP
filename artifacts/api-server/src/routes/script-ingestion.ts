@@ -99,6 +99,7 @@ async function runIngestionAnalysis(
   rawOutput: Record<string, unknown>,
   customerId: number | null,
   libraryScriptId: string | null,
+  mspId: number | null,
 ): Promise<void> {
   try {
     let aiInstructions = "Analyze the output for security, governance, and compliance findings.";
@@ -121,7 +122,13 @@ async function runIngestionAnalysis(
     const scriptOutput = JSON.stringify(rawOutput, null, 2);
     const deterministicUpdates = parseM365ScriptOutput(rawOutput);
 
-    const aiResult = await runAiAnalyzer({ scriptOutput, aiInstructions, packageContext });
+    const aiResult = await runAiAnalyzer({
+      scriptOutput,
+      aiInstructions,
+      packageContext,
+      mspId: mspId ?? undefined,
+      customerId: customerId ?? undefined,
+    });
     const mergedProfileUpdates = { ...aiResult.profileUpdates, ...deterministicUpdates };
 
     await db
@@ -280,7 +287,7 @@ router.post("/script-ingestion", async (req: Request, res: Response) => {
   );
 
   // ── Fire-and-forget AI analysis ──
-  void runIngestionAnalysis(runResultId, rawOutput, tokenRow.customerId ?? null, tokenRow.scriptId);
+  void runIngestionAnalysis(runResultId, rawOutput, tokenRow.customerId ?? null, tokenRow.scriptId, tokenRow.mspId ?? null);
 
   res.status(202).json({
     accepted: true,

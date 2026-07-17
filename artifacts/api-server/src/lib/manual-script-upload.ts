@@ -172,6 +172,7 @@ export async function processManualScriptUpload(
       packageContext: runResult.packageId
         ? `Package ${runResult.packageId}`
         : "Manual script upload",
+      customerId: runResult.customerId ?? undefined,
     });
   } catch (aiErr) {
     logger.warn(

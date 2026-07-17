@@ -511,6 +511,7 @@ async function runInBackground(
           scriptOutput: output,
           aiInstructions: `Analyze the output of the "${scriptTitle}" runbook for security, governance, and Copilot readiness findings.`,
           packageContext: "Automated M365 analysis triggered by client App Registration",
+          customerId: clientUserId,
         });
         logger.info({ runResultId, jobId, scriptTitle }, "kanban-auto-fire: AI analysis completed");
       } catch (aiErr) {
@@ -1867,6 +1868,7 @@ export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
               scriptOutput: output,
               aiInstructions: "Analyze the output of this runbook for security, governance, and Copilot readiness findings.",
               packageContext: "Automated M365 analysis triggered by client App Registration (late-arriving reconciliation)",
+              customerId: clientUserId,
             });
           } catch (aiErr) {
             logger.warn({ aiErr, jobId }, "kanban-auto-fire: late-completion AI analysis failed (non-fatal)");

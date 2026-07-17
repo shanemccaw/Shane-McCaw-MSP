@@ -9,11 +9,16 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
+import { db, mspUsersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { recordAiUsage, computeTokenCostCents } from "./ai-billing";
 
 export interface AiAnalyzerInput {
   scriptOutput: string;
   aiInstructions: string;
   packageContext: string;
+  mspId?: number;
+  customerId?: number;
 }
 
 export interface AiAnalyzerResult {
@@ -21,6 +26,52 @@ export interface AiAnalyzerResult {
   recommendations: string[];
   scoreImpact: Record<string, number>;
   profileUpdates: Record<string, unknown>;
+}
+
+export interface TrackAiUsageOpts {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+  mspId?: number;
+  customerId?: number;
+}
+
+export function trackAiUsage(opts: TrackAiUsageOpts): void {
+  Promise.resolve().then(async () => {
+    try {
+      const costCents = computeTokenCostCents({
+        promptTokens: opts.inputTokens,
+        completionTokens: opts.outputTokens,
+        model: opts.model,
+      });
+      const costUsd = costCents / 100;
+
+      logger.info({
+        event: "system_action:ai_usage",
+        model: opts.model,
+        inputTokens: opts.inputTokens,
+        outputTokens: opts.outputTokens,
+        estimatedCostUsd: costUsd,
+        mspId: opts.mspId || null,
+        customerId: opts.customerId || null,
+      }, `AI usage tracked: ${opts.model} - Cost: $${costUsd.toFixed(4)}`);
+
+      await recordAiUsage({
+        mspId: opts.mspId || null,
+        nodeType: "ai_analyzer",
+        feature: opts.customerId ? `m365_ai_analyzer:customer:${opts.customerId}` : "m365_ai_analyzer",
+        promptTokens: opts.inputTokens,
+        completionTokens: opts.outputTokens,
+        costCents,
+        costOwner: "msp",
+        model: opts.model,
+      });
+    } catch (err) {
+      logger.error({ err }, "trackAiUsage background task failed to record telemetry");
+    }
+  }).catch((err) => {
+    logger.error({ err }, "trackAiUsage promise error");
+  });
 }
 
 const SCORE_KEYS = ["identity", "security", "collaboration", "compliance", "copilotReadiness"] as const;
@@ -113,6 +164,34 @@ export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerR
       throw new Error("No text response from AI model");
     }
     raw = textBlock.text.trim();
+
+    const inputTokens = message.usage?.input_tokens ?? 0;
+    const outputTokens = message.usage?.output_tokens ?? 0;
+    const modelName = message.model || "claude-haiku-4-5";
+
+    let resolvedMspId = input.mspId;
+    if (!resolvedMspId && input.customerId) {
+      try {
+        const [mspUser] = await db
+          .select({ mspId: mspUsersTable.mspId })
+          .from(mspUsersTable)
+          .where(eq(mspUsersTable.userId, input.customerId))
+          .limit(1);
+        if (mspUser) {
+          resolvedMspId = mspUser.mspId ?? undefined;
+        }
+      } catch (err) {
+        logger.warn({ err, customerId: input.customerId }, "runAiAnalyzer: failed to resolve mspId from customerId (non-fatal)");
+      }
+    }
+
+    trackAiUsage({
+      inputTokens,
+      outputTokens,
+      model: modelName,
+      mspId: resolvedMspId,
+      customerId: input.customerId,
+    });
   } catch (err) {
     logger.error({ err }, "ai-analyzer: Claude call failed");
     throw err;

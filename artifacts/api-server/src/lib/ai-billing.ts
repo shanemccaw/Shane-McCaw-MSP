@@ -66,8 +66,10 @@ export function resolveBillingMspId(
 // These are conservative estimates; update as model pricing changes.
 export const TOKEN_COST_PER_MILLION_CENTS: Record<string, { input: number; output: number }> = {
   "claude-3-haiku-20240307":    { input:  25, output:  125 },
+  "claude-haiku-4-5":           { input:  25, output:  125 },
   "claude-3-5-sonnet-20241022": { input: 300, output: 1500 },
   "claude-3-opus-20240229":     { input: 1500, output: 7500 },
+  "claude-opus-4-5":            { input: 1500, output: 7500 },
   "gpt-4o":                     { input: 250, output: 1000 },
   "gpt-4o-mini":                { input:  15, output:   60 },
   default:                      { input:  25, output:  125 },
