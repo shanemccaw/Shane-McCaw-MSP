@@ -18,6 +18,7 @@ import {
   monitoringPackagesTable,
   monitoringPackageChecksTable,
   tenantMonitorProfilesTable,
+  mspCustomersTable,
   type MonitorCheck,
   type MonitoringPackage,
 } from "@workspace/db";
@@ -692,6 +693,15 @@ export interface MonitoringEngineOutput {
 }
 
 export async function computeMonitoringEngine(tenantId: number): Promise<MonitoringEngineOutput> {
+  // Resolve tenant GUID from customer ID
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, tenantId))
+    .limit(1);
+
+  const resolvedTenantId = customer?.tenantId ?? String(tenantId);
+
   // Fetch recent profile rows for this tenant (last run per check key)
   const rows = await db
     .select({
@@ -704,7 +714,7 @@ export async function computeMonitoringEngine(tenantId: number): Promise<Monitor
       collectedAt: tenantMonitorProfilesTable.collectedAt,
     })
     .from(tenantMonitorProfilesTable)
-    .where(eq(tenantMonitorProfilesTable.tenantId, String(tenantId)))
+    .where(eq(tenantMonitorProfilesTable.tenantId, resolvedTenantId))
     .orderBy(tenantMonitorProfilesTable.collectedAt);
 
   const latestByCheck = new Map<string, typeof rows[number]>();

@@ -32,6 +32,8 @@ vi.mock("@workspace/db", () => {
     mspAuditLogsTable: { id: "id" },
     salesOffersTable: { id: "id", mspId: "msp_id", state: "state", adjustedPriceCents: "adjusted_price_cents" },
     mspSalesBundlesTable: { id: "id", bundleId: "bundle_id", mspId: "msp_id", name: "name", status: "status", createdAt: "created_at" },
+    mspUsersTable: { id: "id" },
+    mspSalesBundleAssignmentsTable: { id: "id", customerId: "customer_id", status: "status", revokedAt: "revoked_at" },
   };
 });
 

@@ -34,6 +34,7 @@ import {
   monitorCheckAuditLogTable,
   tenantMonitorProfilesTable,
   usersTable,
+  mspCustomersTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -522,11 +523,10 @@ router.get("/admin/monitor-checks/profiles", requireAdmin, async (req: Request, 
       .limit(limit);
 
     const clients = await db
-      .select({ id: usersTable.id, name: usersTable.name, company: usersTable.company })
-      .from(usersTable)
-      .where(eq(usersTable.role, "client"));
+      .select({ tenantId: mspCustomersTable.tenantId, name: mspCustomersTable.name, company: mspCustomersTable.domain })
+      .from(mspCustomersTable);
 
-    const clientMap = new Map(clients.map(c => [String(c.id), c]));
+    const clientMap = new Map(clients.map(c => [c.tenantId, c]));
 
     const enrichedProfiles = profiles.map(p => {
       const client = clientMap.get(p.tenantId);

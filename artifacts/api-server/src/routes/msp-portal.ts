@@ -22,6 +22,18 @@ import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 
 const router: IRouter = Router();
 
+router.use((req, res, next) => {
+  if (!req.log) {
+    req.log = {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      child: () => req.log,
+    } as any;
+  }
+  next();
+});
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function startOfMonth(): Date {
@@ -354,6 +366,7 @@ router.post(
       req.log.info({ mspId, actorId: req.user!.id }, "msp-portal: cancellation requested");
       res.json({ ok: true, offboardingState: "cancellation_requested", requestedAt: now.toISOString() });
     } catch (err) {
+      console.log("ACTUAL ERROR IN PORTAL ROUTE:", err);
       req.log.error({ err }, "msp-portal: offboarding request failed");
       res.status(500).json({ error: "Offboarding request failed" });
     }
