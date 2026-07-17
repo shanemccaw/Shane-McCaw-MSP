@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { ConsentRevokedError } from "./lib/graph";
+import { runWithRequestContext, getRequestContext } from "./lib/request-context.ts";
 
 const app: Express = express();
 
@@ -13,14 +14,30 @@ const app: Express = express();
 // middleware (rate limiters, etc.) sees Stripe's real source IP correctly.
 app.set("trust proxy", 1);
 
+// Establish one AsyncLocalStorage-backed correlation context per request.
+// Everything downstream (logger, event-bus, audit inserts) reads from this
+// instead of generating its own ID.
+// Only UUID-shaped forwarded ids are honoured: the event-bus envelope schema
+// requires correlationId to be a UUID, so an arbitrary client-supplied
+// x-trace-id would otherwise make every dispatch in the request throw.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const forwarded = req.headers["x-trace-id"];
+  const traceId =
+    typeof forwarded === "string" && UUID_RE.test(forwarded) ? forwarded : randomUUID();
+  runWithRequestContext(
+    { traceId, mspId: null, customerId: null, actor: null },
+    next,
+  );
+});
+
 app.use(
   pinoHttp({
     logger,
-    // Generate a stable traceId per request, exposed as x-trace-id response header.
+    // Reuse the traceId established by the request-context middleware above,
+    // exposed as x-trace-id response header.
     genReqId(req) {
-      const existing = req.headers["x-trace-id"];
-      if (typeof existing === "string" && existing.length > 0) return existing;
-      return randomUUID();
+      return getRequestContext()?.traceId ?? randomUUID();
     },
     serializers: {
       req(req) {

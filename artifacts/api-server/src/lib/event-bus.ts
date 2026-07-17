@@ -21,6 +21,7 @@ import type {
 } from "@workspace/db";
 import { logger } from "./logger";
 import { fanOutWebhooks } from "./webhook-delivery.ts";
+import { getRequestContext } from "./request-context.ts";
 
 // ── Runtime envelope schema ───────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export async function dispatchUnsafe(opts: EventDispatchOptions): Promise<Dispat
   // always carries both fields (canonical envelope requirement).
   const normalized: EventDispatchOptions & { correlationId: string; causationId: string } = {
     ...opts,
-    correlationId: opts.correlationId ?? randomUUID(),
+    correlationId: opts.correlationId ?? getRequestContext()?.traceId ?? randomUUID(),
     causationId: opts.causationId ?? randomUUID(),
   };
 

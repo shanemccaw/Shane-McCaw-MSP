@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { db, mspCustomersTable, type MspRole } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { enrichRequestContext } from "../lib/request-context.ts";
 
 export interface AuthUser {
   id: number;
@@ -77,6 +78,15 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
         ...(payload.customerId != null ? { customerId: payload.customerId } : {}),
       });
     }
+
+    // Single source of truth for when mspId/actor become known during a
+    // request — downstream consumers (event-bus, audit inserts) read these
+    // from the AsyncLocalStorage context regardless of which router ran.
+    enrichRequestContext({
+      mspId: payload.mspId ?? null,
+      customerId: (payload as AuthUser & { customerId?: number | null }).customerId ?? null,
+      actor: { id: payload.id, role: payload.mspRole ?? payload.role },
+    });
 
     if (payload.impersonatedBy && !READ_METHODS.has(req.method)) {
       res.status(403).json({ error: "This action is not available in admin preview mode" });

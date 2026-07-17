@@ -11,6 +11,7 @@ import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken } from "./mfa.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole } from "../middlewares/requireAuth.ts";
+import { getRequestContext } from "../lib/request-context.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -84,7 +85,7 @@ async function writeAuthAuditLog(
       mspId: opts.mspId ?? null,
       customerId: opts.customerId ?? null,
       actionType,
-      correlationId: randomUUID(),
+      correlationId: getRequestContext()?.traceId ?? randomUUID(),
       ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
       userAgent: req.headers["user-agent"] ?? null,
       outcome: opts.outcome ?? "success",
@@ -616,7 +617,7 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
       entityLabel: targetUser.email,
       mspId: mspClaims.mspId,
       customerId: mspClaims.customerId,
-      correlationId: randomUUID(),
+      correlationId: getRequestContext()?.traceId ?? randomUUID(),
       outcome: "success",
       metadata: {
         actorType: "platformAdmin",

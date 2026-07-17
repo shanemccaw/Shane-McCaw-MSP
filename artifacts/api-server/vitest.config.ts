@@ -36,6 +36,7 @@ export default defineConfig({
       "src/lib/ai-billing.test.ts",
       "src/tests/doc-pipeline.test.ts",
       "src/tests/msp-reports.test.ts",
+      "src/tests/request-context-spine.test.ts",
       "src/routes/support-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",

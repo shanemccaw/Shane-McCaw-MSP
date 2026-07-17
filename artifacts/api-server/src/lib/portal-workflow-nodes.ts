@@ -178,7 +178,6 @@ async function handleEmitEvent(ctx: NodeExecutionContext): Promise<Record<string
     mspId: ctx.tenantContext.mspId,
     customerId: ctx.tenantContext.customerId,
     ownerType: ownerType ?? (ctx.tenantContext.customerId != null ? "customer" : ctx.tenantContext.mspId != null ? "msp" : "platform"),
-    correlationId: randomUUID(),
     causationId: randomUUID(),
     payload: resolvedPayload,
   });

@@ -649,7 +649,6 @@ async function handleDocAuditExport(ctx: NodeExecutionContext): Promise<Record<s
       mspId: ctx.tenantContext.mspId,
       customerId: ctx.tenantContext.customerId,
       ownerType: ctx.tenantContext.customerId != null ? "customer" : ctx.tenantContext.mspId != null ? "msp" : "platform",
-      correlationId: randomUUID(),
       causationId: randomUUID(),
       payload: {
         documentId,

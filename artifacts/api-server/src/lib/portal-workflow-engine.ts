@@ -731,7 +731,6 @@ export async function executeRun(runId: string): Promise<void> {
       actor: systemActor(),
       mspId: tenantContext.mspId,
       customerId: tenantContext.customerId,
-      correlationId: randomUUID(),
       causationId: run.triggerEventId ?? randomUUID(),
       payload: { runId, workflowKey: run.workflowKey, failedNodeId, errorMessage },
     });
@@ -755,7 +754,6 @@ export async function executeRun(runId: string): Promise<void> {
       actor: systemActor(),
       mspId: tenantContext.mspId,
       customerId: tenantContext.customerId,
-      correlationId: randomUUID(),
       causationId: run.triggerEventId ?? randomUUID(),
       payload: { runId, workflowKey: run.workflowKey },
     });

@@ -20,6 +20,7 @@
 import { randomUUID } from "crypto";
 import type { Request, Response, NextFunction } from "express";
 import type { AuthUser } from "./requireAuth";
+import { getRequestContext } from "../lib/request-context.ts";
 
 export interface MspRequestContext {
   traceId: string;
@@ -32,7 +33,7 @@ export interface MspRequestContext {
  * Middleware — must be the first middleware on the /api/msp/v1/ router.
  */
 export function mspRequestLog(req: Request, res: Response, next: NextFunction): void {
-  const traceId = (req.headers["x-trace-id"] as string | undefined) ?? randomUUID();
+  const traceId = getRequestContext()?.traceId ?? randomUUID();
   const user = req.user as AuthUser | undefined;
 
   const mspId = user?.mspId ?? null;

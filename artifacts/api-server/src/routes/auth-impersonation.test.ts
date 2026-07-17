@@ -95,7 +95,10 @@ mock.module("../lib/mailer.ts", {
 });
 
 mock.module("../lib/portal-url.ts", {
-  namedExports: { getPortalBaseUrl: () => "https://example.com" },
+  namedExports: {
+    getPortalBaseUrl: () => "https://example.com",
+    buildAccountSetupUrl: () => "https://example.com/account-setup?token=test",
+  },
 });
 
 // auth.ts now uses .ts extensions on local imports — mocks must match
