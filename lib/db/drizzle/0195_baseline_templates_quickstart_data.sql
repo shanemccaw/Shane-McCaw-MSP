@@ -68,6 +68,7 @@ VALUES
     }'::jsonb,
     '["tenantDomain", "generatedPassword"]'::jsonb,
     '{"statusCode": 201, "id": ".+"}'::jsonb,
+    '[]'::jsonb,
     true,
     'active'
   ),
@@ -88,6 +89,7 @@ VALUES
     }'::jsonb,
     '["breakglassUserId"]'::jsonb,
     '{"statusCode": 201, "id": ".+"}'::jsonb,
+    '[]'::jsonb,
     true,
     'active'
   ),
