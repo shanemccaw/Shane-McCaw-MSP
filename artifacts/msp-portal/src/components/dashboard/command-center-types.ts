@@ -31,6 +31,15 @@ export interface BarDataPoint {
 // ── Executive Dashboard ────────────────────────────────────────────────────────
 
 export interface ExecutiveTelemetry {
+  overallHealthScore: number;
+  lastUpdated: string;
+  pillarScores: {
+    compliance: number;
+    copilot: number;
+    governance: number;
+    adoption: number;
+    security: number;
+  };
   overallSecureScore: number;
   complianceScore: number;
   licenseWasteCost: number;

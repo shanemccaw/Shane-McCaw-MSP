@@ -39,6 +39,15 @@ const fetchTelemetryData = async (): Promise<CommandCenterPayload> => {
       resolve({
         lastUpdated: new Date().toISOString(),
         executive: {
+          overallHealthScore: 10,
+          lastUpdated: "July 1, 2026",
+          pillarScores: {
+            compliance: 0,
+            copilot: 20,
+            governance: 0,
+            adoption: 9,
+            security: 22,
+          },
           overallSecureScore: 74,
           complianceScore: 68,
           licenseWasteCost: 1240,
