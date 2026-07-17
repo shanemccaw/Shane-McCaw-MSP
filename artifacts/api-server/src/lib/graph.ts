@@ -403,6 +403,82 @@ export async function graphFetchForTenant(
   return res;
 }
 
+export type GraphWriteMethod = "POST" | "PATCH" | "PUT";
+
+export interface GraphWriteResult {
+  success: boolean;
+  status: number;
+  data: any;
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+}
+
+export async function graphWriteForTenant(
+  tenantId: string,
+  path: string,
+  method: GraphWriteMethod,
+  body: unknown,
+  expectedStatusCodes: number[] = [200, 201, 204],
+): Promise<GraphWriteResult> {
+  const token = await getAccessTokenForTenant(tenantId);
+  const res = await fetch(`${GRAPH_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (res.status === 401) {
+    const text = await res.text();
+    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant write call: 401 — auto-revoking consent");
+    tenantTokenCache.delete(tenantId);
+    await markTenantConsentRevoked(tenantId);
+    throw new ConsentRevokedError(tenantId);
+  }
+
+  // Also catch consent errors embedded in 400/403 response bodies
+  if (res.status === 400 || res.status === 403) {
+    const text = await res.text();
+    if (isConsentErrorBody(text)) {
+      logger.warn({ tenantId, status: res.status, body: text }, "Graph tenant write call: consent error in body — auto-revoking consent");
+      tenantTokenCache.delete(tenantId);
+      await markTenantConsentRevoked(tenantId);
+      throw new ConsentRevokedError(tenantId);
+    }
+    
+    // Non-consent 400/403
+    if (res.status === 403) {
+      return { success: false, status: 403, errorType: "insufficient_privilege", data: text };
+    }
+    return { success: false, status: 400, errorType: "bad_request", data: text };
+  }
+
+  if (expectedStatusCodes.includes(res.status)) {
+    if (res.status === 204) {
+      return { success: true, status: res.status, data: null };
+    }
+    const text = await res.text();
+    let parsedData: any = null;
+    if (text) {
+      try {
+        parsedData = JSON.parse(text);
+      } catch (err) {
+        parsedData = text;
+      }
+    }
+    return { success: true, status: res.status, data: parsedData };
+  }
+
+  if (res.status === 409) {
+    const text = await res.text();
+    return { success: false, status: 409, errorType: "conflict", data: text };
+  }
+
+  const text = await res.text();
+  return { success: false, status: res.status, errorType: "unexpected", data: text };
+}
+
 async function graphFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = await getAccessToken();
   return fetch(`${GRAPH_BASE}${path}`, {
