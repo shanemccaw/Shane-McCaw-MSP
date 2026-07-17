@@ -587,12 +587,14 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
       return res.status(409).json({ error: "There are still live verification links for this secret" });
     }
 
-    // The break-glass account identity travels on the (non-secret) run payload.
+    // The break-glass account identity travels on the (non-secret) run payload
+    // under the canonical `breakGlassAccountId` key, which the gate node stamps
+    // from its configurable accountIdField at pause time.
     const [run] = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, ctx.secret.runId)).limit(1);
     const runPayload = (run?.payload as Record<string, unknown>) ?? {};
-    const accountId = (runPayload.breakGlassAccountId ?? runPayload.breakGlassAccountUpn) as string | undefined;
+    const accountId = runPayload.breakGlassAccountId as string | undefined;
     if (!accountId) {
-      return res.status(409).json({ error: "Run payload does not carry the break-glass account identity (breakGlassAccountId/UPN)" });
+      return res.status(409).json({ error: "Run payload does not carry the break-glass account identity (breakGlassAccountId)" });
     }
 
     // 1. Reset the credential on the tenant (same write helper as creation).

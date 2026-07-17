@@ -6481,10 +6481,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        // Resolve the plaintext secret and customerId from the run payload. The
-        // secret is expected to have been produced by an upstream node. Both are
-        // configurable on node.data; secretTemplate is a {{path}} template (no HTML
-        // escaping — this is a raw secret, not markup).
+        // Resolve the inputs from the run payload — all produced by an upstream
+        // creation node (no such node ships in-repo yet; these field names are the
+        // contract that producer must satisfy). Each is configurable on node.data:
+        //   secretField / secretTemplate — the plaintext secret (secretTemplate is a
+        //     {{path}} template, no HTML escaping — this is a raw secret, not markup),
+        //   customerIdField — the customer whose tenant proves control,
+        //   accountIdField — the break-glass account the override path resets.
         const resolveSecretPath = (raw: unknown, p: Record<string, unknown>): string | undefined => {
           if (typeof raw !== "string" || raw.length === 0) return undefined;
           const tpl = raw.replace(/\{\{([\w.]+)\}\}/g, (_m, path: string) => {
@@ -6508,6 +6511,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           ? payload[node.data.customerIdField as string]
           : payload.customerId;
         const gateCustomerId = customerFieldRaw != null ? parseInt(String(customerFieldRaw), 10) : NaN;
+
+        // The break-glass account identity (UPN or object-id) the admin-override
+        // path resets. Configurable on this node exactly like secretField /
+        // customerIdField; resolved here and stamped onto the (non-secret) payload
+        // snapshot under the canonical `breakGlassAccountId` key so the override
+        // endpoint reads one stable key regardless of the configured source field.
+        const accountIdField = (node.data.accountIdField as string | undefined) ?? "breakGlassAccountId";
+        const resolvedAccountId = payload[accountIdField];
 
         if (!plaintext || isNaN(gateCustomerId)) {
           nodeError = true;
@@ -6537,6 +6548,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           }
         }
         redactedPayload.pendingSecretId = pendingSecret.id;
+        // Canonicalize the (non-secret) account id so admin-override reads one stable
+        // key even when accountIdField points at a differently-named source field.
+        if (resolvedAccountId != null) {
+          redactedPayload.breakGlassAccountId = String(resolvedAccountId);
+        }
 
         await db.update(wfRunsTable)
           .set({ status: "awaiting_approval", payload: redactedPayload })
