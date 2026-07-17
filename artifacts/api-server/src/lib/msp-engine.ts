@@ -4,9 +4,9 @@
  * MSP portfolio-risk roll-up engine. This is the aggregation layer on top of
  * the per-tenant health, drift, and priority engines — it does not recompute
  * any tenant scoring itself. For every active client/tenant it calls:
- *   - calculateArchitectureHealthScore(tenantId) from health-engine.ts
+ *   - calculateArchitectureHealthScore(customerId) from health-engine.ts
  *   - computeDriftEngine(...)                    from drift-engine.ts
- *   - calculatePriorityScore(tenantId)            from priority-engine.ts
+ *   - calculatePriorityScore(customerId)            from priority-engine.ts
  * and sums the three resulting `score` fields into that tenant's
  * `combinedScore`. `portfolioRisk` is exactly the sum of every tenant's
  * `combinedScore` across the whole client base — no weighting, no
