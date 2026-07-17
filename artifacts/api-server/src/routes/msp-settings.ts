@@ -70,7 +70,7 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
-import { logger } from "../lib/log.ts";
+import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
