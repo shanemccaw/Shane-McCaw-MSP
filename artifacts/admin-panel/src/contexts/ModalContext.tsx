@@ -36,8 +36,10 @@ import {
   ListChecks,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   Trash2,
-  Plus
+  Plus,
+  Zap
 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -61,6 +63,7 @@ export type ModalType =
   | "engine-trace"
   | "new-test-suite"
   | "edit-test-suite"
+  | "fire-bus-event"
   | null;
 
 interface ModalContextType {
@@ -116,6 +119,7 @@ function ModalContainer() {
         {activeModal === "engine-trace" && <EngineTraceModal />}
         {activeModal === "new-test-suite" && <TestSuiteEditorModal isNew={true} />}
         {activeModal === "edit-test-suite" && <TestSuiteEditorModal isNew={false} />}
+        {activeModal === "fire-bus-event" && <FireBusEventModal />}
       </DialogContent>
     </Dialog>
   );
@@ -176,6 +180,185 @@ function EngineTraceModal() {
           className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs"
         >
           Close
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal: FireBusEventModal ────────────────────────────────────────────────
+// Fires a canonical event-bus event against the selected testbed customer via
+// POST /api/admin/events/_test/fire. Not inert: event-triggered workflows and
+// webhook fan-out run for real (server-side hard-scoped to testbed customers).
+function FireBusEventModal() {
+  const { modalData, closeModal } = useModal();
+  const { fetchWithAuth } = useAuth();
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
+  const [firing, setFiring] = useState(false);
+  const [fireResult, setFireResult] = useState<any>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [payloadText, setPayloadText] = useState("");
+
+  const eventType: string = modalData?.eventType ?? "";
+
+  const handleFire = async () => {
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the Simulator Studio header first");
+      return;
+    }
+    let payload: Record<string, unknown> | undefined;
+    if (advancedOpen && payloadText.trim() !== "") {
+      try {
+        const parsed = JSON.parse(payloadText);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          toast.error("Extra payload must be a JSON object");
+          return;
+        }
+        payload = parsed;
+      } catch {
+        toast.error("Extra payload is not valid JSON");
+        return;
+      }
+    }
+    setFiring(true);
+    setFireResult(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/events/_test/fire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventType, testbedCustomerId: selectedCustomerId, payload }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFireResult({ success: true, dispatched: data.dispatched });
+        toast.success(`Event ${eventType} fired`);
+      } else {
+        setFireResult({ success: false, error: data.error || "Fire failed" });
+        toast.error(data.error || "Failed to fire event");
+      }
+    } catch (err: any) {
+      setFireResult({ success: false, error: err.message || "Network error" });
+      toast.error("Network error when firing event");
+    } finally {
+      setFiring(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-card border border-border">
+            <Zap className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-semibold text-foreground">Fire Canonical Event</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Dispatches a real event-bus event — event-triggered workflows and webhooks run, scoped to the testbed tenant
+            </DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+
+      <div className="border border-border rounded-xl bg-card/50 p-4 space-y-3.5">
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Event Type</h4>
+          <p className="text-sm font-mono font-medium text-foreground">{eventType}</p>
+        </div>
+        <div className="bg-amber-400/10 border border-amber-400/30 rounded-lg p-3 text-[11px] text-amber-400 flex gap-2">
+          <Info className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            Seeded workflows trigger off this event type and configured webhooks fan out. The server refuses
+            non-testbed targets; the payload is tagged <span className="font-mono">__testFired: true</span>.
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <Label className="text-xs font-medium text-muted-foreground">Target Testbed Customer</Label>
+        {selectedCustomerId == null ? (
+          <div className="bg-destructive/10 border border-destructive/40 rounded-lg p-3.5 text-xs text-destructive flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            No testbed customer selected — pick an MSP and customer in the Simulator Studio header first.
+          </div>
+        ) : (
+          <div className="bg-background border border-border rounded-lg px-3 py-2.5 text-xs text-foreground">
+            {selectedCustomer?.name ?? `Customer #${selectedCustomerId}`}
+            {selectedCustomer?.domain ? ` (${selectedCustomer.domain})` : ""}
+            <span className="text-muted-foreground"> (Customer ID: {selectedCustomerId})</span>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen(!advancedOpen)}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {advancedOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Advanced: extra payload fields (JSON)
+        </button>
+        {advancedOpen && (
+          <textarea
+            value={payloadText}
+            onChange={(e) => setPayloadText(e.target.value)}
+            placeholder='{ "example": "value" }'
+            spellCheck={false}
+            className="mt-2 w-full h-24 rounded-lg border border-border bg-background p-3 font-mono text-[11px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+          />
+        )}
+      </div>
+
+      {fireResult && (
+        <div className={`border rounded-xl p-4 font-mono text-[11px] overflow-hidden ${
+          fireResult.success
+            ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+            : "bg-destructive/10 border-destructive/40 text-destructive"
+        }`}>
+          <div className="flex items-center gap-2 font-semibold text-xs mb-2">
+            {fireResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <XCircle className="w-4 h-4 text-destructive" />
+            )}
+            {fireResult.success ? "Event Dispatched" : "Fire Failed"}
+          </div>
+          {fireResult.success ? (
+            <div className="space-y-1">
+              <div><span className="text-muted-foreground">&gt; event_id:</span> {fireResult.dispatched?.eventId}</div>
+              <div><span className="text-muted-foreground">&gt; event_type:</span> {fireResult.dispatched?.eventType}</div>
+              <div><span className="text-muted-foreground">&gt; occurred_at:</span> {String(fireResult.dispatched?.occurredAt ?? "")}</div>
+            </div>
+          ) : (
+            <div><span className="text-muted-foreground">&gt; error:</span> {fireResult.error}</div>
+          )}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-3 border-t border-border">
+        <Button
+          variant="outline"
+          onClick={closeModal}
+          className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs"
+        >
+          Close
+        </Button>
+        <Button
+          onClick={handleFire}
+          disabled={firing || selectedCustomerId == null}
+          title={selectedCustomerId == null ? "Select a testbed customer in the header first" : undefined}
+          className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 px-4"
+        >
+          {firing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Firing...
+            </>
+          ) : (
+            <>
+              <Zap className="w-3.5 h-3.5" /> Fire Event
+            </>
+          )}
         </Button>
       </div>
     </div>

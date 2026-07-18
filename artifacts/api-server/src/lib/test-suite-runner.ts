@@ -46,7 +46,7 @@ export class TestSuiteRunError extends Error {
   }
 }
 
-async function requireTestbedCustomer(customerId: number): Promise<{ id: number; mspId: number }> {
+export async function requireTestbedCustomer(customerId: number): Promise<{ id: number; mspId: number }> {
   const [customer] = await db
     .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
     .from(mspCustomersTable)
