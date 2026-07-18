@@ -23,3 +23,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ⏳ IN FLIGHT | Signal Rules UI v1 | |
 | 2026-07-18 | ✅ DONE | #4 customer-connect-dropdown-action | dbe72b1b |
 | 2026-07-18 | ⏳ IN FLIGHT | #6 Audit Log Metadata Display Formatting | |
+| 2026-07-18 | ⏳ IN FLIGHT | #8 DLQ Help Text and Action Labels | |
