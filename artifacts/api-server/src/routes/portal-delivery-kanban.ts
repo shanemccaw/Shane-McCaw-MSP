@@ -28,7 +28,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
-import { broadcastKanbanChange } from "../lib/sse-broadcast.ts";
+import { broadcastKanbanChange } from "../lib/sse-channels.ts";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { executeMonitoringPackage } from "../lib/monitor-executor.ts";
 import { logger } from "../lib/logger.ts";

@@ -42,7 +42,7 @@ vi.mock("@workspace/db", () => ({
   usersTable: { id: "id", role: "role" },
 }));
 
-vi.mock("../lib/sse-broadcast.ts", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   broadcastNotification: vi.fn(),
   broadcastUnreadCount: vi.fn(),
 }));
@@ -60,7 +60,7 @@ vi.mock("../lib/logger.ts", () => ({
 import supportChatRouter from "./support-chat.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db } from "@workspace/db";
-import { broadcastNotification } from "../lib/sse-broadcast.ts";
+import { broadcastNotification } from "../lib/sse-channels.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -34,7 +34,7 @@ vi.mock("../lib/sla-engine", () => ({
   resolveSlaTimer: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
-vi.mock("../lib/sse-broadcast", () => ({
+vi.mock("../lib/sse-channels", () => ({
   registerMspEngineEventClient: vi.fn(),
   broadcastMspEngineEvent: vi.fn(),
   getMspEngineEventClientCount: vi.fn().mockReturnValue(0),

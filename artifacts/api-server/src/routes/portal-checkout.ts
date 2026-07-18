@@ -49,7 +49,7 @@ import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "billing" });
 import { transitionOfferState } from "../lib/sales-offer-engine.ts";
-import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-broadcast.ts";
+import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/sse-channels.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 

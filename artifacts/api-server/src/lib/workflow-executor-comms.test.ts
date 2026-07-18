@@ -103,7 +103,7 @@ vi.mock("./web-push", () => ({
   },
 }));
 
-vi.mock("./sse-broadcast", () => ({
+vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: (...args: unknown[]) => {
     state.broadcastCalls.push(args[0]);
   },

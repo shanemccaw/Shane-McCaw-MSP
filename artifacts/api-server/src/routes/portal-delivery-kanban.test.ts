@@ -50,7 +50,7 @@ vi.mock("@workspace/db", () => ({
   wfDefinitionsTable: { id: "id", name: "name" },
 }));
 
-vi.mock("../lib/sse-broadcast.ts", () => ({
+vi.mock("../lib/sse-channels.ts", () => ({
   broadcastKanbanChange: vi.fn(),
 }));
 

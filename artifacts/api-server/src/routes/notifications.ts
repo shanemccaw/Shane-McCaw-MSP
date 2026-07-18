@@ -3,7 +3,7 @@ import { db, notificationsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
-import { registerNotificationSSEClient } from "../lib/sse-broadcast";
+import { registerNotificationSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 
 const router = Router();

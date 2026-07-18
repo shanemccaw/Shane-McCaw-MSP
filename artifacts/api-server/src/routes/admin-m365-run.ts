@@ -31,7 +31,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.monitor" });
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
-import { broadcastKanbanChange } from "../lib/sse-broadcast";
+import { broadcastKanbanChange } from "../lib/sse-channels";
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput } from "../lib/parse-m365-script-output";

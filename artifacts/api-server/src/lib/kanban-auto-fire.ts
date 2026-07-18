@@ -39,7 +39,7 @@ const log = logger.child({ channel: "engine.kanban" });
 import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, findActiveJobForScript } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
-import { broadcastKanbanChange } from "./sse-broadcast";
+import { broadcastKanbanChange } from "./sse-channels";
 import { runAiAnalyzer } from "./ai-analyzer";
 import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./document-generator";
 import { executeWorkflowRun } from "./workflow-executor";

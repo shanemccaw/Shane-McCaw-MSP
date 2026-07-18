@@ -36,7 +36,7 @@ import {
   broadcastDiagnosticsRunComplete,
   broadcastDiagnosticsRunError,
   clearDiagnosticsRunSSEState,
-} from "./sse-broadcast";
+} from "./sse-channels";
 import { logger } from "./logger";
 const log = logger.child({ channel: "tenant.portal" });
 

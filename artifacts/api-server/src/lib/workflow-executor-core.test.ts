@@ -113,8 +113,8 @@ vi.mock("./web-push", () => ({
   sendWebPushToAdmins: async () => {},
 }));
 
-// ── Mock sse-broadcast ────────────────────────────────────────────────────────
-vi.mock("./sse-broadcast", () => ({
+// ── Mock sse-channels ────────────────────────────────────────────────────────
+vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastAdminEvent:         () => {},
 }));

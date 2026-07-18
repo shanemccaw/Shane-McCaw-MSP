@@ -288,7 +288,7 @@ mock.module("../lib/insight-pdf.ts", {
   },
 });
 
-mock.module("../lib/sse-broadcast.ts", {
+mock.module("../lib/sse-channels.ts", {
   namedExports: {
     broadcastKanbanChange: () => {},
     registerSSEClient: () => {},

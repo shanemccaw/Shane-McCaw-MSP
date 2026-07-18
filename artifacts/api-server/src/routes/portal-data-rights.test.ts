@@ -183,7 +183,7 @@ for (const mod of [
   "../lib/m365-profile-pdf.ts",
   "../lib/manual-script-package.ts",
   "../lib/insight-pdf.ts",
-  "../lib/sse-broadcast.ts",
+  "../lib/sse-channels.ts",
 ]) {
   mock.module(mod, {
     namedExports: {

@@ -8,7 +8,7 @@
 
 import { db, notificationsTable, usersTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { broadcastNotification, broadcastUnreadCount } from "./sse-broadcast";
+import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
 import { logger } from "./logger";
 const log = logger.child({ channel: "notification" });
 

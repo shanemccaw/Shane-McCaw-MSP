@@ -48,7 +48,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "workflow.run" });
 import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
-import { registerAdminWorkflowEventClient } from "../lib/sse-broadcast";
+import { registerAdminWorkflowEventClient } from "../lib/sse-channels";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import crypto from "crypto";
 

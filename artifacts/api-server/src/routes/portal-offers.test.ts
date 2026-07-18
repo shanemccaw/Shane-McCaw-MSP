@@ -94,7 +94,7 @@ vi.mock("../lib/sales-offer-engine", () => ({
   transitionOfferState: vi.fn(),
 }));
 
-vi.mock("../lib/sse-broadcast", () => ({
+vi.mock("../lib/sse-channels", () => ({
   registerCustomerOfferSSEClient: vi.fn(),
   broadcastMspOfferChange: vi.fn(),
   broadcastCustomerOfferChange: vi.fn(),

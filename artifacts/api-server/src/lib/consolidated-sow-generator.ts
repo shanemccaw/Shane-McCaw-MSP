@@ -53,7 +53,7 @@ import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream
 import {
   broadcastPresentationScopeChange,
   broadcastPresentationDocsChange,
-} from "./sse-broadcast";
+} from "./sse-channels";
 import { pushSowDebugLog, setSowDebugSignals, startSowDebugRun, finishSowDebugRun } from "./sow-debug-log-buffer";
 
 export function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tier02" | "Tier03" | "Tier04" {

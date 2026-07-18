@@ -5,7 +5,7 @@
  *   (A) Accepts a valid share-token in ?token= and establishes an SSE stream.
  *   (B) Rejects invalid / missing tokens with HTTP 403.
  *   (C) Delivers a "scope_changed" SSE event within 2 seconds of a
- *       broadcastPresentationScopeChange() call, using the real sse-broadcast.ts
+ *       broadcastPresentationScopeChange() call, using the real sse-channels.ts
  *       in-memory registry (not a surrogate endpoint).
  *   (D) Isolates broadcasts — a broadcast for presentation 99 is NOT received
  *       by a subscriber of presentation 1.
@@ -14,7 +14,7 @@
  *   - mock.module() stubs @workspace/db and all heavy portal.ts dependencies
  *     (mailer, sms, push, stripe, etc.) using the same pattern as the other
  *     portal route tests.
- *   - sse-broadcast.ts is NOT mocked — the real in-memory registry is shared
+ *   - sse-channels.ts is NOT mocked — the real in-memory registry is shared
  *     between portal.ts (which calls registerPresentationSSEClient) and the
  *     test (which calls broadcastPresentationScopeChange).  This means the test
  *     exercises the full wiring: real portal auth → real registry → real event.
@@ -245,7 +245,7 @@ mock.module("../lib/insight-pdf.ts", {
   },
 });
 
-// sse-broadcast.ts is intentionally NOT mocked.
+// sse-channels.ts is intentionally NOT mocked.
 // The real in-memory registry is shared between portal.ts and the test:
 //   portal.ts  → calls registerPresentationSSEClient when the client connects
 //   test file  → calls broadcastPresentationScopeChange to fire the event
@@ -285,10 +285,10 @@ mock.module("pdf-lib", {
   },
 });
 
-// ── Dynamically import real portal router + real sse-broadcast AFTER mocks ─────
+// ── Dynamically import real portal router + real sse-channels AFTER mocks ─────
 const { default: portalRouter } = await import("./portal.ts");
 const { broadcastPresentationScopeChange, getPresentationSSEClientCount } =
-  await import("../lib/sse-broadcast.ts");
+  await import("../lib/sse-channels.ts");
 
 // ── Express app ────────────────────────────────────────────────────────────────
 const { default: express } = await import("express");

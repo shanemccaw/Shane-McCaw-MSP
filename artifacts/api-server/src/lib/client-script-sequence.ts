@@ -44,7 +44,7 @@ import { getSecretValue } from "./azure-keyvault";
 import { sendEmail, sendEmailFromTemplate } from "./mailer";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.script" });
-import { broadcastKanbanChange } from "./sse-broadcast";
+import { broadcastKanbanChange } from "./sse-channels";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { createAuditLog } from "./audit";
 

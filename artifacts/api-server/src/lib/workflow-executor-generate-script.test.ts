@@ -162,7 +162,7 @@ vi.mock("./news-fetcher.js", () => ({
 vi.mock("./web-push", () => ({ sendWebPushToAdmins: async () => {} }));
 vi.mock("./push", () => ({ sendPushNotifications: async () => {} }));
 
-vi.mock("./sse-broadcast", () => ({
+vi.mock("./sse-channels", () => ({
   broadcastAdminWorkflowEvent: () => {},
   broadcastPresentationPhaseGenProgress: () => {},
   broadcastPresentationPhaseGenComplete: () => {},

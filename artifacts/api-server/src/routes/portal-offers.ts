@@ -29,7 +29,7 @@ import {
   registerCustomerOfferSSEClient,
   broadcastMspOfferChange,
   broadcastCustomerOfferChange,
-} from "../lib/sse-broadcast";
+} from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.offer" });
 import type { AuthUser } from "../middlewares/requireAuth";

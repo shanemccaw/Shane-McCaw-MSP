@@ -73,7 +73,7 @@ import { generateScriptFromService, generateScriptFromDocument } from "./ps-scri
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent } from "./sse-broadcast";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent } from "./sse-channels";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
@@ -3994,7 +3994,7 @@ async function executeNode(
             log.warn({ runId }, "create_notification[inbox]: no admin users found — skipping");
             output = { notificationCount: 0, skipped: true, reason: "no admin users" };
           } else {
-            const { broadcastNotification, broadcastUnreadCount } = await import("./sse-broadcast");
+            const { broadcastNotification, broadcastUnreadCount } = await import("./sse-channels");
             await db.insert(notificationsTable).values(
               adminRows.map(row => ({
                 userId: row.id,

@@ -38,7 +38,7 @@ import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { runDiagnostics } from "../lib/diagnostics-runner";
-import { registerDiagnosticsRunSSEClient } from "../lib/sse-broadcast";
+import { registerDiagnosticsRunSSEClient } from "../lib/sse-channels";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
 import { computeDisplayHealth } from "../lib/health-display";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";

@@ -16,7 +16,7 @@ import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.sla" });
 import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine";
-import { registerMspEngineEventClient } from "../lib/sse-broadcast";
+import { registerMspEngineEventClient } from "../lib/sse-channels";
 
 const router = Router();
 

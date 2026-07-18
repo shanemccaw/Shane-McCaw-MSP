@@ -30,7 +30,7 @@ import {
 import { eq, and, desc, count, gte, like } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-broadcast.ts";
+import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-channels.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";

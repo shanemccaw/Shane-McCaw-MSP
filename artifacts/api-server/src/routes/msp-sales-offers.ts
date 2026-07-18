@@ -42,7 +42,7 @@ import {
   registerMspOfferSSEClient,
   broadcastMspOfferChange,
   broadcastCustomerOfferChange,
-} from "../lib/sse-broadcast";
+} from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import type { AuthUser } from "../middlewares/requireAuth";

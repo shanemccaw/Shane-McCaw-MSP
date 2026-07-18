@@ -29,7 +29,7 @@ import {
 import { eq, asc, and, count, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.kanban" });
-import { broadcastKanbanChange } from "./sse-broadcast";
+import { broadcastKanbanChange } from "./sse-channels";
 
 type SpawnedTask = typeof kanbanTasksTable.$inferSelect;
 

@@ -127,7 +127,7 @@ vi.mock("../lib/diagnostics-runner", () => ({
   }),
 }));
 
-vi.mock("../lib/sse-broadcast", () => ({
+vi.mock("../lib/sse-channels", () => ({
   registerDiagnosticsRunSSEClient: vi.fn(),
 }));
 

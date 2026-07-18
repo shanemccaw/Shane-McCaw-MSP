@@ -30,7 +30,7 @@ import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-s
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
-import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange, replayPhaseGenState } from "../lib/sse-broadcast.ts";
+import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange, replayPhaseGenState } from "../lib/sse-channels.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -13952,6 +13952,26 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
   try {
     const thresholds = await getSlaThresholds();
     let added = 0;
+    let errors = 0;
+    const errorSamples: Array<{ sourceType: string; sourceId: string; error: string }> = [];
+
+    // A genuine duplicate (unique-violation, Postgres 23505) is the ONLY error
+    // we skip silently — that is the expected, benign outcome of a re-run. Any
+    // other error (schema drift, constraint failure, etc.) is a real problem and
+    // must be surfaced, not swallowed: previously every insert error was treated
+    // as "duplicate skip", which masked the wholesale_charged_cents/customer_quote_cents
+    // schema drift entirely and made a fully-broken sync report { added: 0 }.
+    const isUniqueViolation = (e: unknown): boolean => {
+      const err = e as { code?: string; cause?: { code?: string } } | null;
+      return err?.code === "23505" || err?.cause?.code === "23505";
+    };
+    const recordSyncError = (sourceType: string, sourceId: string, err: unknown): void => {
+      errors++;
+      if (errorSamples.length < 10) {
+        errorSamples.push({ sourceType, sourceId, error: err instanceof Error ? err.message : String(err) });
+      }
+      log.error({ err, sourceType, sourceId }, "admin: fulfillment-queue sync insert failed");
+    };
 
     // ── 1. OFFER path — paid invoices ────────────────────────────────────────
     const paidInvoices = await db
@@ -14003,7 +14023,9 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           slaThresholdDays: threshold,
         }).onConflictDoNothing();
         added++;
-      } catch { /* skip duplicates */ }
+      } catch (err) {
+        if (!isUniqueViolation(err)) recordSyncError("offer", String(inv.id), err);
+      }
     }
 
     // ── 2. SOW path — signed + paid presentations ────────────────────────────
@@ -14055,7 +14077,9 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           slaThresholdDays: threshold,
         }).onConflictDoNothing();
         added++;
-      } catch { /* skip duplicates */ }
+      } catch (err) {
+        if (!isUniqueViolation(err)) recordSyncError("sow", String(pres.id), err);
+      }
     }
 
     // ── 3. BUNDLE path — active client services ───────────────────────────────
@@ -14124,11 +14148,13 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           slaThresholdDays: threshold,
         }).onConflictDoNothing();
         added++;
-      } catch { /* skip duplicates */ }
+      } catch (err) {
+        if (!isUniqueViolation(err)) recordSyncError("bundle", String(svc.id), err);
+      }
     }
 
-    req.log.info({ added }, "admin: fulfillment-queue sync completed");
-    res.json({ ok: true, added });
+    req.log.info({ added, errors }, "admin: fulfillment-queue sync completed");
+    res.json({ ok: true, added, errors, errorSamples });
   } catch (err) {
     req.log.error({ err }, "admin: fulfillment-queue sync failed");
     res.status(500).json({ error: "Sync failed" });
