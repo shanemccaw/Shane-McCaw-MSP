@@ -24,4 +24,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | #4 customer-connect-dropdown-action | dbe72b1b |
 | 2026-07-18 | ✅ DONE | #6 Audit Log Metadata Display Formatting | 4b090d38 |
 | 2026-07-18 | ✅ DONE | #8 DLQ Help Text and Action Labels | 813a96f1 |
-| 2026-07-18 | ⏳ IN FLIGHT | Dashboard Designer Access + Create Button | |
+| 2026-07-18 | ✅ DONE | Dashboard Designer Access + Create Button | 2cbce684 |
