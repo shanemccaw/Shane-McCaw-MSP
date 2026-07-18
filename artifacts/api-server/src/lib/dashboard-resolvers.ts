@@ -75,6 +75,7 @@ import {
   invoicesTable,
   salesOffersTable,
   salesOfferEventsTable,
+  servicesTable,
   mspSalesBundleAssignmentsTable,
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
@@ -709,8 +710,7 @@ async function resolvePlatformTable(def: MetricDef, ctx: ResolveContext): Promis
     case "offers.offerFunnel":
       return platformOfferFunnel(def, ctx);
     case "offers.remediationOffers":
-      // msp_sales_offers table does not exist.
-      return notAvailable(def, "schema_gap", "msp_sales_offers table does not exist");
+      return platformRemediationOffers(def, ctx);
 
     // ── Packages ──
     case "packages.activePackageCount":
@@ -944,6 +944,46 @@ async function platformOfferFunnel(def: MetricDef, ctx: ResolveContext): Promise
     { label: "accepted", value: byName.get("offer.accepted") ?? 0 },
   ];
   return ok(def, { buckets }, { note: "sales_offer_events has no 'viewed' stage" });
+}
+
+async function platformRemediationOffers(def: MetricDef, ctx: ResolveContext): Promise<MetricResult> {
+  // Remediation offers are the customer's sales_offers whose product is a
+  // micro-remediation service. The offer type lives on the joined service's
+  // `category` column ('micro_remediation'), NOT a phantom msp_sales_offers table.
+  // sales_offers.customerId is user-keyed; scope by ctx.customerId directly.
+  if (ctx.customerId == null) return notAvailable(def, "missing_customer_scope", "requires customer context");
+  const rows = await db
+    .select({
+      id: salesOffersTable.id,
+      title: salesOffersTable.title,
+      state: salesOffersTable.state,
+      adjustedPriceCents: salesOffersTable.adjustedPriceCents,
+      priceCents: salesOffersTable.priceCents,
+      expiresAt: salesOffersTable.expiresAt,
+      sentAt: salesOffersTable.sentAt,
+      createdAt: salesOffersTable.createdAt,
+      firedSignalKeys: salesOffersTable.firedSignalKeys,
+    })
+    .from(salesOffersTable)
+    .innerJoin(servicesTable, eq(salesOffersTable.serviceId, servicesTable.id))
+    .where(and(eq(servicesTable.category, "micro_remediation"), eq(salesOffersTable.customerId, ctx.customerId)))
+    // Newest first by send time, falling back to createdAt for un-sent offers.
+    .orderBy(desc(sql`coalesce(${salesOffersTable.sentAt}, ${salesOffersTable.createdAt})`));
+  const events = rows.map((r) => ({
+    // timeline entries key off `t` (the ISO timestamp) + `label`; the rest is
+    // passthrough metadata the renderer can surface.
+    t: (r.sentAt ?? r.createdAt)?.toISOString() ?? "",
+    label: r.title,
+    id: r.id,
+    state: r.state,
+    // adjustedPriceCents is the engine-adjusted price other resolvers prefer
+    // (see platformPipelineValue); fall back to priceCents when unset.
+    priceCents: r.adjustedPriceCents ?? r.priceCents ?? 0,
+    expiresAt: r.expiresAt?.toISOString() ?? null,
+    sentAt: r.sentAt?.toISOString() ?? null,
+    firedSignalKeys: r.firedSignalKeys ?? [],
+  }));
+  return ok(def, { events }, { count: events.length, source: "sales_offers⋈services(category=micro_remediation)" });
 }
 
 // ── Packages ──────────────────────────────────────────────────────────────────
