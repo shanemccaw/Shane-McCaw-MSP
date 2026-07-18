@@ -265,22 +265,22 @@ export function PccDashboard() {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-[#0D1117] text-[#C9D1D9] font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-background text-foreground/90 font-sans overflow-hidden">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#21262D] bg-[#161B22] shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-accent bg-card shrink-0">
         <div className="flex items-center gap-3">
-          <Activity className="w-6 h-6 text-[#58A6FF] animate-pulse" />
+          <Activity className="w-6 h-6 text-primary animate-pulse" />
           <h1 className="text-lg font-bold text-[#F0F6FC] tracking-wide">Platform Command Center (PCC)</h1>
         </div>
 
         <div className="flex items-center gap-4">
           {/* Target Gating selector */}
-          <div className="flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5">
-            <span className="text-xs text-[#8B949E] uppercase font-semibold">Gating Targets:</span>
+          <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5">
+            <span className="text-xs text-muted-foreground uppercase font-semibold">Gating Targets:</span>
             <select 
               value={environment} 
               onChange={(e) => changeEnvironment(e.target.value as any)}
-              className="bg-transparent text-sm font-semibold text-[#58A6FF] border-none outline-none cursor-pointer"
+              className="bg-transparent text-sm font-semibold text-primary border-none outline-none cursor-pointer"
             >
               <option value="dev">Development</option>
               <option value="test">Testing Target</option>
@@ -293,7 +293,7 @@ export function PccDashboard() {
             disabled={isRunning}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
               isRunning 
-                ? "bg-[#21262D] text-[#8B949E] cursor-not-allowed" 
+                ? "bg-accent text-muted-foreground cursor-not-allowed" 
                 : "bg-[#238636] hover:bg-[#2EA043] text-white shadow-lg shadow-emerald-950/20"
             }`}
           >
@@ -309,17 +309,17 @@ export function PccDashboard() {
         {/* Left Panel: Catalog & Injections */}
         <div 
           style={{ width: leftCollapsed ? 0 : `${leftWidth}%` }}
-          className={`flex flex-col border-r border-[#21262D] bg-[#161B22] transition-all duration-300 overflow-hidden relative`}
+          className={`flex flex-col border-r border-accent bg-card transition-all duration-300 overflow-hidden relative`}
         >
           {!leftCollapsed && (
             <div className="flex flex-col h-full p-4 overflow-y-auto">
-              <h2 className="text-xs uppercase font-bold tracking-wider text-[#8B949E] mb-3">PCC Test Catalog</h2>
+              <h2 className="text-xs uppercase font-bold tracking-wider text-muted-foreground mb-3">PCC Test Catalog</h2>
               <input 
                 type="text"
                 placeholder="Filter tests by type or category..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#C9D1D9] outline-none placeholder-[#484F58] focus:border-[#58A6FF] mb-4"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground/90 outline-none placeholder-muted-foreground/60 focus:border-primary mb-4"
               />
 
               <div className="flex-1 space-y-3">
@@ -339,41 +339,41 @@ export function PccDashboard() {
                       className={`p-3 rounded-lg border cursor-pointer transition-all ${
                         selectedTestId === test.id 
                           ? "bg-[#1F6FEB]/10 border-[#1F6FEB]" 
-                          : "bg-[#0D1117] border-[#30363D] hover:border-[#8B949E]"
+                          : "bg-background border-border hover:border-muted-foreground"
                       }`}
                     >
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#21262D] text-[#8B949E]">{test.taxonomy}</span>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-accent text-muted-foreground">{test.taxonomy}</span>
                         {hasPassed && <CheckCircle className="w-4 h-4 text-[#3FB950]" />}
-                        {hasFailed && <XCircle className="w-4 h-4 text-[#F85149]" />}
-                        {hasSkipped && <HelpCircle className="w-4 h-4 text-[#8B949E]" />}
+                        {hasFailed && <XCircle className="w-4 h-4 text-destructive" />}
+                        {hasSkipped && <HelpCircle className="w-4 h-4 text-muted-foreground" />}
                       </div>
                       <h4 className="text-sm font-semibold text-[#F0F6FC]">{test.name}</h4>
-                      <p className="text-xs text-[#8B949E] mt-1 line-clamp-2">{test.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{test.description}</p>
                     </div>
                   );
                 })}
               </div>
 
               {/* Event Injector section */}
-              <div className="border-t border-[#30363D] pt-4 mt-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B949E] mb-3">Event Injector</h3>
+              <div className="border-t border-border pt-4 mt-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Event Injector</h3>
                 <div className="space-y-2">
                   <button 
                     onClick={() => triggerInjection("stripe.checkout.success", { customerId: "cus_mock_99", amountTotal: 14900 })}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-[#21262D] hover:bg-[#30363D] border border-[#30363D]"
+                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-accent hover:bg-border border border-border"
                   >
                     ⚡ Stripe Checkout (Success)
                   </button>
                   <button 
                     onClick={() => triggerInjection("stripe.checkout.failure", { customerId: "cus_mock_99", failureReason: "expired_card" })}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-[#21262D] hover:bg-[#30363D] border border-[#30363D]"
+                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-accent hover:bg-border border border-border"
                   >
                     ⚡ Stripe Checkout (Failure)
                   </button>
                   <button 
                     onClick={() => triggerInjection("consent.granted", { policyVersion: "v2026.1" })}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-[#21262D] hover:bg-[#30363D] border border-[#30363D]"
+                    className="w-full text-left px-3 py-2 text-xs font-semibold rounded bg-accent hover:bg-border border border-border"
                   >
                     ⚡ Consent Granted
                   </button>
@@ -384,17 +384,17 @@ export function PccDashboard() {
           {/* Collapse button */}
           <button 
             onClick={() => setLeftCollapsed(!leftCollapsed)}
-            className="absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-12 bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] rounded-r-lg flex items-center justify-center text-xs z-10"
+            className="absolute top-1/2 -right-3 -translate-y-1/2 w-6 h-12 bg-accent hover:bg-border border border-border rounded-r-lg flex items-center justify-center text-xs z-10"
           >
             {leftCollapsed ? ">" : "<"}
           </button>
         </div>
 
         {/* Center Panel: Live logs & Timeline Replay */}
-        <div className="flex-1 flex flex-col bg-[#0D1117] overflow-hidden">
+        <div className="flex-1 flex flex-col bg-background overflow-hidden">
           
           {/* Timeline Replay Bar */}
-          <div className="p-4 border-b border-[#21262D] bg-[#161B22] flex items-center justify-between shrink-0">
+          <div className="p-4 border-b border-accent bg-card flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <button 
                 onClick={togglePlayback}
@@ -404,13 +404,13 @@ export function PccDashboard() {
               </button>
               <button 
                 onClick={resetReplay}
-                className="p-2 rounded-full bg-[#21262D] hover:bg-[#30363D] text-[#C9D1D9]"
+                className="p-2 rounded-full bg-accent hover:bg-border text-foreground/90"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
 
               <div className="flex flex-col">
-                <span className="text-xs font-semibold text-[#8B949E] uppercase">90-Day Journey Timeline</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase">90-Day Journey Timeline</span>
                 <span className="text-sm font-bold text-[#F0F6FC]">Day {currentDay} / 90</span>
               </div>
             </div>
@@ -422,15 +422,15 @@ export function PccDashboard() {
               max="90"
               value={currentDay}
               onChange={(e) => setCurrentDay(parseInt(e.target.value))}
-              className="flex-1 mx-8 h-1.5 bg-[#30363D] rounded-lg appearance-none cursor-pointer accent-[#58A6FF]"
+              className="flex-1 mx-8 h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
             />
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#8B949E]">Speed:</span>
+              <span className="text-xs text-muted-foreground">Speed:</span>
               <select 
                 value={playbackSpeed}
                 onChange={(e) => setPlaybackSpeed(e.target.value)}
-                className="bg-[#21262D] border border-[#30363D] rounded px-2 py-1 text-xs text-[#C9D1D9]"
+                className="bg-accent border border-border rounded px-2 py-1 text-xs text-foreground/90"
               >
                 <option value="1x">1x Normal</option>
                 <option value="2x">2x Fast</option>
@@ -441,15 +441,15 @@ export function PccDashboard() {
 
           {/* Live streaming Console logs */}
           <div className="flex-1 p-4 font-mono text-xs overflow-y-auto space-y-1.5 scrollbar-thin">
-            <div className="flex items-center gap-2 text-[#8B949E] border-b border-[#21262D] pb-2 mb-3">
+            <div className="flex items-center gap-2 text-muted-foreground border-b border-accent pb-2 mb-3">
               <Terminal className="w-4 h-4" />
               <span>LIVE ORCHESTRATOR TELEMETRY STREAM</span>
             </div>
             {logs.length === 0 ? (
-              <p className="text-[#484F58] italic">Waiting for incoming telemetry broadcast events...</p>
+              <p className="text-muted-foreground/60 italic">Waiting for incoming telemetry broadcast events...</p>
             ) : (
               logs.map((log, i) => (
-                <div key={i} className="leading-5 text-[#C9D1D9]">
+                <div key={i} className="leading-5 text-foreground/90">
                   {log}
                 </div>
               ))
@@ -460,10 +460,10 @@ export function PccDashboard() {
           {/* Bottom Drawer (Collapsible) */}
           <div 
             style={{ height: bottomCollapsed ? 0 : `${bottomHeight}px` }}
-            className="border-t border-[#21262D] bg-[#161B22] transition-all duration-300 overflow-hidden relative flex flex-col"
+            className="border-t border-accent bg-card transition-all duration-300 overflow-hidden relative flex flex-col"
           >
             {/* Tabs control bar */}
-            <div className="flex items-center justify-between border-b border-[#30363D] bg-[#0D1117] px-4 py-2 shrink-0">
+            <div className="flex items-center justify-between border-b border-border bg-background px-4 py-2 shrink-0">
               <div className="flex gap-1">
                 {(["logs", "rawContext", "baseline", "delta", "sql"] as const).map(tab => (
                   <button
@@ -471,8 +471,8 @@ export function PccDashboard() {
                     onClick={() => setActiveTab(tab)}
                     className={`px-3 py-1 text-xs font-semibold rounded ${
                       activeTab === tab 
-                        ? "bg-[#21262D] text-[#F0F6FC]" 
-                        : "text-[#8B949E] hover:text-[#C9D1D9]"
+                        ? "bg-accent text-[#F0F6FC]" 
+                        : "text-muted-foreground hover:text-foreground/90"
                     }`}
                   >
                     {tab === "logs" && "Logs"}
@@ -485,7 +485,7 @@ export function PccDashboard() {
               </div>
               <button 
                 onClick={() => setBottomCollapsed(!bottomCollapsed)}
-                className="text-xs text-[#8B949E] hover:text-[#C9D1D9]"
+                className="text-xs text-muted-foreground hover:text-foreground/90"
               >
                 [Toggle Drawer]
               </button>
@@ -495,12 +495,12 @@ export function PccDashboard() {
             {!bottomCollapsed && (
               <div className="flex-1 p-4 font-mono text-xs overflow-y-auto">
                 {activeTab === "logs" && (
-                  <pre className="text-[#8B949E]">
+                  <pre className="text-muted-foreground">
                     {JSON.stringify(results, null, 2)}
                   </pre>
                 )}
                 {activeTab === "rawContext" && (
-                  <pre className="text-[#58A6FF]">
+                  <pre className="text-primary">
                     {JSON.stringify({
                       activeSessionId: "sess-908123-x",
                       timestamp: new Date().toISOString(),
@@ -521,7 +521,7 @@ export function PccDashboard() {
                   </pre>
                 )}
                 {activeTab === "delta" && (
-                  <pre className="text-[#F85149]">
+                  <pre className="text-destructive">
                     {JSON.stringify({
                       portalSettings: {
                         activeModules: {
@@ -533,14 +533,14 @@ export function PccDashboard() {
                   </pre>
                 )}
                 {activeTab === "sql" && (
-                  <div className="space-y-2 text-[#C9D1D9]">
-                    <div className="p-2 rounded bg-[#0D1117] border border-[#30363D]">
+                  <div className="space-y-2 text-foreground/90">
+                    <div className="p-2 rounded bg-background border border-border">
                       <span className="text-[#FF7B72] font-semibold">SELECT</span> * <span className="text-[#FF7B72] font-semibold">FROM</span> tenant_settings <span className="text-[#FF7B72] font-semibold">WHERE</span> tenant_id = <span className="text-[#A5D6FF]">'acme'</span>;
-                      <p className="text-xs text-[#8B949E] mt-1">Returned 1 row in 4ms</p>
+                      <p className="text-xs text-muted-foreground mt-1">Returned 1 row in 4ms</p>
                     </div>
-                    <div className="p-2 rounded bg-[#0D1117] border border-[#30363D]">
+                    <div className="p-2 rounded bg-background border border-border">
                       <span className="text-[#FF7B72] font-semibold">SELECT</span> * <span className="text-[#FF7B72] font-semibold">FROM</span> audit_logs <span className="text-[#FF7B72] font-semibold">ORDER BY</span> created_at <span className="text-[#FF7B72] font-semibold">DESC</span> <span className="text-[#FF7B72] font-semibold">LIMIT</span> 5;
-                      <p className="text-xs text-[#8B949E] mt-1">Returned 5 rows in 12ms</p>
+                      <p className="text-xs text-muted-foreground mt-1">Returned 5 rows in 12ms</p>
                     </div>
                   </div>
                 )}
@@ -552,19 +552,19 @@ export function PccDashboard() {
         {/* Right Panel: Engine Inspector */}
         <div 
           style={{ width: rightCollapsed ? 0 : `${rightWidth}%` }}
-          className="flex flex-col border-l border-[#21262D] bg-[#161B22] transition-all duration-300 overflow-hidden relative"
+          className="flex flex-col border-l border-accent bg-card transition-all duration-300 overflow-hidden relative"
         >
           {!rightCollapsed && (
             <div className="flex flex-col h-full p-4 overflow-y-auto">
-              <h2 className="text-xs uppercase font-bold tracking-wider text-[#8B949E] mb-3">Engine Output Inspector</h2>
+              <h2 className="text-xs uppercase font-bold tracking-wider text-muted-foreground mb-3">Engine Output Inspector</h2>
               
               {selectedResult ? (
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-sm font-bold text-[#F0F6FC]">{selectedResult.testId}</h3>
-                    <p className="text-xs text-[#8B949E]">Status: 
+                    <p className="text-xs text-muted-foreground">Status: 
                       <span className={`ml-1 font-bold ${
-                        selectedResult.status === "PASS" ? "text-[#3FB950]" : "text-[#F85149]"
+                        selectedResult.status === "PASS" ? "text-[#3FB950]" : "text-destructive"
                       }`}>
                         {selectedResult.status}
                       </span>
@@ -572,24 +572,24 @@ export function PccDashboard() {
                   </div>
 
                   {selectedResult.why && (
-                    <div className="p-3 rounded bg-[#F85149]/10 border border-[#F85149]/30 text-xs text-[#F85149]">
+                    <div className="p-3 rounded bg-destructive/10 border border-destructive/30 text-xs text-destructive">
                       <strong>Failure Reason:</strong> {selectedResult.why}
                     </div>
                   )}
 
                   {selectedResult.comparison && (
                     <div className="space-y-3">
-                      <h4 className="text-xs font-semibold text-[#8B949E]">Expected vs Actual Output</h4>
+                      <h4 className="text-xs font-semibold text-muted-foreground">Expected vs Actual Output</h4>
                       <div className="space-y-2">
                         <div>
-                          <span className="text-xs text-[#8B949E]">Expected Schema:</span>
-                          <pre className="p-2 rounded bg-[#0D1117] border border-[#30363D] text-[10px] overflow-x-auto text-[#8B949E]">
+                          <span className="text-xs text-muted-foreground">Expected Schema:</span>
+                          <pre className="p-2 rounded bg-background border border-border text-[10px] overflow-x-auto text-muted-foreground">
                             {JSON.stringify(selectedResult.comparison.expected, null, 2)}
                           </pre>
                         </div>
                         <div>
-                          <span className="text-xs text-[#8B949E]">Actual Payload:</span>
-                          <pre className="p-2 rounded bg-[#0D1117] border border-[#30363D] text-[10px] overflow-x-auto text-[#C9D1D9]">
+                          <span className="text-xs text-muted-foreground">Actual Payload:</span>
+                          <pre className="p-2 rounded bg-background border border-border text-[10px] overflow-x-auto text-foreground/90">
                             {JSON.stringify(selectedResult.comparison.actual, null, 2)}
                           </pre>
                         </div>
@@ -599,8 +599,8 @@ export function PccDashboard() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center flex-1 text-center py-12">
-                  <FileText className="w-12 h-12 text-[#484F58] mb-3" />
-                  <p className="text-sm text-[#8B949E]">Select any test result from the list to inspect details.</p>
+                  <FileText className="w-12 h-12 text-muted-foreground/60 mb-3" />
+                  <p className="text-sm text-muted-foreground">Select any test result from the list to inspect details.</p>
                 </div>
               )}
             </div>
@@ -608,7 +608,7 @@ export function PccDashboard() {
           {/* Collapse button */}
           <button 
             onClick={() => setRightCollapsed(!rightCollapsed)}
-            className="absolute top-1/2 -left-3 -translate-y-1/2 w-6 h-12 bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] rounded-l-lg flex items-center justify-center text-xs z-10"
+            className="absolute top-1/2 -left-3 -translate-y-1/2 w-6 h-12 bg-accent hover:bg-border border border-border rounded-l-lg flex items-center justify-center text-xs z-10"
           >
             {rightCollapsed ? "<" : ">"}
           </button>

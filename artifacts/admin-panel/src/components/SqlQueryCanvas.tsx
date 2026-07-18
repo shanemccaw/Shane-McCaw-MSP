@@ -35,10 +35,10 @@ export const EMPTY_SQL_OUTPUT: SqlOutput = { isExecuting: false, results: null, 
 // One Dark's own #282c34 background clashes with the app's GitHub-dark canvas;
 // keep its syntax palette but repaint the editor surfaces with app tokens.
 const editorSurfaceTheme = EditorView.theme({
-  "&": { backgroundColor: "#0D1117" },
-  ".cm-gutters": { backgroundColor: "#0D1117", borderRight: "1px solid #21262D" },
-  ".cm-activeLine": { backgroundColor: "#161B2280" },
-  ".cm-activeLineGutter": { backgroundColor: "#161B2280" },
+  "&": { backgroundColor: "#0A0D12" },
+  ".cm-gutters": { backgroundColor: "#0A0D12", borderRight: "1px solid #171C26" },
+  ".cm-activeLine": { backgroundColor: "#11151C80" },
+  ".cm-activeLineGutter": { backgroundColor: "#11151C80" },
 });
 
 interface SqlQueryCanvasProps {

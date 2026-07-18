@@ -314,8 +314,8 @@ export default function GraphApiResultsPage() {
                 onClick={() => setActiveJsonTab("raw")}
                 className={`px-4 py-2 text-xs font-semibold rounded-t-lg border-b-2 transition-colors uppercase tracking-wider ${
                   activeJsonTab === "raw"
-                    ? "text-[#58A6FF] border-[#0078D4] bg-slate-900/30"
-                    : "text-[#7D8590] border-transparent hover:text-[#E6EDF3]"
+                    ? "text-primary border-primary bg-slate-900/30"
+                    : "text-muted-foreground border-transparent hover:text-foreground"
                 }`}
               >
                 Raw Graph API Response
@@ -324,8 +324,8 @@ export default function GraphApiResultsPage() {
                 onClick={() => setActiveJsonTab("extracted")}
                 className={`px-4 py-2 text-xs font-semibold rounded-t-lg border-b-2 transition-colors uppercase tracking-wider ${
                   activeJsonTab === "extracted"
-                    ? "text-[#58A6FF] border-[#0078D4] bg-slate-900/30"
-                    : "text-[#7D8590] border-transparent hover:text-[#E6EDF3]"
+                    ? "text-primary border-primary bg-slate-900/30"
+                    : "text-muted-foreground border-transparent hover:text-foreground"
                 }`}
               >
                 Extracted Properties

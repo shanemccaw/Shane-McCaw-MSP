@@ -63,7 +63,7 @@ const FALLBACK_WRAPPER = `
         <tr>
           <td style="background:#f1f5f9;padding:20px 32px;border-top:1px solid #e2e8f0;">
             <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">
-              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.com" style="color:#0078D4;text-decoration:none;">shanemccaw.com</a><br/>
+              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.com" style="color:#2F6FED;text-decoration:none;">shanemccaw.com</a><br/>
               You're receiving this because you have an account or made a purchase with us.
             </p>
           </td>
@@ -80,7 +80,7 @@ const FALLBACK_WRAPPER = `
 const SAMPLE_BODY_FOR_LAYOUT_PREVIEW = `
   <p>Hi Sarah,</p>
   <p>This is sample email content used to preview the branded layout — header, footer, colors, and spacing.</p>
-  <p style="margin:24px 0 0;"><a href="#" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Sample Button →</a></p>
+  <p style="margin:24px 0 0;"><a href="#" style="display:inline-block;background:#2F6FED;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Sample Button →</a></p>
   <p style="margin-top:24px;">— Shane McCaw</p>
 `;
 
@@ -183,11 +183,11 @@ function PreviewPane({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 bg-[#161B22] border-b text-xs text-[#7D8590] font-medium flex items-center gap-2">
+      <div className="px-3 py-2 bg-card border-b text-xs text-muted-foreground font-medium flex items-center gap-2">
         <span className="shrink-0">Subject preview:</span>
-        <span className="text-[#E6EDF3] truncate flex-1">{subject || "(no subject)"}</span>
+        <span className="text-foreground truncate flex-1">{subject || "(no subject)"}</span>
         {isSample && (
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-[#1C2128] border border-[#30363D] px-2 py-0.5 text-[10px] font-medium text-[#7D8590]">
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-accent border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -214,7 +214,7 @@ function RecipientBadge({ type }: { type: "client" | "admin" }) {
     );
   }
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[#0078D4]/10 text-blue-400 border border-[#0078D4]/20 shrink-0">
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-primary/10 text-blue-400 border border-primary/20 shrink-0">
       Client
     </span>
   );
@@ -248,18 +248,18 @@ function AiModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-[#161B22] rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
+      <div className="bg-card rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-[#E6EDF3]">✨ AI Assistant</h3>
-            <p className="text-xs text-[#7D8590] mt-0.5">
+            <h3 className="text-sm font-semibold text-foreground">✨ AI Assistant</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {isEdit ? "AI will refine the existing body based on your instructions" : "AI will write a fresh on-brand email body"}
             </p>
           </div>
           <button
             onClick={onClose}
             disabled={loading}
-            className="text-[#7D8590] hover:text-[#7D8590] transition-colors p-1 rounded"
+            className="text-muted-foreground hover:text-muted-foreground transition-colors p-1 rounded"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,12 +270,12 @@ function AiModal({
 
         {/* Mode toggle — only shown when there's existing content to edit */}
         {hasExistingContent && (
-          <div className="flex rounded-lg border border-[#30363D] overflow-hidden text-xs font-medium">
+          <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
             <button
               onClick={() => setMode("edit")}
               disabled={loading}
               className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors ${
-                isEdit ? "bg-[#0078D4] text-white" : "bg-[#161B22] text-[#7D8590] hover:bg-[#1C2128]"
+                isEdit ? "bg-primary text-white" : "bg-card text-muted-foreground hover:bg-accent"
               }`}
             >
               ✏️ Edit existing
@@ -283,8 +283,8 @@ function AiModal({
             <button
               onClick={() => setMode("generate")}
               disabled={loading}
-              className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors border-l border-[#30363D] ${
-                !isEdit ? "bg-[#0078D4] text-white" : "bg-[#161B22] text-[#7D8590] hover:bg-[#1C2128]"
+              className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors border-l border-border ${
+                !isEdit ? "bg-primary text-white" : "bg-card text-muted-foreground hover:bg-accent"
               }`}
             >
               ✨ Generate fresh
@@ -293,7 +293,7 @@ function AiModal({
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-[#C9D1D9] mb-1.5 uppercase tracking-wide">
+          <label className="block text-xs font-semibold text-foreground/90 mb-1.5 uppercase tracking-wide">
             {isEdit ? "What to change" : "Instructions"} — {isEdit ? "required" : "optional"}
           </label>
           <textarea
@@ -307,7 +307,7 @@ function AiModal({
             rows={4}
             disabled={loading}
             autoFocus
-            className="w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-[#7D8590]"
+            className="w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
           />
           {isEdit && !instructions.trim() && (
             <p className="text-[11px] text-amber-600 mt-1">Tell the AI what to change — otherwise it will rewrite the whole email.</p>
@@ -318,7 +318,7 @@ function AiModal({
           <Button
             onClick={() => { void handleGenerate(); }}
             disabled={loading}
-            className="flex-1 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white"
+            className="flex-1 bg-primary hover:bg-primary/90 text-white"
           >
             {loading ? (
               <span className="flex items-center gap-2">
@@ -492,23 +492,23 @@ export default function EmailTemplatesPage() {
 
       <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-64px)] overflow-hidden">
         {/* ── Template list ───────────────────────────────────────────────────── */}
-        <aside className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r bg-[#161B22] flex flex-col overflow-hidden max-h-64 lg:max-h-none">
+        <aside className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r bg-card flex flex-col overflow-hidden max-h-64 lg:max-h-none">
           <div className="px-4 py-3 border-b">
-            <h1 className="text-sm font-semibold text-[#E6EDF3]">Email Templates</h1>
-            <p className="text-xs text-[#7D8590] mt-0.5">{filteredTemplates.length} of {templates.length} templates</p>
+            <h1 className="text-sm font-semibold text-foreground">Email Templates</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{filteredTemplates.length} of {templates.length} templates</p>
           </div>
 
           {/* ── Filter control ──────────────────────────────────────────────── */}
-          <div className="px-3 py-2 border-b bg-[#161B22]">
-            <div className="flex rounded-md border border-[#30363D] overflow-hidden text-xs font-medium">
+          <div className="px-3 py-2 border-b bg-card">
+            <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
               {(["all", "client", "admin"] as FilterType[]).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilterType(f)}
                   className={`flex-1 py-1 capitalize transition-colors ${
                     filterType === f
-                      ? "bg-[#0078D4] text-white"
-                      : "bg-[#161B22] text-[#7D8590] hover:bg-[#1C2128]"
+                      ? "bg-primary text-white"
+                      : "bg-card text-muted-foreground hover:bg-accent"
                   }`}
                 >
                   {f === "all" ? "All" : f === "client" ? "Client" : "Admin"}
@@ -520,27 +520,27 @@ export default function EmailTemplatesPage() {
           <div className="flex-1 overflow-y-auto">
             {listLoading ? (
               <div className="flex items-center justify-center h-24">
-                <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : filteredTemplates.length === 0 ? (
-              <p className="text-xs text-[#7D8590] text-center py-6 px-4">No templates match this filter</p>
+              <p className="text-xs text-muted-foreground text-center py-6 px-4">No templates match this filter</p>
             ) : (
               filteredTemplates.map((t) => (
                 <button
                   key={t.slug}
                   onClick={() => handleSelect(t.slug)}
-                  className={`w-full text-left px-4 py-3 border-b hover:bg-[#0078D4]/10 transition-colors ${
-                    selected === t.slug ? "bg-[#0078D4]/10 border-l-2 border-l-[#0078D4]" : ""
+                  className={`w-full text-left px-4 py-3 border-b hover:bg-primary/10 transition-colors ${
+                    selected === t.slug ? "bg-primary/10 border-l-2 border-l-primary" : ""
                   }`}
                 >
                   <div className="flex items-start gap-1.5">
-                    <p className={`text-sm font-medium flex-1 min-w-0 truncate ${selected === t.slug ? "text-[#0078D4]" : "text-[#E6EDF3]"}`}>
+                    <p className={`text-sm font-medium flex-1 min-w-0 truncate ${selected === t.slug ? "text-primary" : "text-foreground"}`}>
                       {t.name}
                     </p>
                     <RecipientBadge type={t.recipientType} />
                   </div>
-                  <p className="text-xs text-[#7D8590] truncate mt-0.5">{t.subject}</p>
-                  <p className="text-xs text-[#7D8590] mt-1">{relativeTime(t.updatedAt)}</p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{t.subject}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{relativeTime(t.updatedAt)}</p>
                 </button>
               ))
             )}
@@ -548,31 +548,31 @@ export default function EmailTemplatesPage() {
         </aside>
 
         {/* ── Editor + preview ─────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#161B22]">
+        <div className="flex-1 flex flex-col overflow-hidden bg-card">
           {!selected ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <svg className="w-12 h-12 text-[#484F58] mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-12 h-12 text-muted-foreground/60 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-sm text-[#7D8590]">Select a template to edit</p>
+                <p className="text-sm text-muted-foreground">Select a template to edit</p>
               </div>
             </div>
           ) : detailLoading ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : detail ? (
             <>
               {/* ── Top bar ──────────────────────────────────────────────────────── */}
-              <div className="shrink-0 bg-[#161B22] border-b px-4 py-3 flex items-center justify-between gap-4">
+              <div className="shrink-0 bg-card border-b px-4 py-3 flex items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-semibold text-[#E6EDF3] truncate">{detail.name}</h2>
+                    <h2 className="text-sm font-semibold text-foreground truncate">{detail.name}</h2>
                     <RecipientBadge type={detail.recipientType} />
                     {dirty && <Badge variant="secondary" className="text-xs shrink-0">Unsaved</Badge>}
                   </div>
-                  <p className="text-xs text-[#7D8590] font-mono mt-0.5">{detail.slug}</p>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{detail.slug}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
@@ -613,13 +613,13 @@ export default function EmailTemplatesPage() {
               </div>
 
               {/* ── Tab switcher ─────────────────────────────────────────────────── */}
-              <div className="shrink-0 bg-[#161B22] border-b px-4 flex gap-1">
+              <div className="shrink-0 bg-card border-b px-4 flex gap-1">
                 <button
                   onClick={() => setActiveTab("preview")}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === "preview"
-                      ? "border-[#0078D4] text-[#0078D4]"
-                      : "border-transparent text-[#7D8590] hover:text-[#C9D1D9]"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground/90"
                   }`}
                 >
                   Preview
@@ -628,8 +628,8 @@ export default function EmailTemplatesPage() {
                   onClick={() => setActiveTab("editor")}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === "editor"
-                      ? "border-[#0078D4] text-[#0078D4]"
-                      : "border-transparent text-[#7D8590] hover:text-[#C9D1D9]"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground/90"
                   }`}
                 >
                   Editor
@@ -640,7 +640,7 @@ export default function EmailTemplatesPage() {
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
                   {/* Subject line */}
                   <div>
-                    <label className="block text-xs font-semibold text-[#C9D1D9] mb-1.5 uppercase tracking-wide">
+                    <label className="block text-xs font-semibold text-foreground/90 mb-1.5 uppercase tracking-wide">
                       Subject Line
                     </label>
                     <Input
@@ -654,7 +654,7 @@ export default function EmailTemplatesPage() {
                   {/* Body HTML */}
                   <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide">
+                      <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide">
                         Body HTML
                       </label>
                       {preAiBody !== null && (
@@ -672,24 +672,24 @@ export default function EmailTemplatesPage() {
                       className="flex-1 font-mono text-xs rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring min-h-[320px]"
                       spellCheck={false}
                     />
-                    <p className="text-xs text-[#7D8590] mt-1.5">
-                      Inner HTML only — the branded header/footer wrapper is added automatically at send time. Use <code className="bg-[#1C2128] px-1 rounded">{"{{variableName}}"}</code> syntax for placeholders.
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Inner HTML only — the branded header/footer wrapper is added automatically at send time. Use <code className="bg-accent px-1 rounded">{"{{variableName}}"}</code> syntax for placeholders.
                     </p>
                   </div>
 
                   {/* Variables reference */}
                   {detail.variables.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-[#C9D1D9] mb-2 uppercase tracking-wide">
+                      <p className="text-xs font-semibold text-foreground/90 mb-2 uppercase tracking-wide">
                         Available Variables
                       </p>
-                      <div className="bg-[#161B22] rounded-md border divide-y">
+                      <div className="bg-card rounded-md border divide-y">
                         {detail.variables.map((v) => (
                           <div key={v.name} className="flex items-start gap-3 px-3 py-2">
-                            <code className="text-xs bg-[#0078D4]/10 text-blue-400 px-1.5 py-0.5 rounded font-mono shrink-0">
+                            <code className="text-xs bg-primary/10 text-blue-400 px-1.5 py-0.5 rounded font-mono shrink-0">
                               {`{{${v.name}}}`}
                             </code>
-                            <span className="text-xs text-[#7D8590] pt-0.5">{v.description}</span>
+                            <span className="text-xs text-muted-foreground pt-0.5">{v.description}</span>
                           </div>
                         ))}
                       </div>

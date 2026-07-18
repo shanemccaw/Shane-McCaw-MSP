@@ -336,15 +336,15 @@ export default function InboxMessageDetail() {
 
   if (!selectedMessageId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6 bg-[#0D1117]">
-        <div className="w-16 h-16 rounded-2xl bg-[#161B22] flex items-center justify-center">
-          <svg className="w-8 h-8 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6 bg-background">
+        <div className="w-16 h-16 rounded-2xl bg-card flex items-center justify-center">
+          <svg className="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
           </svg>
         </div>
         <div>
-          <p className="text-sm font-medium text-[#C9D1D9]">Select a message to read</p>
-          <p className="text-xs text-[#7D8590] mt-1">Choose a message from the list on the left.</p>
+          <p className="text-sm font-medium text-foreground/90">Select a message to read</p>
+          <p className="text-xs text-muted-foreground mt-1">Choose a message from the list on the left.</p>
         </div>
       </div>
     );
@@ -352,15 +352,15 @@ export default function InboxMessageDetail() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-full bg-[#0D1117]">
-        <div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      <div className="flex justify-center items-center h-full bg-background">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (error || !message) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#0D1117]">
+      <div className="flex items-center justify-center h-full bg-background">
         <p className="text-sm text-red-400">{error ?? "Message not found"}</p>
       </div>
     );
@@ -371,24 +371,24 @@ export default function InboxMessageDetail() {
   const isFlagged = message.flag?.flagStatus === "flagged";
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0D1117]">
+    <div className="flex h-full overflow-hidden bg-background">
       {/* Main message area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#30363D] bg-[#0D1117] shrink-0">
+        <div className="px-5 py-4 border-b border-border bg-background shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold text-[#E6EDF3] leading-snug break-words">
+              <h2 className="text-base font-semibold text-foreground leading-snug break-words">
                 {message.subject ?? "(no subject)"}
               </h2>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
-                <span className="text-xs text-[#C9D1D9]">
-                  <span className="text-[#7D8590]">From:</span> {senderName} {senderEmail ? `<${senderEmail}>` : ""}
+                <span className="text-xs text-foreground/90">
+                  <span className="text-muted-foreground">From:</span> {senderName} {senderEmail ? `<${senderEmail}>` : ""}
                 </span>
-                <span className="text-xs text-[#7D8590]">{formatDate(message.receivedDateTime)}</span>
+                <span className="text-xs text-muted-foreground">{formatDate(message.receivedDateTime)}</span>
               </div>
               {message.toRecipients.length > 0 && (
-                <p className="text-xs text-[#7D8590] mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   <span>To:</span> {message.toRecipients.map(r => r.emailAddress.address).join(", ")}
                 </p>
               )}
@@ -400,7 +400,7 @@ export default function InboxMessageDetail() {
                 onClick={toggleFlag}
                 disabled={flagging}
                 title={isFlagged ? "Unflag" : "Flag"}
-                className={`p-1.5 rounded-lg transition-colors ${isFlagged ? "text-amber-400 bg-amber-400/10" : "text-[#7D8590] hover:text-amber-400 hover:bg-amber-400/10"}`}
+                className={`p-1.5 rounded-lg transition-colors ${isFlagged ? "text-amber-400 bg-amber-400/10" : "text-muted-foreground hover:text-amber-400 hover:bg-amber-400/10"}`}
               >
                 <svg className="w-4 h-4" fill={isFlagged ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 21V3h12l-4 6 4 6H3" />
@@ -410,7 +410,7 @@ export default function InboxMessageDetail() {
                 onClick={archiveMessage}
                 disabled={moving}
                 title="Archive"
-                className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#C9D1D9] hover:bg-[#1C2128] transition-colors"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground/90 hover:bg-accent transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
@@ -420,7 +420,7 @@ export default function InboxMessageDetail() {
                 onClick={deleteMessage}
                 disabled={moving}
                 title="Delete"
-                className="p-1.5 rounded-lg text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -429,7 +429,7 @@ export default function InboxMessageDetail() {
               <button
                 onClick={toggleAIPanel}
                 title="AI Assistant"
-                className={`p-1.5 rounded-lg text-xs font-bold transition-colors ${aiPanelOpen ? "bg-[#0078D4]/20 text-[#0078D4]" : "text-[#7D8590] hover:text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-colors ${aiPanelOpen ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground/90 hover:bg-accent"}`}
               >
                 AI
               </button>
@@ -440,7 +440,7 @@ export default function InboxMessageDetail() {
           <div className="flex items-center flex-wrap gap-2 mt-3">
             <button
               onClick={() => openCompose("reply", { replyToMessageId: message.id, subject: `Re: ${message.subject ?? ""}`, to: senderEmail })}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-[#C9D1D9] bg-[#161B22] border border-[#30363D] hover:border-[#0078D4] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-foreground/90 bg-card border border-border hover:border-primary transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
@@ -449,13 +449,13 @@ export default function InboxMessageDetail() {
             </button>
             <button
               onClick={() => openCompose("replyAll", { replyToMessageId: message.id, subject: `Re: ${message.subject ?? ""}` })}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-[#C9D1D9] bg-[#161B22] border border-[#30363D] hover:border-[#0078D4] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-foreground/90 bg-card border border-border hover:border-primary transition-colors"
             >
               Reply All
             </button>
             <button
               onClick={() => openCompose("forward", { forwardMessageId: message.id, subject: `Fwd: ${message.subject ?? ""}` })}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-[#C9D1D9] bg-[#161B22] border border-[#30363D] hover:border-[#0078D4] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs text-foreground/90 bg-card border border-border hover:border-primary transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11m10 0l-6-6m6 6l-6 6M3 4v16" />
@@ -495,8 +495,8 @@ export default function InboxMessageDetail() {
             </div>
           )}
           {opportunitySignals && !opportunitySignals.detected && (
-            <div className="mt-3 px-3 py-2 bg-[#161B22] border border-[#30363D] rounded-xl">
-              <p className="text-xs text-[#7D8590]">🎯 No strong buying signals detected in this email.</p>
+            <div className="mt-3 px-3 py-2 bg-card border border-border rounded-xl">
+              <p className="text-xs text-muted-foreground">🎯 No strong buying signals detected in this email.</p>
             </div>
           )}
 
@@ -549,12 +549,12 @@ export default function InboxMessageDetail() {
           {message.hasAttachments && message.attachments && message.attachments.filter(a => !a.isInline).length > 0 && (
             <div className="flex flex-wrap gap-2">
               {message.attachments.filter(a => !a.isInline).map(att => (
-                <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#161B22] border border-[#30363D] text-xs text-[#C9D1D9]">
-                  <svg className="w-3.5 h-3.5 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div key={att.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground/90">
+                  <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>
                   <span>{att.name}</span>
-                  <span className="text-[#7D8590]">{fileSize(att.size)}</span>
+                  <span className="text-muted-foreground">{fileSize(att.size)}</span>
                 </div>
               ))}
             </div>
@@ -568,7 +568,7 @@ export default function InboxMessageDetail() {
                 sandbox="allow-same-origin"
                 srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>
                   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; color: #C9D1D9; background: transparent; margin: 0; padding: 0; line-height: 1.6; }
-                  a { color: #0078D4; }
+                  a { color: #2F6FED; }
                   img { max-width: 100%; height: auto; }
                   table { max-width: 100%; }
                 </style></head><body>${message.body.content}</body></html>`}
@@ -583,7 +583,7 @@ export default function InboxMessageDetail() {
                 title="Email body"
               />
             ) : (
-              <pre className="whitespace-pre-wrap text-sm text-[#C9D1D9] font-sans leading-relaxed">
+              <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">
                 {message.body?.content ?? message.bodyPreview ?? ""}
               </pre>
             )}
@@ -595,7 +595,7 @@ export default function InboxMessageDetail() {
               {!showThread ? (
                 <button
                   onClick={() => void loadThread()}
-                  className="text-xs text-[#0078D4] hover:text-[#1A90E0] flex items-center gap-1"
+                  className="text-xs text-primary hover:text-primary/90 flex items-center gap-1"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -604,14 +604,14 @@ export default function InboxMessageDetail() {
                 </button>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase">Thread ({thread.length} messages)</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase">Thread ({thread.length} messages)</p>
                   {thread.map(t => t.id !== message.id && (
-                    <div key={t.id} className="border border-[#30363D] rounded-xl p-3 space-y-1">
+                    <div key={t.id} className="border border-border rounded-xl p-3 space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-[#C9D1D9]">{t.from?.emailAddress.name || t.from?.emailAddress.address}</span>
-                        <span className="text-[#7D8590]">{formatDate(t.receivedDateTime)}</span>
+                        <span className="font-medium text-foreground/90">{t.from?.emailAddress.name || t.from?.emailAddress.address}</span>
+                        <span className="text-muted-foreground">{formatDate(t.receivedDateTime)}</span>
                       </div>
-                      <p className="text-xs text-[#7D8590]">{t.bodyPreview}</p>
+                      <p className="text-xs text-muted-foreground">{t.bodyPreview}</p>
                     </div>
                   ))}
                 </div>
@@ -624,24 +624,24 @@ export default function InboxMessageDetail() {
 
           {/* Extracted tasks panel */}
           {extractedTasks && extractedTasks.length > 0 && (
-            <div className="border border-[#30363D] rounded-xl p-4 space-y-3 bg-[#161B22]">
+            <div className="border border-border rounded-xl p-4 space-y-3 bg-card">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-[#E6EDF3]">AI Extracted Tasks ({extractedTasks.length})</p>
+                <p className="text-xs font-semibold text-foreground">AI Extracted Tasks ({extractedTasks.length})</p>
                 <button
                   onClick={() => setShowConvertModal(true)}
-                  className="px-3 py-1 text-xs font-medium bg-[#0078D4] text-white rounded-md hover:bg-[#1A90E0]"
+                  className="px-3 py-1 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90"
                 >
                   Create Tasks
                 </button>
               </div>
               <div className="space-y-2">
                 {extractedTasks.map((t, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs border border-[#30363D] rounded-lg p-2">
+                  <div key={i} className="flex items-start gap-2 text-xs border border-border rounded-lg p-2">
                     <div className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${t.priority === "high" ? "bg-red-400" : t.priority === "medium" ? "bg-amber-400" : "bg-blue-400"}`} />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-[#C9D1D9] truncate">{t.title}</p>
-                      {t.description && <p className="text-[#7D8590] text-[11px]">{t.description}</p>}
-                      {t.dueDate && <p className="text-[10px] text-[#7D8590] mt-0.5">Due: {t.dueDate}</p>}
+                      <p className="font-medium text-foreground/90 truncate">{t.title}</p>
+                      {t.description && <p className="text-muted-foreground text-[11px]">{t.description}</p>}
+                      {t.dueDate && <p className="text-[10px] text-muted-foreground mt-0.5">Due: {t.dueDate}</p>}
                     </div>
                   </div>
                 ))}

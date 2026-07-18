@@ -269,50 +269,50 @@ export default function FulfillmentTypes() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#E6EDF3]">Fulfillment Types</h1>
-          <p className="text-sm text-[#8B949E] mt-1">
+          <h1 className="text-xl font-semibold text-foreground">Fulfillment Types</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Registry of lifecycle kinds — each maps to a{" "}
-            <code className="text-xs bg-[#21262D] px-1 py-0.5 rounded">fulfillment.&lt;key&gt;</code>{" "}
+            <code className="text-xs bg-accent px-1 py-0.5 rounded">fulfillment.&lt;key&gt;</code>{" "}
             workflow event trigger.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handleDownloadTemplate()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-accent border border-border text-foreground hover:bg-border transition-colors"
             title="Download import template"
           >
             <Download className="w-3.5 h-3.5" /> Download Template
           </button>
           <button
             onClick={() => void handleExport()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-accent border border-border text-foreground hover:bg-border transition-colors"
             title="Export fulfillment types as JSON"
           >
             <Download className="w-3.5 h-3.5" /> Export JSON
           </button>
           <button
             onClick={() => { setImportJson(""); setShowImportModal(true); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-accent border border-border text-foreground hover:bg-border transition-colors"
             title="Import fulfillment types from JSON"
           >
             <Upload className="w-3.5 h-3.5" /> Import JSON
           </button>
           <button
             onClick={() => setResolveModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-accent border border-border text-foreground hover:bg-border transition-colors"
           >
             <Play className="w-3.5 h-3.5" /> Test Resolve
           </button>
           <button
             onClick={() => void load()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-accent border border-border text-foreground hover:bg-border transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button
             onClick={() => openCreate()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#0078D4] text-white hover:bg-[#106EBE] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-primary text-white hover:bg-[#106EBE] transition-colors"
           >
             <Plus className="w-3.5 h-3.5" /> Add Type
           </button>
@@ -322,8 +322,8 @@ export default function FulfillmentTypes() {
 
       {/* Seed presets banner when table is empty */}
       {noneExist && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4 space-y-3">
-          <p className="text-sm text-[#8B949E]">
+        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <p className="text-sm text-muted-foreground">
             No fulfillment types yet. Seed the four standard types to get started:
           </p>
           <div className="flex flex-wrap gap-2">
@@ -331,7 +331,7 @@ export default function FulfillmentTypes() {
               <button
                 key={p.key}
                 onClick={() => openCreate(p)}
-                className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="text-xs px-3 py-1.5 rounded border border-border bg-accent text-foreground hover:bg-border transition-colors"
               >
                 + {p.label}
               </button>
@@ -343,13 +343,13 @@ export default function FulfillmentTypes() {
       {/* Table */}
       {loading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-[#8B949E]" />
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
         </div>
       ) : rows.length > 0 ? (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#30363D] text-[#8B949E] text-xs uppercase tracking-wide">
+              <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wide">
                 <th className="text-left px-4 py-3 font-medium">Key / Label</th>
                 <th className="text-left px-4 py-3 font-medium">Fired When</th>
                 <th className="text-left px-4 py-3 font-medium">Billing</th>
@@ -361,19 +361,19 @@ export default function FulfillmentTypes() {
               {rows.map((row, i) => (
                 <tr
                   key={row.key}
-                  className={`border-b border-[#21262D] ${i % 2 === 0 ? "" : "bg-[#0D1117]/40"}`}
+                  className={`border-b border-accent ${i % 2 === 0 ? "" : "bg-background/40"}`}
                 >
                   <td className="px-4 py-3">
-                    <div className="font-mono text-[#0078D4] text-xs">{row.key}</div>
-                    <div className="text-[#E6EDF3] font-medium mt-0.5">{row.label}</div>
+                    <div className="font-mono text-primary text-xs">{row.key}</div>
+                    <div className="text-foreground font-medium mt-0.5">{row.label}</div>
                     {row.description && (
-                      <div className="text-[#8B949E] text-xs mt-0.5 line-clamp-1">{row.description}</div>
+                      <div className="text-muted-foreground text-xs mt-0.5 line-clamp-1">{row.description}</div>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {row.firedWhen.length === 0 ? (
-                        <span className="text-[#6E7681] text-xs italic">none</span>
+                        <span className="text-muted-foreground/70 text-xs italic">none</span>
                       ) : (
                         row.firedWhen.map((w) => (
                           <Badge
@@ -395,7 +395,7 @@ export default function FulfillmentTypes() {
                     {row.recurring ? (
                       <Badge label="Recurring" color="bg-[#2D1F4E] text-[#9A7FE8]" />
                     ) : (
-                      <Badge label="One-time" color="bg-[#21262D] text-[#8B949E]" />
+                      <Badge label="One-time" color="bg-accent text-muted-foreground" />
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -404,7 +404,7 @@ export default function FulfillmentTypes() {
                         <CheckCircle2 className="w-3.5 h-3.5" /> Active
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-[#8B949E] text-xs">
+                      <span className="flex items-center gap-1 text-muted-foreground text-xs">
                         <XCircle className="w-3.5 h-3.5" /> Inactive
                       </span>
                     )}
@@ -414,21 +414,21 @@ export default function FulfillmentTypes() {
                       <button
                         onClick={() => { setResolveKey(row.key); setResolveModal(true); }}
                         title="Test resolve"
-                        className="p-1.5 rounded hover:bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors"
+                        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Zap className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => openEdit(row)}
                         title="Edit"
-                        className="p-1.5 rounded hover:bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors"
+                        className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => setDeleteTarget(row)}
                         title="Delete"
-                        className="p-1.5 rounded hover:bg-[#21262D] text-[#F85149] hover:text-[#FF7B72] transition-colors"
+                        className="p-1.5 rounded hover:bg-accent text-destructive hover:text-[#FF7B72] transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -442,22 +442,22 @@ export default function FulfillmentTypes() {
       ) : null}
 
       {/* Event convention hint */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4 text-sm text-[#8B949E] space-y-1.5">
-        <div className="flex items-center gap-2 text-[#E6EDF3] font-medium text-xs uppercase tracking-wide mb-2">
-          <Zap className="w-3.5 h-3.5 text-[#0078D4]" /> Workflow Event Convention
+      <div className="bg-card border border-border rounded-lg p-4 text-sm text-muted-foreground space-y-1.5">
+        <div className="flex items-center gap-2 text-foreground font-medium text-xs uppercase tracking-wide mb-2">
+          <Zap className="w-3.5 h-3.5 text-primary" /> Workflow Event Convention
         </div>
         <p>
           Each fulfillment type emits a{" "}
-          <code className="text-xs bg-[#21262D] px-1 py-0.5 rounded text-[#60CDFF]">
+          <code className="text-xs bg-accent px-1 py-0.5 rounded text-[#60CDFF]">
             fulfillment.&lt;key&gt;
           </code>{" "}
           event on the canonical workflow event bus.
         </p>
         <p>
           To handle a type, open{" "}
-          <strong className="text-[#E6EDF3]">Workflows → New Definition</strong>, set the
+          <strong className="text-foreground">Workflows → New Definition</strong>, set the
           trigger type to <em>Event</em>, and enter the event name — for example{" "}
-          <code className="text-xs bg-[#21262D] px-1 py-0.5 rounded text-[#60CDFF]">
+          <code className="text-xs bg-accent px-1 py-0.5 rounded text-[#60CDFF]">
             fulfillment.assessment
           </code>. The workflow receives the full fulfillment payload as its start payload.
         </p>
@@ -470,14 +470,14 @@ export default function FulfillmentTypes() {
       {/* Create / Edit Form Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-lg w-full max-w-lg p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-[#E6EDF3]">
+          <div className="bg-card border border-border rounded-lg w-full max-w-lg p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-foreground">
               {editing ? "Edit Fulfillment Type" : "New Fulfillment Type"}
             </h2>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-[#8B949E] mb-1">
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
                   Key <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -486,13 +486,13 @@ export default function FulfillmentTypes() {
                   value={form.key}
                   onChange={(e) => setForm((f) => ({ ...f, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") }))}
                   placeholder="e.g. assessment"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#6E7681] disabled:opacity-50 font-mono"
+                  className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground placeholder-muted-foreground/70 disabled:opacity-50 font-mono"
                 />
-                <p className="text-xs text-[#6E7681] mt-1">Lowercase letters, digits, underscores. Becomes <code>fulfillment.{form.key || "…"}</code></p>
+                <p className="text-xs text-muted-foreground/70 mt-1">Lowercase letters, digits, underscores. Becomes <code>fulfillment.{form.key || "…"}</code></p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#8B949E] mb-1">
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
                   Label <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -500,22 +500,22 @@ export default function FulfillmentTypes() {
                   value={form.label}
                   onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
                   placeholder="Human-readable name"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#6E7681]"
+                  className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground placeholder-muted-foreground/70"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#8B949E] mb-1">Description</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
                 <textarea
                   value={form.description ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   rows={2}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#6E7681] resize-none"
+                  className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground placeholder-muted-foreground/70 resize-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-[#8B949E] mb-2">Fired When</label>
+                <label className="block text-xs font-medium text-muted-foreground mb-2">Fired When</label>
                 <div className="flex gap-3">
                   {FIRED_WHEN_OPTIONS.map((opt) => (
                     <label key={opt} className="flex items-center gap-1.5 cursor-pointer">
@@ -523,9 +523,9 @@ export default function FulfillmentTypes() {
                         type="checkbox"
                         checked={form.firedWhen.includes(opt)}
                         onChange={() => toggleFiredWhen(opt)}
-                        className="accent-[#0078D4]"
+                        className="accent-primary"
                       />
-                      <span className="text-sm text-[#E6EDF3] capitalize">{opt}</span>
+                      <span className="text-sm text-foreground capitalize">{opt}</span>
                     </label>
                   ))}
                 </div>
@@ -537,18 +537,18 @@ export default function FulfillmentTypes() {
                     type="checkbox"
                     checked={form.recurring}
                     onChange={(e) => setForm((f) => ({ ...f, recurring: e.target.checked }))}
-                    className="accent-[#0078D4]"
+                    className="accent-primary"
                   />
-                  <span className="text-sm text-[#E6EDF3]">Recurring billing</span>
+                  <span className="text-sm text-foreground">Recurring billing</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.isActive}
                     onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
-                    className="accent-[#0078D4]"
+                    className="accent-primary"
                   />
-                  <span className="text-sm text-[#E6EDF3]">Active</span>
+                  <span className="text-sm text-foreground">Active</span>
                 </label>
               </div>
             </div>
@@ -556,14 +556,14 @@ export default function FulfillmentTypes() {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => { setShowForm(false); setEditing(null); }}
-                className="px-4 py-2 rounded text-sm bg-[#21262D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="px-4 py-2 rounded text-sm bg-accent text-foreground hover:bg-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void save()}
                 disabled={saving}
-                className="px-4 py-2 rounded text-sm bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-60 transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 rounded text-sm bg-primary text-white hover:bg-[#106EBE] disabled:opacity-60 transition-colors flex items-center gap-1.5"
               >
                 {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {editing ? "Save Changes" : "Create"}
@@ -576,21 +576,21 @@ export default function FulfillmentTypes() {
       {/* Test Resolve Modal */}
       {resolveModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-lg w-full max-w-md p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-[#E6EDF3] flex items-center gap-2">
-              <Zap className="w-4 h-4 text-[#0078D4]" /> Test Resolve Fulfillment
+          <div className="bg-card border border-border rounded-lg w-full max-w-md p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" /> Test Resolve Fulfillment
             </h2>
-            <p className="text-sm text-[#8B949E]">
-              Manually trigger <code className="text-xs bg-[#21262D] px-1 rounded text-[#60CDFF]">resolve_fulfillment</code> with a fresh idempotency key.
+            <p className="text-sm text-muted-foreground">
+              Manually trigger <code className="text-xs bg-accent px-1 rounded text-[#60CDFF]">resolve_fulfillment</code> with a fresh idempotency key.
               Any subscribed workflow definitions will fire.
             </p>
 
             <div>
-              <label className="block text-xs font-medium text-[#8B949E] mb-1">Fulfillment Type</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Fulfillment Type</label>
               <select
                 value={resolveKey}
                 onChange={(e) => setResolveKey(e.target.value)}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded px-3 py-2 text-sm text-[#E6EDF3]"
+                className="w-full bg-background border border-border rounded px-3 py-2 text-sm text-foreground"
               >
                 <option value="">— select —</option>
                 {rows.filter((r) => r.isActive).map((r) => (
@@ -600,26 +600,26 @@ export default function FulfillmentTypes() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[#8B949E] mb-1">Payload (JSON)</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Payload (JSON)</label>
               <textarea
                 value={resolvePayload}
                 onChange={(e) => setResolvePayload(e.target.value)}
                 rows={4}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded px-3 py-2 text-xs text-[#E6EDF3] font-mono resize-none"
+                className="w-full bg-background border border-border rounded px-3 py-2 text-xs text-foreground font-mono resize-none"
               />
             </div>
 
             <div className="flex justify-end gap-2 pt-1">
               <button
                 onClick={() => { setResolveModal(false); setResolveKey(""); setResolvePayload("{}"); }}
-                className="px-4 py-2 rounded text-sm bg-[#21262D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="px-4 py-2 rounded text-sm bg-accent text-foreground hover:bg-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void manualResolve()}
                 disabled={resolving || !resolveKey}
-                className="px-4 py-2 rounded text-sm bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-60 transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 rounded text-sm bg-primary text-white hover:bg-[#106EBE] disabled:opacity-60 transition-colors flex items-center gap-1.5"
               >
                 {resolving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                 Fire Event
@@ -632,20 +632,20 @@ export default function FulfillmentTypes() {
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D]">
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Import Fulfillment Types</h2>
-              <button onClick={() => setShowImportModal(false)} className="text-[#484F58] hover:text-[#C9D1D9] transition-colors">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-sm font-semibold text-foreground">Import Fulfillment Types</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-muted-foreground/60 hover:text-foreground/90 transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-xs text-[#7D8590]">Paste an export JSON or load a file. Each type is upserted by <code className="bg-[#21262D] px-1 rounded">key</code>.</p>
+              <p className="text-xs text-muted-foreground">Paste an export JSON or load a file. Each type is upserted by <code className="bg-accent px-1 rounded">key</code>.</p>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="text-xs px-3 py-1.5 rounded border border-border bg-accent text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
               >
                 Load from file…
               </button>
@@ -654,15 +654,15 @@ export default function FulfillmentTypes() {
                 onChange={e => setImportJson(e.target.value)}
                 placeholder='{"version":1,"fulfillmentTypes":[...]}'
                 rows={10}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] font-mono focus:outline-none focus:border-[#0078D4] transition-colors resize-none"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground/90 placeholder-muted-foreground/60 font-mono focus:outline-none focus:border-primary transition-colors resize-none"
               />
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#30363D]">
-              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={() => void handleImport()}
                 disabled={!importJson.trim() || importing}
-                className="px-4 py-2 text-xs rounded-lg bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-xs rounded-lg bg-primary text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {importing ? "Importing…" : "Import"}
               </button>
@@ -674,24 +674,24 @@ export default function FulfillmentTypes() {
       {/* Delete Confirm Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-lg w-full max-w-sm p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-[#E6EDF3]">Delete Fulfillment Type</h2>
-            <p className="text-sm text-[#8B949E]">
-              Are you sure you want to delete <strong className="text-[#E6EDF3]">{deleteTarget.label}</strong>?
-              Any services referencing key <code className="text-xs bg-[#21262D] px-1 rounded">{deleteTarget.key}</code> will
+          <div className="bg-card border border-border rounded-lg w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-foreground">Delete Fulfillment Type</h2>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete <strong className="text-foreground">{deleteTarget.label}</strong>?
+              Any services referencing key <code className="text-xs bg-accent px-1 rounded">{deleteTarget.key}</code> will
               lose their fulfillment type link. This action is not reversible.
             </p>
             <div className="flex justify-end gap-2 pt-1">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded text-sm bg-[#21262D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="px-4 py-2 rounded text-sm bg-accent text-foreground hover:bg-border transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void doDelete()}
                 disabled={deleting}
-                className="px-4 py-2 rounded text-sm bg-[#F85149] text-white hover:bg-[#DA3633] disabled:opacity-60 transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 rounded text-sm bg-destructive text-white hover:bg-[#DA3633] disabled:opacity-60 transition-colors flex items-center gap-1.5"
               >
                 {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 Delete

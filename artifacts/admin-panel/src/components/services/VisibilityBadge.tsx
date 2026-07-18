@@ -5,7 +5,7 @@ interface Props {
 
 const VISIBILITY_CONFIG = {
   public: { label: "Public", className: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" },
-  private: { label: "Private", className: "bg-[#30363D] text-[#7D8590] border border-[#30363D]" },
+  private: { label: "Private", className: "bg-border text-muted-foreground border border-border" },
   landing_page_only: { label: "LP Only", className: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
 } as const;
 

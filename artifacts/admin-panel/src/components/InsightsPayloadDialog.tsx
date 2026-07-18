@@ -34,7 +34,7 @@ function CollapsibleSection({ title, icon, defaultOpen = false, badge, children 
     <div className="border border-gray-700/50 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-[#0D1117] hover:bg-gray-800/50 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 bg-background hover:bg-gray-800/50 transition-colors text-left"
       >
         <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
           <span className="text-blue-400">{icon}</span>
@@ -51,7 +51,7 @@ function CollapsibleSection({ title, icon, defaultOpen = false, badge, children 
         }
       </button>
       {open && (
-        <div className="px-4 py-3 bg-[#0D1117]/60 border-t border-gray-700/50">
+        <div className="px-4 py-3 bg-background/60 border-t border-gray-700/50">
           {children}
         </div>
       )}
@@ -61,7 +61,7 @@ function CollapsibleSection({ title, icon, defaultOpen = false, badge, children 
 
 function MonoPre({ text }: { text: string }) {
   return (
-    <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-[#161B22] rounded-lg p-3 overflow-auto max-h-80">
+    <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap leading-relaxed bg-card rounded-lg p-3 overflow-auto max-h-80">
       {text}
     </pre>
   );
@@ -128,7 +128,7 @@ export function InsightsPayloadDialog({ open, onClose, payload, docTypeLabel }: 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80" onClick={onClose} />
-      <div className="relative w-full max-w-3xl bg-[#0D1117] border border-gray-700/50 rounded-xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="relative w-full max-w-3xl bg-background border border-gray-700/50 rounded-xl shadow-2xl flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -164,11 +164,11 @@ export function InsightsPayloadDialog({ open, onClose, payload, docTypeLabel }: 
             defaultOpen
           >
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-[#161B22] rounded-lg px-3 py-2">
+              <div className="bg-card rounded-lg px-3 py-2">
                 <div className="text-gray-500 mb-0.5">Model</div>
                 <div className="text-gray-200 font-mono">{payload.model}</div>
               </div>
-              <div className="bg-[#161B22] rounded-lg px-3 py-2">
+              <div className="bg-card rounded-lg px-3 py-2">
                 <div className="text-gray-500 mb-0.5">Max tokens</div>
                 <div className="text-gray-200 font-mono">{payload.maxTokens.toLocaleString()}</div>
               </div>
@@ -205,7 +205,7 @@ export function InsightsPayloadDialog({ open, onClose, payload, docTypeLabel }: 
           >
             <div className="grid grid-cols-3 gap-2">
               {(["security", "compliance", "copilot", "governance", "productivity", "composite"] as const).map(key => (
-                <div key={key} className="bg-[#161B22] rounded-lg px-3 py-2 text-xs">
+                <div key={key} className="bg-card rounded-lg px-3 py-2 text-xs">
                   <div className="text-gray-500 capitalize mb-0.5">{key}</div>
                   <div className="text-white font-mono font-semibold">{payload.scores[key]}<span className="text-gray-500">/100</span></div>
                 </div>

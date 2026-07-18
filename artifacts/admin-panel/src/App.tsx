@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { InboxProvider } from "@/contexts/InboxContext";
 import LoginPage from "@/pages/Login";
-import DashboardShell from "@/components/DashboardShell";
+import GlobalIDEShell from "@/components/GlobalIDEShell";
 
 // ─── Workspace pages ──────────────────────────────────────────────────────────
 import CommandWorkspace from "@/pages/workspaces/CommandWorkspace";
@@ -31,7 +31,7 @@ import PlanManagementPage from "@/pages/PlanManagement";
 import MspOverridesPage from "@/pages/MspOverrides";
 import MspReportsPage from "@/pages/MspReports";
 
-// ─── Standalone pages (remain at legacy paths, still need DashboardShell) ────
+// ─── Standalone pages (remain at legacy paths, tree leaves in the IDE shell) ─
 import DocumentsPage from "@/pages/crm/Documents";
 import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
@@ -50,8 +50,8 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0D1117]">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -79,7 +79,7 @@ function PostLoginRedirect() {
 // ─── Shorthand wrapper ────────────────────────────────────────────────────────
 
 function AdminRoute({ children }: { children: ReactNode }) {
-  return <RequireAdmin><DashboardShell>{children}</DashboardShell></RequireAdmin>;
+  return <RequireAdmin><GlobalIDEShell>{children}</GlobalIDEShell></RequireAdmin>;
 }
 
 function Router() {
@@ -87,8 +87,8 @@ function Router() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0D1117]">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }

@@ -42,7 +42,7 @@ function StatusBadge({ enabled }: { enabled: boolean }) {
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${
       enabled
         ? "bg-emerald-900/40 text-emerald-400 border-emerald-800"
-        : "bg-[#21262D] text-[#484F58] border-[#30363D]"
+        : "bg-accent text-muted-foreground/60 border-border"
     }`}>
       {enabled ? "Active" : "Disabled"}
     </span>
@@ -107,7 +107,7 @@ export default function AlertRulesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#7D8590] text-sm">
+      <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
         Loading alert rules…
       </div>
     );
@@ -118,24 +118,24 @@ export default function AlertRulesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[#E6EDF3] text-xl font-semibold">Alert Rules</h1>
-          <p className="text-[#7D8590] text-sm mt-1">
+          <h1 className="text-foreground text-xl font-semibold">Alert Rules</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Configure conditions that trigger alerts via Exchange Online email and browser push.
           </p>
         </div>
         <button
           onClick={() => void load()}
-          className="text-xs text-[#0078D4] hover:text-blue-400 transition-colors"
+          className="text-xs text-primary hover:text-blue-400 transition-colors"
         >
           Refresh
         </button>
       </div>
 
       {/* Legend */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4 text-xs text-[#7D8590] space-y-1">
-        <p><span className="text-[#E6EDF3]">Threshold</span> — condition value must be ≥ this to fire the alert.</p>
-        <p><span className="text-[#E6EDF3]">Window</span> — lookback period (minutes) for rate-based conditions.</p>
-        <p><span className="text-[#E6EDF3]">Cooldown</span> — minimum gap between re-alerts for the same rule.</p>
+      <div className="bg-card border border-border rounded-lg p-4 text-xs text-muted-foreground space-y-1">
+        <p><span className="text-foreground">Threshold</span> — condition value must be ≥ this to fire the alert.</p>
+        <p><span className="text-foreground">Window</span> — lookback period (minutes) for rate-based conditions.</p>
+        <p><span className="text-foreground">Cooldown</span> — minimum gap between re-alerts for the same rule.</p>
         <p>Delivery uses the platform Exchange Online mailbox (GRAPH_MAIL_USER_ID) and VAPID browser push.</p>
       </div>
 
@@ -144,8 +144,8 @@ export default function AlertRulesPage() {
         {rules.map((rule) => (
           <div
             key={rule.id}
-            className={`bg-[#161B22] border rounded-lg p-5 transition-opacity ${
-              rule.enabled ? "border-[#30363D]" : "border-[#21262D] opacity-60"
+            className={`bg-card border rounded-lg p-5 transition-opacity ${
+              rule.enabled ? "border-border" : "border-accent opacity-60"
             }`}
           >
             <div className="flex items-start justify-between gap-4">
@@ -153,31 +153,31 @@ export default function AlertRulesPage() {
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <SeverityBadge severity={rule.severity} />
                   <StatusBadge enabled={rule.enabled} />
-                  <span className="text-[#7D8590] text-xs font-mono">{CONDITION_LABELS[rule.conditionType] ?? rule.conditionType}</span>
+                  <span className="text-muted-foreground text-xs font-mono">{CONDITION_LABELS[rule.conditionType] ?? rule.conditionType}</span>
                 </div>
-                <h3 className="text-[#E6EDF3] text-sm font-semibold">{rule.label}</h3>
+                <h3 className="text-foreground text-sm font-semibold">{rule.label}</h3>
                 {rule.description && (
-                  <p className="text-[#7D8590] text-xs mt-0.5">{rule.description}</p>
+                  <p className="text-muted-foreground text-xs mt-0.5">{rule.description}</p>
                 )}
 
-                <div className="flex flex-wrap gap-4 mt-3 text-xs text-[#7D8590]">
+                <div className="flex flex-wrap gap-4 mt-3 text-xs text-muted-foreground">
                   <span>
-                    <span className="text-[#E6EDF3]">Threshold:</span> ≥ {rule.threshold}
+                    <span className="text-foreground">Threshold:</span> ≥ {rule.threshold}
                   </span>
                   <span>
-                    <span className="text-[#E6EDF3]">Window:</span> {rule.windowMinutes}m
+                    <span className="text-foreground">Window:</span> {rule.windowMinutes}m
                   </span>
                   <span>
-                    <span className="text-[#E6EDF3]">Cooldown:</span> {rule.cooldownMinutes}m
+                    <span className="text-foreground">Cooldown:</span> {rule.cooldownMinutes}m
                   </span>
                   <span>
-                    <span className="text-[#E6EDF3]">Delivery:</span>{" "}
+                    <span className="text-foreground">Delivery:</span>{" "}
                     {[rule.deliveryEmail && "email", rule.deliveryPush && "push"]
                       .filter(Boolean).join(", ") || "none"}
                   </span>
                   {rule.deepLinkPath && (
                     <span>
-                      <span className="text-[#E6EDF3]">Link:</span>{" "}
+                      <span className="text-foreground">Link:</span>{" "}
                       <span className="font-mono">{rule.deepLinkPath}</span>
                     </span>
                   )}
@@ -201,7 +201,7 @@ export default function AlertRulesPage() {
                   disabled={toggling === rule.id}
                   className={`text-xs px-3 py-1.5 rounded border transition-colors disabled:opacity-50 ${
                     rule.enabled
-                      ? "border-[#30363D] text-[#7D8590] hover:text-red-400 hover:border-red-800"
+                      ? "border-border text-muted-foreground hover:text-red-400 hover:border-red-800"
                       : "border-emerald-800 text-emerald-400 hover:bg-emerald-900/20"
                   }`}
                 >
@@ -212,7 +212,7 @@ export default function AlertRulesPage() {
                 <button
                   onClick={() => void testRule(rule)}
                   disabled={testing === rule.id}
-                  className="text-xs px-3 py-1.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#0078D4] hover:border-blue-800 transition-colors disabled:opacity-50"
+                  className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-primary hover:border-blue-800 transition-colors disabled:opacity-50"
                 >
                   {testing === rule.id ? "Sending…" : "Test Alert"}
                 </button>
@@ -223,7 +223,7 @@ export default function AlertRulesPage() {
       </div>
 
       {rules.length === 0 && (
-        <div className="text-center py-12 text-[#7D8590] text-sm">
+        <div className="text-center py-12 text-muted-foreground text-sm">
           No alert rules configured. Rules are seeded automatically on server startup.
         </div>
       )}

@@ -24,7 +24,7 @@ const STATUS_CFG: Record<string, { cls: string; label: string }> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status] ?? { cls: "bg-[#30363D] text-[#7D8590] border-[#30363D]", label: status };
+  const cfg = STATUS_CFG[status] ?? { cls: "bg-border text-muted-foreground border-border", label: status };
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${cfg.cls}`}>
       {(status === "running" || status === "awaiting_upload") && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
@@ -53,19 +53,19 @@ function FindingsTab({ result, isAnalyzing }: { result: RunResult; isAnalyzing?:
   if (isAnalyzing && !hasFindings && !hasRecs) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/25">
-          <span className="flex h-2 w-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
-          <p className="text-xs font-medium text-[#58A6FF]">AI analyzing results…</p>
+        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/25">
+          <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+          <p className="text-xs font-medium text-primary">AI analyzing results…</p>
         </div>
         <div className="space-y-2 animate-pulse">
           {[80, 65, 90, 55].map((w, i) => (
             <div key={i} className="flex gap-3 items-start">
-              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[#21262D] mt-0.5" />
-              <div className="flex-1 h-4 rounded bg-[#21262D]" style={{ width: `${w}%` }} />
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-accent mt-0.5" />
+              <div className="flex-1 h-4 rounded bg-accent" style={{ width: `${w}%` }} />
             </div>
           ))}
         </div>
-        <p className="text-xs text-[#484F58] text-center pt-2">Checking again shortly…</p>
+        <p className="text-xs text-muted-foreground/60 text-center pt-2">Checking again shortly…</p>
       </div>
     );
   }
@@ -73,10 +73,10 @@ function FindingsTab({ result, isAnalyzing }: { result: RunResult; isAnalyzing?:
   if (!hasFindings && !hasRecs) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-10 h-10 text-accent mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
         </svg>
-        <p className="text-sm text-[#484F58]">No AI findings or recommendations</p>
+        <p className="text-sm text-muted-foreground/60">No AI findings or recommendations</p>
       </div>
     );
   }
@@ -85,16 +85,16 @@ function FindingsTab({ result, isAnalyzing }: { result: RunResult; isAnalyzing?:
     <div className="space-y-6">
       {hasFindings && (
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#7D8590] mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
             Findings ({result.parsedFindings.length})
           </h3>
           <ol className="space-y-2">
             {result.parsedFindings.map((f, i) => (
               <li key={i} className="flex gap-3">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] text-[10px] font-bold flex items-center justify-center mt-0.5">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/15 border border-primary/30 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
-                <p className="text-sm text-[#C9D1D9] leading-relaxed">{f}</p>
+                <p className="text-sm text-foreground/90 leading-relaxed">{f}</p>
               </li>
             ))}
           </ol>
@@ -103,14 +103,14 @@ function FindingsTab({ result, isAnalyzing }: { result: RunResult; isAnalyzing?:
 
       {hasRecs && (
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#7D8590] mb-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
             Recommendations ({result.recommendations.length})
           </h3>
           <ul className="space-y-2">
             {result.recommendations.map((r, i) => (
               <li key={i} className="flex gap-3">
                 <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-400 mt-2" />
-                <p className="text-sm text-[#C9D1D9] leading-relaxed">{r}</p>
+                <p className="text-sm text-foreground/90 leading-relaxed">{r}</p>
               </li>
             ))}
           </ul>
@@ -128,10 +128,10 @@ function ScoreImpactTab({ result }: { result: RunResult }) {
   if (entries.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-10 h-10 text-accent mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         </svg>
-        <p className="text-sm text-[#484F58]">No score impact data</p>
+        <p className="text-sm text-muted-foreground/60">No score impact data</p>
       </div>
     );
   }
@@ -140,22 +140,22 @@ function ScoreImpactTab({ result }: { result: RunResult }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-[#484F58]">{entries.length} score categories affected</p>
+      <p className="text-xs text-muted-foreground/60">{entries.length} score categories affected</p>
       {entries.map(([key, value]) => {
         const isPos = value > 0;
         const isNeg = value < 0;
         const barPct = Math.round((Math.abs(value) / maxAbs) * 100);
-        const barColor = isPos ? "bg-green-500" : isNeg ? "bg-red-500" : "bg-[#30363D]";
-        const textColor = isPos ? "text-green-400" : isNeg ? "text-red-400" : "text-[#7D8590]";
+        const barColor = isPos ? "bg-green-500" : isNeg ? "bg-red-500" : "bg-border";
+        const textColor = isPos ? "text-green-400" : isNeg ? "text-red-400" : "text-muted-foreground";
         return (
           <div key={key} className="space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-[#C9D1D9] font-medium capitalize">{key.replace(/_/g, " ")}</span>
+              <span className="text-sm text-foreground/90 font-medium capitalize">{key.replace(/_/g, " ")}</span>
               <span className={`text-sm font-bold tabular-nums ${textColor}`}>
                 {isPos ? "+" : ""}{value}
               </span>
             </div>
-            <div className="h-1.5 bg-[#21262D] rounded-full overflow-hidden">
+            <div className="h-1.5 bg-accent rounded-full overflow-hidden">
               <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${barPct}%` }} />
             </div>
           </div>
@@ -210,10 +210,10 @@ function M365ScoreTab({ result }: { result: RunResult }) {
   if (!result.customerId) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-10 h-10 text-accent mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
-        <p className="text-sm text-[#484F58]">No client linked to this run</p>
+        <p className="text-sm text-muted-foreground/60">No client linked to this run</p>
       </div>
     );
   }
@@ -222,7 +222,7 @@ function M365ScoreTab({ result }: { result: RunResult }) {
     return (
       <div className="space-y-3 animate-pulse">
         {SCORE_KEYS.map(({ key }) => (
-          <div key={key} className="h-14 bg-[#161B22] rounded-lg border border-[#21262D]" />
+          <div key={key} className="h-14 bg-card rounded-lg border border-accent" />
         ))}
       </div>
     );
@@ -241,32 +241,32 @@ function M365ScoreTab({ result }: { result: RunResult }) {
   if (!hasDeltas) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 text-[10px] font-bold uppercase tracking-wider text-[#484F58] px-1 mb-1">
+        <div className="grid grid-cols-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1 mb-1">
           <span>Category</span>
           <span className="text-center">Current Score</span>
         </div>
         {SCORE_KEYS.map(({ key, label }) => {
           const current = base[key];
           return (
-            <div key={key} className="grid grid-cols-2 items-center bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-3 gap-2">
-              <span className="text-xs text-[#C9D1D9] font-medium">{label}</span>
+            <div key={key} className="grid grid-cols-2 items-center bg-card border border-accent rounded-lg px-3 py-3 gap-2">
+              <span className="text-xs text-foreground/90 font-medium">{label}</span>
               <div className="flex flex-col items-center">
-                <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{current}</span>
-                <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
-                  <div className="h-full bg-[#0078D4] rounded-full" style={{ width: `${current}%` }} />
+                <span className="text-sm font-bold text-foreground tabular-nums">{current}</span>
+                <div className="w-full h-1 bg-accent rounded-full mt-1">
+                  <div className="h-full bg-primary rounded-full" style={{ width: `${current}%` }} />
                 </div>
               </div>
             </div>
           );
         })}
-        <p className="text-xs text-[#484F58] text-center pt-1">No projected changes from this run</p>
+        <p className="text-xs text-muted-foreground/60 text-center pt-1">No projected changes from this run</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 text-[10px] font-bold uppercase tracking-wider text-[#484F58] px-1 mb-1">
+      <div className="grid grid-cols-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 px-1 mb-1">
         <span>Category</span>
         <span className="text-center">Current</span>
         <span className="text-center">After Script</span>
@@ -279,21 +279,21 @@ function M365ScoreTab({ result }: { result: RunResult }) {
         const arrowColor = isPos ? "text-green-400" : "text-red-400";
         const deltaText = isPos ? `+${delta}` : String(delta);
         return (
-          <div key={key} className="grid grid-cols-3 items-center bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-3 gap-2">
-            <span className="text-xs text-[#C9D1D9] font-medium">{label}</span>
+          <div key={key} className="grid grid-cols-3 items-center bg-card border border-accent rounded-lg px-3 py-3 gap-2">
+            <span className="text-xs text-foreground/90 font-medium">{label}</span>
             <div className="flex flex-col items-center">
-              <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{current}</span>
-              <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
-                <div className="h-full bg-[#0078D4] rounded-full" style={{ width: `${current}%` }} />
+              <span className="text-sm font-bold text-foreground tabular-nums">{current}</span>
+              <div className="w-full h-1 bg-accent rounded-full mt-1">
+                <div className="h-full bg-primary rounded-full" style={{ width: `${current}%` }} />
               </div>
             </div>
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-1">
                 <span className={`text-[10px] font-bold ${arrowColor}`}>{isPos ? "▲" : "▼"}</span>
-                <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{after}</span>
+                <span className="text-sm font-bold text-foreground tabular-nums">{after}</span>
                 <span className={`text-[10px] font-semibold ${arrowColor}`}>({deltaText})</span>
               </div>
-              <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
+              <div className="w-full h-1 bg-accent rounded-full mt-1">
                 <div
                   className={`h-full rounded-full ${isPos ? "bg-green-500" : "bg-red-500"}`}
                   style={{ width: `${after}%` }}
@@ -331,7 +331,7 @@ function colorizeJson(raw: string): string {
       if (boolNull === "true" || boolNull === "false")
         return `<span style="color:#56D364">${match}</span>`;
       if (boolNull === "null")
-        return `<span style="color:#8B949E">${match}</span>`;
+        return `<span style="color:#8B94A3">${match}</span>`;
       if (num !== undefined)
         return `<span style="color:#FFA657">${match}</span>`;
       return match;
@@ -379,9 +379,9 @@ function RawOutputTab({ result }: { result: RunResult }) {
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <p className="text-xs text-[#484F58]">Raw JSON output</p>
+          <p className="text-xs text-muted-foreground/60">Raw JSON output</p>
           {lineCount > 0 && (
-            <span className="text-[10px] text-[#484F58] bg-[#161B22] border border-[#21262D] rounded px-1.5 py-0.5">
+            <span className="text-[10px] text-muted-foreground/60 bg-card border border-accent rounded px-1.5 py-0.5">
               {lineCount} lines · {byteCount < 1024 ? `${byteCount} B` : `${(byteCount / 1024).toFixed(1)} KB`}
             </span>
           )}
@@ -389,7 +389,7 @@ function RawOutputTab({ result }: { result: RunResult }) {
         <button
           onClick={handleCopy}
           disabled={!plainText}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
         >
           {copied
             ? <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -401,15 +401,15 @@ function RawOutputTab({ result }: { result: RunResult }) {
 
       {/* Code block */}
       {!plainText ? (
-        <div className="flex-1 flex items-center justify-center bg-[#0D1117] border border-[#30363D] rounded-lg">
-          <p className="text-xs text-[#484F58]">(no output data)</p>
+        <div className="flex-1 flex items-center justify-center bg-background border border-border rounded-lg">
+          <p className="text-xs text-muted-foreground/60">(no output data)</p>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 bg-[#0D1117] border border-[#30363D] rounded-lg overflow-auto">
+        <div className="flex-1 min-h-0 bg-background border border-border rounded-lg overflow-auto">
           <div className="flex min-w-0">
             {/* Line numbers */}
             <div
-              className="flex-shrink-0 select-none text-right pr-3 pl-3 py-4 border-r border-[#21262D] text-[#484F58]"
+              className="flex-shrink-0 select-none text-right pr-3 pl-3 py-4 border-r border-accent text-muted-foreground/60"
               style={{ fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace", fontSize: "11px", lineHeight: "1.6" }}
               aria-hidden
             >
@@ -419,7 +419,7 @@ function RawOutputTab({ result }: { result: RunResult }) {
             </div>
             {/* Highlighted content */}
             <pre
-              className="flex-1 py-4 pl-4 pr-6 text-[#C9D1D9] overflow-visible"
+              className="flex-1 py-4 pl-4 pr-6 text-foreground/90 overflow-visible"
               style={{
                 fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace",
                 fontSize: "11px",
@@ -492,14 +492,14 @@ function AwaitingUploadActions({ result, onUploaded }: { result: RunResult; onUp
         <span className="text-amber-400 text-base leading-none mt-0.5">📋</span>
         <div>
           <p className="text-sm font-semibold text-amber-300">Awaiting manual execution &amp; upload</p>
-          <p className="text-xs text-[#7D8590] mt-1 leading-relaxed">Download the .ps1, run it in the customer's tenant, then upload the JSON output here.</p>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">Download the .ps1, run it in the customer's tenant, then upload the JSON output here.</p>
         </div>
       </div>
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => void handleDownload()}
           disabled={downloading}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
         >
           {downloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           {downloading ? "Downloading…" : "Download .ps1"}
@@ -513,10 +513,10 @@ function AwaitingUploadActions({ result, onUploaded }: { result: RunResult; onUp
         </button>
       </div>
       {showForm && (
-        <div className="space-y-2 border border-[#30363D] rounded-lg p-3 bg-[#0D1117]">
+        <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wider text-[#7D8590]">Paste JSON output</p>
-            <button onClick={() => { setShowForm(false); setJsonText(""); }} className="text-[#484F58] hover:text-[#7D8590]">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Paste JSON output</p>
+            <button onClick={() => { setShowForm(false); setJsonText(""); }} className="text-muted-foreground/60 hover:text-muted-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -525,7 +525,7 @@ function AwaitingUploadActions({ result, onUploaded }: { result: RunResult; onUp
             onChange={e => setJsonText(e.target.value)}
             placeholder={'{\n  "data": {...}\n}'}
             rows={8}
-            className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] bg-[#161B22] font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-[#484F58] resize-y"
+            className="w-full border border-border rounded-lg px-3 py-2 text-xs text-foreground bg-card font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-muted-foreground/60 resize-y"
           />
           <div className="flex justify-end">
             <button
@@ -650,20 +650,20 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
+    <div className="flex flex-col h-full overflow-hidden bg-background">
 
       {/* Header */}
-      <div className="flex items-start gap-3 px-5 py-3 border-b border-[#21262D] bg-[#161B22] flex-shrink-0">
+      <div className="flex items-start gap-3 px-5 py-3 border-b border-accent bg-card flex-shrink-0">
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors flex-shrink-0 mt-0.5"
+          className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0 mt-0.5"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Editor
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-[#E6EDF3] truncate">
+            <span className="text-sm font-semibold text-foreground truncate">
               {liveResult.scriptName ?? `Script #${liveResult.scriptId}`}
             </span>
             <StatusBadge status={liveResult.status} />
@@ -671,40 +671,40 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
               <span className="text-[10px] text-amber-500/80 font-medium">📋 Manual</span>
             )}
             {isAnalyzing && (
-              <span className="flex items-center gap-1 text-[10px] text-[#58A6FF] font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
+              <span className="flex items-center gap-1 text-[10px] text-primary font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 AI analyzing…
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             {liveResult.clientName && (
-              <span className="text-xs text-[#7D8590]">
+              <span className="text-xs text-muted-foreground">
                 {liveResult.clientName}
               </span>
             )}
             {liveResult.packageName && (
               <>
-                <span className="text-[#30363D]">·</span>
-                <span className="text-xs text-[#7D8590]">{liveResult.packageName}</span>
+                <span className="text-border">·</span>
+                <span className="text-xs text-muted-foreground">{liveResult.packageName}</span>
               </>
             )}
-            <span className="text-[#30363D]">·</span>
-            <span className="text-xs text-[#484F58]">{formatRelative(liveResult.createdAt)}</span>
+            <span className="text-border">·</span>
+            <span className="text-xs text-muted-foreground/60">{formatRelative(liveResult.createdAt)}</span>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-0.5 px-5 py-2 border-b border-[#21262D] bg-[#0D1117] flex-shrink-0">
+      <div className="flex items-center gap-0.5 px-5 py-2 border-b border-accent bg-background flex-shrink-0">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
               activeTab === tab.id
-                ? "bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/30"
-                : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "text-muted-foreground hover:text-foreground border border-transparent"
             }`}
           >
             {tab.label}
@@ -722,12 +722,12 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
 
       {/* Action bar */}
       {liveResult.status !== "awaiting_upload" && (liveResult.customerId && hasImpact && liveResult.status === "completed" || !liveResult.reviewedAt) && (
-        <div className="flex items-center gap-2 px-5 py-3 border-t border-[#21262D] bg-[#161B22] flex-shrink-0">
+        <div className="flex items-center gap-2 px-5 py-3 border-t border-accent bg-card flex-shrink-0">
           {liveResult.customerId && hasImpact && liveResult.status === "completed" && (
             <button
               onClick={() => void handleApplyToClient()}
               disabled={applying}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
             >
               {applying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
               Apply Scores
@@ -744,7 +744,7 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
                 {marking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                 Mark Reviewed
               </button>
-              <p className="text-[10px] text-[#484F58] pr-0.5">Flags this result as acknowledged — no further action needed.</p>
+              <p className="text-[10px] text-muted-foreground/60 pr-0.5">Flags this result as acknowledged — no further action needed.</p>
             </div>
           )}
         </div>
@@ -752,7 +752,7 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
 
       {/* Awaiting upload action area */}
       {liveResult.status === "awaiting_upload" && (
-        <div className="border-t border-[#21262D] px-5 py-4 flex-shrink-0">
+        <div className="border-t border-accent px-5 py-4 flex-shrink-0">
           <AwaitingUploadActions result={liveResult} onUploaded={onUploaded} />
         </div>
       )}

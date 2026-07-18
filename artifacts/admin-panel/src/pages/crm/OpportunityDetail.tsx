@@ -21,7 +21,7 @@ const STATE_OPTIONS: { value: OpportunityState; label: string; color: string }[]
   { value: "contacted", label: "Contacted", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
   { value: "qualified", label: "Qualified", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
   { value: "converted", label: "Converted", color: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
-  { value: "archived",  label: "Archived",  color: "bg-[#30363D] text-[#7D8590] border-[#30363D]" },
+  { value: "archived",  label: "Archived",  color: "bg-border text-muted-foreground border-border" },
 ];
 
 interface SowProposal {
@@ -61,7 +61,7 @@ interface OpportunityDetail {
 }
 
 const STATUS_CONFIG = {
-  todo: { label: "To Do", color: "bg-[#30363D] text-[#7D8590]" },
+  todo: { label: "To Do", color: "bg-border text-muted-foreground" },
   in_progress: { label: "In Progress", color: "bg-blue-500/15 text-blue-400" },
   done: { label: "Done", color: "bg-green-500/15 text-green-400" },
 };
@@ -80,10 +80,10 @@ function SubScoreBar({ label, score, max, color }: { label: string; score: numbe
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-[#C9D1D9]">{label}</span>
-        <span className="text-xs font-bold text-[#E6EDF3]">{score}<span className="text-[#7D8590] font-normal">/{max}</span></span>
+        <span className="text-xs font-medium text-foreground/90">{label}</span>
+        <span className="text-xs font-bold text-foreground">{score}<span className="text-muted-foreground font-normal">/{max}</span></span>
       </div>
-      <div className="h-2 bg-[#30363D] rounded-full overflow-hidden">
+      <div className="h-2 bg-border rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -160,7 +160,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -169,14 +169,14 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Opportunity not found.</p>
-        <button onClick={() => navigate("/crm/opportunities")} className="mt-4 text-sm text-[#0078D4] hover:underline">
+        <button onClick={() => navigate("/crm/opportunities")} className="mt-4 text-sm text-primary hover:underline">
           ← Back to Opportunities
         </button>
       </div>
     );
   }
 
-  const scoreColor = opportunity.scoreSnapshot >= 75 ? "text-purple-400" : "text-[#0078D4]";
+  const scoreColor = opportunity.scoreSnapshot >= 75 ? "text-purple-400" : "text-primary";
   const stageLabel = opportunity.scoreSnapshot >= 75 ? "Hot" : "Warm";
   const stageBg = opportunity.scoreSnapshot >= 75 ? "bg-purple-500/20 text-purple-300 border-purple-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30";
 
@@ -186,11 +186,11 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
   return (
     <div className="p-4 sm:p-6 max-w-[1000px] space-y-6">
       {/* Header */}
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 pt-5 pb-4 bg-[#0D1117] border-b border-border">
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 pt-5 pb-4 bg-background border-b border-border">
         <div className="flex items-start gap-4 flex-wrap">
           <button
             onClick={() => navigate("/crm/opportunities")}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#E6EDF3] transition-colors mt-0.5"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mt-0.5"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -200,7 +200,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${stageBg}`}>{stageLabel}</span>
-              <h1 className="text-lg font-bold text-[#E6EDF3] truncate">
+              <h1 className="text-lg font-bold text-foreground truncate">
                 {opportunity.lead?.name ?? `Lead #${opportunity.leadId}`}
               </h1>
               {opportunity.lead?.company && (
@@ -210,7 +210,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
             {opportunity.lead && (
               <button
                 onClick={() => navigate(`/crm/leads/${opportunity.lead!.id}`)}
-                className="text-xs text-[#0078D4] hover:underline mt-0.5"
+                className="text-xs text-primary hover:underline mt-0.5"
               >
                 View Lead Profile →
               </button>
@@ -227,7 +227,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                   className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-all disabled:opacity-50 ${
                     opportunity.state === opt.value
                       ? opt.color
-                      : "bg-transparent text-[#7D8590] border-[#30363D] hover:border-[#58A6FF]/50 hover:text-[#E6EDF3]"
+                      : "bg-transparent text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
                   }`}
                 >
                   {opt.label}
@@ -245,9 +245,9 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
         {/* Left column: score + evidence */}
         <div className="space-y-6">
           {/* Score breakdown */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-              <h2 className="text-sm font-bold text-[#E6EDF3]">Score Snapshot</h2>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-accent">
+              <h2 className="text-sm font-bold text-foreground">Score Snapshot</h2>
             </div>
             <div className="px-5 py-5 space-y-4">
               <SubScoreBar label="Fit" score={opportunity.scoreFit} max={25} color="bg-sky-500" />
@@ -260,16 +260,16 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
 
           {/* Evidence log */}
           {opportunity.evidence.length > 0 && (
-            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-                <h2 className="text-sm font-bold text-[#E6EDF3]">Evidence Log</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-border bg-accent">
+                <h2 className="text-sm font-bold text-foreground">Evidence Log</h2>
               </div>
               <div className="px-5 py-5">
                 <ul className="space-y-2">
                   {opportunity.evidence.map((item, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] mt-1.5 shrink-0" />
-                      <span className="text-sm text-[#C9D1D9]">{item}</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                      <span className="text-sm text-foreground/90">{item}</span>
                     </li>
                   ))}
                 </ul>
@@ -278,31 +278,31 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
           )}
 
           {/* Meta */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-              <h2 className="text-sm font-bold text-[#E6EDF3]">Details</h2>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-accent">
+              <h2 className="text-sm font-bold text-foreground">Details</h2>
             </div>
             <div className="px-5 py-5 space-y-3">
               {opportunity.recommendedNextStep && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Recommended Next Step</p>
                   <div className="flex items-center gap-1.5">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-[#0078D4] shrink-0">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-primary shrink-0">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    <span className="text-sm font-semibold text-[#0078D4]">{opportunity.recommendedNextStep}</span>
+                    <span className="text-sm font-semibold text-primary">{opportunity.recommendedNextStep}</span>
                   </div>
                 </div>
               )}
               {opportunity.workflowType && (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Workflow Template</p>
-                  <p className="text-sm text-[#E6EDF3]">{WORKFLOW_LABELS[opportunity.workflowType] ?? opportunity.workflowType}</p>
+                  <p className="text-sm text-foreground">{WORKFLOW_LABELS[opportunity.workflowType] ?? opportunity.workflowType}</p>
                 </div>
               )}
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Created</p>
-                <p className="text-sm text-[#E6EDF3]">
+                <p className="text-sm text-foreground">
                   {new Date(opportunity.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
                 </p>
               </div>
@@ -314,9 +314,9 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
         <div className="lg:col-span-2 space-y-6">
 
           {/* Delivered Proposals */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[#E6EDF3]">Delivered Proposals</h2>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground">Delivered Proposals</h2>
               {opportunity.proposals.length > 0 && (
                 <span className="text-xs text-muted-foreground">{opportunity.proposals.length} SOW{opportunity.proposals.length !== 1 ? "s" : ""}</span>
               )}
@@ -331,22 +331,22 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                 {opportunity.proposals.map(p => (
                   <div key={p.id} className="px-5 py-4 flex items-start gap-4">
                     <div className="mt-0.5 shrink-0">
-                      <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#0078D4" strokeWidth={1.5} className="w-4 h-4">
+                      <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#2F6FED" strokeWidth={1.5} className="w-4 h-4">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[#E6EDF3] truncate">{p.title}</p>
+                      <p className="text-sm font-semibold text-foreground truncate">{p.title}</p>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                           p.status === "delivered" ? "bg-green-500/15 text-green-400" :
                           p.status === "approved"  ? "bg-blue-500/15 text-blue-400" :
-                          "bg-[#30363D] text-[#7D8590]"
+                          "bg-border text-muted-foreground"
                         }`}>{p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
                         {p.sowTotalPrice && (
-                          <span className="text-xs font-bold text-[#0078D4]">
+                          <span className="text-xs font-bold text-primary">
                             ${parseFloat(p.sowTotalPrice).toLocaleString()}
                           </span>
                         )}
@@ -362,7 +362,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                         href={p.pdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="shrink-0 text-xs text-[#0078D4] hover:underline flex items-center gap-1"
+                        className="shrink-0 text-xs text-primary hover:underline flex items-center gap-1"
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -376,9 +376,9 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
             )}
           </div>
 
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[#E6EDF3]">Workflow Tasks</h2>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+              <h2 className="text-sm font-bold text-foreground">Workflow Tasks</h2>
               <span className="text-xs text-muted-foreground">
                 {doneTasks}/{totalTasks} done
               </span>
@@ -386,7 +386,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
 
             {/* Progress bar */}
             {totalTasks > 0 && (
-              <div className="h-1.5 bg-[#30363D]">
+              <div className="h-1.5 bg-border">
                 <div
                   className="h-full bg-green-500 transition-all"
                   style={{ width: `${Math.round((doneTasks / totalTasks) * 100)}%` }}
@@ -410,7 +410,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                           className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                             task.status === "done"
                               ? "bg-green-500 border-green-500"
-                              : "border-[#30363D] hover:border-[#0078D4]"
+                              : "border-border hover:border-primary"
                           } disabled:opacity-40`}
                         >
                           {task.status === "done" && (
@@ -423,7 +423,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
-                          <p className={`text-sm font-semibold ${task.status === "done" ? "line-through text-muted-foreground" : "text-[#E6EDF3]"}`}>
+                          <p className={`text-sm font-semibold ${task.status === "done" ? "line-through text-muted-foreground" : "text-foreground"}`}>
                             {task.title}
                           </p>
                           <div className="flex items-center gap-2 shrink-0">
@@ -431,7 +431,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                               value={task.status}
                               onChange={e => void updateTaskStatus(task.id, e.target.value as "todo" | "in_progress" | "done")}
                               disabled={updatingTask === task.id}
-                              className="text-xs border border-border rounded-lg px-2 py-1 bg-[#1C2128] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-40"
+                              className="text-xs border border-border rounded-lg px-2 py-1 bg-accent text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-40"
                             >
                               <option value="todo">To Do</option>
                               <option value="in_progress">In Progress</option>
@@ -459,7 +459,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
                           {task.kanbanTaskId && (
                             <a
                               href="/admin-panel/kanban"
-                              className="text-[10px] text-[#0078D4] hover:underline"
+                              className="text-[10px] text-primary hover:underline"
                               onClick={e => { e.stopPropagation(); }}
                             >
                               View on Kanban →

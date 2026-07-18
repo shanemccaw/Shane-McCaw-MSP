@@ -48,13 +48,13 @@ function MultiCheckboxSelect({
         <label key={opt.key} className="flex items-start gap-2 cursor-pointer select-none group">
           <input
             type="checkbox"
-            className="mt-0.5 shrink-0 rounded border-[#30363D] accent-cyan-500"
+            className="mt-0.5 shrink-0 rounded border-border accent-cyan-500"
             checked={value.includes(opt.key)}
             onChange={() => toggle(opt.key)}
           />
           <span className="flex flex-col min-w-0">
-            <span className="text-xs text-[#E6EDF3] leading-tight">{opt.label}</span>
-            <code className="text-[10px] text-[#7D8590] leading-tight">{opt.key}</code>
+            <span className="text-xs text-foreground leading-tight">{opt.label}</span>
+            <code className="text-[10px] text-muted-foreground leading-tight">{opt.key}</code>
           </span>
         </label>
       ))}
@@ -75,13 +75,13 @@ function CapabilitiesEditor({
     <div className="space-y-2">
       {entries.map(([k, v]) => (
         <div key={k} className="flex items-center gap-2">
-          <code className="text-xs text-[#7D8590] flex-1">{k}</code>
-          <label className="flex items-center gap-1.5 text-xs text-[#E6EDF3]">
+          <code className="text-xs text-muted-foreground flex-1">{k}</code>
+          <label className="flex items-center gap-1.5 text-xs text-foreground">
             <input
               type="checkbox"
               checked={v}
               onChange={e => onChange({ ...value, [k]: e.target.checked })}
-              className="rounded border-[#30363D] accent-[#0078D4]"
+              className="rounded border-border accent-primary"
             />
             {v ? "Enabled" : "Disabled"}
           </label>
@@ -104,7 +104,7 @@ function CapabilitiesEditor({
           value={newKey}
           onChange={e => setNewKey(e.target.value)}
           placeholder="capability key"
-          className="flex-1 border border-[#30363D] rounded-lg px-2 py-1 text-xs bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+          className="flex-1 border border-border rounded-lg px-2 py-1 text-xs bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button
           type="button"
@@ -114,7 +114,7 @@ function CapabilitiesEditor({
             onChange({ ...value, [newKey.trim()]: true });
             setNewKey("");
           }}
-          className="text-xs border border-[#30363D] px-2 py-1 rounded-lg hover:bg-[#1C2128] text-[#7D8590] disabled:opacity-40"
+          className="text-xs border border-border px-2 py-1 rounded-lg hover:bg-accent text-muted-foreground disabled:opacity-40"
         >
           <Plus className="w-3 h-3" />
         </button>
@@ -248,77 +248,77 @@ function WorkflowBuilder({ serviceId, serviceName, onClose }: { serviceId: numbe
   };
 
   return (
-    <div className="border border-[#0078D4]/30 bg-[#1C2128] rounded-xl p-5">
+    <div className="border border-primary/30 bg-accent rounded-xl p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
-          <h4 className="text-sm font-bold text-[#E6EDF3]">Project Template — {serviceName}</h4>
-          <p className="text-xs text-[#7D8590] mt-0.5">Build the questionnaire clients walk through to calculate their final price.</p>
+          <h4 className="text-sm font-bold text-foreground">Project Template — {serviceName}</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">Build the questionnaire clients walk through to calculate their final price.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => { setShowCopyFrom(p => !p); setCopySourceId(""); }} className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCopyFrom ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>Copy from…</button>
-          <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3]">Close</button>
+          <button onClick={() => { setShowCopyFrom(p => !p); setCopySourceId(""); }} className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCopyFrom ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>Copy from…</button>
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
         </div>
       </div>
       {showCopyFrom && (
-        <div className="bg-[#161B22] border border-border rounded-xl p-4 mb-4 space-y-3">
-          <p className="text-xs font-semibold text-[#E6EDF3]">Copy workflow steps from another service</p>
-          <select value={copySourceId} onChange={e => setCopySourceId(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-[#161B22] text-[#E6EDF3]">
+        <div className="bg-card border border-border rounded-xl p-4 mb-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground">Copy workflow steps from another service</p>
+          <select value={copySourceId} onChange={e => setCopySourceId(e.target.value)} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground">
             <option value="">— Select a service —</option>
             {allServices.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <div className="flex gap-4">
             {(["replace", "append"] as const).map(m => (
-              <label key={m} className="flex items-center gap-1.5 text-xs text-[#E6EDF3] cursor-pointer">
+              <label key={m} className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
                 <input type="radio" name="copyMode" value={m} checked={copyMode === m} onChange={() => setCopyMode(m)} />
                 {m === "replace" ? "Replace" : "Append"}
               </label>
             ))}
           </div>
           <div className="flex gap-2">
-            <button onClick={() => void handleCopyFrom()} disabled={!copySourceId || copying} className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE] disabled:opacity-50">
+            <button onClick={() => void handleCopyFrom()} disabled={!copySourceId || copying} className="flex items-center gap-1.5 text-xs bg-primary text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE] disabled:opacity-50">
               {copying ? <Loader2 className="w-3 h-3 animate-spin" /> : null}{copying ? "Copying…" : "Copy steps"}
             </button>
-            <button onClick={() => setShowCopyFrom(false)} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-2">Cancel</button>
+            <button onClick={() => setShowCopyFrom(false)} className="text-xs text-muted-foreground hover:text-foreground px-2">Cancel</button>
           </div>
         </div>
       )}
-      {loading ? <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-[#0078D4]" /></div> : (
+      {loading ? <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div> : (
         <>
-          {steps.length === 0 && <p className="text-sm text-[#7D8590] bg-[#161B22] border border-border rounded-lg px-4 py-3 mb-4">No steps yet. Add a step to create the wizard questionnaire.</p>}
+          {steps.length === 0 && <p className="text-sm text-muted-foreground bg-card border border-border rounded-lg px-4 py-3 mb-4">No steps yet. Add a step to create the wizard questionnaire.</p>}
           <div className="space-y-4">
             {steps.map((step, si) => (
-              <div key={step.id} className="bg-[#161B22] border border-border rounded-xl p-4">
+              <div key={step.id} className="bg-card border border-border rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveStep(si, -1)} disabled={si === 0} className="text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} className="text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => moveStep(si, -1)} disabled={si === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronUp className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
                   </div>
-                  <span className="text-xs font-bold text-[#0078D4] bg-[#0078D4]/10 rounded-full w-6 h-6 flex items-center justify-center">{si + 1}</span>
-                  <input value={step.title} onChange={e => updateStepTitle(si, e.target.value)} placeholder="Step title" className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-[#1C2128] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+                  <span className="text-xs font-bold text-primary bg-primary/10 rounded-full w-6 h-6 flex items-center justify-center">{si + 1}</span>
+                  <input value={step.title} onChange={e => updateStepTitle(si, e.target.value)} placeholder="Step title" className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-accent text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                   <button onClick={() => removeStep(si)} className="text-red-400 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </div>
                 <div className="ml-12 mb-3">
-                  <textarea value={step.description ?? ""} onChange={e => updateStepDesc(si, e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-border rounded-lg px-3 py-1.5 text-xs bg-[#1C2128] text-[#E6EDF3] resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+                  <textarea value={step.description ?? ""} onChange={e => updateStepDesc(si, e.target.value)} placeholder="Description (optional)" rows={2} className="w-full border border-border rounded-lg px-3 py-1.5 text-xs bg-accent text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary" />
                 </div>
                 <div className="ml-12 space-y-2">
                   {step.options.map((opt, oi) => (
                     <div key={opt.id} className="grid grid-cols-[1fr_110px_28px] gap-2 items-start">
-                      <input value={opt.label} onChange={e => updateOption(si, oi, "label", e.target.value)} placeholder="Option label" className="border border-border rounded-lg px-3 py-1.5 text-xs bg-[#1C2128] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+                      <input value={opt.label} onChange={e => updateOption(si, oi, "label", e.target.value)} placeholder="Option label" className="border border-border rounded-lg px-3 py-1.5 text-xs bg-accent text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#7D8590]">+$</span>
-                        <input type="number" min="0" step="1" value={opt.priceAdjustment} onChange={e => updateOption(si, oi, "priceAdjustment", parseFloat(e.target.value) || 0)} className="w-full border border-border rounded-lg pl-7 pr-3 py-1.5 text-xs bg-[#1C2128] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">+$</span>
+                        <input type="number" min="0" step="1" value={opt.priceAdjustment} onChange={e => updateOption(si, oi, "priceAdjustment", parseFloat(e.target.value) || 0)} className="w-full border border-border rounded-lg pl-7 pr-3 py-1.5 text-xs bg-accent text-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
                       </div>
                       <button onClick={() => removeOption(si, oi)} className="text-red-400 h-[30px] flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
-                  <button onClick={() => addOption(si)} className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#58A6FF] transition-colors mt-1"><Plus className="w-3 h-3" />Add option</button>
+                  <button onClick={() => addOption(si)} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary transition-colors mt-1"><Plus className="w-3 h-3" />Add option</button>
                 </div>
               </div>
             ))}
           </div>
           <div className="flex items-center gap-3 mt-4">
-            <button onClick={addStep} className="flex items-center gap-2 border border-dashed border-[#0078D4]/50 text-[#0078D4] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/5"><Plus className="w-3.5 h-3.5" />Add step</button>
-            <button onClick={() => void handleSave()} disabled={saving} className="flex items-center gap-2 bg-[#0078D4] text-white text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50">
+            <button onClick={addStep} className="flex items-center gap-2 border border-dashed border-primary/50 text-primary text-xs font-semibold px-4 py-2 rounded-lg hover:bg-primary/5"><Plus className="w-3.5 h-3.5" />Add step</button>
+            <button onClick={() => void handleSave()} disabled={saving} className="flex items-center gap-2 bg-primary text-white text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{saving ? "Saving…" : "Save Project Template"}
             </button>
             {savedMsg && <span className="text-xs text-emerald-400 font-semibold">✓ Saved</span>}
@@ -344,7 +344,7 @@ function PermissionsArrayEditor({
           : { scope: "", reason: "" }
       )
     : [];
-  const cls = "border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]";
+  const cls = "border border-border rounded-lg px-3 py-2 text-xs bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary";
   const update = (i: number, key: "scope" | "reason", val: string) => {
     const next = entries.map((e, idx) => idx === i ? { ...e, [key]: val } : e);
     onChange(next.length > 0 ? next : null);
@@ -365,7 +365,7 @@ function PermissionsArrayEditor({
           <button type="button" onClick={() => remove(i)} className="text-red-400 hover:text-red-300 mt-2"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      <button type="button" onClick={add} className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#58A6FF]">
+      <button type="button" onClick={add} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary">
         <Plus className="w-3.5 h-3.5" />Add permission
       </button>
     </div>
@@ -395,7 +395,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
   const value = isTA ? taValue : coreValue;
   const onChange = isTA ? onTaChange : onCoreChange;
 
-  const cls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]";
+  const cls = "w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary";
 
   switch (field.kind) {
     case "text":
@@ -434,7 +434,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
     case "currency":
       return (
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#7D8590]">$</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
           <input
             type="number"
             min="0"
@@ -454,9 +454,9 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
             type="checkbox"
             checked={Boolean(value)}
             onChange={e => onChange(e.target.checked)}
-            className="rounded border-[#30363D] accent-[#0078D4] w-4 h-4"
+            className="rounded border-border accent-primary w-4 h-4"
           />
-          <span className="text-sm text-[#E6EDF3]">{field.label}</span>
+          <span className="text-sm text-foreground">{field.label}</span>
         </label>
       );
 
@@ -489,7 +489,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
       const toggle = (v: string) =>
         onChange(currentArr.includes(v) ? currentArr.filter(x => x !== v) : [...currentArr, v]);
       if (dynamicOpts.length === 0) {
-        return <p className="text-xs text-[#7D8590] italic">No options available</p>;
+        return <p className="text-xs text-muted-foreground italic">No options available</p>;
       }
       return (
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
@@ -497,11 +497,11 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
             <label key={opt.value} className="flex items-start gap-2 cursor-pointer select-none">
               <input
                 type="checkbox"
-                className="mt-0.5 shrink-0 rounded border-[#30363D] accent-[#0078D4]"
+                className="mt-0.5 shrink-0 rounded border-border accent-primary"
                 checked={currentArr.includes(opt.value)}
                 onChange={() => toggle(opt.value)}
               />
-              <span className="text-xs text-[#E6EDF3] leading-tight">{opt.label}</span>
+              <span className="text-xs text-foreground leading-tight">{opt.label}</span>
             </label>
           ))}
         </div>
@@ -518,7 +518,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
       return (
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-[#7D8590] mb-1">Min seats</label>
+            <label className="block text-[10px] text-muted-foreground mb-1">Min seats</label>
             <input
               type="number"
               min="0"
@@ -528,7 +528,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
             />
           </div>
           <div>
-            <label className="block text-[10px] text-[#7D8590] mb-1">Max seats</label>
+            <label className="block text-[10px] text-muted-foreground mb-1">Max seats</label>
             <input
               type="number"
               min="0"
@@ -571,7 +571,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
     }
 
     case "icon-picker": {
-      const cls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]";
+      const cls = "w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary";
       return (
         <select
           value={(value as string | null | undefined) ?? ""}
@@ -597,7 +597,7 @@ function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ct
       return <PermissionsArrayEditor value={value} onChange={onChange} />;
 
     default:
-      return <p className="text-xs text-[#7D8590] italic">Unsupported field kind</p>;
+      return <p className="text-xs text-muted-foreground italic">Unsupported field kind</p>;
   }
 }
 
@@ -897,17 +897,17 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   // Render a config-driven section as a card
   const renderSection = useCallback((section: SectionDef) => {
     return (
-      <div key={section.key} className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
+      <div key={section.key} className="bg-card rounded-xl border border-border p-6 space-y-5">
         <div>
-          <h3 className="text-sm font-bold text-[#E6EDF3]">{section.label}</h3>
+          <h3 className="text-sm font-bold text-foreground">{section.label}</h3>
         </div>
         <div className="space-y-4">
           {section.fields.map(f => (
             <div key={f.key}>
               {f.kind !== "boolean" && (
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">{f.label}</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">{f.label}</label>
               )}
-              {f.hint && <p className="text-xs text-[#7D8590] mb-1.5">{f.hint}</p>}
+              {f.hint && <p className="text-xs text-muted-foreground mb-1.5">{f.hint}</p>}
               <FieldRenderer
                 field={f}
                 coreValue={getCoreValue(f.key)}
@@ -931,13 +931,13 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
           <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
             <div className="flex items-center gap-3 mb-6">
               {!panelMode && (
-                <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+                <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <ArrowLeft className="w-4 h-4" />
                 </button>
               )}
               <div>
-                <h2 className="text-xl font-bold text-[#E6EDF3]">New Product</h2>
-                <p className="text-xs text-[#7D8590] mt-0.5">Choose a product type to get started</p>
+                <h2 className="text-xl font-bold text-foreground">New Product</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Choose a product type to get started</p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -946,20 +946,20 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                   key={cfg.key}
                   type="button"
                   onClick={() => setCreateType(cfg.key)}
-                  className="flex flex-col items-start gap-2 p-5 bg-[#161B22] border border-[#30363D] rounded-xl text-left hover:border-[#0078D4] hover:bg-[#0078D4]/5 transition-all group"
+                  className="flex flex-col items-start gap-2 p-5 bg-card border border-border rounded-xl text-left hover:border-primary hover:bg-primary/5 transition-all group"
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-sm font-bold text-[#E6EDF3] group-hover:text-[#58A6FF]">{cfg.label}</span>
-                    <span className="text-[10px] font-mono text-[#484F58] bg-[#21262D] px-2 py-0.5 rounded">
+                    <span className="text-sm font-bold text-foreground group-hover:text-primary">{cfg.label}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground/60 bg-accent px-2 py-0.5 rounded">
                       {cfg.defaultBillingType === "recurring_monthly" ? "recurring" : cfg.defaultBillingType}
                     </span>
                   </div>
-                  <p className="text-xs text-[#7D8590] leading-relaxed">{cfg.description}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{cfg.description}</p>
                   {(cfg.showFields.assignToClient || cfg.showFields.genPdf || cfg.showFields.projectTemplate) && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {cfg.showFields.assignToClient && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">Assign to Client</span>}
-                      {cfg.showFields.projectTemplate && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">Project Template</span>}
-                      {cfg.showFields.genPdf && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">PDF Overview</span>}
+                      {cfg.showFields.assignToClient && <span className="text-[10px] bg-accent text-muted-foreground px-1.5 py-0.5 rounded">Assign to Client</span>}
+                      {cfg.showFields.projectTemplate && <span className="text-[10px] bg-accent text-muted-foreground px-1.5 py-0.5 rounded">Project Template</span>}
+                      {cfg.showFields.genPdf && <span className="text-[10px] bg-accent text-muted-foreground px-1.5 py-0.5 rounded">PDF Overview</span>}
                     </div>
                   )}
                 </button>
@@ -975,38 +975,38 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
       <div className="flex h-full overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 max-w-xl">
           <div className="flex items-center gap-3 mb-6">
-            <button type="button" onClick={() => setCreateType(null)} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+            <button type="button" onClick={() => setCreateType(null)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h2 className="text-xl font-bold text-[#E6EDF3]">New {selectedTypeConfig.label}</h2>
-              <p className="text-xs text-[#7D8590] mt-0.5">{selectedTypeConfig.description}</p>
+              <h2 className="text-xl font-bold text-foreground">New {selectedTypeConfig.label}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{selectedTypeConfig.description}</p>
             </div>
           </div>
-          <form onSubmit={e => void handleCreate(e)} className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
-            <div className="flex items-center gap-2 p-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg">
-              <span className="text-xs font-semibold text-[#0078D4]">Type: {selectedTypeConfig.label}</span>
-              <span className="text-xs text-[#7D8590] ml-auto font-mono">{selectedTypeConfig.defaultBillingType}</span>
+          <form onSubmit={e => void handleCreate(e)} className="bg-card rounded-xl border border-border p-6 space-y-5">
+            <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+              <span className="text-xs font-semibold text-primary">Type: {selectedTypeConfig.label}</span>
+              <span className="text-xs text-muted-foreground ml-auto font-mono">{selectedTypeConfig.defaultBillingType}</span>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
               <input type="text" required autoFocus value={createName} onChange={e => {
                 const name = e.target.value;
                 setCreateName(name);
                 setCreateSlug(prev => prev || name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""));
               }} placeholder="e.g. Microsoft 365 Audit"
-                className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Slug <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Slug <span className="text-red-500">*</span></label>
               <input type="text" required value={createSlug}
                 onChange={e => setCreateSlug(e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""))}
                 placeholder="url-friendly-slug"
-                className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm font-mono bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm font-mono bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
-            <p className="text-xs text-[#7D8590]">Visibility defaults to <strong className="text-[#E6EDF3]">Private</strong>. You can change all other settings after saving.</p>
+            <p className="text-xs text-muted-foreground">Visibility defaults to <strong className="text-foreground">Private</strong>. You can change all other settings after saving.</p>
             <button type="submit" disabled={creating || !createName.trim()}
-              className="w-full bg-[#0078D4] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60">
+              className="w-full bg-primary text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60">
               {creating ? "Creating…" : `Create ${selectedTypeConfig.label}`}
             </button>
           </form>
@@ -1020,34 +1020,34 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     return (
       <div className="flex h-full overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
-            <div className="w-7 h-7 rounded-lg bg-[#21262D] animate-pulse" />
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-accent animate-pulse" />
             <div className="flex-1 space-y-1.5">
-              <div className="h-5 w-48 rounded bg-[#21262D] animate-pulse" />
-              <div className="h-3 w-28 rounded bg-[#21262D] animate-pulse" />
+              <div className="h-5 w-48 rounded bg-accent animate-pulse" />
+              <div className="h-3 w-28 rounded bg-accent animate-pulse" />
             </div>
             <div className="flex gap-2">
-              <div className="h-7 w-16 rounded-lg bg-[#21262D] animate-pulse" />
-              <div className="h-7 w-24 rounded-lg bg-[#21262D] animate-pulse" />
-              <div className="h-7 w-16 rounded-lg bg-[#0078D4]/30 animate-pulse" />
+              <div className="h-7 w-16 rounded-lg bg-accent animate-pulse" />
+              <div className="h-7 w-24 rounded-lg bg-accent animate-pulse" />
+              <div className="h-7 w-16 rounded-lg bg-primary/30 animate-pulse" />
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-6 space-y-5">
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
+            <div className="bg-card rounded-xl border border-border p-6 space-y-5">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="space-y-1.5">
-                  <div className="h-3 w-20 rounded bg-[#21262D] animate-pulse" />
-                  <div className="h-9 rounded-lg bg-[#21262D] animate-pulse" style={{ width: `${60 + (i * 17) % 40}%` }} />
+                  <div className="h-3 w-20 rounded bg-accent animate-pulse" />
+                  <div className="h-9 rounded-lg bg-accent animate-pulse" style={{ width: `${60 + (i * 17) % 40}%` }} />
                 </div>
               ))}
             </div>
           </div>
         </div>
-        <aside className="w-64 flex-shrink-0 border-l border-[#30363D] bg-[#161B22] p-4 space-y-4">
+        <aside className="w-64 flex-shrink-0 border-l border-border bg-card p-4 space-y-4">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="space-y-1.5">
-              <div className="h-3 w-16 rounded bg-[#21262D] animate-pulse" />
-              <div className="h-5 rounded bg-[#21262D] animate-pulse" style={{ width: `${50 + (i * 19) % 40}%` }} />
+              <div className="h-3 w-16 rounded bg-accent animate-pulse" />
+              <div className="h-5 rounded bg-accent animate-pulse" style={{ width: `${50 + (i * 19) % 40}%` }} />
             </div>
           ))}
         </aside>
@@ -1076,20 +1076,20 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     <div className="flex h-full overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-card flex-shrink-0">
           {!panelMode && (
             <button type="button" onClick={() => isDirty ? setDiscardOpen(true) : onClose()}
-              className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
-          <div className="flex items-center gap-2 w-8 h-8 rounded-lg bg-[#0078D4]/10 shrink-0 justify-center">
-            <Icon className="w-4 h-4 text-[#0078D4]" />
+          <div className="flex items-center gap-2 w-8 h-8 rounded-lg bg-primary/10 shrink-0 justify-center">
+            <Icon className="w-4 h-4 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-lg font-bold text-[#E6EDF3] truncate">{service.name}</h2>
-              <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide ${TYPE_BADGE_COLORS[productType] ?? "bg-[#21262D] text-[#7D8590] border-[#30363D]"}`}>
+              <h2 className="text-lg font-bold text-foreground truncate">{service.name}</h2>
+              <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide ${TYPE_BADGE_COLORS[productType] ?? "bg-accent text-muted-foreground border-border"}`}>
                 {typeConfig.label}
               </span>
               {isDirty && (
@@ -1098,20 +1098,20 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                 </span>
               )}
             </div>
-            {service.slug && <p className="text-xs font-mono text-[#484F58]">{service.slug}</p>}
+            {service.slug && <p className="text-xs font-mono text-muted-foreground/60">{service.slug}</p>}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button type="button" onClick={() => { reset(defaultValues); setTypeAttrs((service.typeAttributes as Record<string, unknown> | null) ?? {}); }}
               disabled={!isDirty || saving}
-              className="px-3 py-1.5 text-xs font-medium border border-[#30363D] text-[#7D8590] rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors">
+              className="px-3 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded-lg hover:bg-accent hover:text-foreground disabled:opacity-40 transition-colors">
               Discard
             </button>
             <button type="button" onClick={() => void handleSaveAndClose()} disabled={saving}
-              className="px-3 py-1.5 text-xs font-medium border border-[#30363D] text-[#7D8590] rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors">
+              className="px-3 py-1.5 text-xs font-medium border border-border text-muted-foreground rounded-lg hover:bg-accent hover:text-foreground disabled:opacity-40 transition-colors">
               {saving ? "Saving…" : "Save & Close"}
             </button>
             <button type="button" onClick={() => void handleSubmit(onSubmit, (errs) => toast({ title: `Validation error: ${Object.keys(errs).join(", ")}`, variant: "destructive" }))()} disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-[#0078D4] hover:bg-[#006CBE] text-white rounded-lg disabled:opacity-50 transition-colors">
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-primary hover:bg-[#006CBE] text-white rounded-lg disabled:opacity-50 transition-colors">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               {saving ? "Saving…" : "Save"}
             </button>
@@ -1119,16 +1119,16 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
         </div>
 
         {/* Action bar */}
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#30363D] bg-[#0D1117] flex-shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border bg-background flex-shrink-0 flex-wrap">
           {typeConfig.showFields.assignToClient && (
             <button type="button" onClick={() => { setShowAssign(p => !p); setShowWorkflow(false); setAssignForm(f => ({ ...f, serviceId: String(id) })); }}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>
               Assign to Client
             </button>
           )}
           {typeConfig.showFields.projectTemplate && (
             <button type="button" onClick={() => { setShowWorkflow(p => !p); setShowAssign(false); }}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-primary text-white border-primary" : "border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>
               {service.orderWorkflow && service.orderWorkflow.length > 0
                 ? `Project Template (${service.orderWorkflow.length} step${service.orderWorkflow.length !== 1 ? "s" : ""})`
                 : "Project Template"}
@@ -1138,20 +1138,20 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
             {typeConfig.showFields.genPdf && (
               <>
                 <button type="button" onClick={() => void handleGeneratePdf()} disabled={generatingPdf}
-                  className="flex items-center gap-1.5 text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 transition-colors">
+                  className="flex items-center gap-1.5 text-xs border border-border text-muted-foreground px-3 py-1.5 rounded-lg hover:bg-accent hover:text-foreground disabled:opacity-50 transition-colors">
                   {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                   {generatingPdf ? "Generating…" : "Gen PDF"}
                 </button>
                 {service.overviewPdfKey && (
                   <button type="button" onClick={() => void handleViewPdf()}
-                    className="text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors">
+                    className="text-xs border border-border text-muted-foreground px-3 py-1.5 rounded-lg hover:bg-accent hover:text-foreground transition-colors">
                     View PDF
                   </button>
                 )}
               </>
             )}
             <button type="button" onClick={() => void handleGenerateAllPdfs()} disabled={bulkGenerating}
-              className="flex items-center gap-1.5 text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 transition-colors">
+              className="flex items-center gap-1.5 text-xs border border-border text-muted-foreground px-3 py-1.5 rounded-lg hover:bg-accent hover:text-foreground disabled:opacity-50 transition-colors">
               {bulkGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {bulkGenerating ? (bulkProgress ? `${bulkProgress.done}/${bulkProgress.total}` : "Starting…") : "Regen All PDFs"}
             </button>
@@ -1168,32 +1168,32 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
 
           {/* Assign panel */}
           {showAssign && (
-            <div className="bg-[#1C2128] border border-[#30363D] rounded-xl p-5">
-              <h3 className="text-sm font-bold text-[#E6EDF3] mb-4">Assign to Client</h3>
+            <div className="bg-accent border border-border rounded-xl p-5">
+              <h3 className="text-sm font-bold text-foreground mb-4">Assign to Client</h3>
               <form onSubmit={e => void handleAssign(e)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Client <span className="text-red-500">*</span></label>
-                  <select required value={assignForm.clientUserId} onChange={e => setAssignForm(f => ({ ...f, clientUserId: e.target.value }))} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#161B22] text-[#E6EDF3]">
+                  <label className="block text-xs font-semibold text-foreground mb-1">Client <span className="text-red-500">*</span></label>
+                  <select required value={assignForm.clientUserId} onChange={e => setAssignForm(f => ({ ...f, clientUserId: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground">
                     <option value="">— Select Client —</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name ?? c.email}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Start Date</label>
-                  <input type="date" value={assignForm.startDate} onChange={e => setAssignForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#1C2128] text-[#E6EDF3]" />
+                  <label className="block text-xs font-semibold text-foreground mb-1">Start Date</label>
+                  <input type="date" value={assignForm.startDate} onChange={e => setAssignForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Next Milestone Date</label>
-                  <input type="date" value={assignForm.nextMilestoneDate} onChange={e => setAssignForm(f => ({ ...f, nextMilestoneDate: e.target.value }))} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#1C2128] text-[#E6EDF3]" />
+                  <label className="block text-xs font-semibold text-foreground mb-1">Next Milestone Date</label>
+                  <input type="date" value={assignForm.nextMilestoneDate} onChange={e => setAssignForm(f => ({ ...f, nextMilestoneDate: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Milestone Description</label>
-                  <input value={assignForm.nextMilestone} onChange={e => setAssignForm(f => ({ ...f, nextMilestone: e.target.value }))} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#1C2128] text-[#E6EDF3]" />
+                  <label className="block text-xs font-semibold text-foreground mb-1">Milestone Description</label>
+                  <input value={assignForm.nextMilestone} onChange={e => setAssignForm(f => ({ ...f, nextMilestone: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground" />
                 </div>
                 {assignError && <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{assignError}</div>}
                 <div className="sm:col-span-2 flex gap-3">
-                  <button type="submit" disabled={assigning} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">{assigning ? "Assigning…" : "Assign Service"}</button>
-                  <button type="button" onClick={() => { setShowAssign(false); setAssignError(""); }} className="border border-[#30363D] text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors text-[#7D8590]">Cancel</button>
+                  <button type="submit" disabled={assigning} className="bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">{assigning ? "Assigning…" : "Assign Service"}</button>
+                  <button type="button" onClick={() => { setShowAssign(false); setAssignError(""); }} className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-accent transition-colors text-muted-foreground">Cancel</button>
                 </div>
               </form>
             </div>

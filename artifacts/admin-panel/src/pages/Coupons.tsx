@@ -274,21 +274,21 @@ export default function CouponsPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#E6EDF3]">Coupons</h1>
+          <h1 className="text-2xl font-bold text-foreground">Coupons</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage promo codes for checkout discounts</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { void handlePreviewPublish(); }}
             disabled={publishDiffLoading || publishingToProd}
-            className="flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+            className="flex items-center gap-2 bg-accent text-foreground/90 text-sm font-semibold px-4 py-2.5 rounded-xl border border-border hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
           >
             {publishDiffLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Publish to Prod
           </button>
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors"
+            className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Coupon
@@ -299,9 +299,9 @@ export default function CouponsPage() {
       {/* Publish-to-prod diff modal */}
       {publishDiff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-base font-bold text-[#E6EDF3] mb-1">Review Changes</h2>
-            <p className="text-xs text-[#7D8590] mb-4">These changes will be applied to the production database.</p>
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-base font-bold text-foreground mb-1">Review Changes</h2>
+            <p className="text-xs text-muted-foreground mb-4">These changes will be applied to the production database.</p>
             <div className="space-y-2 mb-5">
               {publishDiff.added.length > 0 && (
                 <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
@@ -310,9 +310,9 @@ export default function CouponsPage() {
                 </div>
               )}
               {publishDiff.updated.length > 0 && (
-                <div className="rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/20 px-3 py-2">
-                  <p className="text-xs font-semibold text-[#58A6FF] mb-1">↻ {publishDiff.updated.length} existing coupon{publishDiff.updated.length !== 1 ? "s" : ""} will be updated</p>
-                  <p className="text-[11px] text-[#58A6FF]/60 font-mono">{publishDiff.updated.map(c => c.code).join(", ")}</p>
+                <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-primary mb-1">↻ {publishDiff.updated.length} existing coupon{publishDiff.updated.length !== 1 ? "s" : ""} will be updated</p>
+                  <p className="text-[11px] text-primary/60 font-mono">{publishDiff.updated.map(c => c.code).join(", ")}</p>
                 </div>
               )}
               {publishDiff.removed.length > 0 && (
@@ -322,8 +322,8 @@ export default function CouponsPage() {
                 </div>
               )}
               {publishDiff.added.length === 0 && publishDiff.updated.length === 0 && publishDiff.removed.length === 0 && (
-                <div className="rounded-lg bg-[#1C2128] border border-[#30363D] px-3 py-2">
-                  <p className="text-xs text-[#7D8590]">No changes detected — prod is already in sync.</p>
+                <div className="rounded-lg bg-accent border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">No changes detected — prod is already in sync.</p>
                 </div>
               )}
             </div>
@@ -331,7 +331,7 @@ export default function CouponsPage() {
               <button
                 onClick={() => setPublishDiff(null)}
                 disabled={publishingToProd}
-                className="text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+                className="text-sm font-semibold px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground/90 hover:border-muted-foreground/60 disabled:opacity-40 transition-colors"
               >
                 Cancel
               </button>
@@ -349,32 +349,32 @@ export default function CouponsPage() {
       )}
 
       {showForm && (
-        <div className="bg-[#161B22] border border-border rounded-2xl p-5 mb-6 shadow-sm">
+        <div className="bg-card border border-border rounded-2xl p-5 mb-6 shadow-sm">
           <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
-            <h2 className="font-bold text-[#E6EDF3] text-sm flex items-center gap-2">
-              <Tag className="w-4 h-4 text-[#0078D4]" />
+            <h2 className="font-bold text-foreground text-sm flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary" />
               {editingId ? "Edit Coupon" : "Create Coupon"}
             </h2>
-            <button onClick={closeForm} className="text-muted-foreground hover:text-[#E6EDF3]">
+            <button onClick={closeForm} className="text-muted-foreground hover:text-foreground">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Code <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">Code <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={form.code}
                 onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
                 placeholder="SAVE20"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] uppercase"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary uppercase"
               />
               <p className="text-[11px] text-muted-foreground mt-1">Clients enter this code at checkout (case-insensitive)</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Discount type <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">Discount type <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
                 {(["fixed", "percentage"] as const).map(t => (
                   <button
@@ -382,8 +382,8 @@ export default function CouponsPage() {
                     onClick={() => setForm(f => ({ ...f, discountType: t }))}
                     className={`flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors ${
                       form.discountType === t
-                        ? "bg-[#0078D4] text-white border-[#0078D4]"
-                        : "border-border text-muted-foreground hover:border-[#0078D4] hover:text-[#0078D4]"
+                        ? "bg-primary text-white border-primary"
+                        : "border-border text-muted-foreground hover:border-primary hover:text-primary"
                     }`}
                   >
                     {t === "fixed" ? "$ Fixed amount" : "% Percentage"}
@@ -393,7 +393,7 @@ export default function CouponsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
                 Discount value <span className="text-red-500">*</span>
               </label>
               <div className="relative">
@@ -408,13 +408,13 @@ export default function CouponsPage() {
                   value={form.discountValue}
                   onChange={e => setForm(f => ({ ...f, discountValue: e.target.value }))}
                   placeholder={form.discountType === "fixed" ? "50" : "10"}
-                  className="w-full border border-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Max uses</label>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">Max uses</label>
               <input
                 type="number"
                 min="1"
@@ -422,18 +422,18 @@ export default function CouponsPage() {
                 value={form.maxUses}
                 onChange={e => setForm(f => ({ ...f, maxUses: e.target.value }))}
                 placeholder="Leave blank for unlimited"
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <p className="text-[11px] text-muted-foreground mt-1">Leave blank for unlimited uses</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Expiry date</label>
+              <label className="block text-xs font-semibold text-foreground mb-1.5">Expiry date</label>
               <input
                 type="date"
                 value={form.expiresAt}
                 onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
@@ -445,11 +445,11 @@ export default function CouponsPage() {
                   className="focus:outline-none"
                 >
                   {form.active
-                    ? <ToggleRight className="w-8 h-8 text-[#0078D4]" />
-                    : <ToggleLeft className="w-8 h-8 text-[#484F58]" />
+                    ? <ToggleRight className="w-8 h-8 text-primary" />
+                    : <ToggleLeft className="w-8 h-8 text-muted-foreground/60" />
                   }
                 </button>
-                <span className="text-xs font-semibold text-[#E6EDF3]">
+                <span className="text-xs font-semibold text-foreground">
                   {form.active ? "Active" : "Inactive"}
                 </span>
               </label>
@@ -464,19 +464,19 @@ export default function CouponsPage() {
             <button
               onClick={() => void handleSave()}
               disabled={saving}
-              className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005A9E] disabled:opacity-50 transition-colors"
+              className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005A9E] disabled:opacity-50 transition-colors"
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {saving ? "Saving…" : editingId ? "Update Coupon" : "Create Coupon"}
             </button>
-            <button onClick={closeForm} className="text-sm text-muted-foreground hover:text-[#E6EDF3] px-3 py-2">
+            <button onClick={closeForm} className="text-sm text-muted-foreground hover:text-foreground px-3 py-2">
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-[#161B22] border border-border rounded-2xl overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground gap-2 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -484,14 +484,14 @@ export default function CouponsPage() {
           </div>
         ) : coupons.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-            <div className="w-12 h-12 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-3">
-              <Tag className="w-6 h-6 text-[#0078D4]" />
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+              <Tag className="w-6 h-6 text-primary" />
             </div>
-            <p className="font-semibold text-[#E6EDF3] mb-1">No coupons yet</p>
+            <p className="font-semibold text-foreground mb-1">No coupons yet</p>
             <p className="text-sm text-muted-foreground mb-4">Create your first promo code to offer discounts at checkout.</p>
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-[#005A9E] transition-colors"
+              className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-[#005A9E] transition-colors"
             >
               <Plus className="w-4 h-4" />
               Create coupon
@@ -501,7 +501,7 @@ export default function CouponsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[#1C2128] border-b border-border text-left">
+                <tr className="bg-accent border-b border-border text-left">
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider w-6"></th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Code</th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Discount</th>
@@ -522,12 +522,12 @@ export default function CouponsPage() {
 
                   return (
                     <React.Fragment key={coupon.id}>
-                      <tr className={`transition-colors ${isExpanded ? "bg-[#1C2128]/70" : "hover:bg-[#1C2128]/50"}`}>
+                      <tr className={`transition-colors ${isExpanded ? "bg-accent/70" : "hover:bg-accent/50"}`}>
                         <td className="px-3 py-3">
                           <button
                             onClick={() => void toggleRedemptions(coupon)}
                             title={isExpanded ? "Hide redemption history" : "View redemption history"}
-                            className="p-1 text-muted-foreground hover:text-[#0078D4] rounded transition-colors"
+                            className="p-1 text-muted-foreground hover:text-primary rounded transition-colors"
                             disabled={isLoadingThis}
                           >
                             {isLoadingThis
@@ -539,7 +539,7 @@ export default function CouponsPage() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="font-mono font-bold text-[#E6EDF3] text-sm tracking-wide">
+                          <span className="font-mono font-bold text-foreground text-sm tracking-wide">
                             {coupon.code}
                           </span>
                         </td>
@@ -553,7 +553,7 @@ export default function CouponsPage() {
                             <span className="text-[10px] font-normal opacity-70">off</span>
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[#E6EDF3] font-mono text-xs">
+                        <td className="px-4 py-3 text-foreground font-mono text-xs">
                           {formatUses(coupon)}
                         </td>
                         <td className="px-4 py-3">
@@ -563,7 +563,7 @@ export default function CouponsPage() {
                             className="focus:outline-none"
                           >
                             {effectivelyInactive ? (
-                              <span className="inline-flex items-center gap-1 text-xs bg-[#30363D]/50 text-[#7D8590] px-2.5 py-1 rounded-full font-medium">
+                              <span className="inline-flex items-center gap-1 text-xs bg-border/50 text-muted-foreground px-2.5 py-1 rounded-full font-medium">
                                 {expired ? "Expired" : exhausted ? "Exhausted" : "Inactive"}
                               </span>
                             ) : (
@@ -581,7 +581,7 @@ export default function CouponsPage() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => openEdit(coupon)}
-                              className="p-1.5 text-muted-foreground hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
+                              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                               title="Edit"
                             >
                               <Pencil className="w-3.5 h-3.5" />
@@ -603,11 +603,11 @@ export default function CouponsPage() {
 
                       {isExpanded && (
                         <tr key={`${coupon.id}-redemptions`}>
-                          <td colSpan={7} className="bg-[#1C2128] border-b border-border px-0 py-0">
+                          <td colSpan={7} className="bg-accent border-b border-border px-0 py-0">
                             <div className="px-6 py-4">
                               <div className="flex items-center gap-2 mb-3">
-                                <History className="w-3.5 h-3.5 text-[#0078D4]" />
-                                <span className="text-xs font-bold text-[#E6EDF3] uppercase tracking-wider">
+                                <History className="w-3.5 h-3.5 text-primary" />
+                                <span className="text-xs font-bold text-foreground uppercase tracking-wider">
                                   Redemption History — {coupon.code}
                                 </span>
                               </div>
@@ -634,7 +634,7 @@ export default function CouponsPage() {
                                   </thead>
                                   <tbody className="divide-y divide-border/40">
                                     {couponRedemptions.map(r => (
-                                      <tr key={r.id} className="text-[#E6EDF3]">
+                                      <tr key={r.id} className="text-foreground">
                                         <td className="py-2 pr-4">
                                           {r.userName || r.userEmail ? (
                                             <div>

@@ -141,17 +141,17 @@ function SortableRow({
       style={mergedStyle}
       className={`group flex items-center gap-1 rounded-lg pr-1 transition-colors ${
         isDropTarget
-          ? "ring-2 ring-[#0078D4] ring-inset bg-[#0078D4]/10"
+          ? "ring-2 ring-primary ring-inset bg-primary/10"
           : isSelected
-            ? "bg-[#0078D4]/15 text-[#0078D4]"
-            : "text-[#C9D1D9] hover:bg-[#1C2128]"
+            ? "bg-primary/15 text-primary"
+            : "text-foreground/90 hover:bg-accent"
       } ${isDragOverlay ? "shadow-2xl opacity-90 cursor-grabbing pointer-events-none" : ""}`}
     >
       {/* Drag handle */}
       <div
         {...(!isDragOverlay ? attributes : {})}
         {...(!isDragOverlay ? listeners : {})}
-        className="opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing text-[#484F58] flex-shrink-0 p-0.5"
+        className="opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing text-muted-foreground/60 flex-shrink-0 p-0.5"
         title="Drag to reparent into another category"
         onClick={e => e.stopPropagation()}
       >
@@ -166,23 +166,23 @@ function SortableRow({
         onClick={() => { if (hasChildren) onToggle(node.path); onSelect(node.path); }}
         className="flex items-center gap-1.5 flex-1 min-w-0"
       >
-        <span className="flex-shrink-0 text-[#7D8590]">
+        <span className="flex-shrink-0 text-muted-foreground">
           {hasChildren
             ? (isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)
             : <span className="w-3 h-3 inline-block" />}
         </span>
-        <span className="flex-shrink-0 text-[#484F58]">
+        <span className="flex-shrink-0 text-muted-foreground/60">
           {isExpanded ? <FolderOpen className="w-3.5 h-3.5" /> : <Folder className="w-3.5 h-3.5" />}
         </span>
         <span className={`text-xs font-medium truncate flex-1 ${node.isVirtual ? "italic opacity-60" : ""}`}>{node.name}</span>
-        <span className="text-[10px] text-[#484F58] flex-shrink-0 ml-1">{node.totalCount}</span>
+        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 ml-1">{node.totalCount}</span>
       </button>
 
       <button
         type="button"
         title="Add child category"
         onClick={e => { e.stopPropagation(); onAddChild(node.path); }}
-        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-opacity flex-shrink-0"
+        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-opacity flex-shrink-0"
       >
         <Plus className="w-3 h-3" />
       </button>
@@ -330,16 +330,16 @@ export default function CatalogCategoryTree({
     !nodeId.startsWith(dragActiveId + "/");
 
   return (
-    <div className="flex flex-col border-r border-[#21262D] bg-[#0D1117] overflow-hidden" style={{ width: 200, flexShrink: 0 }}>
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#21262D] flex-shrink-0">
-        <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider">Categories</span>
+    <div className="flex flex-col border-r border-accent bg-background overflow-hidden" style={{ width: 200, flexShrink: 0 }}>
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-accent flex-shrink-0">
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Categories</span>
         <div className="flex items-center gap-1">
-          {reparenting && <Loader2 className="w-3 h-3 text-[#0078D4] animate-spin" />}
+          {reparenting && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
           <button
             type="button"
             title="Add root category"
             onClick={() => { setAddingChildTo("__root__"); setNewCategoryName(""); setTimeout(() => inputRef.current?.focus(), 30); }}
-            className="text-[#484F58] hover:text-[#0078D4] p-0.5 rounded hover:bg-[#0078D4]/10 transition-colors"
+            className="text-muted-foreground/60 hover:text-primary p-0.5 rounded hover:bg-primary/10 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -351,12 +351,12 @@ export default function CatalogCategoryTree({
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === null ? "bg-[#0078D4]/15 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === null ? "bg-primary/15 text-primary" : "text-foreground/90 hover:bg-accent"}`}
           style={{ width: "calc(100% - 8px)" }}
         >
           <LayoutGrid className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="flex-1 text-left">All Products</span>
-          <span className="text-[10px] text-[#484F58]">{totalCount}</span>
+          <span className="text-[10px] text-muted-foreground/60">{totalCount}</span>
         </button>
 
         {/* Uncategorized */}
@@ -364,12 +364,12 @@ export default function CatalogCategoryTree({
           <button
             type="button"
             onClick={() => onSelect("__uncategorized__")}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === "__uncategorized__" ? "bg-[#0078D4]/15 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === "__uncategorized__" ? "bg-primary/15 text-primary" : "text-foreground/90 hover:bg-accent"}`}
             style={{ width: "calc(100% - 8px)" }}
           >
-            <Folder className="w-3.5 h-3.5 flex-shrink-0 text-[#484F58]" />
-            <span className="flex-1 text-left text-[#7D8590]">Uncategorized</span>
-            <span className="text-[10px] text-[#484F58]">{services.filter(s => !s.categoryPath && !s.category).length}</span>
+            <Folder className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
+            <span className="flex-1 text-left text-muted-foreground">Uncategorized</span>
+            <span className="text-[10px] text-muted-foreground/60">{services.filter(s => !s.categoryPath && !s.category).length}</span>
           </button>
         )}
 
@@ -422,9 +422,9 @@ export default function CatalogCategoryTree({
                 onChange={e => setNewCategoryName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Escape") { setAddingChildTo(null); setNewCategoryName(""); } }}
                 placeholder="Root category name…"
-                className="w-full border border-[#0078D4]/50 rounded px-2 py-1 text-xs bg-[#1C2128] text-[#E6EDF3] outline-none focus:border-[#0078D4]"
+                className="w-full border border-primary/50 rounded px-2 py-1 text-xs bg-accent text-foreground outline-none focus:border-primary"
               />
-              <p className="text-[10px] text-[#484F58] mt-1">Enter to create · Esc to cancel</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Enter to create · Esc to cancel</p>
             </form>
           </div>
         )}
@@ -432,7 +432,7 @@ export default function CatalogCategoryTree({
         {/* Inline add child category */}
         {addingChildTo && addingChildTo !== "__root__" && (
           <div className="px-2 py-2">
-            <p className="text-[10px] text-[#484F58] mb-1">Under: <span className="text-[#7D8590] font-mono">{addingChildTo}</span></p>
+            <p className="text-[10px] text-muted-foreground/60 mb-1">Under: <span className="text-muted-foreground font-mono">{addingChildTo}</span></p>
             <form onSubmit={e => { e.preventDefault(); commitAdd(); }}>
               <input
                 ref={inputRef}
@@ -441,9 +441,9 @@ export default function CatalogCategoryTree({
                 onChange={e => setNewCategoryName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Escape") { setAddingChildTo(null); setNewCategoryName(""); } }}
                 placeholder="Child category name…"
-                className="w-full border border-[#0078D4]/50 rounded px-2 py-1 text-xs bg-[#1C2128] text-[#E6EDF3] outline-none focus:border-[#0078D4]"
+                className="w-full border border-primary/50 rounded px-2 py-1 text-xs bg-accent text-foreground outline-none focus:border-primary"
               />
-              <p className="text-[10px] text-[#484F58] mt-1">Enter to create · Esc to cancel</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Enter to create · Esc to cancel</p>
             </form>
           </div>
         )}

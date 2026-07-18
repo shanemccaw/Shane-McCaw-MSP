@@ -385,7 +385,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
                       setSimulationTraces([]);
                       setTestResult(null);
                     }}
-                    className="rounded border-[#30363D] bg-background"
+                    className="rounded border-border bg-background"
                   />
                   <label htmlFor="simulator-mode" className="text-xs font-medium cursor-pointer">
                     Simulator Replay Mode
@@ -633,7 +633,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
       </Tabs>
 
       <Dialog open={showImportDialog} onOpenChange={(open) => { if (!open) setShowImportDialog(false); }}>
-        <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-xl">
+        <DialogContent className="bg-card border-border text-white max-w-xl">
           <DialogHeader>
             <DialogTitle>Import JSON</DialogTitle>
           </DialogHeader>
@@ -646,7 +646,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               onChange={(e) => setImportJsonText(e.target.value)}
               placeholder="Paste JSON here…"
               rows={14}
-              className="bg-[#0D1117] border-[#30363D] text-white font-mono text-xs resize-none"
+              className="bg-background border-border text-white font-mono text-xs resize-none"
               spellCheck={false}
             />
             {importJsonText.trim() && (() => {
@@ -661,7 +661,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
             <Button
               onClick={() => void handleImportFromPaste()}
               disabled={!importJsonText.trim() || (() => { try { JSON.parse(importJsonText); return false; } catch { return true; } })()}
-              className="bg-[#0078D4] hover:bg-[#006cbf] text-white disabled:opacity-50"
+              className="bg-primary hover:bg-[#006cbf] text-white disabled:opacity-50"
             >
               Import
             </Button>

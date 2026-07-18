@@ -83,12 +83,12 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-3xl mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-3xl mx-4 bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Media Library</h2>
-            <p className="text-[11px] text-[#7D8590] mt-0.5">Select an image or upload a new one</p>
+            <h2 className="text-sm font-semibold text-foreground">Media Library</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Select an image or upload a new one</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -101,7 +101,7 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadMutation.isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#1084D8] text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-[#1084D8] text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploadMutation.isPending ? (
                 <>
@@ -117,7 +117,7 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
             </button>
             <button
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] rounded-lg transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-border rounded-lg transition-colors"
             >
               ✕
             </button>
@@ -134,13 +134,13 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
         {/* Grid */}
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
-            <div className="flex items-center justify-center h-40 text-[#7D8590] text-xs">
+            <div className="flex items-center justify-center h-40 text-muted-foreground text-xs">
               Loading…
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
               <span className="text-3xl opacity-30">🖼️</span>
-              <p className="text-xs text-[#7D8590]">No images yet. Upload one to get started.</p>
+              <p className="text-xs text-muted-foreground">No images yet. Upload one to get started.</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
@@ -152,12 +152,12 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
                     onClick={() => handleSelect(item.url)}
                     className={`relative group rounded-lg overflow-hidden border-2 transition-all text-left ${
                       isSelected
-                        ? "border-[#0078D4] ring-2 ring-[#0078D4]/40"
-                        : "border-[#30363D] hover:border-[#0078D4]/60"
+                        ? "border-primary ring-2 ring-primary/40"
+                        : "border-border hover:border-primary/60"
                     }`}
                   >
                     {/* Thumbnail */}
-                    <div className="aspect-square bg-[#0D1117] flex items-center justify-center overflow-hidden">
+                    <div className="aspect-square bg-background flex items-center justify-center overflow-hidden">
                       <img
                         src={item.url}
                         alt={item.filename}
@@ -170,7 +170,7 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
 
                     {/* Selected checkmark overlay */}
                     {isSelected && (
-                      <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-[#0078D4] rounded-full flex items-center justify-center shadow">
+                      <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow">
                         <span className="text-white text-[10px] leading-none">✓</span>
                       </div>
                     )}
@@ -180,7 +180,7 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
                       <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${
                         item.source === "generated"
                           ? "bg-amber-500/80 text-amber-900"
-                          : "bg-[#0078D4]/80 text-white"
+                          : "bg-primary/80 text-white"
                       }`}>
                         {item.source === "generated" ? "AI" : "Uploaded"}
                       </span>
@@ -188,8 +188,8 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
 
                     {/* Filename + size tooltip on hover */}
                     <div className="absolute inset-x-0 bottom-0 bg-black/70 px-2 py-1 translate-y-full group-hover:translate-y-0 transition-transform">
-                      <p className="text-[9px] text-[#E6EDF3] truncate">{item.filename}</p>
-                      <p className="text-[9px] text-[#7D8590]">{formatSize(item.size)}</p>
+                      <p className="text-[9px] text-foreground truncate">{item.filename}</p>
+                      <p className="text-[9px] text-muted-foreground">{formatSize(item.size)}</p>
                     </div>
                   </button>
                 );
@@ -199,22 +199,22 @@ export function AssetPickerModal({ onSelect, onClose }: AssetPickerModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-[#30363D]">
-          <p className="text-[11px] text-[#484F58]">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+          <p className="text-[11px] text-muted-foreground/60">
             {items.length} image{items.length !== 1 ? "s" : ""} in library
             {selected ? " · 1 selected" : ""}
           </p>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors"
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
               disabled={!selected}
-              className="px-4 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#1084D8] text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-1.5 text-xs font-medium bg-primary hover:bg-[#1084D8] text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Use this image
             </button>

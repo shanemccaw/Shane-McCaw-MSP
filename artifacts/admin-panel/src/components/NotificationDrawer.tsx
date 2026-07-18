@@ -75,8 +75,8 @@ function typeIcon(type: string): React.ReactNode {
     );
   }
   return (
-    <div className="w-7 h-7 rounded-full bg-[#30363D] border border-[#484F58] flex items-center justify-center flex-shrink-0">
-      <svg className="w-3.5 h-3.5 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <div className="w-7 h-7 rounded-full bg-border border border-muted-foreground/60 flex items-center justify-center flex-shrink-0">
+      <svg className="w-3.5 h-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     </div>
@@ -214,21 +214,21 @@ function PushNotificationToggle({ fetchWithAuth }: { fetchWithAuth: ReturnType<t
   if (state === "unsupported") return null;
 
   return (
-    <div className="px-4 py-2.5 border-t border-[#30363D] flex-shrink-0">
+    <div className="px-4 py-2.5 border-t border-border flex-shrink-0">
       {state === "denied" ? (
-        <p className="text-[10px] text-[#7D8590] leading-snug">
+        <p className="text-[10px] text-muted-foreground leading-snug">
           Browser notifications blocked. Allow them in your browser settings and reload.
         </p>
       ) : state === "subscribed" ? (
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-            <span className="text-[10px] text-[#7D8590]">Browser notifications active</span>
+            <span className="text-[10px] text-muted-foreground">Browser notifications active</span>
           </div>
           <button
             onClick={() => void handleDisable()}
             disabled={busy}
-            className="text-[10px] font-medium text-[#484F58] hover:text-red-400 transition-colors disabled:opacity-50"
+            className="text-[10px] font-medium text-muted-foreground/60 hover:text-red-400 transition-colors disabled:opacity-50"
           >
             Disable
           </button>
@@ -237,7 +237,7 @@ function PushNotificationToggle({ fetchWithAuth }: { fetchWithAuth: ReturnType<t
         <button
           onClick={() => void handleEnable()}
           disabled={busy || state === "loading"}
-          className="w-full flex items-center gap-2 text-[10px] font-medium text-[#0078D4] hover:text-[#58A6FF] transition-colors disabled:opacity-50"
+          className="w-full flex items-center gap-2 text-[10px] font-medium text-primary hover:text-primary transition-colors disabled:opacity-50"
         >
           <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -358,10 +358,10 @@ export default function NotificationDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[380px] sm:w-[420px] bg-[#161B22] border-l border-[#30363D] p-0 flex flex-col">
-        <SheetHeader className="px-4 py-3 border-b border-[#30363D] flex-shrink-0">
+      <SheetContent side="right" className="w-[380px] sm:w-[420px] bg-card border-l border-border p-0 flex flex-col">
+        <SheetHeader className="px-4 py-3 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between">
-            <SheetTitle className="text-sm font-semibold text-[#E6EDF3] flex items-center gap-2">
+            <SheetTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
               Notifications
               {unreadCount > 0 && (
                 <span className="min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
@@ -372,7 +372,7 @@ export default function NotificationDrawer({
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-[10px] font-medium text-[#0078D4] hover:text-[#58A6FF] transition-colors"
+                className="text-[10px] font-medium text-primary hover:text-primary transition-colors"
               >
                 Mark all as read
               </button>
@@ -383,38 +383,38 @@ export default function NotificationDrawer({
         <div className="flex-1 overflow-y-auto">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-center px-6">
-              <div className="w-10 h-10 rounded-full bg-[#1C2128] border border-[#30363D] flex items-center justify-center mb-3">
-                <svg className="w-5 h-5 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="w-10 h-10 rounded-full bg-accent border border-border flex items-center justify-center mb-3">
+                <svg className="w-5 h-5 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
               </div>
-              <p className="text-xs font-medium text-[#7D8590]">No notifications yet</p>
-              <p className="text-[10px] text-[#484F58] mt-1">New leads, quiz completions, and purchases will appear here.</p>
+              <p className="text-xs font-medium text-muted-foreground">No notifications yet</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">New leads, quiz completions, and purchases will appear here.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-[#21262D]">
+            <ul className="divide-y divide-accent">
               {notifications.map(n => (
                 <li key={n.id}>
                   <button
                     onClick={() => void handleRowClick(n)}
-                    className={`w-full text-left flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[#1C2128] ${
-                      !n.read ? "bg-[#0078D4]/5" : ""
+                    className={`w-full text-left flex items-start gap-3 px-4 py-3 transition-colors hover:bg-accent ${
+                      !n.read ? "bg-primary/5" : ""
                     }`}
                   >
                     {typeIcon(n.type)}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <p className={`text-xs leading-snug truncate ${!n.read ? "font-semibold text-[#E6EDF3]" : "font-medium text-[#7D8590]"}`}>
+                        <p className={`text-xs leading-snug truncate ${!n.read ? "font-semibold text-foreground" : "font-medium text-muted-foreground"}`}>
                           {n.title}
                         </p>
                         {!n.read && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0 mt-1" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 mt-1" />
                         )}
                       </div>
                       {n.body && (
-                        <p className="text-[10px] text-[#484F58] mt-0.5 truncate">{n.body}</p>
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">{n.body}</p>
                       )}
-                      <p className="text-[10px] text-[#484F58] mt-1">{relativeTime(n.createdAt)}</p>
+                      <p className="text-[10px] text-muted-foreground/60 mt-1">{relativeTime(n.createdAt)}</p>
                     </div>
                   </button>
                 </li>

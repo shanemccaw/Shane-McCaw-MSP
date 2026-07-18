@@ -249,8 +249,8 @@ export default function MonitorChecksPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <div className="w-[260px] min-w-[200px] flex flex-col border-r border-[#30363D] bg-[#0D1117] overflow-hidden">
-        <div className="p-3 border-b border-[#30363D] space-y-2 shrink-0">
+      <div className="w-[260px] min-w-[200px] flex flex-col border-r border-border bg-background overflow-hidden">
+        <div className="p-3 border-b border-border space-y-2 shrink-0">
           <div className="flex items-center justify-between gap-1">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Monitor Checks</span>
             <span className="text-xs text-gray-500">{filtered.length}</span>
@@ -259,13 +259,13 @@ export default function MonitorChecksPage() {
             placeholder="Search…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="h-7 text-xs bg-[#161B22] border-[#30363D] text-white placeholder:text-gray-600"
+            className="h-7 text-xs bg-card border-border text-white placeholder:text-gray-600"
           />
           <Select value={groupBy} onValueChange={v => setGroupBy(v as GroupBy)}>
-            <SelectTrigger className="h-7 text-xs bg-[#161B22] border-[#30363D] text-gray-300">
+            <SelectTrigger className="h-7 text-xs bg-card border-border text-gray-300">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-[#161B22] border-[#30363D] text-white">
+            <SelectContent className="bg-card border-border text-white">
               <SelectItem value="prefix" className="text-xs">Group: Key prefix</SelectItem>
               <SelectItem value="engines" className="text-xs">Group: Engines</SelectItem>
               <SelectItem value="frequency" className="text-xs">Group: Frequency</SelectItem>
@@ -280,7 +280,7 @@ export default function MonitorChecksPage() {
             <Button
               size="sm"
               onClick={openCreate}
-              className="h-7 text-xs bg-[#0078D4] hover:bg-[#006cbf] text-white w-full"
+              className="h-7 text-xs bg-primary hover:bg-[#006cbf] text-white w-full"
             >
               + New Check
             </Button>
@@ -289,7 +289,7 @@ export default function MonitorChecksPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => openImportDialog()}
-                className="h-6 text-xs border-[#30363D] text-gray-400 hover:text-white flex-1 px-1"
+                className="h-6 text-xs border-border text-gray-400 hover:text-white flex-1 px-1"
               >
                 Import
               </Button>
@@ -297,7 +297,7 @@ export default function MonitorChecksPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => exportJson("monitor-checks.json", checks)}
-                className="h-6 text-xs border-[#30363D] text-gray-400 hover:text-white flex-1 px-1"
+                className="h-6 text-xs border-border text-gray-400 hover:text-white flex-1 px-1"
               >
                 Export
               </Button>
@@ -305,7 +305,7 @@ export default function MonitorChecksPage() {
                 size="sm"
                 variant="outline"
                 onClick={() => downloadTemplate("monitor-checks-template.json", MONITOR_CHECK_TEMPLATE)}
-                className="h-6 text-xs border-[#30363D] text-gray-400 hover:text-white flex-1 px-1"
+                className="h-6 text-xs border-border text-gray-400 hover:text-white flex-1 px-1"
               >
                 Tmpl
               </Button>
@@ -316,7 +316,7 @@ export default function MonitorChecksPage() {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : groups.length === 0 ? (
             <div className="text-center py-8 text-xs text-gray-600 px-3">
@@ -329,14 +329,14 @@ export default function MonitorChecksPage() {
                 <div key={group.name}>
                   <button
                     onClick={() => toggleGroup(group.name)}
-                    className="w-full flex items-center gap-1 px-3 py-1.5 text-left hover:bg-[#161B22] transition-colors group"
+                    className="w-full flex items-center gap-1 px-3 py-1.5 text-left hover:bg-card transition-colors group"
                   >
                     {isCollapsed
                       ? <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />
                       : <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
                     }
                     <span className="text-xs font-medium text-gray-300 capitalize flex-1 truncate">{group.name}</span>
-                    <span className="text-xs text-gray-600 bg-[#30363D] rounded px-1">{group.checks.length}</span>
+                    <span className="text-xs text-gray-600 bg-border rounded px-1">{group.checks.length}</span>
                   </button>
                   {!isCollapsed && group.checks.map(check => {
                     const isSelected = selectedKey === check.key && !isNewCheck;
@@ -347,8 +347,8 @@ export default function MonitorChecksPage() {
                         onClick={() => openEdit(check)}
                         className={`w-full flex items-center gap-2 pl-6 pr-3 py-1.5 text-left transition-colors border-l-2 ${
                           isSelected
-                            ? "bg-[#0078D4]/10 border-l-[#0078D4]"
-                            : "border-l-transparent hover:bg-[#161B22]"
+                            ? "bg-primary/10 border-l-primary"
+                            : "border-l-transparent hover:bg-card"
                         }`}
                       >
                         <span className={`font-mono text-xs flex-1 truncate ${isArchived ? "text-gray-600 italic" : "text-gray-300"}`}>
@@ -367,7 +367,7 @@ export default function MonitorChecksPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#161B22]">
+      <div className="flex-1 flex flex-col overflow-hidden bg-card">
         {editingCheck === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 px-8">
             <div className="text-4xl text-gray-700">⬡</div>
@@ -376,11 +376,11 @@ export default function MonitorChecksPage() {
           </div>
         ) : (
           <div className="flex flex-col h-full overflow-hidden">
-            <div className="shrink-0 px-6 py-4 border-b border-[#30363D] flex items-center gap-3">
+            <div className="shrink-0 px-6 py-4 border-b border-border flex items-center gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-white">
                   {editingCheck.id ? (
-                    <span className="font-mono text-[#0078D4]">{editingCheck.key}</span>
+                    <span className="font-mono text-primary">{editingCheck.key}</span>
                   ) : (
                     "New Monitor Check"
                   )}
@@ -403,7 +403,7 @@ export default function MonitorChecksPage() {
                     onChange={e => updateField("key", e.target.value)}
                     placeholder="entra:mfa-enforcement"
                     disabled={Boolean(editingCheck.id)}
-                    className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                    className="bg-background border-border text-white mt-1 font-mono text-sm"
                   />
                 </div>
                 <div>
@@ -412,7 +412,7 @@ export default function MonitorChecksPage() {
                     value={editingCheck.label ?? ""}
                     onChange={e => updateField("label", e.target.value)}
                     placeholder="MFA Enforcement Check"
-                    className="bg-[#0D1117] border-[#30363D] text-white mt-1"
+                    className="bg-background border-border text-white mt-1"
                   />
                 </div>
               </div>
@@ -423,7 +423,7 @@ export default function MonitorChecksPage() {
                   value={editingCheck.description ?? ""}
                   onChange={e => updateField("description", e.target.value)}
                   placeholder="Brief description of what this check verifies"
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1"
+                  className="bg-background border-border text-white mt-1"
                 />
               </div>
 
@@ -434,16 +434,16 @@ export default function MonitorChecksPage() {
                     value={editingCheck.endpoint ?? ""}
                     onChange={e => updateField("endpoint", e.target.value)}
                     placeholder="/users?$select=id,displayName,mfaRegistered"
-                    className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                    className="bg-background border-border text-white mt-1 font-mono text-sm"
                   />
                 </div>
                 <div>
                   <Label className="text-gray-400 text-xs">Method</Label>
                   <Select value={editingCheck.method ?? "GET"} onValueChange={v => updateField("method", v)}>
-                    <SelectTrigger className="bg-[#0D1117] border-[#30363D] text-white mt-1">
+                    <SelectTrigger className="bg-background border-border text-white mt-1">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#161B22] border-[#30363D]">
+                    <SelectContent className="bg-card border-border">
                       <SelectItem value="GET">GET</SelectItem>
                       <SelectItem value="POST">POST</SelectItem>
                     </SelectContent>
@@ -455,10 +455,10 @@ export default function MonitorChecksPage() {
                 <div>
                   <Label className="text-gray-400 text-xs">Frequency</Label>
                   <Select value={editingCheck.frequency ?? "daily"} onValueChange={v => updateField("frequency", v as MonitorCheck["frequency"])}>
-                    <SelectTrigger className="bg-[#0D1117] border-[#30363D] text-white mt-1">
+                    <SelectTrigger className="bg-background border-border text-white mt-1">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#161B22] border-[#30363D]">
+                    <SelectContent className="bg-card border-border">
                       <SelectItem value="hourly">Hourly</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="live">Live</SelectItem>
@@ -482,7 +482,7 @@ export default function MonitorChecksPage() {
                   value={Array.isArray(editingCheck.properties) ? editingCheck.properties.join(", ") : ""}
                   onChange={e => updateField("properties", parseJsonArrayField(e.target.value))}
                   placeholder="id, displayName, mfaRegistered"
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                  className="bg-background border-border text-white mt-1 font-mono text-sm"
                 />
               </div>
 
@@ -492,7 +492,7 @@ export default function MonitorChecksPage() {
                   value={Array.isArray(editingCheck.engines) ? editingCheck.engines.join(", ") : ""}
                   onChange={e => updateField("engines", parseJsonArrayField(e.target.value))}
                   placeholder="health, monitoring"
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                  className="bg-background border-border text-white mt-1 font-mono text-sm"
                 />
               </div>
 
@@ -504,7 +504,7 @@ export default function MonitorChecksPage() {
                   value={JSON.stringify(editingCheck.mapping ?? [], null, 2)}
                   onChange={e => { try { updateField("mapping", JSON.parse(e.target.value)); } catch { /* ignore */ } }}
                   rows={4}
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-xs"
+                  className="bg-background border-border text-white mt-1 font-mono text-xs"
                   placeholder='[{"sourceField":"mfaRegistered","targetField":"mfaEnabledCount","transform":"count"}]'
                 />
               </div>
@@ -517,7 +517,7 @@ export default function MonitorChecksPage() {
                   value={JSON.stringify(editingCheck.severityRules ?? [], null, 2)}
                   onChange={e => { try { updateField("severityRules", JSON.parse(e.target.value)); } catch { /* ignore */ } }}
                   rows={4}
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-xs"
+                  className="bg-background border-border text-white mt-1 font-mono text-xs"
                   placeholder='[{"expression":"mfaEnabledCount == 0","severity":"critical","label":"No MFA users"}]'
                 />
                 <p className="text-xs text-gray-500 mt-1">
@@ -534,13 +534,13 @@ export default function MonitorChecksPage() {
                     try { updateField("outputSchema", JSON.parse(e.target.value)); } catch { /* ignore */ }
                   }}
                   rows={3}
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-xs"
+                  className="bg-background border-border text-white mt-1 font-mono text-xs"
                   placeholder='{"type":"object","required":["mfaEnabledCount"]}'
                 />
               </div>
             </div>
 
-            <div className="shrink-0 px-6 py-4 border-t border-[#30363D] flex items-center justify-between gap-3">
+            <div className="shrink-0 px-6 py-4 border-t border-border flex items-center justify-between gap-3">
               <div>
                 {editingCheck.id && editingCheck.status === "active" && (
                   <Button
@@ -565,7 +565,7 @@ export default function MonitorChecksPage() {
                 <Button
                   onClick={handleSave}
                   disabled={saving}
-                  className="bg-[#0078D4] hover:bg-[#006cbf] text-white"
+                  className="bg-primary hover:bg-[#006cbf] text-white"
                 >
                   {saving ? "Saving…" : "Save Check"}
                 </Button>

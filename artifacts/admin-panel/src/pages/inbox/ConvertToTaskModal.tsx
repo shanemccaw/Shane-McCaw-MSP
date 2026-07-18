@@ -175,12 +175,12 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] shrink-0">
-          <h2 className="text-sm font-semibold text-[#E6EDF3]">
+      <div className="w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <h2 className="text-sm font-semibold text-foreground">
             {batchMode ? `Create ${selectedTaskIndices.size} Tasks` : "Convert to Kanban Task"}
           </h2>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#C9D1D9]">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground/90">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -190,26 +190,26 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
         <div className="overflow-y-auto flex-1">
           {loadingData ? (
             <div className="flex justify-center py-8">
-              <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
               {/* Batch: checklist of AI-extracted tasks */}
               {batchMode && aiTasks && (
                 <div className="space-y-2">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase">Select Tasks to Create</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase">Select Tasks to Create</p>
                   {aiTasks.map((t, i) => (
                     <label key={i} className="flex items-start gap-2.5 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={selectedTaskIndices.has(i)}
                         onChange={() => toggleTask(i)}
-                        className="mt-0.5 rounded accent-[#0078D4]"
+                        className="mt-0.5 rounded accent-primary"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-medium ${selectedTaskIndices.has(i) ? "text-[#E6EDF3]" : "text-[#7D8590] line-through"}`}>{t.title}</p>
-                        {t.description && <p className="text-[11px] text-[#7D8590] truncate">{t.description}</p>}
-                        <div className="flex gap-2 text-[10px] text-[#7D8590] mt-0.5">
+                        <p className={`text-xs font-medium ${selectedTaskIndices.has(i) ? "text-foreground" : "text-muted-foreground line-through"}`}>{t.title}</p>
+                        {t.description && <p className="text-[11px] text-muted-foreground truncate">{t.description}</p>}
+                        <div className="flex gap-2 text-[10px] text-muted-foreground mt-0.5">
                           {t.priority && <span className="capitalize">{t.priority}</span>}
                           {t.dueDate && <span>{t.dueDate}</span>}
                         </div>
@@ -223,40 +223,40 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
               {!batchMode && (
                 <>
                   <div>
-                    <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Task Title *</label>
+                    <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Task Title *</label>
                     <input
                       type="text"
                       value={title}
                       onChange={e => setTitle(e.target.value)}
                       required
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Description</label>
+                    <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Description</label>
                     <textarea
                       value={description}
                       onChange={e => setDescription(e.target.value)}
                       rows={3}
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4] resize-none"
+                      className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary resize-none"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Due Date</label>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Due Date</label>
                       <input
                         type="date"
                         value={dueDate ?? ""}
                         onChange={e => setDueDate(e.target.value)}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                        className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Priority</label>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Priority</label>
                       <select
                         value={priority}
                         onChange={e => setPriority(e.target.value)}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                        className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                       >
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
@@ -269,12 +269,12 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
 
               {/* Shared: project + CRM entity linking */}
               <div>
-                <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Project *</label>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Project *</label>
                 <select
                   value={projectId}
                   onChange={e => setProjectId(e.target.value)}
                   required
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                  className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="">Select project…</option>
                   {projects.map(p => (
@@ -284,11 +284,11 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
               </div>
 
               <div>
-                <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Link to Lead (optional)</label>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Link to Lead (optional)</label>
                 <select
                   value={leadId}
                   onChange={e => setLeadId(e.target.value)}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                  className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="">None</option>
                   {leads.map(l => (
@@ -299,11 +299,11 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
 
               {leadId && opportunities.length > 0 && (
                 <div>
-                  <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Link to Opportunity (optional)</label>
+                  <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Link to Opportunity (optional)</label>
                   <select
                     value={opportunityId}
                     onChange={e => setOpportunityId(e.target.value)}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                    className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                   >
                     <option value="">None</option>
                     {opportunities.map(o => (
@@ -314,11 +314,11 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
               )}
 
               <div>
-                <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Link to Customer (optional)</label>
+                <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Link to Customer (optional)</label>
                 <select
                   value={customerId}
                   onChange={e => setCustomerId(e.target.value)}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                  className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="">None</option>
                   {customers.map(c => (
@@ -330,13 +330,13 @@ export default function ConvertToTaskModal({ graphMessageId, subject, aiTasks, o
               {error && <p className="text-xs text-red-400">{error}</p>}
 
               <div className="flex gap-2 justify-end pt-1">
-                <button type="button" onClick={onClose} className="px-4 py-1.5 text-xs text-[#7D8590] border border-[#30363D] rounded-md hover:bg-[#1C2128]">
+                <button type="button" onClick={onClose} className="px-4 py-1.5 text-xs text-muted-foreground border border-border rounded-md hover:bg-accent">
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting || !projectId || (batchMode ? selectedTaskIndices.size === 0 : !title.trim())}
-                  className="px-4 py-1.5 text-xs font-medium bg-[#0078D4] text-white rounded-md hover:bg-[#1A90E0] disabled:opacity-50"
+                  className="px-4 py-1.5 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50"
                 >
                   {submitting ? "Creating…" : batchMode ? `Create ${selectedTaskIndices.size} Task${selectedTaskIndices.size !== 1 ? "s" : ""}` : "Create Task"}
                 </button>

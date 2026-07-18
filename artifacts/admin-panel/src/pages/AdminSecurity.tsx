@@ -172,7 +172,7 @@ export default function AdminSecurity() {
     <>
       <div className="max-w-lg mx-auto py-6 space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-[#E6EDF3]">Admin Security</h1>
+          <h1 className="text-xl font-bold text-foreground">Admin Security</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage second factors for your admin login — passkeys, biometrics, or an authenticator app.
           </p>
@@ -182,22 +182,22 @@ export default function AdminSecurity() {
 
         {loading ? (
           <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-            <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             Loading…
           </div>
         ) : (
           <div className="space-y-4">
             {/* Passkey card */}
-            <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                    <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-[#E6EDF3]">Passkey (Biometric / Hardware Key)</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Passkey (Biometric / Hardware Key)</h3>
                     <p className="text-xs text-muted-foreground">Fingerprint, Face ID, or security key</p>
                   </div>
                 </div>
@@ -215,7 +215,7 @@ export default function AdminSecurity() {
                     <button
                       onClick={() => void handleEnrollPasskey()}
                       disabled={enrolling}
-                      className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
+                      className="text-xs font-semibold text-primary border border-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-50"
                     >
                       {enrolling ? "Setting up…" : "Enroll Passkey"}
                     </button>
@@ -229,7 +229,7 @@ export default function AdminSecurity() {
                       <button
                         onClick={() => void handleEnrollPasskey()}
                         disabled={enrolling}
-                        className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
+                        className="text-xs font-semibold text-primary border border-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-50"
                       >
                         {enrolling ? "Setting up…" : "Add another"}
                       </button>
@@ -247,16 +247,16 @@ export default function AdminSecurity() {
             </div>
 
             {/* Authenticator App (TOTP) card */}
-            <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                    <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <svg className="w-4.5 h-4.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-[#E6EDF3]">Authenticator App</h3>
+                    <h3 className="text-sm font-semibold text-foreground">Authenticator App</h3>
                     <p className="text-xs text-muted-foreground">Google Authenticator, Authy, or any TOTP app</p>
                   </div>
                 </div>
@@ -291,7 +291,7 @@ export default function AdminSecurity() {
                       <img src={totpSetup.qrDataUrl} alt="TOTP QR code" className="w-44 h-44 rounded-lg border border-border" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#8B949E] mb-1.5 uppercase tracking-wide">
+                      <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
                         6-digit verification code
                       </label>
                       <input
@@ -302,20 +302,20 @@ export default function AdminSecurity() {
                         onChange={e => setTotpCode(e.target.value.replace(/\D/g, ""))}
                         placeholder="000000"
                         autoFocus
-                        className="w-full border border-border rounded-lg px-3 py-2.5 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition font-mono text-center tracking-widest"
+                        className="w-full border border-border rounded-lg px-3 py-2.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition font-mono text-center tracking-widest"
                       />
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => void handleTotpVerify()}
                         disabled={totpLoading || totpCode.length < 6}
-                        className="flex-1 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 bg-primary text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {totpLoading ? "Verifying…" : "Confirm enrollment"}
                       </button>
                       <button
                         onClick={() => { setTotpSetup(null); setTotpCode(""); }}
-                        className="text-xs font-semibold text-[#8B949E] border border-border px-3 py-2 rounded-lg hover:bg-[#0D1117] transition-colors"
+                        className="text-xs font-semibold text-muted-foreground border border-border px-3 py-2 rounded-lg hover:bg-background transition-colors"
                       >
                         Cancel
                       </button>
@@ -329,7 +329,7 @@ export default function AdminSecurity() {
                     <button
                       onClick={() => void handleTotpSetup()}
                       disabled={totpLoading}
-                      className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
+                      className="text-xs font-semibold text-primary border border-primary px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-50"
                     >
                       {totpLoading ? "Loading…" : "Set up authenticator"}
                     </button>
@@ -340,19 +340,19 @@ export default function AdminSecurity() {
           </div>
         )}
 
-        <div className="bg-[#1C2128] border border-border rounded-2xl px-5 py-4">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6EDF3] mb-2">How it works</h4>
+        <div className="bg-accent border border-border rounded-2xl px-5 py-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-2">How it works</h4>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
-              <span className="text-[#0078D4] font-bold mt-0.5">1.</span>
+              <span className="text-primary font-bold mt-0.5">1.</span>
               Enter your email and password as usual.
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[#0078D4] font-bold mt-0.5">2.</span>
+              <span className="text-primary font-bold mt-0.5">2.</span>
               If a passkey or authenticator app is enrolled, you will be prompted for a second factor.
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-[#0078D4] font-bold mt-0.5">3.</span>
+              <span className="text-primary font-bold mt-0.5">3.</span>
               On success, you are logged in. No second factor enrolled = no extra step.
             </li>
           </ul>

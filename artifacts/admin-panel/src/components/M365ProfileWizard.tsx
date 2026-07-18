@@ -173,7 +173,7 @@ const STEPS = [
 // ─── Assessment badge ─────────────────────────────────────────────────────────
 function AssessmentBadge() {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30 ml-1.5 align-middle leading-none">
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30 ml-1.5 align-middle leading-none">
       <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
@@ -189,9 +189,9 @@ function Toggle({ value, onChange }: { value: boolean | undefined; onChange: (v:
     <button
       type="button"
       onClick={() => onChange(!isOn)}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${isOn ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${isOn ? "bg-primary" : "bg-border"}`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#1C2128] shadow-sm transition-transform ${isOn ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-accent shadow-sm transition-transform ${isOn ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
     </button>
   );
 }
@@ -200,12 +200,12 @@ function YesNoRow({ label, value, onChange, prefilled }: { label: string; value:
   const isOn = value === true;
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0">
-      <span className="text-sm text-[#E6EDF3] pr-4 flex items-center flex-wrap gap-x-1">
+      <span className="text-sm text-foreground pr-4 flex items-center flex-wrap gap-x-1">
         {label}
         {prefilled && <AssessmentBadge />}
       </span>
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className={`text-xs font-semibold w-6 text-right ${isOn ? "text-[#0078D4]" : "text-gray-400"}`}>{isOn ? "Yes" : "No"}</span>
+        <span className={`text-xs font-semibold w-6 text-right ${isOn ? "text-primary" : "text-gray-400"}`}>{isOn ? "Yes" : "No"}</span>
         <Toggle value={value} onChange={onChange} />
       </div>
     </div>
@@ -215,7 +215,7 @@ function YesNoRow({ label, value, onChange, prefilled }: { label: string; value:
 function FieldRow({ label, children, error, prefilled }: { label: string; children: React.ReactNode; error?: string; prefilled?: boolean }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-1.5 items-start">
-      <label className="text-xs font-semibold text-[#E6EDF3] pt-2.5 leading-tight flex items-center flex-wrap gap-x-1">
+      <label className="text-xs font-semibold text-foreground pt-2.5 leading-tight flex items-center flex-wrap gap-x-1">
         {label}
         {prefilled && <AssessmentBadge />}
       </label>
@@ -227,8 +227,8 @@ function FieldRow({ label, children, error, prefilled }: { label: string; childr
   );
 }
 
-const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
-const inputErrCls = "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-[#1C2128]";
+const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-accent";
+const inputErrCls = "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-accent";
 
 function TextInput({ value, onChange, placeholder, error }: { value: string; onChange: (v: string) => void; placeholder?: string; error?: string }) {
   return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={error ? inputErrCls : inputCls} />;
@@ -259,7 +259,7 @@ function MultiSelect({ value, onChange, options }: { value: string[]; onChange: 
         return (
           <button key={opt} type="button"
             onClick={() => onChange(sel ? value.filter(v => v !== opt) : [...value, opt])}
-            className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${sel ? "bg-[#0078D4] text-white border-[#0078D4]" : "bg-[#1C2128] text-[#E6EDF3] border-border hover:border-[#0078D4]"}`}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${sel ? "bg-primary text-white border-primary" : "bg-accent text-foreground border-border hover:border-primary"}`}
           >{opt}</button>
         );
       })}
@@ -299,8 +299,8 @@ function MultiSelectWithLabels({
             }
             className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
               sel
-                ? "bg-[#0078D4] text-white border-[#0078D4]"
-                : "bg-[#1C2128] text-[#E6EDF3] border-border hover:border-[#0078D4]"
+                ? "bg-primary text-white border-primary"
+                : "bg-accent text-foreground border-border hover:border-primary"
             }`}
           >
             {opt.label}
@@ -326,13 +326,13 @@ function SkuTagInput({ value, onChange }: { value: string[]; onChange: (v: strin
           {value.map(sku => (
             <span
               key={sku}
-              className="inline-flex items-center gap-1 text-xs font-medium bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30 px-2 py-0.5 rounded-full"
+              className="inline-flex items-center gap-1 text-xs font-medium bg-primary/15 text-primary border border-primary/30 px-2 py-0.5 rounded-full"
             >
               {sku}
               <button
                 type="button"
                 onClick={() => onChange(value.filter(s => s !== sku))}
-                className="ml-0.5 text-[#0078D4]/70 hover:text-[#0078D4] leading-none"
+                className="ml-0.5 text-primary/70 hover:text-primary leading-none"
                 aria-label={`Remove ${sku}`}
               >
                 ×
@@ -365,7 +365,7 @@ function SkuTagInput({ value, onChange }: { value: string[]; onChange: (v: strin
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/50 mt-4 mb-1 first:mt-0">{children}</p>;
+  return <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 mt-4 mb-1 first:mt-0">{children}</p>;
 }
 
 function ToggleRow({ label: _label, value, onChange }: { label: string; value: boolean | undefined; onChange: (v: boolean) => void }) {
@@ -373,7 +373,7 @@ function ToggleRow({ label: _label, value, onChange }: { label: string; value: b
   return (
     <div className="flex items-center gap-3 pt-1.5">
       <Toggle value={value} onChange={onChange} />
-      <span className={`text-sm font-medium ${isOn ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{isOn ? "Yes" : "No"}</span>
+      <span className={`text-sm font-medium ${isOn ? "text-primary" : "text-muted-foreground"}`}>{isOn ? "Yes" : "No"}</span>
     </div>
   );
 }
@@ -420,7 +420,7 @@ function Step2({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
       <FieldRow label="Active User %" error={errors.activeUserPercent}>
         <NumberInput value={p.activeUserPercent} onChange={v => set("activeUserPercent", v)} placeholder="85" error={errors.activeUserPercent} />
       </FieldRow>
-      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
+      <div className="bg-accent border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Workload Adoption</SectionTitle>
         <YesNoRow label="All users licensed?" value={p.allUsersLicensed} onChange={v => set("allUsersLicensed", v)} prefilled={pf.has("allUsersLicensed")} />
         <YesNoRow label="Exchange Online in use" value={p.usesExchange} onChange={v => set("usesExchange", v)} prefilled={pf.has("usesExchange")} />
@@ -455,7 +455,7 @@ function Step3({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
       <FieldRow label="Auth Method(s)" prefilled={pf.has("authMethods")}>
         <MultiSelectWithLabels value={p.authMethods} onChange={v => set("authMethods", v)} options={authOptions} />
       </FieldRow>
-      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
+      <div className="bg-accent border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Configuration Flags</SectionTitle>
         <YesNoRow label="External sharing enabled" value={p.externalSharingEnabled} onChange={v => set("externalSharingEnabled", v)} prefilled={pf.has("externalSharingEnabled")} />
         <YesNoRow label="Guest users present" value={p.guestUsersPresent} onChange={v => set("guestUsersPresent", v)} prefilled={pf.has("guestUsersPresent")} />
@@ -469,7 +469,7 @@ function Step3({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
 
 function Step4({ p, set, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; pf: Set<string> }) {
   return (
-    <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
+    <div className="bg-accent border border-border rounded-xl px-4 pt-3 pb-1">
       <SectionTitle>Identity &amp; Access</SectionTitle>
       <YesNoRow label="MFA enforced for all users" value={p.mfaEnforced} onChange={v => set("mfaEnforced", v)} prefilled={pf.has("mfaEnforced")} />
       <YesNoRow label="Conditional Access policies configured" value={p.conditionalAccessEnabled} onChange={v => set("conditionalAccessEnabled", v)} prefilled={pf.has("conditionalAccessEnabled")} />
@@ -492,7 +492,7 @@ function Step5({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
   const scoreOpts = ["1 – Not ready", "2 – Early stages", "3 – Partially ready", "4 – Mostly ready", "5 – Fully ready"].map((s, i) => ({ value: String(i + 1), label: s }));
   return (
     <div className="space-y-3">
-      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
+      <div className="bg-accent border border-border rounded-xl px-4 pt-3 pb-1">
         <SectionTitle>License Status</SectionTitle>
         <YesNoRow label="Has M365 Copilot licenses" value={p.hasCopilotLicenses} onChange={v => set("hasCopilotLicenses", v)} prefilled={pf.has("hasCopilotLicenses")} />
       </div>
@@ -648,26 +648,26 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
         <button
           onClick={onDownloadPdf}
           disabled={downloading}
-          className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors flex-shrink-0 ml-3"
+          className="flex items-center gap-1.5 text-xs font-semibold text-primary border border-primary px-3 py-1.5 rounded-lg hover:bg-primary/10 disabled:opacity-50 transition-colors flex-shrink-0 ml-3"
         >
           {downloading
-            ? <span className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+            ? <span className="w-3 h-3 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
             : <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           }
           {downloading ? "Generating…" : "Download PDF"}
         </button>
       </div>
       {sections.map(section => (
-        <div key={section.title} className="bg-[#1C2128] border border-border rounded-xl p-4">
+        <div key={section.title} className="bg-accent border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/60">{section.title}</p>
-            <button onClick={() => onJump(section.step)} className="text-[11px] font-semibold text-[#0078D4] hover:underline">Edit</button>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">{section.title}</p>
+            <button onClick={() => onJump(section.step)} className="text-[11px] font-semibold text-primary hover:underline">Edit</button>
           </div>
           <div className="space-y-1">
             {section.rows.map(([label, value]) => (
               <div key={label} className="flex gap-3 text-xs">
-                <span className="text-[#7D8590] flex-shrink-0 w-32">{label}</span>
-                <span className="text-[#E6EDF3] font-medium break-words flex-1">{value}</span>
+                <span className="text-muted-foreground flex-shrink-0 w-32">{label}</span>
+                <span className="text-foreground font-medium break-words flex-1">{value}</span>
               </div>
             ))}
           </div>
@@ -692,30 +692,30 @@ function AssessmentBanner({
   const [collapsed, setCollapsed] = useState(false);
   if (quizzes.length === 0) return null;
   return (
-    <div className="mb-4 rounded-xl border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-3">
+    <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5 flex-1 min-w-0">
-          <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
           </svg>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-[#0078D4] mb-0.5">
+            <p className="text-xs font-bold text-primary mb-0.5">
               {quizzes.length} completed assessment{quizzes.length !== 1 ? "s" : ""} available
             </p>
             {!collapsed && (
               <ul className="space-y-0.5 mt-1">
                 {quizzes.map(q => (
-                  <li key={q.id} className="text-[11px] text-[#E6EDF3]/70 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 flex-shrink-0" />
-                    <span className="font-semibold text-[#E6EDF3]/90">{QUIZ_TYPE_LABELS[q.quizType] ?? q.quizType}</span>
-                    <span className="text-[#7D8590]">·</span>
+                  <li key={q.id} className="text-[11px] text-foreground/70 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
+                    <span className="font-semibold text-foreground/90">{QUIZ_TYPE_LABELS[q.quizType] ?? q.quizType}</span>
+                    <span className="text-muted-foreground">·</span>
                     <span>{q.tier} tier · {new Date(q.createdAt).toLocaleDateString()}</span>
                   </li>
                 ))}
               </ul>
             )}
             {prefillCount > 0 && (
-              <p className="text-[11px] text-[#0078D4]/70 mt-1.5">
+              <p className="text-[11px] text-primary/70 mt-1.5">
                 <svg className="w-3 h-3 inline mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                 {prefillCount} field{prefillCount !== 1 ? "s" : ""} pre-filled — look for the <span className="font-bold">From assessment</span> badge
               </p>
@@ -727,14 +727,14 @@ function AssessmentBanner({
             type="button"
             onClick={onPrefill}
             disabled={prefilling}
-            className="text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors whitespace-nowrap"
+            className="text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors whitespace-nowrap"
           >
             {prefilling ? "Applying…" : prefillCount > 0 ? "Re-apply" : "Pre-fill from assessments"}
           </button>
           <button
             type="button"
             onClick={() => setCollapsed(c => !c)}
-            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors"
             aria-label={collapsed ? "Expand" : "Collapse"}
           >
             <svg className={`w-4 h-4 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -876,14 +876,14 @@ export function M365ProfileWizard({
     <Dialog open onOpenChange={open => { if (!open && !saving) onClose(); }}>
       <DialogContent className="max-w-2xl flex flex-col p-0 gap-0 max-h-[88vh]">
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-border flex-shrink-0">
-          <DialogTitle className="text-[#E6EDF3] text-sm font-bold">
+          <DialogTitle className="text-foreground text-sm font-bold">
             M365 Environment Profile — {clientName}
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-0.5">{STEPS[step].description}</p>
           <div className="flex items-center gap-2.5 mt-3">
             <div className="flex gap-1">
               {STEPS.map((_, i) => (
-                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "w-6 bg-[#0078D4]" : i < step ? "w-3 bg-[#0078D4]/50" : "w-3 bg-[#30363D]"}`} />
+                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "w-6 bg-primary" : i < step ? "w-3 bg-primary/50" : "w-3 bg-border"}`} />
               ))}
             </div>
             <span className="text-[10px] font-semibold text-muted-foreground ml-auto">Step {step + 1} of {STEPS.length}</span>
@@ -891,10 +891,10 @@ export function M365ProfileWizard({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
-          <h2 className="text-sm font-bold text-[#E6EDF3] mb-4">{STEPS[step].title}</h2>
+          <h2 className="text-sm font-bold text-foreground mb-4">{STEPS[step].title}</h2>
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <>
@@ -915,7 +915,7 @@ export function M365ProfileWizard({
           <button
             onClick={goBack}
             disabled={step === 0 || saving}
-            className="text-sm font-medium text-[#E6EDF3] border border-border px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-30 transition-colors"
+            className="text-sm font-medium text-foreground border border-border px-4 py-2 rounded-lg hover:bg-accent disabled:opacity-30 transition-colors"
           >
             ← Back
           </button>
@@ -923,7 +923,7 @@ export function M365ProfileWizard({
             <button
               onClick={onClose}
               disabled={saving}
-              className="text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] px-3 py-2 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground px-3 py-2 transition-colors"
             >
               Cancel
             </button>
@@ -931,7 +931,7 @@ export function M365ProfileWizard({
               <button
                 onClick={() => void handleSave()}
                 disabled={saving}
-                className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-6 py-2 rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
               >
                 {saving && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
                 {saving ? "Saving…" : "Save Customer Profile"}
@@ -939,7 +939,7 @@ export function M365ProfileWizard({
             ) : (
               <button
                 onClick={goNext}
-                className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#005fa3] transition-colors"
+                className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#005fa3] transition-colors"
               >
                 Next →
               </button>

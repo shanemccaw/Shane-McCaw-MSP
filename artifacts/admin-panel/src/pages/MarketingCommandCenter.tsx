@@ -1,14 +1,8 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useInbox } from "@/contexts/InboxContext";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import IDEShell, {
-  type ActivityItem,
-  type ExplorerSection,
-  type IDETab,
-  type CmdKItem,
-} from "@/components/IDEShell";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, FunnelChart, Funnel, LabelList,
@@ -228,13 +222,13 @@ interface SeoRanking {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#059669", "#F59E0B", "#EF4444", "#EC4899", "#6366F1"];
+const COLORS = ["#2F6FED", "#00B4D8", "#7C3AED", "#059669", "#F59E0B", "#EF4444", "#EC4899", "#6366F1"];
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button onClick={() => { void navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="text-xs px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+      className="text-xs px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
       {copied ? "Copied!" : "Copy"}
     </button>
   );
@@ -242,19 +236,19 @@ function CopyButton({ text }: { text: string }) {
 
 function Badge({ text, color = "blue" }: { text: string; color?: string }) {
   const colors: Record<string, string> = {
-    blue: "bg-[#0078D4]/20 text-[#58A6FF]",
+    blue: "bg-primary/20 text-primary",
     green: "bg-emerald-500/20 text-emerald-400",
     yellow: "bg-amber-500/20 text-amber-400",
     red: "bg-red-500/20 text-red-400",
     purple: "bg-violet-500/20 text-violet-400",
-    gray: "bg-[#30363D] text-[#7D8590]",
+    gray: "bg-border text-muted-foreground",
     teal: "bg-teal-500/20 text-teal-400",
   };
   return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${colors[color] ?? colors["gray"]}`}>{text}</span>;
 }
 
 function SkeletonCard({ count = 1 }: { count?: number }) {
-  return <>{Array.from({ length: count }).map((_, i) => <div key={i} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 animate-pulse h-24" />)}</>;
+  return <>{Array.from({ length: count }).map((_, i) => <div key={i} className="bg-card border border-border rounded-xl p-4 animate-pulse h-24" />)}</>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -313,13 +307,13 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-lg p-6 space-y-4">
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-[#E6EDF3] font-semibold">Send via Exchange Online</h3>
-            <p className="text-[10px] text-[#7D8590] mt-0.5">Sends from Shane's Exchange mailbox via Microsoft Graph</p>
+            <h3 className="text-foreground font-semibold">Send via Exchange Online</h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5">Sends from Shane's Exchange mailbox via Microsoft Graph</p>
           </div>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
         {result === "success" ? (
           <div className="flex flex-col items-center justify-center h-24 gap-2">
@@ -330,26 +324,26 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
           <>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">To</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">To</label>
                 <input value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@company.com"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
               </div>
               <div>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Subject</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Subject</label>
                 <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject…"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
               </div>
               <div>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Body</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Body</label>
                 <textarea value={body} onChange={e => setBody(e.target.value)} rows={10}
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none font-mono" />
               </div>
               <div>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Campaign <span className="normal-case">(optional)</span></label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Campaign <span className="normal-case">(optional)</span></label>
                 <select
                   value={selectedCampaignId ?? ""}
                   onChange={e => setSelectedCampaignId(e.target.value ? Number(e.target.value) : null)}
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                 >
                   <option value="">— No campaign —</option>
                   {campaigns.map(c => (
@@ -366,10 +360,10 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
             </div>
             <div className="flex gap-2">
               <button onClick={() => { void send(); }} disabled={sending || !to.trim() || !subject.trim()}
-                className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
                 {sending ? "Sending…" : "Send Email"}
               </button>
-              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
             </div>
           </>
         )}
@@ -429,52 +423,52 @@ function OutreachModal({ leadName, leadEmail, leadId, recommendedLeadId, templat
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-          <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
-            <h3 className="text-[#E6EDF3] font-semibold">Generate Outreach{leadName ? ` — ${leadName}` : ""}</h3>
-            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+        <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h3 className="text-foreground font-semibold">Generate Outreach{leadName ? ` — ${leadName}` : ""}</h3>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
           </div>
           <div className="p-4 flex gap-2 flex-wrap">
             {(["cold_email", "linkedin", "followup", "cold_call"] as const).map(t => (
               <button key={t} onClick={() => { setSelectedType(t); setContent(""); }}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${selectedType === t ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${selectedType === t ? "bg-primary/20 border-primary/40 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
                 {TYPE_LABELS[t]}
               </button>
             ))}
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {generating ? (
-              <div className="flex items-center justify-center h-32 text-[#7D8590]">
-                <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Generating…
+              <div className="flex items-center justify-center h-32 text-muted-foreground">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />Generating…
               </div>
             ) : content ? (
               <div className="relative">
                 <div className="absolute top-2 right-2"><CopyButton text={content} /></div>
-                <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-4 pt-8">{content}</pre>
+                <pre className="text-foreground text-sm whitespace-pre-wrap font-sans bg-background rounded-lg p-4 pt-8">{content}</pre>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-32 text-[#7D8590] text-sm">Click Generate to create content</div>
+              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Click Generate to create content</div>
             )}
           </div>
-          <div className="p-4 border-t border-[#30363D] flex flex-col gap-2">
+          <div className="p-4 border-t border-border flex flex-col gap-2">
             {content && (
               <div className="flex gap-2 flex-wrap">
                 <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name to save…"
-                  className="flex-1 min-w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="flex-1 min-w-32 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                 <button onClick={() => { void saveTemplate(); }} disabled={saving || !templateName.trim()}
                   className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
                   {saving ? "Saving…" : "Save Template"}
                 </button>
                 {canSendEmail && (
                   <button onClick={() => setSendModal(true)}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                    className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
                     Send Email
                   </button>
                 )}
               </div>
             )}
             <button onClick={() => { void generate(); }} disabled={generating}
-              className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              className="w-full py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
               {generating ? "Generating…" : content ? "Regenerate" : "Generate"}
             </button>
           </div>
@@ -518,23 +512,23 @@ function AddTaskModal({ lead, onClose, fetchWithAuth }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-card border border-border rounded-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-[#E6EDF3] font-semibold">Add to Marketing Tasks</h3>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+          <h3 className="text-foreground font-semibold">Add to Marketing Tasks</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
         <div className="space-y-3">
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Task title…"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="Description…"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
         </div>
         <div className="flex gap-2">
           <button onClick={() => { void save(); }} disabled={saving || !title.trim()}
-            className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+            className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
             {saving ? "Adding…" : "Add Task"}
           </button>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
         </div>
       </div>
     </div>
@@ -570,19 +564,19 @@ function AddToCampaignModal({ lead, campaigns, onClose, fetchWithAuth }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md p-6 space-y-4">
+      <div className="bg-card border border-border rounded-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-[#E6EDF3] font-semibold">Add to Campaign</h3>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+          <h3 className="text-foreground font-semibold">Add to Campaign</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
         {campaigns.length === 0 ? (
-          <p className="text-[#7D8590] text-sm">No campaigns yet — create one in the Campaigns section first.</p>
+          <p className="text-muted-foreground text-sm">No campaigns yet — create one in the Campaigns section first.</p>
         ) : (
           <>
             <div className="space-y-2">
               {campaigns.map(c => (
                 <button key={c.id} onClick={() => setSelectedId(c.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${selectedId === c.id ? "border-[#0078D4]/60 bg-[#0078D4]/10 text-[#E6EDF3]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40"}`}>
+                  className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${selectedId === c.id ? "border-primary/60 bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground hover:border-primary/40"}`}>
                   <span className="font-medium">{c.name}</span>
                   <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
                 </button>
@@ -590,10 +584,10 @@ function AddToCampaignModal({ lead, campaigns, onClose, fetchWithAuth }: {
             </div>
             <div className="flex gap-2">
               <button onClick={() => { void save(); }} disabled={saving || !selectedId}
-                className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
                 {saving ? "Adding…" : "Add to Campaign"}
               </button>
-              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
             </div>
           </>
         )}
@@ -641,44 +635,44 @@ function LeadEmailHistoryModal({ lead, onClose, fetchWithAuth }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div>
-            <h3 className="text-[#E6EDF3] font-semibold">Email History — {lead.name}</h3>
-            <p className="text-[10px] text-[#7D8590] mt-0.5">{lead.email}</p>
+            <h3 className="text-foreground font-semibold">Email History — {lead.name}</h3>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{lead.email}</p>
           </div>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
-            <div className="flex items-center justify-center h-24 text-[#7D8590] text-sm">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Loading…
+            <div className="flex items-center justify-center h-24 text-muted-foreground text-sm">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />Loading…
             </div>
           ) : error ? (
             <p className="text-red-400 text-sm text-center py-8">{error}</p>
           ) : emails.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-24 text-[#7D8590] text-sm gap-1">
+            <div className="flex flex-col items-center justify-center h-24 text-muted-foreground text-sm gap-1">
               <span className="text-2xl">✉</span>
               <p>No emails sent to this lead yet</p>
             </div>
           ) : (
             <div className="space-y-2">
               {emails.map(e => (
-                <div key={e.id} className="bg-[#0D1117] border border-[#30363D] rounded-lg px-4 py-3 flex items-start justify-between gap-4">
+                <div key={e.id} className="bg-background border border-border rounded-lg px-4 py-3 flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[#E6EDF3] text-sm font-medium truncate">{e.subject ?? "(no subject)"}</p>
-                    <p className="text-[10px] text-[#7D8590] mt-0.5">To: {e.recipient ?? "—"}</p>
+                    <p className="text-foreground text-sm font-medium truncate">{e.subject ?? "(no subject)"}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">To: {e.recipient ?? "—"}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <Badge text={e.eventType} color={e.eventType === "sent" ? "blue" : e.eventType === "delivered" ? "green" : e.eventType === "bounced" ? "red" : "gray"} />
-                    <p className="text-[10px] text-[#484F58] mt-1">{fmt(e.sentAt)}</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1">{fmt(e.sentAt)}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
-        <div className="p-4 border-t border-[#30363D] text-[10px] text-[#484F58]">
+        <div className="p-4 border-t border-border text-[10px] text-muted-foreground/60">
           {!loading && !error && `${emails.length} email${emails.length === 1 ? "" : "s"} in history`}
         </div>
       </div>
@@ -703,8 +697,8 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full sm:max-w-lg bg-[#161B22] shadow-2xl flex flex-col h-full">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] bg-[#0A2540] flex-shrink-0">
+      <div className="w-full sm:max-w-lg bg-card shadow-2xl flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540] flex-shrink-0">
           <h2 className="text-white font-bold">AI Lead Details</h2>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
         </div>
@@ -714,45 +708,45 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Name</p>
-                <p className="text-[#E6EDF3] font-semibold text-base">{lead.name}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Name</p>
+                <p className="text-foreground font-semibold text-base">{lead.name}</p>
               </div>
               <Badge text={`${lead.confidence}%`} color={lead.confidence >= 80 ? "green" : lead.confidence >= 60 ? "yellow" : "gray"} />
             </div>
             {lead.role && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Role</p>
-                <p className="text-sm text-[#E6EDF3]">{lead.role}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Role</p>
+                <p className="text-sm text-foreground">{lead.role}</p>
               </div>
             )}
             {lead.company && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Company</p>
-                <p className="text-sm text-[#E6EDF3]">{lead.company}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Company</p>
+                <p className="text-sm text-foreground">{lead.company}</p>
               </div>
             )}
             {lead.email && (
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Email</p>
-                <a href={`mailto:${lead.email}`} className="text-sm text-[#0078D4] hover:underline">{lead.email}</a>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
+                <a href={`mailto:${lead.email}`} className="text-sm text-primary hover:underline">{lead.email}</a>
               </div>
             )}
             <div className="flex flex-wrap gap-4">
               {lead.industry && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Industry</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Industry</p>
                   <Badge text={lead.industry} color="blue" />
                 </div>
               )}
               {lead.companySize && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Company Size</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Company Size</p>
                   <Badge text={lead.companySize} color="gray" />
                 </div>
               )}
               {lead.location && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Location</p>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Location</p>
                   <Badge text={lead.location} color="gray" />
                 </div>
               )}
@@ -761,29 +755,29 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
 
           {/* Recommended service */}
           {lead.recommendedService && (
-            <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Recommended Service</p>
-              <p className="text-sm text-[#E6EDF3] font-medium">{lead.recommendedService}</p>
+            <div className="bg-background border border-border rounded-xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Recommended Service</p>
+              <p className="text-sm text-foreground font-medium">{lead.recommendedService}</p>
             </div>
           )}
 
           {/* Why fit */}
           {lead.whyFit && (
-            <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
-              <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-1.5">Why They Fit</p>
-              <p className="text-sm text-[#E6EDF3] leading-relaxed">{lead.whyFit}</p>
+            <div className="bg-background border border-border rounded-xl p-4">
+              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">Why They Fit</p>
+              <p className="text-sm text-foreground leading-relaxed">{lead.whyFit}</p>
             </div>
           )}
 
           {/* Pain points */}
           {lead.painPoints.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-2">Pain Points</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Pain Points</p>
               <div className="space-y-1.5">
                 {lead.painPoints.map((p, i) => (
                   <div key={i} className="flex items-start gap-2">
                     <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
-                    <span className="text-sm text-[#E6EDF3]">{p}</span>
+                    <span className="text-sm text-foreground">{p}</span>
                   </div>
                 ))}
               </div>
@@ -800,22 +794,22 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
         </div>
 
         {/* Action buttons */}
-        <div className="px-6 py-4 border-t border-[#30363D] space-y-2 flex-shrink-0">
+        <div className="px-6 py-4 border-t border-border space-y-2 flex-shrink-0">
           <div className="flex flex-wrap gap-2">
             <button onClick={() => { onConvert(lead.id); onClose(); }}
               className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors font-medium">
               Add to Leads
             </button>
             <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-medium">
               Email
             </button>
             <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-medium">
               LinkedIn
             </button>
             <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors font-medium">
               Follow-Up Seq.
             </button>
             <button onClick={() => onTask(lead)}
@@ -828,7 +822,7 @@ function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithA
             </button>
           </div>
           <button onClick={() => { onDismiss(lead.id); onClose(); }}
-            className="w-full py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors">
+            className="w-full py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground hover:border-muted-foreground/60 transition-colors">
             Dismiss Lead
           </button>
         </div>
@@ -958,28 +952,28 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-[#E6EDF3]">AI Lead Recommendations</h2>
-          <p className="text-xs text-[#7D8590]">AI-powered leads matched to your ICP and services — auto-refreshed from DB context</p>
+          <h2 className="text-lg font-semibold text-foreground">AI Lead Recommendations</h2>
+          <p className="text-xs text-muted-foreground">AI-powered leads matched to your ICP and services — auto-refreshed from DB context</p>
         </div>
       </div>
 
       {/* Targeting input */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
         <div>
-          <label className="text-xs font-semibold text-[#E6EDF3]">Target Segment <span className="text-[#7D8590] font-normal">(optional)</span></label>
-          <p className="text-[11px] text-[#484F58] mt-0.5">Describe the type of companies or roles you want to target — e.g. "MSPs and System Integrators", "healthcare startups", "manufacturing companies in the Midwest"</p>
+          <label className="text-xs font-semibold text-foreground">Target Segment <span className="text-muted-foreground font-normal">(optional)</span></label>
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5">Describe the type of companies or roles you want to target — e.g. "MSPs and System Integrators", "healthcare startups", "manufacturing companies in the Midwest"</p>
         </div>
         <textarea
           value={targetingPrompt}
           onChange={e => setTargetingPrompt(e.target.value)}
           placeholder="e.g. Managed Service Providers (MSPs) and System Integrators with 50–500 employees who resell or implement Microsoft 365..."
           rows={2}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none"
         />
         <button
           onClick={() => { void generate(targetingPrompt.trim() || undefined); }}
           disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-60 transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-60 transition-colors"
         >
           {generating
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</>
@@ -997,19 +991,19 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
       {loading || generating && active.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"><SkeletonCard count={3} /></div>
       ) : active.length === 0 ? (
-        <div className="bg-[#161B22] border border-dashed border-[#30363D] rounded-xl p-8 text-center">
-          <p className="text-[#7D8590] text-sm">No pending leads — click Generate to refresh</p>
+        <div className="bg-card border border-dashed border-border rounded-xl p-8 text-center">
+          <p className="text-muted-foreground text-sm">No pending leads — click Generate to refresh</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {active.map(lead => (
             <div key={lead.id} onClick={() => setSelectedLead(lead)}
-              className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3 hover:border-[#0078D4]/40 transition-colors cursor-pointer">
+              className="bg-card border border-border rounded-xl p-4 space-y-3 hover:border-primary/40 transition-colors cursor-pointer">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-[#E6EDF3] truncate">{lead.name}</p>
-                  <p className="text-xs text-[#7D8590] truncate">{lead.role}{lead.company ? ` · ${lead.company}` : ""}</p>
-                  {lead.email && <p className="text-[10px] text-[#484F58] truncate">{lead.email}</p>}
+                  <p className="font-semibold text-foreground truncate">{lead.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{lead.role}{lead.company ? ` · ${lead.company}` : ""}</p>
+                  {lead.email && <p className="text-[10px] text-muted-foreground/60 truncate">{lead.email}</p>}
                 </div>
                 <Badge text={`${lead.confidence}%`} color={lead.confidence >= 80 ? "green" : lead.confidence >= 60 ? "yellow" : "gray"} />
               </div>
@@ -1019,7 +1013,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                 {lead.location && <Badge text={lead.location} color="gray" />}
                 {lead.recommendedService && <Badge text={lead.recommendedService} color="teal" />}
               </div>
-              {lead.whyFit && <p className="text-xs text-[#7D8590] line-clamp-2">{lead.whyFit}</p>}
+              {lead.whyFit && <p className="text-xs text-muted-foreground line-clamp-2">{lead.whyFit}</p>}
               {lead.painPoints.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {lead.painPoints.slice(0, 2).map((p, i) => <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">{p}</span>)}
@@ -1031,14 +1025,14 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                   <span className="text-[10px] text-emerald-400">Draft saved</span>
                 </div>
               )}
-              <div className="flex flex-wrap gap-1 pt-1 border-t border-[#30363D]">
+              <div className="flex flex-wrap gap-1 pt-1 border-t border-border">
                 <button onClick={e => { e.stopPropagation(); void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
-                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Email</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">LinkedIn</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" }); }} className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Follow-Up Seq.</button>
                 <button onClick={e => { e.stopPropagation(); setTaskModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
                 <button onClick={e => { e.stopPropagation(); setCampaignModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
-                <button onClick={e => { e.stopPropagation(); void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Dismiss</button>
+                <button onClick={e => { e.stopPropagation(); void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-border text-muted-foreground hover:text-foreground transition-colors">Dismiss</button>
               </div>
             </div>
           ))}
@@ -1046,11 +1040,11 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
       )}
 
       {pendingDismiss && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#21262D] border border-[#30363D] shadow-2xl text-sm text-[#E6EDF3]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-accent border border-border shadow-2xl text-sm text-foreground">
           <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
           <span><span className="font-medium">{pendingDismiss.leadName}</span> dismissed — saved draft will be lost</span>
           <button onClick={undoDismiss}
-            className="ml-1 px-3 py-1 rounded-lg bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#0078D4]/80 transition-colors flex-shrink-0">
+            className="ml-1 px-3 py-1 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/80 transition-colors flex-shrink-0">
             Undo
           </button>
         </div>
@@ -1107,10 +1101,10 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
   useEffect(() => { load(); }, [fetchWithAuth]);
 
   if (loading) return (
-    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5">
+    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-primary/30 rounded-xl p-5">
       <div className="animate-pulse space-y-3">
-        <div className="h-5 w-48 bg-[#1C2128] rounded" />
-        <div className="h-20 bg-[#1C2128] rounded" />
+        <div className="h-5 w-48 bg-accent rounded" />
+        <div className="h-20 bg-accent rounded" />
       </div>
     </div>
   );
@@ -1122,11 +1116,11 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
   const overdueCount = followUpsTodo.filter(f => f.status === "overdue").length;
 
   return (
-    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5">
+    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-primary/30 rounded-xl p-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-[#58A6FF] uppercase tracking-wide">Revenue Command Center</h2>
-          <p className="text-xs text-[#7D8590] mt-0.5">Updated {new Date(cmd.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+          <h2 className="text-sm font-semibold text-primary uppercase tracking-wide">Revenue Command Center</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Updated {new Date(cmd.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
         </div>
         <div className="flex items-center gap-3">
           {[
@@ -1135,17 +1129,17 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
             { label: "Overdue", value: overdueCount, urgent: overdueCount > 0, icon: "⚠" },
             { label: "Live Pages", value: cmd.publishedLandingPages, urgent: false, icon: "🌐" },
           ].map(s => (
-            <div key={s.label} className={`text-center px-3 py-1.5 rounded-lg border ${s.urgent ? "border-red-500/40 bg-red-500/10" : "border-[#30363D] bg-[#161B22]/50"}`}>
-              <p className={`text-lg font-bold ${s.urgent ? "text-red-400" : "text-[#E6EDF3]"}`}>{s.icon} {s.value}</p>
-              <p className="text-[10px] text-[#7D8590]">{s.label}</p>
+            <div key={s.label} className={`text-center px-3 py-1.5 rounded-lg border ${s.urgent ? "border-red-500/40 bg-red-500/10" : "border-border bg-card/50"}`}>
+              <p className={`text-lg font-bold ${s.urgent ? "text-red-400" : "text-foreground"}`}>{s.icon} {s.value}</p>
+              <p className="text-[10px] text-muted-foreground">{s.label}</p>
             </div>
           ))}
           <button onClick={() => load(true)} disabled={refreshing}
-            className="text-xs text-[#58A6FF] border border-[#30363D] rounded-lg px-3 py-1.5 hover:bg-[#161B22] disabled:opacity-50 transition-colors">
+            className="text-xs text-primary border border-border rounded-lg px-3 py-1.5 hover:bg-card disabled:opacity-50 transition-colors">
             {refreshing ? "…" : "↻ Refresh"}
           </button>
           <button onClick={toggleExpanded} title={expanded ? "Collapse" : "Expand"}
-            className="text-[#7D8590] border border-[#30363D] rounded-lg p-1.5 hover:bg-[#161B22] hover:text-[#E6EDF3] transition-colors">
+            className="text-muted-foreground border border-border rounded-lg p-1.5 hover:bg-card hover:text-foreground transition-colors">
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
@@ -1156,9 +1150,9 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
         style={{ maxHeight: expanded ? "2000px" : "0px" }}
       >
         <div className="space-y-4 pt-4">
-        <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
-          <p className="text-xs font-semibold text-[#58A6FF] mb-1">✦ Today's #1 Priority</p>
-          <p className="text-sm text-[#E6EDF3]">{cmd.aiInsight.topPriority}</p>
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+          <p className="text-xs font-semibold text-primary mb-1">✦ Today's #1 Priority</p>
+          <p className="text-sm text-foreground">{cmd.aiInsight.topPriority}</p>
           {cmd.aiInsight.closestToBuying && (
             <p className="text-xs text-amber-300 mt-1.5">🏆 Closest to buying: {cmd.aiInsight.closestToBuying}</p>
           )}
@@ -1167,18 +1161,18 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {leadsToContact.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">🔥 Leads to Contact</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">🔥 Leads to Contact</p>
             <div className="space-y-1.5">
               {leadsToContact.map(l => (
                 <button key={l.id} onClick={() => onNavigate?.("lead-finder")}
-                  className="w-full flex items-center justify-between bg-[#161B22]/70 hover:bg-[#161B22] rounded-lg px-3 py-1.5 transition-colors text-left group">
+                  className="w-full flex items-center justify-between bg-card/70 hover:bg-card rounded-lg px-3 py-1.5 transition-colors text-left group">
                   <div>
-                    <p className="text-xs font-medium text-[#E6EDF3]">{l.name}</p>
-                    <p className="text-[10px] text-[#7D8590]">{l.company ?? "—"} · {l.stage}</p>
+                    <p className="text-xs font-medium text-foreground">{l.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{l.company ?? "—"} · {l.stage}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className={`text-xs font-bold ${l.score >= 70 ? "text-red-400" : "text-amber-400"}`}>{l.score}</span>
-                    <span className="text-[10px] text-[#30363D] group-hover:text-[#7D8590] transition-colors">→</span>
+                    <span className="text-[10px] text-border group-hover:text-muted-foreground transition-colors">→</span>
                   </div>
                 </button>
               ))}
@@ -1188,18 +1182,18 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
 
         {followUpsTodo.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">📅 Follow-Ups Due Today</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">📅 Follow-Ups Due Today</p>
             <div className="space-y-1.5">
               {followUpsTodo.map(f => (
                 <button key={f.id} onClick={() => onNavigate?.("follow-ups")}
-                  className={`w-full flex items-center justify-between rounded-lg px-3 py-1.5 transition-colors text-left group ${f.status === "overdue" ? "bg-red-500/10 border border-red-500/20 hover:bg-red-500/15" : "bg-[#161B22]/70 hover:bg-[#161B22]"}`}>
+                  className={`w-full flex items-center justify-between rounded-lg px-3 py-1.5 transition-colors text-left group ${f.status === "overdue" ? "bg-red-500/10 border border-red-500/20 hover:bg-red-500/15" : "bg-card/70 hover:bg-card"}`}>
                   <div>
-                    <p className="text-xs font-medium text-[#E6EDF3]">{f.leadName ?? "Unknown"}</p>
-                    <p className="text-[10px] text-[#7D8590]">{f.channel} · {f.subject ?? "No subject"}</p>
+                    <p className="text-xs font-medium text-foreground">{f.leadName ?? "Unknown"}</p>
+                    <p className="text-[10px] text-muted-foreground">{f.channel} · {f.subject ?? "No subject"}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {f.status === "overdue" && <span className="text-[10px] text-red-400 font-semibold">OVERDUE</span>}
-                    <span className="text-[10px] text-[#30363D] group-hover:text-[#7D8590] transition-colors">→</span>
+                    <span className="text-[10px] text-border group-hover:text-muted-foreground transition-colors">→</span>
                   </div>
                 </button>
               ))}
@@ -1211,24 +1205,24 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
           {cmd.offerToPush && (
             <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
               <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">🎁 Offer to Push</p>
-              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.offerToPush.name}</p>
-              <p className="text-[10px] text-[#7D8590]">{cmd.offerToPush.goal}</p>
+              <p className="text-xs text-foreground font-medium">{cmd.offerToPush.name}</p>
+              <p className="text-[10px] text-muted-foreground">{cmd.offerToPush.goal}</p>
             </div>
           )}
           {cmd.campaignAction && (
             <button onClick={() => onNavigate?.("campaigns")}
               className="w-full bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/15 rounded-lg px-3 py-2 text-left transition-colors">
               <p className="text-[10px] font-semibold text-purple-400 mb-0.5">🚀 Campaign Needs Attention →</p>
-              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.campaignAction.name}</p>
-              <p className="text-[10px] text-[#7D8590]">{cmd.campaignAction.leadsGenerated} leads · ${parseFloat(cmd.campaignAction.revenueAttributed).toLocaleString()} rev</p>
+              <p className="text-xs text-foreground font-medium">{cmd.campaignAction.name}</p>
+              <p className="text-[10px] text-muted-foreground">{cmd.campaignAction.leadsGenerated} leads · ${parseFloat(cmd.campaignAction.revenueAttributed).toLocaleString()} rev</p>
             </button>
           )}
           {cmd.contentSuggestion && (
             <button onClick={() => onNavigate?.("content")}
               className="w-full bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/15 rounded-lg px-3 py-2 text-left transition-colors">
               <p className="text-[10px] font-semibold text-teal-400 mb-0.5">📝 1 Content to Publish →</p>
-              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.contentSuggestion.title}</p>
-              <p className="text-[10px] text-[#7D8590]">{cmd.contentSuggestion.assetType}</p>
+              <p className="text-xs text-foreground font-medium">{cmd.contentSuggestion.title}</p>
+              <p className="text-[10px] text-muted-foreground">{cmd.contentSuggestion.assetType}</p>
             </button>
           )}
           {cmd.aiInsight.revenueOpportunities.length > 0 && (
@@ -1236,7 +1230,7 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
               <p className="text-[10px] font-semibold text-amber-400 mb-1">💰 Revenue Opportunities</p>
               <ul className="space-y-0.5">
                 {cmd.aiInsight.revenueOpportunities.map((o, i) => (
-                  <li key={i} className="text-[10px] text-[#E6EDF3] flex items-start gap-1"><span className="text-amber-400">•</span>{o}</li>
+                  <li key={i} className="text-[10px] text-foreground flex items-start gap-1"><span className="text-amber-400">•</span>{o}</li>
                 ))}
               </ul>
             </div>
@@ -1246,10 +1240,10 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">⚡ Quick Wins</p>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">⚡ Quick Wins</p>
           <ul className="space-y-1.5">
             {cmd.aiInsight.quickWins.map((w, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]">
+              <li key={i} className="flex items-start gap-2 text-xs text-foreground">
                 <span className="text-emerald-400 font-bold mt-0.5 flex-shrink-0">{i + 1}.</span>
                 <span>{w}</span>
               </li>
@@ -1258,11 +1252,11 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
         </div>
         {cmd.aiInsight.nextBestActions.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">🎯 Next Best Actions</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">🎯 Next Best Actions</p>
             <ul className="space-y-1.5">
               {cmd.aiInsight.nextBestActions.map((a, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]">
-                  <span className="text-[#58A6FF] font-bold mt-0.5 flex-shrink-0">→</span>
+                <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                  <span className="text-primary font-bold mt-0.5 flex-shrink-0">→</span>
                   <span>{a}</span>
                 </li>
               ))}
@@ -1273,7 +1267,7 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
 
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
           <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">Revenue Insight</p>
-          <p className="text-xs text-[#E6EDF3]">{cmd.aiInsight.revenueInsight}</p>
+          <p className="text-xs text-foreground">{cmd.aiInsight.revenueInsight}</p>
         </div>
         </div>
       </div>
@@ -1308,17 +1302,17 @@ function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: Reque
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">KPI Overview</h2>
+      <h2 className="text-lg font-semibold text-foreground">KPI Overview</h2>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {cards.map(c => (
-          <div key={c.label} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-            {!kpi ? <div className="animate-pulse h-10 bg-[#30363D] rounded" /> : (
+          <div key={c.label} className="bg-card border border-border rounded-xl p-4">
+            {!kpi ? <div className="animate-pulse h-10 bg-border rounded" /> : (
               <>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-2xl">{c.icon}</span>
-                  <span className="text-xs text-[#7D8590]">{c.label}</span>
+                  <span className="text-xs text-muted-foreground">{c.label}</span>
                 </div>
-                <p className="text-2xl font-bold text-[#E6EDF3]">{String(c.value)}</p>
+                <p className="text-2xl font-bold text-foreground">{String(c.value)}</p>
               </>
             )}
           </div>
@@ -1326,36 +1320,36 @@ function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: Reque
       </div>
 
       {hotLeads.length > 0 && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-semibold text-[#E6EDF3]">🔥 Hot Lead Scoring</span>
+            <span className="text-sm font-semibold text-foreground">🔥 Hot Lead Scoring</span>
             <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">{hotLeads.length} hot</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-[#30363D]">
+              <thead><tr className="border-b border-border">
                 {["Lead", "Company", "Stage", "Score", "Recent Events"].map(h => (
-                  <th key={h} className="px-3 py-1.5 text-left text-[10px] font-semibold text-[#7D8590]">{h}</th>
+                  <th key={h} className="px-3 py-1.5 text-left text-[10px] font-semibold text-muted-foreground">{h}</th>
                 ))}
               </tr></thead>
-              <tbody className="divide-y divide-[#30363D]">
+              <tbody className="divide-y divide-border">
                 {hotLeads.slice(0, 10).map(l => (
-                  <tr key={l.id} className="hover:bg-[#1C2128] transition-colors">
+                  <tr key={l.id} className="hover:bg-accent transition-colors">
                     <td className="px-3 py-2">
-                      <p className="text-xs font-medium text-[#E6EDF3]">{l.name}</p>
-                      <p className="text-[10px] text-[#7D8590]">{l.email}</p>
+                      <p className="text-xs font-medium text-foreground">{l.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{l.email}</p>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[#7D8590]">{l.company ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{l.company ?? "—"}</td>
                     <td className="px-3 py-2"><Badge text={l.stage} color={l.stage === "Hot" ? "green" : l.stage === "Warm" ? "yellow" : l.stage === "Junk" ? "red" : "gray"} /></td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
-                        <div className="h-1.5 w-16 rounded-full bg-[#21262D] overflow-hidden">
+                        <div className="h-1.5 w-16 rounded-full bg-accent overflow-hidden">
                           <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${l.score}%` }} />
                         </div>
-                        <span className={`text-xs font-bold font-mono ${l.score >= 70 ? "text-red-400" : l.score >= 50 ? "text-amber-400" : "text-[#E6EDF3]"}`}>{l.score}</span>
+                        <span className={`text-xs font-bold font-mono ${l.score >= 70 ? "text-red-400" : l.score >= 50 ? "text-amber-400" : "text-foreground"}`}>{l.score}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-[#58A6FF]">{l.recentEvents} events</td>
+                    <td className="px-3 py-2 text-xs text-primary">{l.recentEvents} events</td>
                   </tr>
                 ))}
               </tbody>
@@ -1403,14 +1397,14 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       && (filterLocation === "all" || l.location === filterLocation);
   });
 
-  const select = "bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60";
+  const select = "bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-foreground outline-none focus:border-primary/60";
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Lead Finder</h2>
+      <h2 className="text-lg font-semibold text-foreground">Lead Finder</h2>
       <div className="flex flex-wrap gap-2">
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, company, email…"
-          className="flex-1 min-w-40 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          className="flex-1 min-w-40 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={select}>
           <option value="all">All Statuses</option>
           {["new", "contacted", "qualified", "converted", "archived"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
@@ -1439,30 +1433,30 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       </div>
 
       {loading ? <SkeletonCard /> : (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-[#30363D] bg-[#0D1117]">
+              <thead className="border-b border-border bg-background">
                 <tr>
                   {["Name", "Company", "Industry / Size", "Source", "Status", "Stage", "Score", "Actions"].map(h => (
-                    <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-[#7D8590]">{h}</th>
+                    <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#30363D]">
+              <tbody className="divide-y divide-border">
                 {filtered.slice(0, 50).map(lead => (
-                  <tr key={lead.id} className="hover:bg-[#1C2128] transition-colors">
+                  <tr key={lead.id} className="hover:bg-accent transition-colors">
                     <td className="px-4 py-2">
-                      <p className="font-medium text-[#E6EDF3]">{lead.name}</p>
-                      <p className="text-[10px] text-[#7D8590]">{lead.email}</p>
+                      <p className="font-medium text-foreground">{lead.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{lead.email}</p>
                     </td>
-                    <td className="px-4 py-2 text-[#7D8590] text-xs">
+                    <td className="px-4 py-2 text-muted-foreground text-xs">
                       {lead.company ?? "—"}
-                      {lead.location && <p className="text-[10px] text-[#484F58]">{lead.location}</p>}
+                      {lead.location && <p className="text-[10px] text-muted-foreground/60">{lead.location}</p>}
                     </td>
-                    <td className="px-4 py-2 text-[#7D8590] text-xs">
+                    <td className="px-4 py-2 text-muted-foreground text-xs">
                       {lead.industry ?? "—"}
-                      {lead.companySize && <p className="text-[10px] text-[#484F58]">{lead.companySize}</p>}
+                      {lead.companySize && <p className="text-[10px] text-muted-foreground/60">{lead.companySize}</p>}
                     </td>
                     <td className="px-4 py-2">
                       {lead.source === "ai_recommended" ? (
@@ -1472,9 +1466,9 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                       ) : lead.source === "lead_magnet" ? (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-500/20 text-teal-400">Lead Magnet</span>
                       ) : lead.source === "contact_form" ? (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF]">Contact Form</span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/20 text-primary">Contact Form</span>
                       ) : (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#30363D] text-[#7D8590]">{lead.source}</span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-border text-muted-foreground">{lead.source}</span>
                       )}
                     </td>
                     <td className="px-4 py-2">
@@ -1491,29 +1485,29 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                         <button onClick={() => setIntentLeadId(lead.id)} title="View intent timeline"
                           className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors cursor-pointer">⚡ {lead.score}</button>
                       ) : (
-                        <span className="text-xs font-mono text-[#7D8590]">{lead.score}</span>
+                        <span className="text-xs font-mono text-muted-foreground">{lead.score}</span>
                       )}
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex flex-wrap gap-1">
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_email" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "linkedin" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Call Script</button>
-                        <button onClick={() => setEmailHistoryLead({ id: lead.id, name: lead.name, email: lead.email })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">History</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_email" })} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Email</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "linkedin" })} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">LinkedIn</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Follow-Up</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">Call Script</button>
+                        <button onClick={() => setEmailHistoryLead({ id: lead.id, name: lead.name, email: lead.email })} className="text-[10px] px-1.5 py-0.5 rounded bg-border text-muted-foreground hover:text-foreground transition-colors">History</button>
                         <button onClick={() => setIntentLeadId(lead.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors">Intent ↗</button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-[#7D8590] text-sm">No leads match the filters</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-sm">No leads match the filters</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           {filtered.length > 0 && (
-            <div className="px-4 py-2 border-t border-[#30363D] text-[10px] text-[#484F58]">
+            <div className="px-4 py-2 border-t border-border text-[10px] text-muted-foreground/60">
               Showing {Math.min(50, filtered.length)} of {filtered.length} leads
             </div>
           )}
@@ -1591,30 +1585,30 @@ function IntentTimelineDrawer({ leadId, onClose, fetchWithAuth }: { leadId: numb
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="w-full max-w-md bg-[#0D1117] border-l border-[#30363D] h-full overflow-y-auto p-5 space-y-4 shadow-2xl"
+      <div className="w-full max-w-md bg-background border-l border-border h-full overflow-y-auto p-5 space-y-4 shadow-2xl"
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Intent Timeline</h3>
+          <h3 className="text-sm font-semibold text-foreground">Intent Timeline</h3>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowLogForm(f => !f)}
               className="text-xs px-2 py-1 rounded-lg border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors">
               + Log Event
             </button>
-            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg">✕</button>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-lg">✕</button>
           </div>
         </div>
 
         {showLogForm && (
-          <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-3 space-y-2">
+          <div className="bg-card border border-border rounded-lg p-3 space-y-2">
             <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Log Intent Event</p>
             <select value={logEventType} onChange={e => setLogEventType(e.target.value)}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]">
+              className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary">
               {Object.entries(EVENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v} (+{EVENT_WEIGHTS[k] ?? 1} pts)</option>)}
             </select>
             <input value={logSource} onChange={e => setLogSource(e.target.value)} placeholder="Source (e.g. LinkedIn, Email)" type="text"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4] placeholder-[#484F58]" />
+              className="w-full bg-background border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary placeholder-muted-foreground/60" />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowLogForm(false)} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 rounded border border-[#30363D] transition-colors">Cancel</button>
+              <button onClick={() => setShowLogForm(false)} className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded border border-border transition-colors">Cancel</button>
               <button onClick={() => { void logEvent(); }} disabled={logging}
                 className="text-xs text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50 px-3 py-1.5 rounded transition-colors font-medium">
                 {logging ? "Saving…" : "Log Event"}
@@ -1623,37 +1617,37 @@ function IntentTimelineDrawer({ leadId, onClose, fetchWithAuth }: { leadId: numb
           </div>
         )}
 
-        {loading ? <div className="animate-pulse space-y-2"><div className="h-12 bg-[#161B22] rounded" /><div className="h-12 bg-[#161B22] rounded" /></div> : (
+        {loading ? <div className="animate-pulse space-y-2"><div className="h-12 bg-card rounded" /><div className="h-12 bg-card rounded" /></div> : (
           events.length === 0 ? (
-            <p className="text-sm text-[#7D8590]">No intent events recorded yet. Use "+ Log Event" to add one manually.</p>
+            <p className="text-sm text-muted-foreground">No intent events recorded yet. Use "+ Log Event" to add one manually.</p>
           ) : (
             <div className="space-y-2">
               {events.map(e => (
-                <div key={e.id} className="flex items-start gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2">
+                <div key={e.id} className="flex items-start gap-3 bg-card border border-border rounded-lg px-3 py-2">
                   <div className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 flex-shrink-0 mt-0.5">+{EVENT_WEIGHTS[e.eventType] ?? 1}</div>
                   <div>
-                    <p className="text-xs font-medium text-[#E6EDF3]">{EVENT_LABELS[e.eventType] ?? e.eventType}</p>
-                    {!!e.metadata?.source && <p className="text-[10px] text-[#7D8590]">{String(e.metadata.source)}</p>}
-                    <p className="text-[10px] text-[#484F58]">{new Date(e.occurredAt).toLocaleString()}</p>
+                    <p className="text-xs font-medium text-foreground">{EVENT_LABELS[e.eventType] ?? e.eventType}</p>
+                    {!!e.metadata?.source && <p className="text-[10px] text-muted-foreground">{String(e.metadata.source)}</p>}
+                    <p className="text-[10px] text-muted-foreground/60">{new Date(e.occurredAt).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
             </div>
           )
         )}
-        <div className="border-t border-[#30363D] pt-3">
+        <div className="border-t border-border pt-3">
           <button onClick={() => { void generateNba(); }} disabled={nbaLoading}
-            className="w-full text-xs px-3 py-2 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center justify-center gap-1">
-            {nbaLoading ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Next Best Action"}
+            className="w-full text-xs px-3 py-2 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center justify-center gap-1">
+            {nbaLoading ? <><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Next Best Action"}
           </button>
           {nba && (
-            <div className="mt-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3 space-y-1.5">
-              <p className="text-[10px] font-semibold text-[#58A6FF]">Recommended Action</p>
-              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Method:</span> {nba.outreachMethod}</p>
-              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Message:</span> {nba.messageType}</p>
-              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Best Offer:</span> {nba.bestOffer}</p>
-              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Timing:</span> {nba.followUpTiming}</p>
-              <p className="text-xs text-[#7D8590] italic mt-1">{nba.rationale}</p>
+            <div className="mt-3 bg-primary/10 border border-primary/20 rounded-lg p-3 space-y-1.5">
+              <p className="text-[10px] font-semibold text-primary">Recommended Action</p>
+              <p className="text-xs text-foreground"><span className="text-muted-foreground">Method:</span> {nba.outreachMethod}</p>
+              <p className="text-xs text-foreground"><span className="text-muted-foreground">Message:</span> {nba.messageType}</p>
+              <p className="text-xs text-foreground"><span className="text-muted-foreground">Best Offer:</span> {nba.bestOffer}</p>
+              <p className="text-xs text-foreground"><span className="text-muted-foreground">Timing:</span> {nba.followUpTiming}</p>
+              <p className="text-xs text-muted-foreground italic mt-1">{nba.rationale}</p>
             </div>
           )}
         </div>
@@ -1774,27 +1768,27 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Outreach Automation</h2>
+      <h2 className="text-lg font-semibold text-foreground">Outreach Automation</h2>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-        <div className="lg:col-span-3 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+        <div className="lg:col-span-3 bg-card border border-border rounded-xl p-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap gap-1">
               {tabs.map(t => (
                 <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); }}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-primary/20 border-primary/40 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
                   {t.label}
                 </button>
               ))}
             </div>
             <button onClick={() => { void suggestProspect(); }} disabled={suggesting}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-              {suggesting ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Suggesting…</> : "✦ Suggest"}
+              className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+              {suggesting ? <><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Suggesting…</> : "✦ Suggest"}
             </button>
             {campaigns.length > 0 && (
               <select
                 value={tagCampaignId ?? ""}
                 onChange={e => setTagCampaignId(e.target.value ? Number(e.target.value) : null)}
-                className="ml-auto text-[11px] bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[#7D8590] outline-none focus:border-[#0078D4]/60"
+                className="ml-auto text-[11px] bg-background border border-border rounded px-2 py-1 text-muted-foreground outline-none focus:border-primary/60"
                 title="Tag outreach emails to a campaign for auto-tracking"
               >
                 <option value="">No campaign tag</option>
@@ -1807,9 +1801,9 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
           <div className="grid grid-cols-2 gap-2">
             {([["Name", name, setName], ["Company", company, setCompany], ["Role", role, setRole], ["Industry", industry, setIndustry]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
               <div key={label}>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">{label}</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</label>
                 <input value={val} onChange={e => { setter(e.target.value); setLeadAdded(false); setAddLeadError(null); }} placeholder={`Lead ${label.toLowerCase()}…`}
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
               </div>
             ))}
           </div>
@@ -1827,26 +1821,26 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
             </div>
           )}
           <button onClick={() => { void generate(); }} disabled={generating}
-            className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+            className="w-full py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
             {generating ? "Generating…" : "Generate"}
           </button>
           {content && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#7D8590]">Generated content</span>
+                <span className="text-xs text-muted-foreground">Generated content</span>
                 <CopyButton text={content} />
               </div>
-              <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-64 overflow-y-auto">{content}</pre>
+              <pre className="text-foreground text-sm whitespace-pre-wrap font-sans bg-background rounded-lg p-3 max-h-64 overflow-y-auto">{content}</pre>
               <div className="flex gap-2 flex-wrap">
                 <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Template name…"
-                  className="flex-1 min-w-24 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="flex-1 min-w-24 bg-background border border-border rounded-lg px-2 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                 <button onClick={() => { void save(); }} disabled={saving || !saveName.trim()}
                   className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
                   {saving ? "Saving…" : "Save"}
                 </button>
                 {EMAIL_TYPES.has(activeTab) && (
                   <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(content), body: content, campaignId: tagCampaignId ?? undefined })}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                    className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
                     Send Email
                   </button>
                 )}
@@ -1854,27 +1848,27 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
             </div>
           )}
         </div>
-        <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved Templates</h3>
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Saved Templates</h3>
           {templates.length === 0 ? (
-            <p className="text-xs text-[#7D8590]">No templates saved yet</p>
+            <p className="text-xs text-muted-foreground">No templates saved yet</p>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {templates.map(t => (
-                <div key={t.id} className="bg-[#0D1117] rounded-lg p-2 text-xs space-y-1">
+                <div key={t.id} className="bg-background rounded-lg p-2 text-xs space-y-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-semibold text-[#E6EDF3] truncate">{t.name}</span>
+                    <span className="font-semibold text-foreground truncate">{t.name}</span>
                     <div className="flex gap-1 flex-shrink-0">
                       <Badge text={t.templateType} color="blue" />
-                      <button onClick={() => { void deleteTemplate(t.id); }} className="text-[#484F58] hover:text-red-400 transition-colors text-[10px]">✕</button>
+                      <button onClick={() => { void deleteTemplate(t.id); }} className="text-muted-foreground/60 hover:text-red-400 transition-colors text-[10px]">✕</button>
                     </div>
                   </div>
-                  <p className="text-[#7D8590] line-clamp-2">{t.body}</p>
+                  <p className="text-muted-foreground line-clamp-2">{t.body}</p>
                   <div className="flex gap-1">
                     <CopyButton text={t.body} />
                     {EMAIL_TYPES.has(t.templateType) && (
                       <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(t.body), body: t.body, campaignId: tagCampaignId ?? undefined })}
-                        className="text-xs px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                        className="text-xs px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
                         Send
                       </button>
                     )}
@@ -2016,12 +2010,12 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Content Hub</h2>
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">Content Hub</h2>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-4">
         <div className="flex flex-wrap gap-1">
           {tabs.map(t => (
             <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); setExpandedId(null); }}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-primary/20 border-primary/40 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
               {t.label}
             </button>
           ))}
@@ -2030,39 +2024,39 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
           <div className="md:col-span-1 space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic *</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Topic *</label>
                 <button onClick={() => { void suggestContentIdea(); }} disabled={suggesting}
-                  className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                  {suggesting ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />…</> : "✦ Suggest"}
+                  className="text-[10px] px-2 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                  {suggesting ? <><div className="w-2.5 h-2.5 border border-primary border-t-transparent rounded-full animate-spin" />…</> : "✦ Suggest"}
                 </button>
               </div>
               <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Microsoft Copilot for Teams…"
-                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             </div>
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Tone</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Tone</label>
               <input value={tone} onChange={e => setTone(e.target.value)} placeholder="e.g. authoritative, friendly…"
-                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             </div>
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Keywords</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Keywords</label>
               <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="comma-separated…"
-                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             </div>
             <button onClick={() => { void generate(); }} disabled={generating || !topic.trim()}
-              className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              className="w-full py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
               {generating ? "Generating…" : "Generate"}
             </button>
           </div>
           <div className="md:col-span-2">
             {generating ? (
-              <div className="flex items-center justify-center h-48 text-[#7D8590]">
-                <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Generating…
+              <div className="flex items-center justify-center h-48 text-muted-foreground">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />Generating…
               </div>
             ) : content ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#7D8590]">Generated content</span>
+                  <span className="text-xs text-muted-foreground">Generated content</span>
                   <div className="flex gap-2">
                     <CopyButton text={content} />
                     <button onClick={() => { void save(); }} disabled={saving || saveSuccess}
@@ -2071,48 +2065,48 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     </button>
                   </div>
                 </div>
-                <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-4 max-h-80 overflow-y-auto">{content}</pre>
+                <pre className="text-foreground text-sm whitespace-pre-wrap font-sans bg-background rounded-lg p-4 max-h-80 overflow-y-auto">{content}</pre>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-48 text-[#7D8590] text-sm">Fill in the topic and click Generate</div>
+              <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">Fill in the topic and click Generate</div>
             )}
           </div>
         </div>
       </div>
 
       {/* Saved Assets */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved {TAB_LABEL[activeTab] ?? activeTab} Assets</h3>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Saved {TAB_LABEL[activeTab] ?? activeTab} Assets</h3>
         {loadingAssets ? (
           <SkeletonCard count={2} />
         ) : savedAssets.length === 0 ? (
-          <p className="text-xs text-[#7D8590] py-2">No {TAB_LABEL[activeTab]?.toLowerCase() ?? activeTab} assets saved yet — generate one above and click Save Asset.</p>
+          <p className="text-xs text-muted-foreground py-2">No {TAB_LABEL[activeTab]?.toLowerCase() ?? activeTab} assets saved yet — generate one above and click Save Asset.</p>
         ) : (
           <div className="space-y-2">
             {savedAssets.map(asset => (
-              <div key={asset.id} className="bg-[#0D1117] rounded-lg overflow-hidden border border-[#30363D] hover:border-[#0078D4]/30 transition-colors">
+              <div key={asset.id} className="bg-background rounded-lg overflow-hidden border border-border hover:border-primary/30 transition-colors">
                 <button
                   onClick={() => setExpandedId(prev => prev === asset.id ? null : asset.id)}
                   className="w-full flex items-center gap-3 px-3 py-2 text-left"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{asset.title}</p>
-                    <p className="text-[11px] text-[#7D8590] mt-0.5 line-clamp-1">{asset.content.slice(0, 120)}{asset.content.length > 120 ? "…" : ""}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{asset.title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{asset.content.slice(0, 120)}{asset.content.length > 120 ? "…" : ""}</p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Badge text={TAB_LABEL[asset.assetType] ?? asset.assetType} color="blue" />
-                    <span className="text-[10px] text-[#484F58]">{new Date(asset.createdAt).toLocaleDateString()}</span>
-                    <span className="text-[#484F58] text-xs">{expandedId === asset.id ? "▲" : "▼"}</span>
+                    <span className="text-[10px] text-muted-foreground/60">{new Date(asset.createdAt).toLocaleDateString()}</span>
+                    <span className="text-muted-foreground/60 text-xs">{expandedId === asset.id ? "▲" : "▼"}</span>
                     <button onClick={e => { e.stopPropagation(); void deleteAsset(asset.id); }}
-                      className="text-[#484F58] hover:text-red-400 transition-colors text-[10px] leading-none">✕</button>
+                      className="text-muted-foreground/60 hover:text-red-400 transition-colors text-[10px] leading-none">✕</button>
                   </div>
                 </button>
                 {expandedId === asset.id && (
-                  <div className="border-t border-[#30363D] px-3 pb-3 pt-2 space-y-2">
+                  <div className="border-t border-border px-3 pb-3 pt-2 space-y-2">
                     <div className="flex justify-end">
                       <CopyButton text={asset.content} />
                     </div>
-                    <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans max-h-64 overflow-y-auto">{asset.content}</pre>
+                    <pre className="text-foreground text-sm whitespace-pre-wrap font-sans max-h-64 overflow-y-auto">{asset.content}</pre>
                   </div>
                 )}
               </div>
@@ -2142,35 +2136,35 @@ function EmailStatsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?:
 
   if (!stats?.hasData) {
     return (
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">Emails Sent</h3>
-        <div className="flex items-center justify-center h-28 text-[#7D8590] text-sm">
-          <span className="px-3 py-1 rounded-full bg-[#30363D] text-[#484F58] text-xs">No emails recorded yet — volume will appear here automatically</span>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-foreground">Emails Sent</h3>
+        <div className="flex items-center justify-center h-28 text-muted-foreground text-sm">
+          <span className="px-3 py-1 rounded-full bg-border text-muted-foreground/60 text-xs">No emails recorded yet — volume will appear here automatically</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">Emails Sent</h3>
-        <span className="text-[10px] text-[#7D8590]">Last 30 days</span>
+        <h3 className="text-sm font-semibold text-foreground">Emails Sent</h3>
+        <span className="text-[10px] text-muted-foreground">Last 30 days</span>
       </div>
       <div className="flex gap-3">
-        <div className="bg-[#0D1117] rounded-lg p-3 text-center flex-1">
-          <p className="text-2xl font-bold text-[#E6EDF3]">{stats.totalSent}</p>
-          <p className="text-[10px] text-[#7D8590] mt-0.5">Total sent</p>
+        <div className="bg-background rounded-lg p-3 text-center flex-1">
+          <p className="text-2xl font-bold text-foreground">{stats.totalSent}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Total sent</p>
         </div>
       </div>
       {stats.dailyTrend.length > 0 && (
         <ResponsiveContainer width="100%" height={120}>
           <LineChart data={stats.dailyTrend}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
-            <XAxis dataKey="day" tick={{ fill: "#7D8590", fontSize: 9 }} tickFormatter={v => String(v).slice(5)} />
-            <YAxis tick={{ fill: "#7D8590", fontSize: 9 }} allowDecimals={false} />
-            <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#58A6FF" }} />
-            <Line type="monotone" dataKey="sent" stroke="#0078D4" strokeWidth={2} dot={{ fill: "#0078D4", r: 3 }} name="Sent" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#232A36" />
+            <XAxis dataKey="day" tick={{ fill: "#8B94A3", fontSize: 9 }} tickFormatter={v => String(v).slice(5)} />
+            <YAxis tick={{ fill: "#8B94A3", fontSize: 9 }} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#2F6FED" }} />
+            <Line type="monotone" dataKey="sent" stroke="#2F6FED" strokeWidth={2} dot={{ fill: "#2F6FED", r: 3 }} name="Sent" />
           </LineChart>
         </ResponsiveContainer>
       )}
@@ -2235,7 +2229,7 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   };
 
   function statusBadge(info: SocialTokenInfo) {
-    if (!info.tokenSet) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#30363D] text-[#7D8590] font-medium">Not configured</span>;
+    if (!info.tokenSet) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-border text-muted-foreground font-medium">Not configured</span>;
     if (info.valid === null) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium">Unknown</span>;
     if (!info.valid) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-medium">Invalid / Expired</span>;
     if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 0) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-medium">Expired</span>;
@@ -2244,11 +2238,11 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   }
 
   function expiryLine(info: SocialTokenInfo) {
-    if (!info.expiresAt) return <span className="text-[11px] text-[#7D8590]">No expiry date recorded</span>;
+    if (!info.expiresAt) return <span className="text-[11px] text-muted-foreground">No expiry date recorded</span>;
     const d = info.daysUntilExpiry;
     if (d === null) return null;
     if (d <= 0) return <span className="text-[11px] text-red-400">Expired {Math.abs(d)} day{Math.abs(d) !== 1 ? "s" : ""} ago</span>;
-    const color = d <= 14 ? "text-amber-400" : "text-[#7D8590]";
+    const color = d <= 14 ? "text-amber-400" : "text-muted-foreground";
     return <span className={`text-[11px] ${color}`}>Expires {new Date(info.expiresAt).toLocaleDateString()} · {d} day{d !== 1 ? "s" : ""} remaining</span>;
   }
 
@@ -2261,18 +2255,18 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   }) => {
     const needsAttention = !info.tokenSet || info.valid === false || (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 14);
     return (
-      <div className={`rounded-lg border p-3 space-y-2 ${needsAttention ? "border-amber-500/30 bg-amber-500/5" : "border-[#30363D] bg-[#1C2128]"}`}>
+      <div className={`rounded-lg border p-3 space-y-2 ${needsAttention ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-accent"}`}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-base">{icon}</span>
-            <span className="text-sm font-medium text-[#E6EDF3]">{label}</span>
+            <span className="text-sm font-medium text-foreground">{label}</span>
             {statusBadge(info)}
           </div>
           <div className="flex items-center gap-1.5">
             {info.tokenSet && (
               <button
                 onClick={() => { setSettingExpiry(p => p === platform ? null : platform); setExpiryInput(""); }}
-                className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors"
+                className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
               >
                 {settingExpiry === platform ? "Cancel" : "Set expiry"}
               </button>
@@ -2294,7 +2288,7 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               type="date"
               value={expiryInput}
               onChange={e => setExpiryInput(e.target.value)}
-              className="text-[11px] bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+              className="text-[11px] bg-background border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:border-primary"
             />
             <button
               onClick={() => void saveExpiry(platform)}
@@ -2303,21 +2297,21 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             >
               {savingExpiry ? "Saving…" : "Save"}
             </button>
-            <span className="text-[10px] text-[#7D8590]">
+            <span className="text-[10px] text-muted-foreground">
               LinkedIn tokens last 60 days from issue date
             </span>
           </div>
         )}
 
         {!info.tokenSet && (
-          <div className="text-[11px] text-[#7D8590] space-y-1">
-            <p className="font-medium text-[#E6EDF3]">How to connect:</p>
+          <div className="text-[11px] text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">How to connect:</p>
             {refreshInstructions}
           </div>
         )}
 
         {info.tokenSet && (info.valid === false || (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 14)) && (
-          <div className="text-[11px] text-[#7D8590] space-y-1">
+          <div className="text-[11px] text-muted-foreground space-y-1">
             <p className="font-medium text-amber-400">Re-authorise required:</p>
             {refreshInstructions}
           </div>
@@ -2327,17 +2321,17 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   };
 
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">🔗 Social Connections</h3>
+        <h3 className="text-sm font-semibold text-foreground">🔗 Social Connections</h3>
         <button
           onClick={() => void load()}
           disabled={loading}
           title="Re-check token validity"
-          className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex items-center gap-1"
+          className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 transition-colors flex items-center gap-1"
         >
           {loading ? (
-            <><span className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin inline-block" /> Checking…</>
+            <><span className="w-2.5 h-2.5 border border-primary border-t-transparent rounded-full animate-spin inline-block" /> Checking…</>
           ) : "↻ Re-check"}
         </button>
       </div>
@@ -2354,11 +2348,11 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             icon="💼"
             label="LinkedIn"
             refreshInstructions={(
-              <ol className="list-decimal list-inside space-y-0.5 text-[#7D8590]">
-                <li>Go to <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer" className="text-[#58A6FF] underline">LinkedIn Developer Portal</a> and open your app.</li>
-                <li>Under <strong className="text-[#E6EDF3]">Auth</strong>, generate a new access token with <code className="bg-[#0D1117] px-1 rounded">w_organization_social</code> scope.</li>
-                <li>Copy the token and update <strong className="text-[#E6EDF3]">LINKEDIN_ACCESS_TOKEN</strong> in Replit Secrets.</li>
-                <li>Restart the API server, then click <strong className="text-[#E6EDF3]">Set expiry</strong> above to record today + 60 days.</li>
+              <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
+                <li>Go to <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer" className="text-primary underline">LinkedIn Developer Portal</a> and open your app.</li>
+                <li>Under <strong className="text-foreground">Auth</strong>, generate a new access token with <code className="bg-background px-1 rounded">w_organization_social</code> scope.</li>
+                <li>Copy the token and update <strong className="text-foreground">LINKEDIN_ACCESS_TOKEN</strong> in Replit Secrets.</li>
+                <li>Restart the API server, then click <strong className="text-foreground">Set expiry</strong> above to record today + 60 days.</li>
               </ol>
             )}
           />
@@ -2368,18 +2362,18 @@ function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             icon="📘"
             label="Facebook"
             refreshInstructions={(
-              <ol className="list-decimal list-inside space-y-0.5 text-[#7D8590]">
-                <li>Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" className="text-[#58A6FF] underline">Meta Graph API Explorer</a>.</li>
-                <li>Select your Page and generate a long-lived Page access token with <code className="bg-[#0D1117] px-1 rounded">pages_manage_posts</code> + <code className="bg-[#0D1117] px-1 rounded">publish_pages</code> permissions.</li>
+              <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
+                <li>Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" className="text-primary underline">Meta Graph API Explorer</a>.</li>
+                <li>Select your Page and generate a long-lived Page access token with <code className="bg-background px-1 rounded">pages_manage_posts</code> + <code className="bg-background px-1 rounded">publish_pages</code> permissions.</li>
                 <li>Exchange for a long-lived token via the token exchange endpoint.</li>
-                <li>Update <strong className="text-[#E6EDF3]">FACEBOOK_PAGE_ACCESS_TOKEN</strong> in Replit Secrets and restart the API server.</li>
+                <li>Update <strong className="text-foreground">FACEBOOK_PAGE_ACCESS_TOKEN</strong> in Replit Secrets and restart the API server.</li>
               </ol>
             )}
           />
         </div>
       )}
 
-      <p className="text-[10px] text-[#484F58]">
+      <p className="text-[10px] text-muted-foreground/60">
         Token validity is checked live against the LinkedIn and Facebook APIs. LinkedIn tokens expire after ~60 days. Long-lived Facebook Page tokens can last months but may be invalidated by password changes or permission revocation.
       </p>
     </div>
@@ -2479,9 +2473,9 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
 
   const positionColor = (pos: number) => {
     if (pos <= 3) return "text-emerald-400";
-    if (pos <= 10) return "text-[#58A6FF]";
+    if (pos <= 10) return "text-primary";
     if (pos <= 20) return "text-amber-400";
-    return "text-[#7D8590]";
+    return "text-muted-foreground";
   };
 
   const changeIndicator = (r: SeoRanking) => {
@@ -2498,9 +2492,9 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
   if (loading) return <SkeletonCard />;
 
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">SEO Rankings</h3>
+        <h3 className="text-sm font-semibold text-foreground">SEO Rankings</h3>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { void syncFromSearchConsole(); }}
@@ -2512,7 +2506,7 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
             ) : "↻ Sync Search Console"}
           </button>
           <button onClick={() => { resetForm(); setShowForm(f => !f); }}
-            className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+            className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors">
             {showForm && editingId === null ? "Cancel" : "+ Add Keyword"}
           </button>
         </div>
@@ -2533,64 +2527,64 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
           <p className="text-[11px] text-red-400 font-medium">Sync failed</p>
           <p className="text-[10px] text-red-400/70">{syncError}</p>
           {syncError.includes("GOOGLE_SEARCH_CONSOLE") && (
-            <p className="text-[10px] text-[#7D8590]">
-              Set <code className="bg-[#0D1117] px-1 rounded">GOOGLE_SEARCH_CONSOLE_KEY_JSON</code> and{" "}
-              <code className="bg-[#0D1117] px-1 rounded">GOOGLE_SEARCH_CONSOLE_SITE_URL</code> in Replit Secrets to enable automatic sync.
+            <p className="text-[10px] text-muted-foreground">
+              Set <code className="bg-background px-1 rounded">GOOGLE_SEARCH_CONSOLE_KEY_JSON</code> and{" "}
+              <code className="bg-background px-1 rounded">GOOGLE_SEARCH_CONSOLE_SITE_URL</code> in Replit Secrets to enable automatic sync.
             </p>
           )}
         </div>
       )}
 
       {showForm && (
-        <div className="bg-[#0D1117] rounded-lg p-3 space-y-2">
+        <div className="bg-background rounded-lg p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="Keyword…"
-              className="col-span-2 bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="col-span-2 bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             <input value={position} onChange={e => setPosition(e.target.value)} placeholder="Position (1–100)" type="number" min="1" max="100"
-              className="bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             <input value={volume} onChange={e => setVolume(e.target.value)} placeholder="Monthly volume" type="number" min="0"
-              className="bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Ranking URL (optional)"
-              className="col-span-2 bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="col-span-2 bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div className="flex gap-2">
             <button onClick={() => { void save(); }} disabled={saving || !keyword.trim() || !position}
-              className="flex-1 py-1.5 rounded bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              className="flex-1 py-1.5 rounded bg-primary text-white text-xs font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
               {saving ? "Saving…" : editingId !== null ? "Update" : "Add"}
             </button>
-            <button onClick={resetForm} className="px-3 py-1.5 rounded border border-[#30363D] text-[#7D8590] text-xs hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button onClick={resetForm} className="px-3 py-1.5 rounded border border-border text-muted-foreground text-xs hover:text-foreground transition-colors">Cancel</button>
           </div>
         </div>
       )}
 
       {rankings.length === 0 ? (
         <div className="text-center py-6">
-          <p className="text-[#7D8590] text-xs">No keywords tracked yet — add your first keyword above</p>
-          <p className="text-[10px] text-[#484F58] mt-1">Or click "Sync Search Console" to import live rankings automatically</p>
+          <p className="text-muted-foreground text-xs">No keywords tracked yet — add your first keyword above</p>
+          <p className="text-[10px] text-muted-foreground/60 mt-1">Or click "Sync Search Console" to import live rankings automatically</p>
         </div>
       ) : (
         <div className="space-y-1 max-h-64 overflow-y-auto">
-          <div className="grid grid-cols-12 gap-1 px-2 pb-1 border-b border-[#30363D]">
-            <span className="col-span-1 text-[10px] text-[#484F58]">#</span>
-            <span className="col-span-7 text-[10px] text-[#484F58]">Keyword</span>
-            <span className="col-span-2 text-[10px] text-[#484F58] text-right">Vol.</span>
-            <span className="col-span-2 text-[10px] text-[#484F58] text-right">Actions</span>
+          <div className="grid grid-cols-12 gap-1 px-2 pb-1 border-b border-border">
+            <span className="col-span-1 text-[10px] text-muted-foreground/60">#</span>
+            <span className="col-span-7 text-[10px] text-muted-foreground/60">Keyword</span>
+            <span className="col-span-2 text-[10px] text-muted-foreground/60 text-right">Vol.</span>
+            <span className="col-span-2 text-[10px] text-muted-foreground/60 text-right">Actions</span>
           </div>
           {rankings.map(r => (
-            <div key={r.id} className="grid grid-cols-12 gap-1 items-center px-2 py-1 rounded hover:bg-[#0D1117] transition-colors group">
+            <div key={r.id} className="grid grid-cols-12 gap-1 items-center px-2 py-1 rounded hover:bg-background transition-colors group">
               <span className={`col-span-1 text-sm font-bold ${positionColor(r.position)}`}>{r.position}</span>
               <div className="col-span-7 min-w-0">
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-[#E6EDF3] truncate">{r.keyword}</span>
+                  <span className="text-xs text-foreground truncate">{r.keyword}</span>
                   {changeIndicator(r)}
                 </div>
-                {r.url && <p className="text-[10px] text-[#484F58] truncate">{r.url}</p>}
+                {r.url && <p className="text-[10px] text-muted-foreground/60 truncate">{r.url}</p>}
               </div>
-              <span className="col-span-2 text-[10px] text-[#7D8590] text-right">
+              <span className="col-span-2 text-[10px] text-muted-foreground text-right">
                 {r.searchVolume ? r.searchVolume.toLocaleString() : "—"}
               </span>
               <div className="col-span-2 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => startEdit(r)} className="text-[10px] text-[#58A6FF] hover:text-white transition-colors">Edit</button>
+                <button onClick={() => startEdit(r)} className="text-[10px] text-primary hover:text-white transition-colors">Edit</button>
                 <button onClick={() => { void deleteRanking(r.id); }} className="text-[10px] text-red-400/60 hover:text-red-400 transition-colors">×</button>
               </div>
             </div>
@@ -2644,48 +2638,48 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
 
   if (loading) return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Traffic & Analytics</h2>
+      <h2 className="text-lg font-semibold text-foreground">Traffic & Analytics</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4"><SkeletonCard count={4} /></div>
     </div>
   );
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Traffic & Analytics</h2>
+      <h2 className="text-lg font-semibold text-foreground">Traffic & Analytics</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-4">Visitors (Last 7 Days)</h3>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Visitors (Last 7 Days)</h3>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={analytics?.dailyVisitors ?? []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
-              <XAxis dataKey="day" tick={{ fill: "#7D8590", fontSize: 10 }} tickFormatter={v => String(v).slice(5)} />
-              <YAxis tick={{ fill: "#7D8590", fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#58A6FF" }} />
-              <Line type="monotone" dataKey="visitors" stroke="#0078D4" strokeWidth={2} dot={{ fill: "#0078D4", r: 3 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#232A36" />
+              <XAxis dataKey="day" tick={{ fill: "#8B94A3", fontSize: 10 }} tickFormatter={v => String(v).slice(5)} />
+              <YAxis tick={{ fill: "#8B94A3", fontSize: 10 }} />
+              <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#2F6FED" }} />
+              <Line type="monotone" dataKey="visitors" stroke="#2F6FED" strokeWidth={2} dot={{ fill: "#2F6FED", r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-4">Traffic Sources</h3>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Traffic Sources</h3>
           {analytics?.trafficSources && analytics.trafficSources.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie data={analytics.trafficSources} dataKey="sessions" nameKey="source" cx="50%" cy="50%" outerRadius={70} label={({ source, percent }) => `${String(source)} ${(Number(percent) * 100).toFixed(0)}%`} labelLine={false}>
                   {analytics.trafficSources.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} />
+                <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} />
               </PieChart>
             </ResponsiveContainer>
-          ) : <p className="text-[#7D8590] text-sm text-center py-8">No traffic data yet</p>}
+          ) : <p className="text-muted-foreground text-sm text-center py-8">No traffic data yet</p>}
         </div>
 
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-4">Conversion Funnel (30 Days)</h3>
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Conversion Funnel (30 Days)</h3>
           {analytics?.conversionFunnel && analytics.conversionFunnel.some(f => f.value > 0) ? (
             <ResponsiveContainer width="100%" height={180}>
               <FunnelChart>
-                <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} />
+                <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} />
                 <Funnel dataKey="value" data={analytics.conversionFunnel} isAnimationActive>
                   {analytics.conversionFunnel.map((entry, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -2695,15 +2689,15 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
               </FunnelChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-32 text-[#7D8590] text-sm">
-              <span className="px-3 py-1 rounded-full bg-[#30363D] text-[#484F58] text-xs">No funnel data yet — drive traffic to see results</span>
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+              <span className="px-3 py-1 rounded-full bg-border text-muted-foreground/60 text-xs">No funnel data yet — drive traffic to see results</span>
             </div>
           )}
         </div>
 
-        <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">Revenue per Lead by Campaign</h3>
-          <p className="text-xs text-[#7D8590] mb-4">Revenue attributed ÷ leads generated. Campaigns with no leads show —.</p>
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-1">Revenue per Lead by Campaign</h3>
+          <p className="text-xs text-muted-foreground mb-4">Revenue attributed ÷ leads generated. Campaigns with no leads show —.</p>
           {analytics?.campaignPerformance && analytics.campaignPerformance.length > 0 ? (() => {
             const sorted = [...analytics.campaignPerformance].sort((a, b) => {
               if (a.revenuePerLead === null && b.revenuePerLead === null) return 0;
@@ -2720,32 +2714,32 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                   const barPct = maxRpl > 0 && c.revenuePerLead !== null ? (c.revenuePerLead / maxRpl) * 100 : 0;
                   const isEditing = editingId === c.id;
                   return (
-                    <div key={c.id} className={`rounded-lg px-3 py-2.5 ${isTop && !isEditing ? "bg-[#0D1117] ring-1 ring-[#0078D4]/50" : "bg-[#0D1117]"}`}>
+                    <div key={c.id} className={`rounded-lg px-3 py-2.5 ${isTop && !isEditing ? "bg-background ring-1 ring-primary/50" : "bg-background"}`}>
                       {isEditing ? (
                         <div>
-                          <p className="text-sm text-[#E6EDF3] font-medium mb-2 truncate">{c.name}</p>
+                          <p className="text-sm text-foreground font-medium mb-2 truncate">{c.name}</p>
                           <div className="flex gap-2 mb-2">
                             <div className="flex-1">
-                              <label className="text-[10px] text-[#7D8590] uppercase tracking-wider block mb-1">Leads Generated</label>
+                              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Leads Generated</label>
                               <input
                                 type="number"
                                 min="0"
                                 value={editLeads}
                                 onChange={e => setEditLeads(e.target.value)}
-                                className="w-full bg-[#21262D] border border-[#30363D] rounded-md px-2 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                                className="w-full bg-accent border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                                 placeholder="0"
                                 autoFocus
                               />
                             </div>
                             <div className="flex-1">
-                              <label className="text-[10px] text-[#7D8590] uppercase tracking-wider block mb-1">Revenue Attributed ($)</label>
+                              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1">Revenue Attributed ($)</label>
                               <input
                                 type="number"
                                 min="0"
                                 step="0.01"
                                 value={editRevenue}
                                 onChange={e => setEditRevenue(e.target.value)}
-                                className="w-full bg-[#21262D] border border-[#30363D] rounded-md px-2 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                                className="w-full bg-accent border border-border rounded-md px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
                                 placeholder="0"
                               />
                             </div>
@@ -2753,14 +2747,14 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={() => setEditingId(null)}
-                              className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 rounded-md border border-[#30363D] hover:border-[#484F58] transition-colors"
+                              className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md border border-border hover:border-muted-foreground/60 transition-colors"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={() => void saveEdit(c.id)}
                               disabled={saving}
-                              className="text-xs text-white bg-[#0078D4] hover:bg-[#0078D4]/80 disabled:opacity-50 px-3 py-1.5 rounded-md transition-colors font-medium"
+                              className="text-xs text-white bg-primary hover:bg-primary/80 disabled:opacity-50 px-3 py-1.5 rounded-md transition-colors font-medium"
                             >
                               {saving ? "Saving…" : "Save"}
                             </button>
@@ -2770,19 +2764,19 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                         <>
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-2 min-w-0">
-                              <p className="text-sm text-[#E6EDF3] truncate font-medium">{c.name}</p>
-                              {isTop && <span className="text-[10px] font-bold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-full px-2 py-0.5 flex-shrink-0">★ Top</span>}
+                              <p className="text-sm text-foreground truncate font-medium">{c.name}</p>
+                              {isTop && <span className="text-[10px] font-bold text-primary bg-primary/10 border border-primary/30 rounded-full px-2 py-0.5 flex-shrink-0">★ Top</span>}
                               <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                               {c.revenuePerLead !== null
-                                ? <span className="text-sm font-bold text-[#E6EDF3]">${c.revenuePerLead.toLocaleString("en-US", { maximumFractionDigits: 0 })}<span className="text-[#7D8590] font-normal text-xs">/lead</span></span>
-                                : <span className="text-[#484F58] text-sm">—</span>
+                                ? <span className="text-sm font-bold text-foreground">${c.revenuePerLead.toLocaleString("en-US", { maximumFractionDigits: 0 })}<span className="text-muted-foreground font-normal text-xs">/lead</span></span>
+                                : <span className="text-muted-foreground/60 text-sm">—</span>
                               }
                               <button
                                 onClick={() => startEdit(c)}
                                 title="Edit leads & revenue"
-                                className="text-[#484F58] hover:text-[#7D8590] transition-colors p-0.5 rounded"
+                                className="text-muted-foreground/60 hover:text-muted-foreground transition-colors p-0.5 rounded"
                               >
                                 <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
                                   <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/>
@@ -2790,12 +2784,12 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                               </button>
                             </div>
                           </div>
-                          <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${isTop ? "bg-[#0078D4]" : "bg-[#30363D]"}`} style={{ width: `${barPct}%` }} />
+                          <div className="h-1.5 rounded-full bg-accent overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${isTop ? "bg-primary" : "bg-border"}`} style={{ width: `${barPct}%` }} />
                           </div>
                           <div className="flex gap-3 mt-1.5">
-                            <span className="text-[10px] text-[#7D8590]">{c.leadsGenerated} lead{c.leadsGenerated !== 1 ? "s" : ""}</span>
-                            <span className="text-[10px] text-[#7D8590]">${c.revenueAttributed.toLocaleString("en-US", { maximumFractionDigits: 0 })} revenue</span>
+                            <span className="text-[10px] text-muted-foreground">{c.leadsGenerated} lead{c.leadsGenerated !== 1 ? "s" : ""}</span>
+                            <span className="text-[10px] text-muted-foreground">${c.revenueAttributed.toLocaleString("en-US", { maximumFractionDigits: 0 })} revenue</span>
                           </div>
                         </>
                       )}
@@ -2804,22 +2798,22 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                 })}
               </div>
             );
-          })() : <p className="text-[#7D8590] text-sm text-center py-4">No campaigns yet. Add campaigns and track revenue to see ROI.</p>}
+          })() : <p className="text-muted-foreground text-sm text-center py-4">No campaigns yet. Add campaigns and track revenue to see ROI.</p>}
         </div>
 
-        <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-4">Top Pages (Last 30 Days)</h3>
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Top Pages (Last 30 Days)</h3>
           {analytics?.topPages && analytics.topPages.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={analytics.topPages.slice(0, 10)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363D" horizontal={false} />
-                <XAxis type="number" tick={{ fill: "#7D8590", fontSize: 10 }} />
-                <YAxis type="category" dataKey="page" tick={{ fill: "#7D8590", fontSize: 10 }} width={150} tickFormatter={v => String(v).length > 22 ? String(v).slice(0, 22) + "…" : String(v)} />
-                <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#58A6FF" }} />
-                <Bar dataKey="views" fill="#0078D4" radius={[0, 4, 4, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#232A36" horizontal={false} />
+                <XAxis type="number" tick={{ fill: "#8B94A3", fontSize: 10 }} />
+                <YAxis type="category" dataKey="page" tick={{ fill: "#8B94A3", fontSize: 10 }} width={150} tickFormatter={v => String(v).length > 22 ? String(v).slice(0, 22) + "…" : String(v)} />
+                <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#2F6FED" }} />
+                <Bar dataKey="views" fill="#2F6FED" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="text-[#7D8590] text-sm text-center py-8">No page view data yet</p>}
+          ) : <p className="text-muted-foreground text-sm text-center py-8">No page view data yet</p>}
         </div>
 
         <EmailStatsCard fetchWithAuth={fetchWithAuth} />
@@ -2845,11 +2839,11 @@ function OfferPerformanceCard({ fetchWithAuth }: { fetchWithAuth: (url: string, 
     ]).then(([o, c]) => { setOffers(o); setCampaigns(c); }).catch(() => null).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  if (loading) return <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4"><div className="animate-pulse h-40 bg-[#30363D] rounded" /></div>;
+  if (loading) return <div className="bg-card border border-border rounded-xl p-4"><div className="animate-pulse h-40 bg-border rounded" /></div>;
   if (offers.length === 0) return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-2">🎁 Offer Performance</h3>
-      <p className="text-sm text-[#7D8590] text-center py-4">No offers created yet. Add offers in Campaigns → Offers.</p>
+    <div className="bg-card border border-border rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-foreground mb-2">🎁 Offer Performance</h3>
+      <p className="text-sm text-muted-foreground text-center py-4">No offers created yet. Add offers in Campaigns → Offers.</p>
     </div>
   );
 
@@ -2862,25 +2856,25 @@ function OfferPerformanceCard({ fetchWithAuth }: { fetchWithAuth: (url: string, 
     return { name: o.name.length > 20 ? o.name.slice(0, 20) + "…" : o.name, revenue, leads, pricing: o.pricing ?? null };
   });
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">🎁 Offer Performance</h3>
-      <p className="text-xs text-[#7D8590] mb-4">Revenue & leads attributed via linked campaigns. Offers without a linked campaign show $0.</p>
+    <div className="bg-card border border-border rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-foreground mb-1">🎁 Offer Performance</h3>
+      <p className="text-xs text-muted-foreground mb-4">Revenue & leads attributed via linked campaigns. Offers without a linked campaign show $0.</p>
       <ResponsiveContainer width="100%" height={Math.max(120, chartData.length * 36)}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 60, top: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#30363D" horizontal={false} />
-          <XAxis type="number" tick={{ fill: "#7D8590", fontSize: 10 }} tickFormatter={v => `$${Number(v).toLocaleString("en-US", { notation: "compact" })}`} />
-          <YAxis type="category" dataKey="name" tick={{ fill: "#7D8590", fontSize: 10 }} width={120} />
-          <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }}
+          <CartesianGrid strokeDasharray="3 3" stroke="#232A36" horizontal={false} />
+          <XAxis type="number" tick={{ fill: "#8B94A3", fontSize: 10 }} tickFormatter={v => `$${Number(v).toLocaleString("en-US", { notation: "compact" })}`} />
+          <YAxis type="category" dataKey="name" tick={{ fill: "#8B94A3", fontSize: 10 }} width={120} />
+          <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }}
             formatter={(value: number, name: string) => [name === "revenue" ? `$${value.toLocaleString()}` : value, name === "revenue" ? "Revenue" : "Leads"]} />
-          <Bar dataKey="revenue" fill="#0078D4" radius={[0, 4, 4, 0]}
-            label={{ position: "right", fill: "#7D8590", fontSize: 9, formatter: (v: number) => v > 0 ? `$${v.toLocaleString("en-US", { notation: "compact" })}` : "" }} />
+          <Bar dataKey="revenue" fill="#2F6FED" radius={[0, 4, 4, 0]}
+            label={{ position: "right", fill: "#8B94A3", fontSize: 9, formatter: (v: number) => v > 0 ? `$${v.toLocaleString("en-US", { notation: "compact" })}` : "" }} />
         </BarChart>
       </ResponsiveContainer>
       {chartData.some(d => d.pricing) && (
-        <div className="mt-3 border-t border-[#30363D] pt-3 grid grid-cols-2 gap-1.5">
+        <div className="mt-3 border-t border-border pt-3 grid grid-cols-2 gap-1.5">
           {offers.filter(o => o.pricing).map(o => (
-            <div key={o.id} className="flex items-center justify-between bg-[#0D1117] rounded-lg px-2 py-1">
-              <span className="text-[10px] text-[#7D8590] truncate">{o.name}</span>
+            <div key={o.id} className="flex items-center justify-between bg-background rounded-lg px-2 py-1">
+              <span className="text-[10px] text-muted-foreground truncate">{o.name}</span>
               <span className="text-[10px] font-bold text-emerald-400 flex-shrink-0 ml-1">{o.pricing}</span>
             </div>
           ))}
@@ -2898,26 +2892,26 @@ function LeadSourceRoiCard({ analytics }: { analytics: AnalyticsData | null }) {
   const totalSessions = sources.reduce((s, c) => s + c.sessions, 0);
   if (sources.length === 0) return null;
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">📊 Lead Source ROI</h3>
-      <p className="text-xs text-[#7D8590] mb-4">Traffic source share vs revenue attribution from linked campaigns.</p>
+    <div className="bg-card border border-border rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-foreground mb-1">📊 Lead Source ROI</h3>
+      <p className="text-xs text-muted-foreground mb-4">Traffic source share vs revenue attribution from linked campaigns.</p>
       <div className="space-y-2">
         {sources.map((s, i) => {
           const sharePct = totalSessions > 0 ? (s.sessions / totalSessions) * 100 : 0;
           const attributedRevenue = totalRevenue > 0 ? totalRevenue * (sharePct / 100) : 0;
           return (
-            <div key={i} className="rounded-lg bg-[#0D1117] px-3 py-2">
+            <div key={i} className="rounded-lg bg-background px-3 py-2">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-[#E6EDF3]">{s.source}</span>
+                <span className="text-xs font-medium text-foreground">{s.source}</span>
                 <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                  <span className="text-[10px] text-[#7D8590]">{s.sessions} sessions</span>
+                  <span className="text-[10px] text-muted-foreground">{s.sessions} sessions</span>
                   <span className="text-xs font-bold text-emerald-400">${attributedRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
                 </div>
               </div>
-              <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
-                <div className="h-full rounded-full bg-[#0078D4]" style={{ width: `${sharePct}%` }} />
+              <div className="h-1.5 rounded-full bg-accent overflow-hidden">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${sharePct}%` }} />
               </div>
-              <p className="text-[10px] text-[#484F58] mt-0.5">{sharePct.toFixed(1)}% of traffic</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{sharePct.toFixed(1)}% of traffic</p>
             </div>
           );
         })}
@@ -2943,48 +2937,48 @@ function AiInsightsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?:
   };
 
   return (
-    <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+    <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">✦ AI Analytics Insights</h3>
+        <h3 className="text-sm font-semibold text-foreground">✦ AI Analytics Insights</h3>
         {!loaded && (
           <button onClick={() => { void load(); }} disabled={loading}
-            className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-            {loading ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Analyzing…</> : "Generate Insights"}
+            className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+            {loading ? <><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Analyzing…</> : "Generate Insights"}
           </button>
         )}
       </div>
-      {loading && <div className="animate-pulse space-y-2"><div className="h-4 bg-[#30363D] rounded w-3/4" /><div className="h-4 bg-[#30363D] rounded w-1/2" /></div>}
+      {loading && <div className="animate-pulse space-y-2"><div className="h-4 bg-border rounded w-3/4" /><div className="h-4 bg-border rounded w-1/2" /></div>}
       {insights && (
         <div className="space-y-3">
-          <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
-            <p className="text-xs text-[#E6EDF3]">{insights.summary}</p>
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+            <p className="text-xs text-foreground">{insights.summary}</p>
           </div>
           {insights.revenueAlert && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
               <p className="text-[10px] font-semibold text-amber-400 mb-0.5">⚠ Revenue Alert</p>
-              <p className="text-xs text-[#E6EDF3]">{insights.revenueAlert}</p>
+              <p className="text-xs text-foreground">{insights.revenueAlert}</p>
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <p className="text-[10px] font-semibold text-emerald-400 mb-1">✓ What's Working</p>
-              <ul className="space-y-1">{insights.wins.map((w, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-emerald-400 flex-shrink-0">·</span>{w}</li>)}</ul>
+              <ul className="space-y-1">{insights.wins.map((w, i) => <li key={i} className="text-xs text-foreground flex gap-1.5"><span className="text-emerald-400 flex-shrink-0">·</span>{w}</li>)}</ul>
             </div>
             <div>
               <p className="text-[10px] font-semibold text-red-400 mb-1">✗ Gaps to Close</p>
-              <ul className="space-y-1">{insights.gaps.map((g, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-red-400 flex-shrink-0">·</span>{g}</li>)}</ul>
+              <ul className="space-y-1">{insights.gaps.map((g, i) => <li key={i} className="text-xs text-foreground flex gap-1.5"><span className="text-red-400 flex-shrink-0">·</span>{g}</li>)}</ul>
             </div>
           </div>
           {insights.recommendations.length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold text-[#58A6FF] mb-2">Recommendations</p>
+              <p className="text-[10px] font-semibold text-primary mb-2">Recommendations</p>
               <div className="space-y-1.5">
                 {insights.recommendations.map((r, i) => (
-                  <div key={i} className="bg-[#0D1117] rounded-lg px-3 py-2 flex items-start gap-2">
-                    <span className="text-[#0078D4] font-bold text-xs flex-shrink-0">{i + 1}.</span>
+                  <div key={i} className="bg-background rounded-lg px-3 py-2 flex items-start gap-2">
+                    <span className="text-primary font-bold text-xs flex-shrink-0">{i + 1}.</span>
                     <div>
-                      <p className="text-xs font-medium text-[#E6EDF3]">{r.action}</p>
-                      <p className="text-[10px] text-[#7D8590]">{r.impact}</p>
+                      <p className="text-xs font-medium text-foreground">{r.action}</p>
+                      <p className="text-[10px] text-muted-foreground">{r.impact}</p>
                     </div>
                   </div>
                 ))}
@@ -2994,7 +2988,7 @@ function AiInsightsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?:
         </div>
       )}
       {!loading && !loaded && (
-        <p className="text-xs text-[#7D8590] text-center py-4">Click "Generate Insights" for an AI analysis of your marketing performance</p>
+        <p className="text-xs text-muted-foreground text-center py-4">Click "Generate Insights" for an AI analysis of your marketing performance</p>
       )}
     </div>
   );
@@ -3129,8 +3123,8 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[#E6EDF3]">💡 Offer Builder</h3>
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-foreground">💡 Offer Builder</h3>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-4">
         {/* Suggest Fields bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -3144,53 +3138,53 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
           </button>
           {suggestions.length > 0 && (
             <div className="flex items-center gap-1">
-              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">‹</button>
-              <span className="text-[10px] text-[#7D8590]">{suggestionIdx + 1}/{suggestions.length}</span>
-              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">›</button>
-              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#484F58] hover:text-[#7D8590] text-xs transition-colors">↺</button>
+              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground text-xs transition-colors">‹</button>
+              <span className="text-[10px] text-muted-foreground">{suggestionIdx + 1}/{suggestions.length}</span>
+              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground text-xs transition-colors">›</button>
+              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground/60 hover:text-muted-foreground text-xs transition-colors">↺</button>
             </div>
           )}
           {suggestError && <span className="text-xs text-red-400">{suggestError}</span>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Goal</label>
             <input value={goal} onChange={e => setGoal(e.target.value)} placeholder="e.g. Copilot adoption"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Audience</label>
             <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="e.g. IT directors"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Price Point</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Price Point</label>
             <input value={pricePoint} onChange={e => setPricePoint(e.target.value)} placeholder="e.g. $5,000 fixed"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
         </div>
         <button onClick={() => { void generate(); }} disabled={generating}
-          className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+          className="w-full py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
           {generating ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating Offer…</> : "✦ Generate Offer"}
         </button>
 
         {draft && (
-          <div className="bg-[#0D1117] rounded-xl p-4 space-y-3 border border-[#0078D4]/20">
+          <div className="bg-background rounded-xl p-4 space-y-3 border border-primary/20">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h4 className="font-semibold text-[#E6EDF3]">{draft.name}</h4>
-                <p className="text-xs text-[#7D8590] mt-0.5">{draft.goal}</p>
+                <h4 className="font-semibold text-foreground">{draft.name}</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">{draft.goal}</p>
               </div>
               {draft.pricing && <span className="text-sm font-bold text-emerald-400 flex-shrink-0">{draft.pricing}</span>}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <p className="text-[10px] font-semibold text-[#58A6FF] mb-1">Deliverables</p>
-                <ul className="space-y-1">{draft.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-[#0078D4]">✓</span>{d}</li>)}</ul>
+                <p className="text-[10px] font-semibold text-primary mb-1">Deliverables</p>
+                <ul className="space-y-1">{draft.deliverables.map((d, i) => <li key={i} className="text-xs text-foreground flex gap-1.5"><span className="text-primary">✓</span>{d}</li>)}</ul>
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-emerald-400 mb-1">Outcomes</p>
-                <ul className="space-y-1">{draft.outcomes.map((o, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-emerald-400">→</span>{o}</li>)}</ul>
+                <ul className="space-y-1">{draft.outcomes.map((o, i) => <li key={i} className="text-xs text-foreground flex gap-1.5"><span className="text-emerald-400">→</span>{o}</li>)}</ul>
               </div>
             </div>
             {draft.cta && <p className="text-xs text-amber-400 font-medium">CTA: {draft.cta}</p>}
@@ -3203,79 +3197,79 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       </div>
 
       {loading ? <SkeletonCard /> : offers.length === 0 ? (
-        <p className="text-xs text-[#7D8590]">No offers yet — generate your first one above</p>
+        <p className="text-xs text-muted-foreground">No offers yet — generate your first one above</p>
       ) : (
         <div className="space-y-2">
           {offers.map(o => (
-            <div key={o.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div key={o.id} className="bg-card border border-border rounded-xl overflow-hidden">
               <button onClick={() => setExpandedId(prev => prev === o.id ? null : o.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#E6EDF3] truncate">{o.name}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{o.name}</p>
                   <div className="flex items-center gap-2 mt-0.5 min-w-0">
-                    <p className="text-xs text-[#7D8590] truncate">{o.audience}</p>
+                    <p className="text-xs text-muted-foreground truncate">{o.audience}</p>
                     {o.campaignId && campaignNameMap.get(o.campaignId) && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0 max-w-[120px] truncate">📌 {campaignNameMap.get(o.campaignId)}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary flex-shrink-0 max-w-[120px] truncate">📌 {campaignNameMap.get(o.campaignId)}</span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {o.pricing && <span className="text-xs text-emerald-400 font-semibold">{o.pricing}</span>}
-                  <span className="text-[#484F58] text-xs">{expandedId === o.id ? "▲" : "▼"}</span>
+                  <span className="text-muted-foreground/60 text-xs">{expandedId === o.id ? "▲" : "▼"}</span>
                 </div>
               </button>
               {expandedId === o.id && (
-                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
                   {editingId === o.id && editForm ? (
                     /* ── Edit form ── */
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Name</label>
+                          <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Name</label>
                           <input value={editForm.name} onChange={e => setEditForm(f => f ? { ...f, name: e.target.value } : f)}
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                          <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Audience</label>
                           <input value={editForm.audience} onChange={e => setEditForm(f => f ? { ...f, audience: e.target.value } : f)}
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                         </div>
                       </div>
                       <div>
-                        <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+                        <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Goal</label>
                         <input value={editForm.goal} onChange={e => setEditForm(f => f ? { ...f, goal: e.target.value } : f)}
-                          className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Pricing</label>
+                          <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Pricing</label>
                           <input value={editForm.pricing} onChange={e => setEditForm(f => f ? { ...f, pricing: e.target.value } : f)}
                             placeholder="e.g. $5,000 fixed"
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                          <label className="text-[10px] text-muted-foreground uppercase tracking-wide">CTA</label>
                           <input value={editForm.cta} onChange={e => setEditForm(f => f ? { ...f, cta: e.target.value } : f)}
                             placeholder="e.g. Book a call"
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Deliverables <span className="normal-case text-[#484F58] font-normal">(one per line)</span></label>
+                          <label className="text-[10px] text-primary uppercase tracking-wide font-semibold">Deliverables <span className="normal-case text-muted-foreground/60 font-normal">(one per line)</span></label>
                           <textarea value={editForm.deliverables} onChange={e => setEditForm(f => f ? { ...f, deliverables: e.target.value } : f)}
                             rows={4}
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
                         </div>
                         <div>
-                          <label className="text-[10px] text-emerald-400 uppercase tracking-wide font-semibold">Outcomes <span className="normal-case text-[#484F58] font-normal">(one per line)</span></label>
+                          <label className="text-[10px] text-emerald-400 uppercase tracking-wide font-semibold">Outcomes <span className="normal-case text-muted-foreground/60 font-normal">(one per line)</span></label>
                           <textarea value={editForm.outcomes} onChange={e => setEditForm(f => f ? { ...f, outcomes: e.target.value } : f)}
                             rows={4}
-                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                            className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
                         </div>
                       </div>
                       <div className="flex justify-end gap-2 pt-1">
                         <button onClick={cancelEdit}
-                          className="px-3 py-1.5 text-xs font-medium text-[#7D8590] border border-[#30363D] rounded-lg hover:bg-[#30363D]/40 transition-colors">
+                          className="px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:bg-border/40 transition-colors">
                           Cancel
                         </button>
                         <button onClick={() => { void saveEdit(); }} disabled={editSaving}
@@ -3287,16 +3281,16 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   ) : (
                     /* ── Read-only detail ── */
                     <>
-                      <p className="text-xs text-[#7D8590]">{o.goal}</p>
+                      <p className="text-xs text-muted-foreground">{o.goal}</p>
                       <div className="grid grid-cols-2 gap-3">
-                        <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">✓ {d}</li>)}</ul></div>
-                        <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">→ {out}</li>)}</ul></div>
+                        <div><p className="text-[10px] text-primary font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-foreground break-words">✓ {d}</li>)}</ul></div>
+                        <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-foreground break-words">→ {out}</li>)}</ul></div>
                       </div>
                       {o.cta && <p className="text-xs text-amber-400">CTA: {o.cta}</p>}
                       <div className="flex justify-end gap-2 pt-1">
                         <button
                           onClick={() => startEdit(o)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#58A6FF] border border-[#58A6FF]/30 rounded-lg hover:bg-[#58A6FF]/10 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/10 transition-colors"
                         >
                           ✏ Edit
                         </button>
@@ -3498,8 +3492,8 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[#E6EDF3]">🌐 Landing Pages</h3>
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+      <h3 className="text-sm font-semibold text-foreground">🌐 Landing Pages</h3>
+      <div className="bg-card border border-border rounded-xl p-4 space-y-4">
         {/* Suggest Fields bar */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -3513,47 +3507,47 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
           </button>
           {suggestions.length > 0 && (
             <div className="flex items-center gap-1">
-              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">‹</button>
-              <span className="text-[10px] text-[#7D8590]">{suggestionIdx + 1}/{suggestions.length}</span>
-              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">›</button>
-              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#484F58] hover:text-[#7D8590] text-xs transition-colors">↺</button>
+              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground text-xs transition-colors">‹</button>
+              <span className="text-[10px] text-muted-foreground">{suggestionIdx + 1}/{suggestions.length}</span>
+              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground text-xs transition-colors">›</button>
+              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-border text-muted-foreground/60 hover:text-muted-foreground text-xs transition-colors">↺</button>
             </div>
           )}
           {suggestError && <span className="text-xs text-red-400">{suggestError}</span>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic / Offer</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Topic / Offer</label>
             <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Microsoft Copilot adoption"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Audience</label>
             <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="e.g. Healthcare IT teams"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">CTA</label>
             <input value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Book a discovery call"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
         </div>
         <button onClick={() => { void generate(); }} disabled={generating || !topic.trim()}
-          className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+          className="w-full py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
           {generating ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Generate Landing Page"}
         </button>
 
         {draft && (
-          <div className="bg-[#0D1117] rounded-xl p-4 space-y-3 border border-[#0078D4]/20">
-            <h4 className="font-semibold text-[#E6EDF3]">{draft.headline ?? draft.title}</h4>
-            {draft.subheadline && <p className="text-xs text-[#7D8590]">{draft.subheadline}</p>}
+          <div className="bg-background rounded-xl p-4 space-y-3 border border-primary/20">
+            <h4 className="font-semibold text-foreground">{draft.headline ?? draft.title}</h4>
+            {draft.subheadline && <p className="text-xs text-muted-foreground">{draft.subheadline}</p>}
             {draft.valuePropBlocks && draft.valuePropBlocks.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {draft.valuePropBlocks.map((b, i) => (
-                  <div key={i} className="bg-[#161B22] rounded-lg p-2">
+                  <div key={i} className="bg-card rounded-lg p-2">
                     {b.icon && <span className="text-lg">{b.icon}</span>}
-                    <p className="text-xs font-semibold text-[#E6EDF3] mt-1">{b.heading}</p>
-                    <p className="text-[10px] text-[#7D8590]">{b.body}</p>
+                    <p className="text-xs font-semibold text-foreground mt-1">{b.heading}</p>
+                    <p className="text-[10px] text-muted-foreground">{b.body}</p>
                   </div>
                 ))}
               </div>
@@ -3561,11 +3555,11 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
             <div className="space-y-2">
               {serviceOptions.length > 0 && (
                 <div>
-                  <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Linked Service <span className="normal-case text-[#484F58]">(optional — LP-only services shown)</span></label>
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Linked Service <span className="normal-case text-muted-foreground/60">(optional — LP-only services shown)</span></label>
                   <select
                     value={draftLinkedServiceId ?? ""}
                     onChange={e => setDraftLinkedServiceId(e.target.value === "" ? null : Number(e.target.value))}
-                    className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
                   >
                     <option value="">— No linked service —</option>
                     {serviceOptions.map(s => (
@@ -3575,11 +3569,11 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                 </div>
               )}
               <div>
-                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">URL Slug</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">URL Slug</label>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-[#7D8590] flex-shrink-0">/lp/</span>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">/lp/</span>
                   <input value={slugInput} onChange={e => setSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="my-page-slug"
-                    className="flex-1 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                    className="flex-1 bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
                 </div>
                 {slugError && <p className="text-xs text-red-400 mt-1">{slugError}</p>}
               </div>
@@ -3593,17 +3587,17 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       </div>
 
       {loading ? <SkeletonCard /> : pages.length === 0 ? (
-        <p className="text-xs text-[#7D8590]">No landing pages yet — generate your first one above</p>
+        <p className="text-xs text-muted-foreground">No landing pages yet — generate your first one above</p>
       ) : (
         <div className="space-y-2">
           {pages.map(page => (
-            <div key={page.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div key={page.id} className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="flex items-start gap-3 px-4 py-3">
                 <button onClick={() => setExpandedId(prev => prev === page.id ? null : page.id)} className="flex-1 text-left min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{page.title}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{page.title}</p>
                     {page.campaignId && lpCampaignMap.get(page.campaignId) && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0">📌 {lpCampaignMap.get(page.campaignId)}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary flex-shrink-0">📌 {lpCampaignMap.get(page.campaignId)}</span>
                     )}
                     {page.linkedServiceId && serviceMap.get(page.linkedServiceId)?.visibility === "landing_page_only" && (
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 flex-shrink-0">🔒 {serviceMap.get(page.linkedServiceId)!.name}</span>
@@ -3615,12 +3609,12 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   {page.published ? (
                     <p className="text-xs text-emerald-400/80 truncate mt-0.5 font-mono">{getPublicUrl(page.slug)}</p>
                   ) : (
-                    <p className="text-xs text-[#7D8590] truncate mt-0.5">/lp/{page.slug} · Draft</p>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">/lp/{page.slug} · Draft</p>
                   )}
                 </button>
                 <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                   <button onClick={() => { void togglePublish(page); }}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors ${page.published ? "bg-emerald-500/20 text-emerald-400 hover:bg-red-500/20 hover:text-red-400" : "bg-[#30363D] text-[#7D8590] hover:bg-emerald-500/20 hover:text-emerald-400"}`}>
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors ${page.published ? "bg-emerald-500/20 text-emerald-400 hover:bg-red-500/20 hover:text-red-400" : "bg-border text-muted-foreground hover:bg-emerald-500/20 hover:text-emerald-400"}`}>
                     {page.published ? "Live" : "Publish"}
                   </button>
                   {!page.published && accessToken && (
@@ -3635,26 +3629,26 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   {page.published && (
                     <>
                       <a href={getPublicUrl(page.slug)} target="_blank" rel="noopener noreferrer"
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors" title="Open live page">↗ Open</a>
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary hover:bg-primary/30 transition-colors" title="Open live page">↗ Open</a>
                       <button onClick={() => { void copyLink(page); }}
-                        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${copiedId === page.id ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${copiedId === page.id ? "bg-emerald-500/20 text-emerald-400" : "bg-border text-muted-foreground hover:text-foreground"}`}
                         title="Copy public link">
                         {copiedId === page.id ? "✓ Copied" : "🔗 Copy"}
                       </button>
                     </>
                   )}
-                  <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
+                  <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-muted-foreground/60 hover:text-red-400 text-xs">✕</button>
                 </div>
               </div>
               {expandedId === page.id && (
-                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+                <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
                   {serviceOptions.length > 0 && (
                     <div>
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Linked Service</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Linked Service</label>
                       <select
                         value={page.linkedServiceId ?? ""}
                         onChange={e => { void patchLinkedService(page, e.target.value === "" ? null : Number(e.target.value)); }}
-                        className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary/60"
                       >
                         <option value="">— No linked service —</option>
                         {serviceOptions.map(s => (
@@ -3675,7 +3669,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     const placeholder = isGated ? "Sign Up to Access" : "Get Started";
                     return (
                       <div>
-                        <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">
+                        <label className="text-[10px] text-muted-foreground uppercase tracking-wide">
                           CTA Button Text
                         </label>
                         {isGated && !page.cta?.buttonText && (
@@ -3689,12 +3683,12 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                             value={currentText}
                             placeholder={placeholder}
                             onChange={e => setCtaTextEdits(prev => ({ ...prev, [page.id]: e.target.value }))}
-                            className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                            className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                           />
                           <button
                             onClick={() => { void patchCtaButtonText(page, currentText); }}
                             disabled={ctaTextSaving[page.id] || currentText === (page.cta?.buttonText ?? "")}
-                            className="text-[10px] px-2 py-1.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                            className="text-[10px] px-2 py-1.5 rounded border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                           >
                             {ctaTextSaving[page.id] ? "Saving…" : "Save"}
                           </button>
@@ -3706,7 +3700,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                               }}
                               disabled={ctaTextSaving[page.id]}
                               title="Clear override — revert to default"
-                              className="text-[10px] px-2 py-1.5 rounded border border-[#30363D] text-[#484F58] hover:text-red-400 hover:border-red-400/40 transition-colors disabled:opacity-40 flex-shrink-0"
+                              className="text-[10px] px-2 py-1.5 rounded border border-border text-muted-foreground/60 hover:text-red-400 hover:border-red-400/40 transition-colors disabled:opacity-40 flex-shrink-0"
                             >
                               ✕ Clear
                             </button>
@@ -3717,12 +3711,12 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   })()}
                   {page.valuePropBlocks.length > 0 && (
                     <>
-                      <p className="text-xs text-[#7D8590]">{page.headline}</p>
+                      <p className="text-xs text-muted-foreground">{page.headline}</p>
                       <div className="grid grid-cols-3 gap-2">
                         {page.valuePropBlocks.slice(0, 3).map((b, i) => (
-                          <div key={i} className="bg-[#0D1117] rounded-lg p-2">
+                          <div key={i} className="bg-background rounded-lg p-2">
                             {b.icon && <span>{b.icon}</span>}
-                            <p className="text-[10px] font-semibold text-[#E6EDF3]">{b.heading}</p>
+                            <p className="text-[10px] font-semibold text-foreground">{b.heading}</p>
                           </div>
                         ))}
                       </div>
@@ -3735,7 +3729,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                       <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2.5 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">🎁 Linked Offer</span>
-                          <span className="text-xs font-semibold text-[#E6EDF3]">{offer.name}</span>
+                          <span className="text-xs font-semibold text-foreground">{offer.name}</span>
                           {offer.pricing && (
                             <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
                               {offer.pricing}
@@ -3745,7 +3739,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                         {offer.deliverables.length > 0 && (
                           <ul className="space-y-0.5">
                             {offer.deliverables.slice(0, 3).map((d, i) => (
-                              <li key={i} className="flex items-start gap-1.5 text-[10px] text-[#C9D1D9]">
+                              <li key={i} className="flex items-start gap-1.5 text-[10px] text-foreground/90">
                                 <span className="text-amber-500 mt-px flex-shrink-0">✓</span>
                                 <span>{d}</span>
                               </li>
@@ -3764,20 +3758,20 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
       {pendingPublishPage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl space-y-4">
+          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
               <span className="text-2xl leading-none">⚠️</span>
               <div>
-                <p className="text-sm font-semibold text-[#E6EDF3]">No access gate</p>
-                <p className="text-xs text-[#7D8590] mt-1">
-                  <span className="font-medium text-[#C9D1D9]">{pendingPublishPage.title}</span> has no linked service gate. It will be visible to everyone with no access check. Publish anyway?
+                <p className="text-sm font-semibold text-foreground">No access gate</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <span className="font-medium text-foreground/90">{pendingPublishPage.title}</span> has no linked service gate. It will be visible to everyone with no access check. Publish anyway?
                 </p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setPendingPublishPage(null)}
-                className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] transition-colors"
+                className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors"
               >
                 Cancel
               </button>
@@ -3890,89 +3884,89 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-[#E6EDF3]">Follow-Up Automation</h2>
-        <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Schedule</button>
+        <h2 className="text-lg font-semibold text-foreground">Follow-Up Automation</h2>
+        <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors">+ Schedule</button>
       </div>
 
       <div className="flex gap-1">
         {(["all", "pending", "overdue", "completed", "skipped"] as const).map(s => (
           <button key={s} onClick={() => setFilterStatus(s)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${filterStatus === s ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${filterStatus === s ? "bg-primary/20 border-primary/40 text-primary" : "border-border text-muted-foreground hover:text-foreground"}`}>
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>
 
       {showForm && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Schedule Follow-Up</h3>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Schedule Follow-Up</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Channel</label>
-              <select value={channel} onChange={e => setChannel(e.target.value)} className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60">
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Channel</label>
+              <select value={channel} onChange={e => setChannel(e.target.value)} className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60">
                 {["email", "linkedin", "phone", "other"].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Scheduled Date</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Scheduled Date</label>
               <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
-                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60" />
             </div>
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Subject / Topic</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Subject / Topic</label>
               <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject or topic…"
-                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
             </div>
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Context (for AI draft)</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Context (for AI draft)</label>
             <input value={leadQuery} onChange={e => setLeadQuery(e.target.value)} placeholder="e.g. following up on SharePoint proposal sent last week"
-              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           </div>
           <div className="flex gap-2">
             <button onClick={() => { void generateDraft(); }} disabled={generatingDraft}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-              {generatingDraft ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Drafting…</> : "✦ Draft Content"}
+              className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+              {generatingDraft ? <><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Drafting…</> : "✦ Draft Content"}
             </button>
           </div>
           {draftContent && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-[#7D8590]">AI Draft</span>
+                <span className="text-[10px] text-muted-foreground">AI Draft</span>
                 <CopyButton text={draftContent} />
               </div>
-              <pre className="text-xs text-[#E6EDF3] whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-40 overflow-y-auto">{draftContent}</pre>
+              <pre className="text-xs text-foreground whitespace-pre-wrap font-sans bg-background rounded-lg p-3 max-h-40 overflow-y-auto">{draftContent}</pre>
             </div>
           )}
           <div className="flex gap-2">
             <button onClick={() => { void saveFollowUp(); }} disabled={saving || !scheduledAt}
-              className="px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
               {saving ? "Saving…" : "Schedule"}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
           </div>
         </div>
       )}
 
       {loading ? <SkeletonCard count={3} /> : followUps.length === 0 ? (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-8 text-center">
-          <p className="text-[#7D8590] text-sm">No follow-ups {filterStatus !== "all" ? `with status "${filterStatus}"` : "yet"}</p>
-          <p className="text-xs text-[#484F58] mt-1">Schedule a follow-up and optionally draft the content with AI</p>
+        <div className="bg-card border border-border rounded-xl p-8 text-center">
+          <p className="text-muted-foreground text-sm">No follow-ups {filterStatus !== "all" ? `with status "${filterStatus}"` : "yet"}</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Schedule a follow-up and optionally draft the content with AI</p>
         </div>
       ) : (
         <div className="space-y-2">
           {followUps.map(fu => (
-            <div key={fu.id} className={`bg-[#161B22] border rounded-xl overflow-hidden ${fu.status === "overdue" ? "border-red-500/30" : "border-[#30363D]"}`}>
+            <div key={fu.id} className={`bg-card border rounded-xl overflow-hidden ${fu.status === "overdue" ? "border-red-500/30" : "border-border"}`}>
               <div className="flex items-center gap-3 px-4 py-3">
                 <button onClick={() => setExpandedId(prev => prev === fu.id ? null : fu.id)} className="flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[#E6EDF3]">{fu.subject ?? `${fu.channel} follow-up`}</span>
+                    <span className="text-sm font-medium text-foreground">{fu.subject ?? `${fu.channel} follow-up`}</span>
                     <Badge text={fu.status} color={statusColor(fu.status)} />
                     <Badge text={fu.channel} color="blue" />
                   </div>
                   <div className="flex items-center gap-3 mt-0.5">
-                    <p className="text-xs text-[#7D8590]">{new Date(fu.scheduledAt).toLocaleString()}</p>
-                    {fu.leadName && <p className="text-xs text-[#58A6FF]">→ {fu.leadName}</p>}
+                    <p className="text-xs text-muted-foreground">{new Date(fu.scheduledAt).toLocaleString()}</p>
+                    {fu.leadName && <p className="text-xs text-primary">→ {fu.leadName}</p>}
                   </div>
                 </button>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -3981,19 +3975,19 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   )}
                   <button onClick={() => { void rescheduleFollowUp(fu.id); }} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors" title="Reschedule +1 day">+1d</button>
                   <button onClick={() => { void generateCopyForFollowUp(fu.id); }} className="text-[10px] px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors" title="Generate AI copy">✦ Copy</button>
-                  <button onClick={() => { void deleteFollowUp(fu.id); }} className="text-[#484F58] hover:text-red-400 text-xs ml-1">✕</button>
+                  <button onClick={() => { void deleteFollowUp(fu.id); }} className="text-muted-foreground/60 hover:text-red-400 text-xs ml-1">✕</button>
                 </div>
               </div>
               {expandedId === fu.id && (fu.aiDraftContent || generatingCopyId === fu.id) && (
-                <div className="border-t border-[#30363D] px-4 pb-3 pt-2 space-y-2">
+                <div className="border-t border-border px-4 pb-3 pt-2 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-[#7D8590]">AI Draft</span>
+                    <span className="text-[10px] text-muted-foreground">AI Draft</span>
                     {fu.aiDraftContent && <CopyButton text={fu.aiDraftContent} />}
                   </div>
                   {generatingCopyId === fu.id ? (
-                    <div className="flex items-center gap-2 text-xs text-[#58A6FF]"><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating copy…</div>
+                    <div className="flex items-center gap-2 text-xs text-primary"><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Generating copy…</div>
                   ) : fu.aiDraftContent ? (
-                    <pre className="text-xs text-[#E6EDF3] whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-40 overflow-y-auto">{fu.aiDraftContent}</pre>
+                    <pre className="text-xs text-foreground whitespace-pre-wrap font-sans bg-background rounded-lg p-3 max-h-40 overflow-y-auto">{fu.aiDraftContent}</pre>
                   ) : null}
                 </div>
               )}
@@ -4059,18 +4053,18 @@ function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: s
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={e => { if (e.target === e.currentTarget) cancel(); }}
         >
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md mx-4 shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div>
-                <h3 className="text-sm font-semibold text-[#E6EDF3]">💰 AI Money Tasks</h3>
-                <p className="text-xs text-[#7D8590] mt-0.5">Uncheck tasks you don't want, then add the rest to the board.</p>
+                <h3 className="text-sm font-semibold text-foreground">💰 AI Money Tasks</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Uncheck tasks you don't want, then add the rest to the board.</p>
               </div>
-              <button onClick={cancel} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg leading-none transition-colors">×</button>
+              <button onClick={cancel} className="text-muted-foreground hover:text-foreground text-lg leading-none transition-colors">×</button>
             </div>
-            <div className="px-5 py-2 border-b border-[#30363D]/60">
+            <div className="px-5 py-2 border-b border-border/60">
               <button
                 onClick={() => setCheckedMoneyTasks(allChecked ? new Set() : new Set(pendingTasks.map((_, i) => i)))}
-                className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] transition-colors"
+                className="text-[10px] text-muted-foreground hover:text-primary transition-colors"
               >
                 {allChecked ? "Deselect all" : "Select all"}
               </button>
@@ -4089,20 +4083,20 @@ function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: s
                     className="mt-0.5 accent-amber-400 w-4 h-4 shrink-0"
                   />
                   <div className={`transition-opacity ${checkedMoneyTasks.has(i) ? "opacity-100" : "opacity-40"}`}>
-                    <p className="text-sm font-medium text-[#E6EDF3] leading-snug">{t.title}</p>
-                    {t.description && <p className="text-xs text-[#7D8590] mt-0.5 leading-snug">{t.description}</p>}
+                    <p className="text-sm font-medium text-foreground leading-snug">{t.title}</p>
+                    {t.description && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{t.description}</p>}
                   </div>
                 </label>
               ))}
             </div>
-            <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
-              <span className="text-xs text-[#7D8590]">{checkedMoneyTasks.size} of {pendingTasks.length} selected</span>
+            <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+              <span className="text-xs text-muted-foreground">{checkedMoneyTasks.size} of {pendingTasks.length} selected</span>
               <div className="flex gap-2">
-                <button onClick={cancel} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+                <button onClick={cancel} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
                 <button
                   onClick={confirm}
                   disabled={checkedMoneyTasks.size === 0}
-                  className="text-xs px-4 py-1.5 rounded-lg bg-amber-500 text-[#0D1117] font-semibold hover:bg-amber-400 disabled:opacity-40 transition-colors"
+                  className="text-xs px-4 py-1.5 rounded-lg bg-amber-500 text-background font-semibold hover:bg-amber-400 disabled:opacity-40 transition-colors"
                 >
                   Add {checkedMoneyTasks.size} to Board
                 </button>
@@ -4126,7 +4120,7 @@ function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: s
 
 const KANBAN_COLUMNS: { id: MarketingTask["status"]; label: string; color: string }[] = [
   { id: "money_task", label: "💰 Money Tasks", color: "text-amber-300" },
-  { id: "ideas", label: "Ideas", color: "text-[#7D8590]" },
+  { id: "ideas", label: "Ideas", color: "text-muted-foreground" },
   { id: "in_progress", label: "In Progress", color: "text-amber-400" },
   { id: "scheduled", label: "Scheduled", color: "text-blue-400" },
   { id: "published", label: "Published", color: "text-emerald-400" },
@@ -4268,12 +4262,12 @@ function TaskDetailModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-lg mx-4 shadow-2xl">
-        <div className="flex items-start justify-between px-5 py-4 border-b border-[#30363D] gap-3">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] leading-snug">{task.title}</h3>
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg mx-4 shadow-2xl">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border gap-3">
+          <h3 className="text-sm font-semibold text-foreground leading-snug">{task.title}</h3>
           <button
             onClick={onClose}
-            className="flex-shrink-0 text-[#7D8590] hover:text-[#E6EDF3] text-xl leading-none transition-colors mt-0.5"
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground text-xl leading-none transition-colors mt-0.5"
           >
             ×
           </button>
@@ -4282,7 +4276,7 @@ function TaskDetailModal({
         <div className="px-5 py-4 space-y-4">
           <div className="flex flex-wrap gap-2 items-center">
             {col && (
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#30363D] ${col.color}`}>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full bg-border ${col.color}`}>
                 {col.label}
               </span>
             )}
@@ -4297,16 +4291,16 @@ function TaskDetailModal({
 
           {task.description ? (
             <div>
-              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">Description</p>
-              <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{task.description}</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Description</p>
+              <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{task.description}</p>
             </div>
           ) : (
-            <p className="text-xs text-[#484F58] italic">No description provided.</p>
+            <p className="text-xs text-muted-foreground/60 italic">No description provided.</p>
           )}
 
           {actions.length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">Suggested Actions</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Suggested Actions</p>
               <div className="flex flex-wrap gap-2">
                 {actions.map((action, i) => {
                   const isStatus = action.type === "status";
@@ -4320,14 +4314,14 @@ function TaskDetailModal({
                       disabled={isDisabled}
                       className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg border transition-colors ${
                         isDisabled
-                          ? "border-[#30363D] text-[#484F58] cursor-not-allowed opacity-50"
+                          ? "border-border text-muted-foreground/60 cursor-not-allowed opacity-50"
                           : isComplete
                           ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
                           : isCompose
                           ? "border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
                           : isStatus
-                          ? "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
-                          : "border-[#30363D] text-[#C9D1D9] hover:border-[#484F58] hover:text-[#E6EDF3]"
+                          ? "border-primary/40 text-primary hover:bg-primary/10"
+                          : "border-border text-foreground/90 hover:border-muted-foreground/60 hover:text-foreground"
                       }`}
                     >
                       <span>{action.icon}</span>
@@ -4340,10 +4334,10 @@ function TaskDetailModal({
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#30363D] flex justify-end">
+        <div className="px-5 py-3 border-t border-border flex justify-end">
           <button
             onClick={onClose}
-            className="text-xs px-4 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="text-xs px-4 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
           >
             Close
           </button>
@@ -4370,22 +4364,22 @@ function SortableTaskCard({ task, onDelete, onStatusChange, onOpen }: SortableTa
       ref={setNodeRef}
       style={style}
       onClick={() => onOpen(task)}
-      className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-1.5 hover:border-[#0078D4]/40 transition-colors cursor-pointer"
+      className="bg-background border border-border rounded-lg p-3 space-y-1.5 hover:border-primary/40 transition-colors cursor-pointer"
     >
       <div className="flex items-start gap-1">
         <div
           {...attributes}
           {...listeners}
           onClick={e => e.stopPropagation()}
-          className="mt-0.5 cursor-grab active:cursor-grabbing text-[#484F58] hover:text-[#7D8590] flex-shrink-0"
+          className="mt-0.5 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-muted-foreground flex-shrink-0"
         >
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
           </svg>
         </div>
-        <p className="text-xs font-medium text-[#E6EDF3] flex-1">{task.title}</p>
+        <p className="text-xs font-medium text-foreground flex-1">{task.title}</p>
       </div>
-      {task.description && <p className="text-[10px] text-[#7D8590] line-clamp-2 ml-4.5">{task.description}</p>}
+      {task.description && <p className="text-[10px] text-muted-foreground line-clamp-2 ml-4.5">{task.description}</p>}
       {task.dueDate && <p className="text-[10px] text-amber-400 ml-4.5">Due: {new Date(task.dueDate).toLocaleDateString()}</p>}
       {(task.relatedLeadId || task.relatedCampaignId) && (
         <div className="flex gap-1 ml-4.5">
@@ -4396,15 +4390,15 @@ function SortableTaskCard({ task, onDelete, onStatusChange, onOpen }: SortableTa
       <div className="flex items-center gap-1 ml-4.5 relative">
         <button
           onClick={e => { e.stopPropagation(); setShowStatusMenu(m => !m); }}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+          className="text-[10px] px-1.5 py-0.5 rounded bg-border text-muted-foreground hover:text-foreground transition-colors"
         >
           Status ▾
         </button>
         {showStatusMenu && (
-          <div className="absolute top-5 left-0 z-20 bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl py-1 min-w-28">
+          <div className="absolute top-5 left-0 z-20 bg-card border border-border rounded-lg shadow-xl py-1 min-w-28">
             {KANBAN_COLUMNS.map(col => (
               <button key={col.id} onClick={e => { e.stopPropagation(); onStatusChange(task.id, col.id); setShowStatusMenu(false); }}
-                className={`w-full text-left px-3 py-1.5 text-[10px] hover:bg-[#1C2128] transition-colors ${col.color} ${task.status === col.id ? "font-bold" : ""}`}>
+                className={`w-full text-left px-3 py-1.5 text-[10px] hover:bg-accent transition-colors ${col.color} ${task.status === col.id ? "font-bold" : ""}`}>
                 {col.label}
               </button>
             ))}
@@ -4412,7 +4406,7 @@ function SortableTaskCard({ task, onDelete, onStatusChange, onOpen }: SortableTa
         )}
         <button
           onClick={e => { e.stopPropagation(); onDelete(task.id); }}
-          className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors ml-auto"
+          className="text-[10px] text-muted-foreground/60 hover:text-red-400 transition-colors ml-auto"
         >
           Delete
         </button>
@@ -4431,10 +4425,10 @@ function DroppableColumn({ col, tasks, onDelete, onStatusChange, onOpen }: {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
 
   return (
-    <div ref={setNodeRef} className={`bg-[#161B22] border rounded-xl p-3 min-h-40 transition-colors ${isOver ? "border-[#0078D4]/60 bg-[#0D1117]" : "border-[#30363D]"}`}>
+    <div ref={setNodeRef} className={`bg-card border rounded-xl p-3 min-h-40 transition-colors ${isOver ? "border-primary/60 bg-background" : "border-border"}`}>
       <div className="flex items-center justify-between mb-3">
         <h3 className={`text-xs font-semibold uppercase tracking-wide ${col.color}`}>{col.label}</h3>
-        <span className="text-[10px] text-[#484F58]">{tasks.length}</span>
+        <span className="text-[10px] text-muted-foreground/60">{tasks.length}</span>
       </div>
       <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
@@ -4588,13 +4582,13 @@ function MarketingTasksKanban({ fetchWithAuth, onSectionNavigate }: { fetchWithA
 
       {showSuggestionsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowSuggestionsModal(false); }}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md mx-4 shadow-2xl">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div>
-                <h3 className="text-sm font-semibold text-[#E6EDF3]">✦ AI Suggested Tasks</h3>
-                <p className="text-xs text-[#7D8590] mt-0.5">Uncheck tasks you don't want, then add the rest.</p>
+                <h3 className="text-sm font-semibold text-foreground">✦ AI Suggested Tasks</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Uncheck tasks you don't want, then add the rest.</p>
               </div>
-              <button onClick={() => setShowSuggestionsModal(false)} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg leading-none transition-colors">×</button>
+              <button onClick={() => setShowSuggestionsModal(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none transition-colors">×</button>
             </div>
             <div className="px-5 py-3 space-y-2 max-h-80 overflow-y-auto">
               {aiSuggestions.map((s, i) => (
@@ -4607,23 +4601,23 @@ function MarketingTasksKanban({ fetchWithAuth, onSectionNavigate }: { fetchWithA
                       if (next.has(i)) next.delete(i); else next.add(i);
                       return next;
                     })}
-                    className="mt-0.5 accent-[#0078D4] w-4 h-4 shrink-0"
+                    className="mt-0.5 accent-primary w-4 h-4 shrink-0"
                   />
                   <div className={`transition-opacity ${checkedSuggestions.has(i) ? "opacity-100" : "opacity-40"}`}>
-                    <p className="text-sm font-medium text-[#E6EDF3] leading-snug">{s.title}</p>
-                    {s.description && <p className="text-xs text-[#7D8590] mt-0.5 leading-snug">{s.description}</p>}
+                    <p className="text-sm font-medium text-foreground leading-snug">{s.title}</p>
+                    {s.description && <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{s.description}</p>}
                   </div>
                 </label>
               ))}
             </div>
-            <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
-              <span className="text-xs text-[#7D8590]">{checkedSuggestions.size} of {aiSuggestions.length} selected</span>
+            <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+              <span className="text-xs text-muted-foreground">{checkedSuggestions.size} of {aiSuggestions.length} selected</span>
               <div className="flex gap-2">
-                <button onClick={() => setShowSuggestionsModal(false)} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+                <button onClick={() => setShowSuggestionsModal(false)} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
                 <button
                   onClick={() => { void confirmSuggestions(); }}
                   disabled={insertingSuggestions || checkedSuggestions.size === 0}
-                  className="text-xs px-4 py-1.5 rounded-lg bg-[#0078D4] text-white font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center gap-1.5">
+                  className="text-xs px-4 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors flex items-center gap-1.5">
                   {insertingSuggestions ? <><div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />Adding…</> : `Add ${checkedSuggestions.size} Task${checkedSuggestions.size !== 1 ? "s" : ""}`}
                 </button>
               </div>
@@ -4633,29 +4627,29 @@ function MarketingTasksKanban({ fetchWithAuth, onSectionNavigate }: { fetchWithA
       )}
 
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-[#E6EDF3]">Marketing Tasks</h2>
+        <h2 className="text-lg font-semibold text-foreground">Marketing Tasks</h2>
         <div className="flex items-center gap-2">
           <button onClick={() => { void aiSuggestTasks(); }} disabled={aiSuggesting}
-            className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-            {aiSuggesting ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ AI Suggest Tasks"}
+            className="text-xs px-3 py-1.5 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+            {aiSuggesting ? <><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ AI Suggest Tasks"}
           </button>
           <AiMoneyTasksButton fetchWithAuth={fetchWithAuth} onAdded={(newTasks: MarketingTask[]) => setTasks(prev => [...newTasks, ...prev])} />
-          <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Add Task</button>
+          <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors">+ Add Task</button>
         </div>
       </div>
 
       {showForm && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Task title…"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Description (optional)…"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
           <div className="flex gap-2">
             <button onClick={() => { void addTask(); }} disabled={adding || !newTitle.trim()}
-              className="px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
               {adding ? "Adding…" : "Add Task"}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
           </div>
         </div>
       )}
@@ -4719,58 +4713,58 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
   };
 
   return (
-    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+    <div className="bg-card border border-border rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[#E6EDF3]">Performance Metrics</h3>
-        <span className="text-[10px] text-[#7D8590] bg-[#30363D] px-2 py-0.5 rounded-full truncate max-w-[120px]">{campaign.name}</span>
+        <h3 className="text-sm font-semibold text-foreground">Performance Metrics</h3>
+        <span className="text-[10px] text-muted-foreground bg-border px-2 py-0.5 rounded-full truncate max-w-[120px]">{campaign.name}</span>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Leads Generated</p>
+        <div className="bg-background rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Leads Generated</p>
           <p className="text-lg font-bold text-emerald-400">{campaign.leadsGenerated ?? 0}</p>
         </div>
-        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
-          <p className="text-lg font-bold text-[#58A6FF]">{displayedEmailCount}</p>
+        <div className="bg-background rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Emails Sent</p>
+          <p className="text-lg font-bold text-primary">{displayedEmailCount}</p>
           {hasManualOverride && autoCount > 0 ? (
             <span className="inline-block mt-0.5 text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">override ({autoCount} auto)</span>
           ) : hasManualOverride ? (
-            <span className="inline-block mt-0.5 text-[9px] bg-[#30363D] text-[#7D8590] px-1.5 py-0.5 rounded-full">manual</span>
+            <span className="inline-block mt-0.5 text-[9px] bg-border text-muted-foreground px-1.5 py-0.5 rounded-full">manual</span>
           ) : hasAutoData ? (
-            <span className="inline-block mt-0.5 text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">auto-tracked</span>
+            <span className="inline-block mt-0.5 text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">auto-tracked</span>
           ) : null}
         </div>
-        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Revenue</p>
+        <div className="bg-background rounded-lg p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Revenue</p>
           <p className="text-lg font-bold text-amber-400">${Number(campaign.revenueAttributed ?? 0).toLocaleString()}</p>
         </div>
       </div>
-      <div className="space-y-2 pt-1 border-t border-[#30363D]">
+      <div className="space-y-2 pt-1 border-t border-border">
         <div className="flex items-center justify-between">
-          <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Update Metrics</p>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Update Metrics</p>
           {autoCount > 0 && (
-            <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked · set override below"}</span>
+            <span className="text-[9px] text-primary">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked · set override below"}</span>
           )}
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="text-[10px] text-[#7D8590]">Leads</label>
+            <label className="text-[10px] text-muted-foreground">Leads</label>
             <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
-              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+              className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (manual override)" : "Emails Sent"}</label>
+            <label className="text-[10px] text-muted-foreground">{autoCount > 0 ? "Emails (manual override)" : "Emails Sent"}</label>
             <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
-              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
+              className={`mt-0.5 w-full bg-background border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60 ${autoCount > 0 ? "border-primary/30" : "border-border"}`} />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
+            <label className="text-[10px] text-muted-foreground">Revenue ($)</label>
             <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
-              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+              className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60" />
           </div>
         </div>
         <button onClick={() => { void handleSave(); }} disabled={saving}
-          className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${saved ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
+          className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${saved ? "bg-emerald-500/20 text-emerald-400" : "bg-primary text-white hover:bg-primary/80"} disabled:opacity-40`}>
           {saving ? "Saving…" : saved ? "✓ Saved" : "Save Metrics"}
         </button>
       </div>
@@ -4926,10 +4920,10 @@ function CampaignWorkspace({
   };
 
   return (
-    <div className="border-t border-[#21262D]">
+    <div className="border-t border-accent">
       <button
         onClick={e => { e.stopPropagation(); setExpanded(prev => !prev); }}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors rounded-b-lg"
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent transition-colors rounded-b-lg"
       >
         <span>🗂 Campaign Workspace</span>
         <span>{expanded ? "▲" : "▼"}</span>
@@ -4938,35 +4932,35 @@ function CampaignWorkspace({
         <div className="px-3 pb-3 space-y-3" onClick={e => e.stopPropagation()}>
           {loading ? (
             <div className="flex items-center justify-center py-4">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
             <>
               <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold text-[#58A6FF] uppercase tracking-wide">💡 Offers</p>
+                <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">💡 Offers</p>
                 {linkedOffers.length === 0 ? (
-                  <p className="text-[10px] text-[#484F58]">No offers linked yet</p>
+                  <p className="text-[10px] text-muted-foreground/60">No offers linked yet</p>
                 ) : (
                   <div className="space-y-1">
                     {linkedOffers.map(o => (
-                      <div key={o.id} className="flex items-center gap-2 bg-[#161B22] rounded px-2 py-1">
-                        <span className="text-[10px] text-[#E6EDF3] truncate flex-1">{o.name}</span>
+                      <div key={o.id} className="flex items-center gap-2 bg-card rounded px-2 py-1">
+                        <span className="text-[10px] text-foreground truncate flex-1">{o.name}</span>
                         {o.pricing && <span className="text-[9px] text-emerald-400 flex-shrink-0">{o.pricing}</span>}
-                        <button onClick={() => { void unlinkOffer(o.id); }} className="text-[9px] text-[#484F58] hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
+                        <button onClick={() => { void unlinkOffer(o.id); }} className="text-[9px] text-muted-foreground/60 hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
                       </div>
                     ))}
                   </div>
                 )}
                 <div className="flex gap-1 mt-1">
                   <select value={selOfferId} onChange={e => setSelOfferId(e.target.value)}
-                    className="flex-1 min-w-0 bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none">
+                    className="flex-1 min-w-0 bg-card border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none">
                     <option value="">— Attach existing offer —</option>
                     {standaloneOffers.filter(o => !linkedOffers.some(lo => lo.id === o.id)).map(o => (
                       <option key={o.id} value={o.id}>{o.name}</option>
                     ))}
                   </select>
                   <button onClick={() => { void linkOffer(); }} disabled={!selOfferId || linking}
-                    className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex-shrink-0">
+                    className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 transition-colors flex-shrink-0">
                     Attach
                   </button>
                 </div>
@@ -4975,27 +4969,27 @@ function CampaignWorkspace({
                   {showCreateOffer ? "▲ Hide" : "✦ Generate new offer for this campaign"}
                 </button>
                 {showCreateOffer && (
-                  <div className="bg-[#161B22] rounded-lg p-2.5 space-y-2 border border-[#30363D]">
+                  <div className="bg-card rounded-lg p-2.5 space-y-2 border border-border">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wide">Goal</label>
                         <input value={offerGoal} onChange={e => setOfferGoal(e.target.value)}
-                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60" />
                       </div>
                       <div>
-                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wide">Audience</label>
                         <input value={offerAudience} onChange={e => setOfferAudience(e.target.value)}
-                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60" />
                       </div>
                     </div>
                     <button onClick={() => { void generateOffer(); }} disabled={generatingOffer || !offerGoal.trim()}
-                      className="w-full py-1 rounded bg-[#0078D4] text-white text-[10px] font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                      className="w-full py-1 rounded bg-primary text-white text-[10px] font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
                       {generatingOffer ? "Generating…" : "✦ Generate Offer"}
                     </button>
                     {offerDraft && (
-                      <div className="space-y-1.5 pt-1 border-t border-[#30363D]">
-                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{offerDraft.name}</p>
-                        <p className="text-[9px] text-[#7D8590]">{offerDraft.goal}</p>
+                      <div className="space-y-1.5 pt-1 border-t border-border">
+                        <p className="text-[10px] font-semibold text-foreground">{offerDraft.name}</p>
+                        <p className="text-[9px] text-muted-foreground">{offerDraft.goal}</p>
                         {offerDraft.pricing && <p className="text-[9px] text-emerald-400">{offerDraft.pricing}</p>}
                         <button onClick={() => { void saveGeneratedOffer(); }} disabled={savingOffer}
                           className="w-full py-1 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
@@ -5009,28 +5003,28 @@ function CampaignWorkspace({
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-teal-400 uppercase tracking-wide">🌐 Landing Pages</p>
                 {linkedPages.length === 0 ? (
-                  <p className="text-[10px] text-[#484F58]">No landing pages linked yet</p>
+                  <p className="text-[10px] text-muted-foreground/60">No landing pages linked yet</p>
                 ) : (
                   <div className="space-y-1">
                     {linkedPages.map(p => (
-                      <div key={p.id} className="flex items-center gap-2 bg-[#161B22] rounded px-2 py-1">
-                        <span className="text-[10px] text-[#E6EDF3] truncate flex-1">{p.title}</span>
-                        <span className={`text-[9px] flex-shrink-0 ${p.published ? "text-emerald-400" : "text-[#484F58]"}`}>{p.published ? "Live" : "Draft"}</span>
-                        <button onClick={() => { void unlinkPage(p.id); }} className="text-[9px] text-[#484F58] hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
+                      <div key={p.id} className="flex items-center gap-2 bg-card rounded px-2 py-1">
+                        <span className="text-[10px] text-foreground truncate flex-1">{p.title}</span>
+                        <span className={`text-[9px] flex-shrink-0 ${p.published ? "text-emerald-400" : "text-muted-foreground/60"}`}>{p.published ? "Live" : "Draft"}</span>
+                        <button onClick={() => { void unlinkPage(p.id); }} className="text-[9px] text-muted-foreground/60 hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
                       </div>
                     ))}
                   </div>
                 )}
                 <div className="flex gap-1 mt-1">
                   <select value={selPageId} onChange={e => setSelPageId(e.target.value)}
-                    className="flex-1 min-w-0 bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none">
+                    className="flex-1 min-w-0 bg-card border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none">
                     <option value="">— Attach existing page —</option>
                     {standalonePages.filter(p => !linkedPages.some(lp => lp.id === p.id)).map(p => (
                       <option key={p.id} value={p.id}>{p.title}</option>
                     ))}
                   </select>
                   <button onClick={() => { void linkPage(); }} disabled={!selPageId || linking}
-                    className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex-shrink-0">
+                    className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 transition-colors flex-shrink-0">
                     Attach
                   </button>
                 </div>
@@ -5039,38 +5033,38 @@ function CampaignWorkspace({
                   {showCreatePage ? "▲ Hide" : "✦ Generate new landing page for this campaign"}
                 </button>
                 {showCreatePage && (
-                  <div className="bg-[#161B22] rounded-lg p-2.5 space-y-2 border border-[#30363D]">
+                  <div className="bg-card rounded-lg p-2.5 space-y-2 border border-border">
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Topic</label>
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wide">Topic</label>
                         <input value={pageTopic} onChange={e => setPageTopic(e.target.value)}
-                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60" />
                       </div>
                       <div>
-                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wide">Audience</label>
                         <input value={pageAudience} onChange={e => setPageAudience(e.target.value)}
-                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60" />
                       </div>
                       <div>
-                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                        <label className="text-[9px] text-muted-foreground uppercase tracking-wide">CTA</label>
                         <input value={pageCta} onChange={e => setPageCta(e.target.value)}
-                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                          className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60" />
                       </div>
                     </div>
                     <button onClick={() => { void generatePage(); }} disabled={generatingPage || !pageTopic.trim()}
-                      className="w-full py-1 rounded bg-[#0078D4] text-white text-[10px] font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                      className="w-full py-1 rounded bg-primary text-white text-[10px] font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
                       {generatingPage ? "Generating…" : "✦ Generate Landing Page"}
                     </button>
                     {pageDraft && (
-                      <div className="space-y-2 pt-1 border-t border-[#30363D]">
-                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{pageDraft.headline ?? pageDraft.title}</p>
-                        {pageDraft.subheadline && <p className="text-[9px] text-[#7D8590]">{pageDraft.subheadline}</p>}
+                      <div className="space-y-2 pt-1 border-t border-border">
+                        <p className="text-[10px] font-semibold text-foreground">{pageDraft.headline ?? pageDraft.title}</p>
+                        {pageDraft.subheadline && <p className="text-[9px] text-muted-foreground">{pageDraft.subheadline}</p>}
                         <div>
-                          <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Slug</label>
+                          <label className="text-[9px] text-muted-foreground uppercase tracking-wide">Slug</label>
                           <div className="flex items-center gap-1 mt-0.5">
-                            <span className="text-[9px] text-[#484F58]">/lp/</span>
+                            <span className="text-[9px] text-muted-foreground/60">/lp/</span>
                             <input value={pageSlug} onChange={e => setPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 text-[10px] text-[#E6EDF3] outline-none" />
+                              className="flex-1 bg-background border border-border rounded px-2 py-0.5 text-[10px] text-foreground outline-none" />
                           </div>
                         </div>
                         <button onClick={() => { void saveGeneratedPage(); }} disabled={savingPage || !pageSlug.trim()}
@@ -5099,10 +5093,10 @@ function CampaignsHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, o
   ];
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-[#30363D] pb-2">
+      <div className="flex gap-1 border-b border-border pb-2">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`text-xs px-4 py-1.5 rounded-lg font-medium transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 text-[#58A6FF] border border-[#0078D4]/40" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] border border-transparent"}`}>
+            className={`text-xs px-4 py-1.5 rounded-lg font-medium transition-colors ${activeTab === t.id ? "bg-primary/20 text-primary border border-primary/40" : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"}`}>
             {t.label}
           </button>
         ))}
@@ -5324,10 +5318,10 @@ function CampaignAdAssetsStep({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-[#E6EDF3]">Ad Assets</p>
-          <p className="text-xs text-[#7D8590] mt-0.5">Generate paid ad content powered by your campaign context</p>
+          <p className="text-sm font-semibold text-foreground">Ad Assets</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Generate paid ad content powered by your campaign context</p>
         </div>
-        <button onClick={onSkip} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+        <button onClick={onSkip} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
           Skip →
         </button>
       </div>
@@ -5336,65 +5330,65 @@ function CampaignAdAssetsStep({
         {AD_TYPES.map(({ type, label, icon, hint }) => {
           const s = sections[type];
           return (
-            <div key={type} className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+            <div key={type} className="bg-background border border-border rounded-xl overflow-hidden">
               <button
                 onClick={() => patchSection(type, { open: !s.open })}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#161B22] transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-card transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <span>{icon}</span>
-                  <span className="text-sm font-semibold text-[#E6EDF3]">{label}</span>
+                  <span className="text-sm font-semibold text-foreground">{label}</span>
                   {s.saved && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">Saved ✓</span>}
-                  {s.variations.length > 0 && !s.saved && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF]">{s.variations.length} variations</span>}
+                  {s.variations.length > 0 && !s.saved && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary">{s.variations.length} variations</span>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#484F58] hidden sm:block">{hint}</span>
-                  <span className="text-[#7D8590] text-xs">{s.open ? "▲" : "▼"}</span>
+                  <span className="text-[10px] text-muted-foreground/60 hidden sm:block">{hint}</span>
+                  <span className="text-muted-foreground text-xs">{s.open ? "▲" : "▼"}</span>
                 </div>
               </button>
 
               {s.open && (
-                <div className="border-t border-[#30363D] p-4 space-y-4">
+                <div className="border-t border-border p-4 space-y-4">
                   {/* Inputs */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic / Focus</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Topic / Focus</label>
                       <input
                         value={s.topic}
                         onChange={e => patchSection(type, { topic: e.target.value })}
                         placeholder="e.g. Microsoft Copilot for mid-market teams"
-                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Offer</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Offer</label>
                       <input
                         value={s.offer}
                         onChange={e => patchSection(type, { offer: e.target.value })}
                         placeholder="e.g. Free 30-min Copilot Assessment"
-                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Angle</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Angle</label>
                       <input
                         value={s.angle}
                         onChange={e => patchSection(type, { angle: e.target.value })}
                         placeholder="e.g. benefit-focused, urgency, ROI"
-                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Audience</label>
                       <input
                         value={s.audience}
                         onChange={e => patchSection(type, { audience: e.target.value })}
                         placeholder="e.g. IT Directors at 100-500 employee firms"
-                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Landing Page Destination</label>
+                      <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Landing Page Destination</label>
                       <select
                         value={s.destinationPath}
                         onChange={e => {
@@ -5409,7 +5403,7 @@ function CampaignAdAssetsStep({
                             }),
                           });
                         }}
-                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                        className="mt-1 w-full bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
                       >
                         {DESTINATION_OPTIONS.map(opt => (
                           <option key={opt.path} value={opt.path}>{opt.label}</option>
@@ -5431,7 +5425,7 @@ function CampaignAdAssetsStep({
                       <button
                         onClick={() => { void suggest(type); }}
                         disabled={s.suggesting}
-                        className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+                        className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                       >
                         Regenerate
                       </button>
@@ -5445,14 +5439,14 @@ function CampaignAdAssetsStep({
                   {/* Variations */}
                   {s.variations.length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-[10px] text-[#7D8590] uppercase tracking-wide font-semibold">Variations</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">Variations</p>
                       {s.variations.map((v, idx) => {
                         const outreachKey = `${type}:${v.headline}`;
                         const hubKey = `${AD_TYPES.find(a => a.type === type)?.label ?? type}: ${v.headline}`;
                         return (
-                          <div key={idx} className="bg-[#161B22] border border-[#30363D] rounded-lg p-3 space-y-2">
+                          <div key={idx} className="bg-card border border-border rounded-lg p-3 space-y-2">
                             <div className="flex items-start justify-between gap-2">
-                              <span className="text-[10px] text-[#484F58] font-semibold uppercase tracking-wide">Variation {idx + 1}</span>
+                              <span className="text-[10px] text-muted-foreground/60 font-semibold uppercase tracking-wide">Variation {idx + 1}</span>
                               <div className="flex gap-1 flex-wrap justify-end">
                                 <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
                                 <button
@@ -5467,49 +5461,49 @@ function CampaignAdAssetsStep({
                                 <button
                                   onClick={() => { void addToOutreach(type, v); }}
                                   disabled={outreachSaving === outreachKey}
-                                  className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors"
+                                  className="text-[10px] px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 transition-colors"
                                 >{outreachSaved === outreachKey ? "Saved!" : outreachSaving === outreachKey ? "Saving…" : "+ Outreach"}</button>
                               </div>
                             </div>
                             {/* Editable fields */}
                             <div className="space-y-2">
                               <div>
-                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Headline</label>
+                                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Headline</label>
                                 <input
                                   value={v.headline}
                                   onChange={e => patchVariation(type, idx, { headline: e.target.value })}
-                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                                  className="mt-0.5 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-semibold text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Description</label>
+                                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Description</label>
                                 <textarea
                                   value={v.description}
                                   onChange={e => patchVariation(type, idx, { description: e.target.value })}
                                   rows={2}
-                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#7D8590] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none"
+                                  className="mt-0.5 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-muted-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none"
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">CTA</label>
                                 <input
                                   value={v.cta ?? ""}
                                   onChange={e => patchVariation(type, idx, { cta: e.target.value || undefined })}
                                   placeholder="e.g. Book a Free Call"
-                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-[10px] text-[#58A6FF] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                                  className="mt-0.5 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-[10px] text-primary placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                                 />
                               </div>
                               {v.url !== undefined && (
                                 <div>
-                                  <label className="text-[10px] text-[#7D8590] uppercase tracking-wide flex items-center gap-1">
+                                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                                     UTM-Tagged URL
-                                    <span className="normal-case text-[9px] text-[#484F58]">(auto-generated · editable)</span>
+                                    <span className="normal-case text-[9px] text-muted-foreground/60">(auto-generated · editable)</span>
                                   </label>
                                   <div className="mt-0.5 flex gap-1">
                                     <input
                                       value={v.url}
                                       onChange={e => patchVariation(type, idx, { url: e.target.value })}
-                                      className="flex-1 min-w-0 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-[10px] text-emerald-400 font-mono placeholder-[#484F58] outline-none focus:border-emerald-500/40"
+                                      className="flex-1 min-w-0 bg-background border border-border rounded-lg px-3 py-1.5 text-[10px] text-emerald-400 font-mono placeholder-muted-foreground/60 outline-none focus:border-emerald-500/40"
                                     />
                                     <CopyButton text={v.url} />
                                   </div>
@@ -5540,39 +5534,39 @@ function CampaignAdAssetsStep({
       {/* Add Task Modal */}
       {addTaskModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-[#E6EDF3] font-semibold">Add to Marketing Tasks</h3>
-              <button onClick={() => setAddTaskModal(null)} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+              <h3 className="text-foreground font-semibold">Add to Marketing Tasks</h3>
+              <button onClick={() => setAddTaskModal(null)} className="text-muted-foreground hover:text-foreground">✕</button>
             </div>
             <div className="space-y-3">
               <input
                 value={addTaskModal.title}
                 onChange={e => setAddTaskModal(prev => prev ? { ...prev, title: e.target.value } : prev)}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
               />
               <textarea
                 value={addTaskModal.description}
                 onChange={e => setAddTaskModal(prev => prev ? { ...prev, description: e.target.value } : prev)}
                 rows={4}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none font-mono text-xs"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60 resize-none font-mono text-xs"
               />
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => { void addToTask(addTaskModal.title, addTaskModal.description); }}
                 disabled={addTaskSaving || !addTaskModal.title.trim()}
-                className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors"
+                className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors"
               >{addTaskSaving ? "Adding…" : "Add Task"}</button>
-              <button onClick={() => setAddTaskModal(null)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => setAddTaskModal(null)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex gap-2 pt-2 border-t border-[#30363D]">
+      <div className="flex gap-2 pt-2 border-t border-border">
         <button onClick={onNext}
-          className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 transition-colors">
+          className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 transition-colors">
           Finish →
         </button>
       </div>
@@ -5598,13 +5592,13 @@ function RawToggle({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3">
-      <button onClick={() => setOpen(o => !o)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors">
+      <button onClick={() => setOpen(o => !o)} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors">
         {open ? "Hide raw ▲" : "View raw ▼"}
       </button>
       {open && (
         <div className="mt-2 space-y-1">
           <div className="flex justify-end"><CopyButton text={content} /></div>
-          <pre className="text-[10px] text-[#7D8590] whitespace-pre-wrap font-mono bg-[#0D1117] border border-[#30363D] rounded-lg p-3">{content}</pre>
+          <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap font-mono bg-background border border-border rounded-lg p-3">{content}</pre>
         </div>
       )}
     </div>
@@ -5617,14 +5611,14 @@ function GoogleAdPreview({ asset }: { asset: CampaignAsset }) {
   return (
     <div className="space-y-4">
       {variations.map((v, i) => (
-        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+        <div key={i} className="bg-background border border-border rounded-xl p-4">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[9px] border border-[#484F58] text-[#7D8590] px-1 py-px rounded">Ad</span>
+            <span className="text-[9px] border border-muted-foreground/60 text-muted-foreground px-1 py-px rounded">Ad</span>
             <span className="text-[10px] text-emerald-500 font-mono">shanemccaw.com</span>
           </div>
-          <p className="text-sm font-semibold text-[#58A6FF] leading-tight">{v.headline}</p>
-          <p className="text-xs text-[#8B949E] mt-1 leading-relaxed">{v.description}</p>
-          {v.cta && <p className="mt-2 text-[10px] text-[#58A6FF] font-medium">{v.cta} →</p>}
+          <p className="text-sm font-semibold text-primary leading-tight">{v.headline}</p>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{v.description}</p>
+          {v.cta && <p className="mt-2 text-[10px] text-primary font-medium">{v.cta} →</p>}
           {v.url && <p className="mt-1 text-[9px] text-emerald-600 font-mono truncate">{v.url}</p>}
           <div className="mt-3 flex justify-end">
             <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
@@ -5642,26 +5636,26 @@ function LinkedInAdPreview({ asset }: { asset: CampaignAsset }) {
   return (
     <div className="space-y-4">
       {variations.map((v, i) => (
-        <div key={i} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-          <div className="p-3 flex items-center gap-2 border-b border-[#30363D]">
-            <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
+        <div key={i} className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="p-3 flex items-center gap-2 border-b border-border">
+            <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</span>
-                <span className="text-[9px] text-[#484F58] border border-[#30363D] px-1 py-px rounded">Sponsored</span>
+                <span className="text-xs font-semibold text-foreground">Shane McCaw</span>
+                <span className="text-[9px] text-muted-foreground/60 border border-border px-1 py-px rounded">Sponsored</span>
               </div>
-              <p className="text-[10px] text-[#7D8590]">Shane McCaw Consulting</p>
+              <p className="text-[10px] text-muted-foreground">Shane McCaw Consulting</p>
             </div>
           </div>
-          <div className="h-20 bg-[#1C2128] flex items-center justify-center text-[#484F58] text-xs border-b border-[#30363D]">
+          <div className="h-20 bg-accent flex items-center justify-center text-muted-foreground/60 text-xs border-b border-border">
             [Ad Creative — 1200×627]
           </div>
           <div className="p-3 space-y-1.5">
-            <p className="text-sm font-semibold text-[#E6EDF3] leading-tight">{v.headline}</p>
-            <p className="text-xs text-[#7D8590] leading-relaxed">{v.description}</p>
+            <p className="text-sm font-semibold text-foreground leading-tight">{v.headline}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{v.description}</p>
             {v.cta && (
               <div className="mt-2">
-                <span className="text-[10px] px-3 py-1 rounded border border-[#484F58] text-[#C9D1D9] font-semibold">{v.cta}</span>
+                <span className="text-[10px] px-3 py-1 rounded border border-muted-foreground/60 text-foreground/90 font-semibold">{v.cta}</span>
               </div>
             )}
           </div>
@@ -5682,14 +5676,14 @@ function AdVariationPreview({ asset, label }: { asset: CampaignAsset; label: str
   return (
     <div className="space-y-3">
       {variations.map((v, i) => (
-        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-2">
+        <div key={i} className="bg-background border border-border rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{label} · Variation {i + 1}</span>
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">{label} · Variation {i + 1}</span>
             <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
           </div>
-          <p className="text-sm font-semibold text-[#E6EDF3] leading-tight">{v.headline}</p>
-          <p className="text-xs text-[#8B949E] leading-relaxed">{v.description}</p>
-          {v.cta && <p className="text-[10px] text-[#58A6FF] font-semibold">{v.cta} →</p>}
+          <p className="text-sm font-semibold text-foreground leading-tight">{v.headline}</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">{v.description}</p>
+          {v.cta && <p className="text-[10px] text-primary font-semibold">{v.cta} →</p>}
           {v.url && <p className="text-[9px] text-emerald-500 font-mono truncate">{v.url}</p>}
         </div>
       ))}
@@ -5785,10 +5779,10 @@ function EmailSequencePanel({
 
   return (
     <div className="space-y-3">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
-        <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D]">
+      <div className="bg-background border border-border rounded-xl overflow-hidden">
+        <div className="bg-accent px-4 py-2 border-b border-border">
           <div className="flex items-center justify-between mb-1.5">
-            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Email Sequence</p>
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">Email Sequence</p>
             <div className="flex items-center gap-2">
               {!editing && <CopyButton text={liveContent} />}
               <button
@@ -5810,7 +5804,7 @@ function EmailSequencePanel({
               {!editing ? (
                 <button
                   onClick={() => { setEditText(liveContent); setEditing(true); setSaveError(null); }}
-                  className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+                  className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/60 transition-colors"
                 >
                   ✏️ Edit
                 </button>
@@ -5826,7 +5820,7 @@ function EmailSequencePanel({
                   <button
                     onClick={handleCancelEdit}
                     disabled={saving}
-                    className="text-[10px] px-2.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50"
+                    className="text-[10px] px-2.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -5837,12 +5831,12 @@ function EmailSequencePanel({
           {!editing && (
             <>
               <div className="flex items-start gap-2 text-[10px]">
-                <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
-                <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+                <span className="text-muted-foreground/60 uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
+                <span className="text-foreground/90">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
               </div>
               <div className="flex items-start gap-2 text-[10px]">
-                <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
-                <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
+                <span className="text-muted-foreground/60 uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
+                <span className="text-foreground font-semibold">{subject || asset.title}</span>
               </div>
             </>
           )}
@@ -5854,10 +5848,10 @@ function EmailSequencePanel({
               value={editText}
               onChange={e => setEditText(e.target.value)}
               rows={Math.max(12, editText.split("\n").length + 2)}
-              className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60"
+              className="w-full text-xs text-foreground bg-card border border-border rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-primary/60"
             />
           ) : (
-            <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+            <pre className="text-xs text-foreground/90 whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
           )}
           {saveError && (
             <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{saveError}</p>
@@ -5867,8 +5861,8 @@ function EmailSequencePanel({
           )}
         </div>
         {!editing && (
-          <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
-            <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
+          <div className="px-4 py-2 border-t border-border flex items-center justify-between">
+            <p className="text-[9px] text-muted-foreground/60">Unsubscribe · View in browser</p>
           </div>
         )}
       </div>
@@ -5880,16 +5874,16 @@ function EmailSequencePanel({
 function SocialPostPreview({ asset, handle = "@shanemccaw" }: { asset: CampaignAsset; handle?: string }) {
   return (
     <div className="space-y-3">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="bg-background border border-border rounded-xl p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
+          <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
           <div>
-            <p className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</p>
-            <p className="text-[10px] text-[#484F58]">{handle}</p>
+            <p className="text-xs font-semibold text-foreground">Shane McCaw</p>
+            <p className="text-[10px] text-muted-foreground/60">{handle}</p>
           </div>
         </div>
-        <p className="text-xs text-[#C9D1D9] leading-relaxed whitespace-pre-wrap">{asset.content}</p>
-        <div className="flex items-center gap-4 pt-2 border-t border-[#30363D] text-[10px] text-[#484F58]">
+        <p className="text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap">{asset.content}</p>
+        <div className="flex items-center gap-4 pt-2 border-t border-border text-[10px] text-muted-foreground/60">
           <span>👍 Like</span>
           <span>💬 Comment</span>
           <span>↗ Share</span>
@@ -5907,14 +5901,14 @@ function BlogPostPreview({ asset }: { asset: CampaignAsset }) {
   const excerpt = lines.slice(1, 5).join(" ").slice(0, 320);
   return (
     <div className="space-y-3">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5 space-y-3">
+      <div className="bg-background border border-border rounded-xl p-5 space-y-3">
         <div className="space-y-1">
-          <p className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Blog Post</p>
-          <h3 className="text-base font-bold text-[#E6EDF3] leading-snug">{title}</h3>
+          <p className="text-[10px] text-primary uppercase tracking-wide font-semibold">Blog Post</p>
+          <h3 className="text-base font-bold text-foreground leading-snug">{title}</h3>
         </div>
-        <p className="text-xs text-[#8B949E] leading-relaxed">{excerpt}{excerpt.length >= 320 ? "…" : ""}</p>
-        <div className="flex items-center justify-between pt-2 border-t border-[#30363D]">
-          <p className="text-[10px] text-[#484F58]">Shane McCaw · shanemccaw.com</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">{excerpt}{excerpt.length >= 320 ? "…" : ""}</p>
+        <div className="flex items-center justify-between pt-2 border-t border-border">
+          <p className="text-[10px] text-muted-foreground/60">Shane McCaw · shanemccaw.com</p>
           <CopyButton text={asset.content} />
         </div>
       </div>
@@ -5926,12 +5920,12 @@ function BlogPostPreview({ asset }: { asset: CampaignAsset }) {
 function GenericAssetPreview({ asset }: { asset: CampaignAsset }) {
   return (
     <div className="space-y-3">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+      <div className="bg-background border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{ASSET_TYPE_LABELS[asset.assetType] ?? asset.assetType}</p>
+          <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">{ASSET_TYPE_LABELS[asset.assetType] ?? asset.assetType}</p>
           <CopyButton text={asset.content} />
         </div>
-        <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+        <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
       </div>
       <RawToggle content={asset.content} />
     </div>
@@ -5944,23 +5938,23 @@ function LandingPagePreview({ asset }: { asset: CampaignAsset }) {
   return (
     <div className="space-y-4">
       {variations.map((v, i) => (
-        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
-          <div className="bg-[#1C2128] px-3 py-1.5 flex items-center gap-2 border-b border-[#30363D]">
+        <div key={i} className="bg-background border border-border rounded-xl overflow-hidden">
+          <div className="bg-accent px-3 py-1.5 flex items-center gap-2 border-b border-border">
             <div className="flex gap-1">
               <div className="w-2 h-2 rounded-full bg-red-500/50" />
               <div className="w-2 h-2 rounded-full bg-amber-500/50" />
               <div className="w-2 h-2 rounded-full bg-emerald-500/50" />
             </div>
-            <div className="flex-1 bg-[#0D1117] rounded px-2 py-0.5 text-[9px] text-[#484F58] font-mono truncate">
+            <div className="flex-1 bg-background rounded px-2 py-0.5 text-[9px] text-muted-foreground/60 font-mono truncate">
               shanemccaw.com/lp
             </div>
           </div>
           <div className="p-5 space-y-3 text-center">
-            <p className="text-lg font-bold text-[#E6EDF3] leading-tight">{v.headline}</p>
-            {v.description && <p className="text-xs text-[#8B949E] leading-relaxed">{v.description}</p>}
+            <p className="text-lg font-bold text-foreground leading-tight">{v.headline}</p>
+            {v.description && <p className="text-xs text-muted-foreground leading-relaxed">{v.description}</p>}
             {v.cta && (
               <div className="mt-2">
-                <span className="inline-block px-5 py-2.5 rounded-lg bg-[#0078D4] text-white text-xs font-bold">{v.cta}</span>
+                <span className="inline-block px-5 py-2.5 rounded-lg bg-primary text-white text-xs font-bold">{v.cta}</span>
               </div>
             )}
           </div>
@@ -5987,11 +5981,11 @@ function TaskCardPreview({ asset }: { asset: CampaignAsset }) {
             ? line.replace(/^-\s*\[.\]\s*/, "")
             : line.replace(/^[-*•]\s*/, "");
           return (
-            <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 flex items-start gap-2">
-              <div className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${isChecked ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-[#484F58]"}`}>
+            <div key={i} className="bg-background border border-border rounded-lg px-3 py-2 flex items-start gap-2">
+              <div className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${isChecked ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-muted-foreground/60"}`}>
                 {isChecked && "✓"}
               </div>
-              <p className={`text-xs leading-relaxed flex-1 ${isChecked ? "line-through text-[#484F58]" : "text-[#C9D1D9]"}`}>{text || line}</p>
+              <p className={`text-xs leading-relaxed flex-1 ${isChecked ? "line-through text-muted-foreground/60" : "text-foreground/90"}`}>{text || line}</p>
             </div>
           );
         })}
@@ -6164,9 +6158,9 @@ function LandingCopyPanel({
 
   return (
     <div className="space-y-3">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+      <div className="bg-background border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Landing Page Copy</p>
+          <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">Landing Page Copy</p>
           <div className="flex items-center gap-2">
             {!editing && <CopyButton text={liveContent} />}
             <button
@@ -6188,7 +6182,7 @@ function LandingCopyPanel({
             {!editing ? (
               <button
                 onClick={() => { setEditText(liveContent); setEditing(true); setSaveError(null); }}
-                className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+                className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/60 transition-colors"
               >
                 ✏️ Edit
               </button>
@@ -6204,7 +6198,7 @@ function LandingCopyPanel({
                 <button
                   onClick={handleCancelEdit}
                   disabled={saving}
-                  className="text-[10px] px-2.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50"
+                  className="text-[10px] px-2.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -6218,10 +6212,10 @@ function LandingCopyPanel({
             value={editText}
             onChange={e => setEditText(e.target.value)}
             rows={Math.max(10, editText.split("\n").length + 2)}
-            className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60"
+            className="w-full text-xs text-foreground bg-card border border-border rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-primary/60"
           />
         ) : (
-          <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{liveContent}</pre>
+          <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">{liveContent}</pre>
         )}
         {saveError && (
           <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{saveError}</p>
@@ -6234,27 +6228,27 @@ function LandingCopyPanel({
 
       {/* ── Page Spec & CTA Mode ── */}
       {!editing && (
-        <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-4">
+        <div className="bg-background border border-border rounded-xl p-4 space-y-4">
           <div>
-            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold mb-1.5">
-              Page Spec <span className="normal-case font-normal text-[#30363D]">— optional</span>
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold mb-1.5">
+              Page Spec <span className="normal-case font-normal text-border">— optional</span>
             </p>
             <textarea
               value={pageSpec}
               onChange={e => setPageSpec(e.target.value)}
               rows={3}
               placeholder="Describe the page structure you want. E.g.: Start with a problem/solution block, then an FAQ with 5 Copilot licensing questions, then a checklist of deliverables, then a quiz CTA for the Copilot readiness assessment."
-              className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+              className="w-full text-xs text-foreground bg-card border border-border rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-primary/60 placeholder-muted-foreground/60"
             />
           </div>
           <div>
-            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold mb-2">CTA Mode</p>
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold mb-2">CTA Mode</p>
             <div className="flex gap-2 flex-wrap">
               {(["order_service", "book_call", "take_assessment", "custom"] as const).map(mode => {
                 const LABELS: Record<string, string> = { order_service: "Order Service", book_call: "Book a Call", take_assessment: "Take Assessment", custom: "Custom URL" };
                 return (
                   <button key={mode} onClick={() => setCtaMode(mode)}
-                    className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${ctaMode === mode ? "border-[#0078D4]/50 bg-[#0078D4]/15 text-[#58A6FF]" : "border-[#30363D] text-[#484F58] hover:text-[#7D8590]"}`}>
+                    className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${ctaMode === mode ? "border-primary/50 bg-primary/15 text-primary" : "border-border text-muted-foreground/60 hover:text-muted-foreground"}`}>
                     {LABELS[mode]}
                   </button>
                 );
@@ -6262,7 +6256,7 @@ function LandingCopyPanel({
             </div>
             {ctaMode === "take_assessment" && (
               <select value={quizType} onChange={e => setQuizType(e.target.value)}
-                className="mt-2 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60">
+                className="mt-2 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary/60">
                 <option value="copilot">Copilot Readiness</option>
                 <option value="m365-health">M365 Tenant Health</option>
                 <option value="sharepoint">SharePoint Architecture</option>
@@ -6279,11 +6273,11 @@ function LandingCopyPanel({
                 value={customHref}
                 onChange={e => setCustomHref(e.target.value)}
                 placeholder="/your-custom-path or https://..."
-                className="mt-2 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
+                className="mt-2 w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono"
               />
             )}
             {ctaMode !== "order_service" && (
-              <p className="mt-1.5 text-[10px] text-[#484F58]">
+              <p className="mt-1.5 text-[10px] text-muted-foreground/60">
                 {ctaMode === "book_call" && "CTA button links to /book — Shane's scheduling page."}
                 {ctaMode === "take_assessment" && `CTA button links to /quiz/${quizType} — the ${quizType} readiness assessment.`}
                 {ctaMode === "custom" && "CTA button links to your custom URL."}
@@ -6301,8 +6295,8 @@ function LandingCopyPanel({
             genSuccess
               ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10 cursor-default"
               : generating || editing
-              ? "border-[#30363D] text-[#484F58] cursor-wait opacity-60"
-              : "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
+              ? "border-border text-muted-foreground/60 cursor-wait opacity-60"
+              : "border-primary/40 text-primary hover:bg-primary/10"
           }`}
         >
           {generating ? (
@@ -6330,11 +6324,11 @@ function LandingCopyPanel({
 function OfferIndicator({ offers, isSnapshot, hasCampaign, deletedCount }: { offers: Array<{ name: string }>; isSnapshot?: boolean; hasCampaign?: boolean; deletedCount?: number }) {
   const hasDeleted = (deletedCount ?? 0) > 0;
   return (
-    <p className="text-[10px] text-[#484F58]">
+    <p className="text-[10px] text-muted-foreground/60">
       {offers.length > 0
         ? <>
             {isSnapshot
-              ? <span className="text-[#58A6FF] mr-1" title="Snapshot of offers active at generation time">📸</span>
+              ? <span className="text-primary mr-1" title="Snapshot of offers active at generation time">📸</span>
               : null}
             {`${isSnapshot ? "Generated with" : "Using"} ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`}
             {hasDeleted && (
@@ -6347,7 +6341,7 @@ function OfferIndicator({ offers, isSnapshot, hasCampaign, deletedCount }: { off
           ? "Standalone asset — no offer context"
           : hasDeleted
             ? <>
-                <span className="text-[#58A6FF] mr-1" title="Snapshot of offers active at generation time">📸</span>
+                <span className="text-primary mr-1" title="Snapshot of offers active at generation time">📸</span>
                 <span className="text-amber-400">
                   {deletedCount} deleted offer{deletedCount === 1 ? "" : "s"} — attribution data incomplete
                 </span>
@@ -6481,28 +6475,28 @@ function CampaignDeleteDialog({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+      <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
         <div className="flex items-start gap-3 mb-4">
           <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center flex-shrink-0 text-lg">
             🗑
           </div>
           <div>
-            <p className="text-sm font-bold text-[#E6EDF3]">Delete Campaign</p>
-            <p className="text-[10px] text-[#7D8590] mt-0.5">This cannot be undone</p>
+            <p className="text-sm font-bold text-foreground">Delete Campaign</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">This cannot be undone</p>
           </div>
         </div>
-        <p className="text-xs text-[#C9D1D9] mb-1 leading-relaxed">
+        <p className="text-xs text-foreground/90 mb-1 leading-relaxed">
           Are you sure you want to delete{" "}
-          <span className="font-bold text-[#E6EDF3]">&ldquo;{campaign.name}&rdquo;</span>?
+          <span className="font-bold text-foreground">&ldquo;{campaign.name}&rdquo;</span>?
         </p>
-        <p className="text-[10px] text-[#7D8590] mb-5 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground mb-5 leading-relaxed">
           All assets, ad variations, and metrics associated with this campaign will be permanently removed.
         </p>
         <div className="flex gap-2 justify-end">
           <button
             onClick={onCancel}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg text-xs border border-[#30363D] text-[#C9D1D9] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors disabled:opacity-40"
+            className="px-4 py-2 rounded-lg text-xs border border-border text-foreground/90 hover:text-foreground hover:border-muted-foreground/60 transition-colors disabled:opacity-40"
           >
             Cancel
           </button>
@@ -6538,7 +6532,7 @@ function CampaignAssetTabs({
   const [activeTab, setActiveTab] = useState(presentTypes[0] ?? "");
 
   if (assets.length === 0) {
-    return <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets saved yet.</p>;
+    return <p className="text-xs text-muted-foreground bg-card border border-border rounded-xl px-4 py-3">No assets saved yet.</p>;
   }
 
   const tabAssets = assets.filter(a => a.assetType === activeTab);
@@ -6553,7 +6547,7 @@ function CampaignAssetTabs({
             <button
               key={type}
               onClick={() => setActiveTab(type)}
-              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeTab === type ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58]"}`}
+              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeTab === type ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground/60"}`}
             >
               <span>{icon}</span>
               <span>{ASSET_TYPE_LABELS[type] ?? type}</span>
@@ -6566,7 +6560,7 @@ function CampaignAssetTabs({
         {tabAssets.map(asset => (
           <div key={asset.id}>
             {tabAssets.length > 1 && (
-              <p className="text-[10px] text-[#484F58] font-semibold mb-2">{asset.title}</p>
+              <p className="text-[10px] text-muted-foreground/60 font-semibold mb-2">{asset.title}</p>
             )}
             <CampaignAssetTabPanel
               asset={asset}
@@ -6604,13 +6598,13 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
 const AD_ASSET_TYPES = new Set(["ad_google", "ad_linkedin", "ad_retargeting", "ad_creative", "landing_page"]);
 
 const EVENT_COLORS: Record<string, string> = {
-  sent: "text-[#58A6FF]",
+  sent: "text-primary",
   delivered: "text-emerald-400",
   opened: "text-amber-400",
   clicked: "text-purple-400",
   bounced: "text-red-400",
   complained: "text-orange-400",
-  unsubscribed: "text-[#7D8590]",
+  unsubscribed: "text-muted-foreground",
 };
 
 function CampaignDetailView({
@@ -6724,7 +6718,7 @@ function CampaignDetailView({
   if (loading) {
     return (
       <div className="space-y-4">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
           ← Back to Campaigns
         </button>
         <SkeletonCard />
@@ -6736,7 +6730,7 @@ function CampaignDetailView({
   if (error || !data) {
     return (
       <div className="space-y-3">
-        <button onClick={onBack} className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
           ← Back to Campaigns
         </button>
         <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error ?? "Campaign not found"}</p>
@@ -6751,10 +6745,10 @@ function CampaignDetailView({
   const displayedEmails = hasManualOverride ? campaign.emailsSent : autoCount;
 
   const statusColors: Record<Campaign["status"], string> = {
-    draft: "bg-[#30363D] text-[#7D8590]",
+    draft: "bg-border text-muted-foreground",
     active: "bg-emerald-500/20 text-emerald-400",
     paused: "bg-amber-500/20 text-amber-400",
-    completed: "bg-[#0078D4]/20 text-[#58A6FF]",
+    completed: "bg-primary/20 text-primary",
   };
 
 
@@ -6771,12 +6765,12 @@ function CampaignDetailView({
       {/* ── Breadcrumb + controls ── */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <button onClick={onBack} className="text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+          <button onClick={onBack} className="text-sm text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
             Campaigns
           </button>
-          <span className="text-[#30363D] flex-shrink-0">/</span>
-          <h2 className="text-sm font-semibold text-[#E6EDF3] truncate">{campaign.name}</h2>
-          <span className="text-[9px] text-[#484F58] flex-shrink-0 hidden sm:block">
+          <span className="text-border flex-shrink-0">/</span>
+          <h2 className="text-sm font-semibold text-foreground truncate">{campaign.name}</h2>
+          <span className="text-[9px] text-muted-foreground/60 flex-shrink-0 hidden sm:block">
             #{campaign.id} · {new Date(campaign.createdAt).toLocaleDateString()}
           </span>
         </div>
@@ -6785,7 +6779,7 @@ function CampaignDetailView({
             value={campaign.status}
             onChange={e => { void handleStatusChange(e.target.value as Campaign["status"]); }}
             disabled={statusSaving}
-            className={`text-xs px-2.5 py-1 rounded-full border border-[#30363D] outline-none cursor-pointer font-semibold disabled:opacity-40 ${statusColors[campaign.status]}`}
+            className={`text-xs px-2.5 py-1 rounded-full border border-border outline-none cursor-pointer font-semibold disabled:opacity-40 ${statusColors[campaign.status]}`}
             style={{ background: "transparent" }}
           >
             <option value="draft">Draft</option>
@@ -6795,7 +6789,7 @@ function CampaignDetailView({
           </select>
           <button
             onClick={() => onGenerateMoreAssets(campaign)}
-            className="text-[10px] px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] border border-[#0078D4]/30 hover:bg-[#0078D4]/30 transition-colors font-semibold"
+            className="text-[10px] px-3 py-1.5 rounded-lg bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 transition-colors font-semibold"
           >
             + Assets
           </button>
@@ -6811,21 +6805,21 @@ function CampaignDetailView({
 
       {/* KPI Strip */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Leads Generated</p>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Leads Generated</p>
           <p className="text-xl font-bold text-emerald-400">{campaign.leadsGenerated ?? 0}</p>
         </div>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
-          <p className="text-xl font-bold text-[#58A6FF]">{displayedEmails}</p>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Emails Sent</p>
+          <p className="text-xl font-bold text-primary">{displayedEmails}</p>
           {autoCount > 0 && (
-            <span className="text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">
+            <span className="text-[9px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full">
               {hasManualOverride ? `override (${autoCount} auto)` : "auto-tracked"}
             </span>
           )}
         </div>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
-          <p className="text-[10px] text-[#7D8590] mb-1">Revenue</p>
+        <div className="bg-card border border-border rounded-xl p-3 text-center">
+          <p className="text-[10px] text-muted-foreground mb-1">Revenue</p>
           <p className="text-xl font-bold text-amber-400">${Number(campaign.revenueAttributed ?? 0).toLocaleString()}</p>
         </div>
       </div>
@@ -6837,22 +6831,22 @@ function CampaignDetailView({
         <div className="xl:col-span-3 space-y-4">
 
       {/* Campaign Brief (collapsible) */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button onClick={() => setBriefOpen(o => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+          className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-foreground hover:bg-accent transition-colors">
           <span>📋 Campaign Brief</span>
-          <span className="text-[#7D8590]">{briefOpen ? "▲" : "▼"}</span>
+          <span className="text-muted-foreground">{briefOpen ? "▲" : "▼"}</span>
         </button>
         {briefOpen && (
-          <div className="px-4 pb-4 space-y-3 border-t border-[#30363D]">
+          <div className="px-4 pb-4 space-y-3 border-t border-border">
             {[
               { label: "Goal", value: campaign.goal },
               { label: "Audience", value: campaign.audience },
               { label: "Offer", value: campaign.offer },
             ].map(({ label, value }) => (
               <div key={label}>
-                <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1">{label}</p>
-                <p className="text-xs text-[#E6EDF3] whitespace-pre-wrap leading-relaxed">{value}</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{value}</p>
               </div>
             ))}
           </div>
@@ -6861,9 +6855,9 @@ function CampaignDetailView({
 
       {/* Campaign Assets */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold text-[#E6EDF3]">
+        <p className="text-xs font-semibold text-foreground">
           📦 Campaign Assets
-          <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
+          <span className="ml-2 text-muted-foreground font-normal">{assets.length} total</span>
         </p>
         <CampaignAssetTabs
           assets={assets}
@@ -6881,32 +6875,32 @@ function CampaignDetailView({
         <div className="xl:col-span-2 space-y-4">
 
           {/* Update Metrics */}
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+          <div className="bg-card border border-border rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-[#E6EDF3]">Update Metrics</p>
+              <p className="text-xs font-semibold text-foreground">Update Metrics</p>
               {autoCount > 0 && (
-                <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked"}</span>
+                <span className="text-[9px] text-primary">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked"}</span>
               )}
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] text-[#7D8590]">Leads</label>
+                <label className="text-[10px] text-muted-foreground">Leads</label>
                 <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
-                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60" />
               </div>
               <div>
-                <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (ovr)" : "Emails"}</label>
+                <label className="text-[10px] text-muted-foreground">{autoCount > 0 ? "Emails (ovr)" : "Emails"}</label>
                 <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
-                  className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
+                  className={`mt-0.5 w-full bg-background border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60 ${autoCount > 0 ? "border-primary/30" : "border-border"}`} />
               </div>
               <div>
-                <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
+                <label className="text-[10px] text-muted-foreground">Revenue ($)</label>
                 <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
-                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-0.5 w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/60" />
               </div>
             </div>
             <button onClick={() => { void handleSaveMetrics(); }} disabled={savingMetrics}
-              className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${savedMetrics ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
+              className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${savedMetrics ? "bg-emerald-500/20 text-emerald-400" : "bg-primary text-white hover:bg-primary/80"} disabled:opacity-40`}>
               {savingMetrics ? "Saving…" : savedMetrics ? "✓ Saved" : "Save Metrics"}
             </button>
           </div>
@@ -6914,16 +6908,16 @@ function CampaignDetailView({
       {/* Landing Pages */}
       {landingPages.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-[#E6EDF3]">🌐 Landing Pages <span className="text-[#7D8590] font-normal">({landingPages.length})</span></p>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-[#30363D] overflow-hidden">
+          <p className="text-xs font-semibold text-foreground">🌐 Landing Pages <span className="text-muted-foreground font-normal">({landingPages.length})</span></p>
+          <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
             {landingPages.map(lp => (
               <div key={lp.id} className="px-4 py-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-[#E6EDF3] truncate">{lp.title}</p>
-                  {lp.headline && <p className="text-[10px] text-[#7D8590] truncate mt-0.5">{lp.headline}</p>}
+                  <p className="text-xs font-semibold text-foreground truncate">{lp.title}</p>
+                  {lp.headline && <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lp.headline}</p>}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${lp.published ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590]"}`}>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${lp.published ? "bg-emerald-500/20 text-emerald-400" : "bg-border text-muted-foreground"}`}>
                     {lp.published ? "Live" : "Draft"}
                   </span>
                   {!lp.published && accessToken && (
@@ -6940,11 +6934,11 @@ function CampaignDetailView({
                       <a
                         href={`${window.location.origin}/lp/${lp.slug}`}
                         target="_blank" rel="noopener noreferrer"
-                        className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                        className="text-[9px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
                         View
                       </a>
                       <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${lp.slug}`); }}
-                        className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                        className="text-[9px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
                         Copy URL
                       </button>
                     </>
@@ -6959,16 +6953,16 @@ function CampaignDetailView({
       {/* Offers */}
       {offers.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-[#E6EDF3]">🎁 Linked Offers <span className="text-[#7D8590] font-normal">({offers.length})</span></p>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-[#30363D] overflow-hidden">
+          <p className="text-xs font-semibold text-foreground">🎁 Linked Offers <span className="text-muted-foreground font-normal">({offers.length})</span></p>
+          <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
             {offers.map(o => (
               <div key={o.id} className="px-4 py-3 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-[#E6EDF3]">{o.name}</p>
+                  <p className="text-xs font-semibold text-foreground">{o.name}</p>
                   {o.pricing && <span className="text-[10px] text-amber-400 font-semibold">{o.pricing}</span>}
                 </div>
                 {o.deliverables.length > 0 && (
-                  <p className="text-[10px] text-[#7D8590]">{o.deliverables.slice(0, 3).join(" · ")}{o.deliverables.length > 3 ? ` +${o.deliverables.length - 3} more` : ""}</p>
+                  <p className="text-[10px] text-muted-foreground">{o.deliverables.slice(0, 3).join(" · ")}{o.deliverables.length > 3 ? ` +${o.deliverables.length - 3} more` : ""}</p>
                 )}
               </div>
             ))}
@@ -6979,17 +6973,17 @@ function CampaignDetailView({
       {/* Email Activity */}
       {emailEvents.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-[#E6EDF3]">📧 Email Activity <span className="text-[#7D8590] font-normal">(last {emailEvents.length})</span></p>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="max-h-48 overflow-y-auto divide-y divide-[#30363D]">
+          <p className="text-xs font-semibold text-foreground">📧 Email Activity <span className="text-muted-foreground font-normal">(last {emailEvents.length})</span></p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="max-h-48 overflow-y-auto divide-y divide-border">
               {emailEvents.map(ev => (
                 <div key={ev.id} className="px-4 py-2 flex items-center gap-3">
-                  <span className={`text-[9px] font-semibold uppercase w-16 flex-shrink-0 ${EVENT_COLORS[ev.eventType] ?? "text-[#7D8590]"}`}>{ev.eventType}</span>
+                  <span className={`text-[9px] font-semibold uppercase w-16 flex-shrink-0 ${EVENT_COLORS[ev.eventType] ?? "text-muted-foreground"}`}>{ev.eventType}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-[#E6EDF3] truncate">{ev.subject ?? "(no subject)"}</p>
-                    {ev.recipient && <p className="text-[9px] text-[#7D8590] truncate">{ev.recipient}</p>}
+                    <p className="text-[10px] text-foreground truncate">{ev.subject ?? "(no subject)"}</p>
+                    {ev.recipient && <p className="text-[9px] text-muted-foreground truncate">{ev.recipient}</p>}
                   </div>
-                  <span className="text-[9px] text-[#484F58] flex-shrink-0">{new Date(ev.occurredAt).toLocaleDateString()}</span>
+                  <span className="text-[9px] text-muted-foreground/60 flex-shrink-0">{new Date(ev.occurredAt).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>
@@ -7301,9 +7295,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-[#E6EDF3]">Campaigns</h2>
+              <h2 className="text-lg font-bold text-foreground">Campaigns</h2>
               {!loadingCampaigns && (
-                <p className="text-xs text-[#7D8590] mt-0.5">{campaigns.length} {campaigns.length === 1 ? "campaign" : "campaigns"}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{campaigns.length} {campaigns.length === 1 ? "campaign" : "campaigns"}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -7315,7 +7309,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               </button>
               <button
                 onClick={() => { setBuilderMode("guided"); setStep(1); setShowCreate(true); }}
-                className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors flex items-center gap-1.5 font-medium"
+                className="text-xs px-3 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors flex items-center gap-1.5 font-medium"
               >
                 + New Campaign
               </button>
@@ -7325,10 +7319,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           {loadingCampaigns ? (
             <div className="space-y-2"><SkeletonCard /><SkeletonCard /></div>
           ) : campaigns.length === 0 ? (
-            <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-12 text-center space-y-3">
+            <div className="bg-card border border-border rounded-xl p-12 text-center space-y-3">
               <p className="text-3xl">🚀</p>
-              <p className="text-sm font-semibold text-[#E6EDF3]">No campaigns yet</p>
-              <p className="text-xs text-[#7D8590]">Build your first campaign to start generating leads and assets.</p>
+              <p className="text-sm font-semibold text-foreground">No campaigns yet</p>
+              <p className="text-xs text-muted-foreground">Build your first campaign to start generating leads and assets.</p>
               <div className="flex justify-center gap-2 mt-4">
                 <button
                   onClick={() => { setBuilderMode("prompt"); setPromptError(null); setShowCreate(true); }}
@@ -7338,30 +7332,30 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </button>
                 <button
                   onClick={() => { setBuilderMode("guided"); setStep(1); setShowCreate(true); }}
-                  className="text-xs px-4 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors font-medium"
+                  className="text-xs px-4 py-1.5 rounded-lg bg-primary text-white hover:bg-primary/80 transition-colors font-medium"
                 >
                   + Guided Wizard
                 </button>
               </div>
             </div>
           ) : (
-            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-2 bg-[#0D1117] border-b border-[#30363D]">
-                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest">Campaign</span>
-                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-center">Status</span>
-                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-right">Leads</span>
-                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-right">Revenue</span>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-2 bg-background border-b border-border">
+                <span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Campaign</span>
+                <span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest text-center">Status</span>
+                <span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest text-right">Leads</span>
+                <span className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest text-right">Revenue</span>
                 <span></span>
               </div>
               {campaigns.map(c => (
-                <div key={c.id} className="border-b border-[#30363D] last:border-0">
+                <div key={c.id} className="border-b border-border last:border-0">
                   <div
-                    className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer"
+                    className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-3 hover:bg-accent transition-colors cursor-pointer"
                     onClick={() => setDetailCampaignId(c.id)}
                   >
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-[#E6EDF3] truncate">{c.name}</p>
-                      <p className="text-[10px] text-[#7D8590] truncate mt-0.5">{c.goal}</p>
+                      <p className="text-xs font-semibold text-foreground truncate">{c.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{c.goal}</p>
                     </div>
                     <div className="flex justify-center">
                       <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "blue" : c.status === "paused" ? "yellow" : "gray"} />
@@ -7371,13 +7365,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                     <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => setDetailCampaignId(c.id)}
-                        className="text-[9px] px-2 py-1 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                        className="text-[9px] px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                       >
                         Open
                       </button>
                       <button
                         onClick={() => setDeleteDialogCampaign(c)}
-                        className="text-[10px] p-1 rounded text-[#484F58] hover:text-red-400 transition-colors"
+                        className="text-[10px] p-1 rounded text-muted-foreground/60 hover:text-red-400 transition-colors"
                         title="Delete"
                       >
                         🗑
@@ -7395,11 +7389,11 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
-              <button onClick={() => { reset(); }} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+              <button onClick={() => { reset(); }} className="text-muted-foreground hover:text-foreground transition-colors">
                 Campaigns
               </button>
-              <span className="text-[#30363D]">/</span>
-              <span className="text-[#E6EDF3] font-semibold">
+              <span className="text-border">/</span>
+              <span className="text-foreground font-semibold">
                 {step === 6 && savedCampaignId ? "Generate Assets" : step === 7 ? "Campaign Saved" : "New Campaign"}
               </span>
             </div>
@@ -7412,18 +7406,18 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               </button>
             )}
           </div>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+          <div className="bg-card border border-border rounded-xl p-4 space-y-4">
           {builderMode === "prompt" && (
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-semibold text-[#E6EDF3] block mb-1">Describe your campaign</label>
-                <p className="text-xs text-[#7D8590] mb-3">Paste a brief, idea, email thread, or bullet points — AI will extract the goal, audience, and offer and build a full campaign instantly.</p>
+                <label className="text-sm font-semibold text-foreground block mb-1">Describe your campaign</label>
+                <p className="text-xs text-muted-foreground mb-3">Paste a brief, idea, email thread, or bullet points — AI will extract the goal, audience, and offer and build a full campaign instantly.</p>
                 <textarea
                   value={promptText}
                   onChange={e => setPromptText(e.target.value)}
                   placeholder={"e.g. We want to target IT Directors at healthcare companies with 500–2000 employees who haven't adopted Copilot yet. Offer them a free 30-minute risk assessment to uncover blockers and build a roadmap. Goal is to book 10 discovery calls this quarter."}
                   rows={10}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none leading-relaxed"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none leading-relaxed"
                 />
               </div>
               {promptError && (
@@ -7436,7 +7430,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 <button
                   onClick={() => { void buildFromPrompt(); }}
                   disabled={!promptText.trim() || buildingFromPrompt}
-                  className="flex-1 py-2.5 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
                 >
                   {buildingFromPrompt ? (
                     <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Building campaign…</>
@@ -7444,7 +7438,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </button>
                 <button
                   onClick={() => { setBuilderMode("guided"); setPromptError(null); setPromptText(""); }}
-                  className="px-4 py-2.5 rounded-lg border border-[#30363D] text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                  className="px-4 py-2.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel
                 </button>
@@ -7456,9 +7450,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             {steps.map((s, i) => (
               <div key={s.n} className="flex items-center gap-1 flex-shrink-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= s.n ? "bg-[#0078D4] text-white" : "bg-[#30363D] text-[#7D8590]"}`}>{s.n}</div>
-                <span className={`text-xs ${step === s.n ? "text-[#E6EDF3] font-semibold" : "text-[#7D8590]"}`}>{s.label}</span>
-                {i < steps.length - 1 && <div className={`h-px w-4 ${step > s.n ? "bg-[#0078D4]" : "bg-[#30363D]"}`} />}
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= s.n ? "bg-primary text-white" : "bg-border text-muted-foreground"}`}>{s.n}</div>
+                <span className={`text-xs ${step === s.n ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{s.label}</span>
+                {i < steps.length - 1 && <div className={`h-px w-4 ${step > s.n ? "bg-primary" : "bg-border"}`} />}
               </div>
             ))}
           </div>
@@ -7466,16 +7460,16 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           {step === 1 && (
             <div className="space-y-3">
               <div>
-                <p className="text-xs font-semibold text-[#E6EDF3] mb-1">Select a Service for this campaign *</p>
+                <p className="text-xs font-semibold text-foreground mb-1">Select a Service for this campaign *</p>
                 {wizardServices.length === 0 && !loadingWizardServices && (
-                  <p className="text-xs text-[#484F58] italic mb-2">No services found. Please create a service first.</p>
+                  <p className="text-xs text-muted-foreground/60 italic mb-2">No services found. Please create a service first.</p>
                 )}
                 {wizardServices.length > 0 && !loadingWizardServices && wizardServices.every(s => s.visibility !== "landing_page_only") && (
                   <p className="text-[10px] text-amber-400/70 mb-2">No LP-only services yet — showing all services. Mark a service as "Landing Page Only" in Services to scope this list.</p>
                 )}
                 {loadingWizardServices ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[0, 1].map(i => <div key={i} className="h-14 bg-[#30363D] animate-pulse rounded-lg" />)}
+                    {[0, 1].map(i => <div key={i} className="h-14 bg-border animate-pulse rounded-lg" />)}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -7485,8 +7479,8 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                         onClick={() => { setSelectedServiceId(svc.id); setSelectedServiceName(svc.name); }}
                         className={`text-left px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
                           selectedServiceId === svc.id
-                            ? "border-[#0078D4] bg-[#0078D4]/15 text-[#E6EDF3]"
-                            : "border-[#30363D] bg-[#0D1117] text-[#C9D1D9] hover:border-[#0078D4]/50 hover:bg-[#0078D4]/5"
+                            ? "border-primary bg-primary/15 text-foreground"
+                            : "border-border bg-background text-foreground/90 hover:border-primary/50 hover:bg-primary/5"
                         }`}
                       >
                         <span className="block truncate">{svc.name}</span>
@@ -7499,40 +7493,40 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 )}
               </div>
               <button onClick={() => setStep(2)} disabled={selectedServiceId === null || loadingWizardServices}
-                className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+                className="px-6 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">Next →</button>
             </div>
           )}
 
           {step === 2 && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Name <span className="text-[#7D8590] font-normal">(optional)</span></label>
+                <label className="text-xs font-semibold text-foreground">Campaign Name <span className="text-muted-foreground font-normal">(optional)</span></label>
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Q3 Copilot Rollout Push…"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60" />
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Goal *</label>
+                  <label className="text-xs font-semibold text-foreground">Campaign Goal *</label>
                   <button
                     onClick={() => { void fetchTopics(); }}
                     disabled={loadingTopics || aiFillingField === "goal"}
-                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {loadingTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
+                    className="text-[10px] px-2 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {loadingTopics ? <><div className="w-2.5 h-2.5 border border-primary border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
 
                 {/* Topic bubble picker */}
                 {(loadingTopics || topicSuggestions !== null) && (
-                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                  <div className="mb-2 p-2.5 bg-background border border-border rounded-lg space-y-2">
                     {loadingTopics && (
-                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
-                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
                         Generating topic ideas…
                       </div>
                     )}
                     {topicSuggestions !== null && !loadingTopics && (
                       <>
-                        <p className="text-[10px] text-[#7D8590]">Pick a topic to seed your campaign:</p>
+                        <p className="text-[10px] text-muted-foreground">Pick a topic to seed your campaign:</p>
                         <div className="flex flex-wrap gap-1.5">
                           {topicSuggestions.map(topic => (
                             <button
@@ -7541,10 +7535,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               disabled={aiFillingField === "goal"}
                               className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
                                 selectedTopic === topic
-                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  ? "border-primary bg-primary text-white hover:bg-[#0069BD]"
                                   : selectedTopic !== null
-                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
-                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                                  ? "border-primary/30 bg-primary/5 text-primary opacity-50 hover:opacity-80 hover:bg-primary/15 disabled:opacity-30"
+                                  : "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary disabled:opacity-40"
                               }`}>
                               {expandingTopic === topic && aiFillingField === "goal"
                                 ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{topic}</>
@@ -7557,7 +7551,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                         <button
                           onClick={() => { void fetchTopics(); }}
                           disabled={loadingTopics || aiFillingField === "goal"}
-                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          className="text-[10px] text-muted-foreground hover:text-primary disabled:opacity-40 transition-colors">
                           ↻ New suggestions
                         </button>
                       </>
@@ -7566,12 +7560,12 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 )}
 
                 <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3} placeholder="e.g. Generate 20 qualified leads for Microsoft Copilot workshops…"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(1)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(1)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">← Back</button>
                 <button onClick={() => setStep(3)} disabled={!goal.trim()}
-                  className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+                  className="px-6 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">Next →</button>
               </div>
             </div>
           )}
@@ -7580,27 +7574,27 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-[#E6EDF3]">Target Audience *</label>
+                  <label className="text-xs font-semibold text-foreground">Target Audience *</label>
                   <button
                     onClick={() => { void fetchAudienceTopics(); }}
                     disabled={loadingAudienceTopics || aiFillingField === "audience"}
-                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {loadingAudienceTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
+                    className="text-[10px] px-2 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {loadingAudienceTopics ? <><div className="w-2.5 h-2.5 border border-primary border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
 
                 {/* Audience bubble picker */}
                 {(loadingAudienceTopics || audienceSuggestions !== null) && (
-                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                  <div className="mb-2 p-2.5 bg-background border border-border rounded-lg space-y-2">
                     {loadingAudienceTopics && (
-                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
-                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
                         Generating audience ideas…
                       </div>
                     )}
                     {audienceSuggestions !== null && !loadingAudienceTopics && (
                       <>
-                        <p className="text-[10px] text-[#7D8590]">Pick an audience segment to expand:</p>
+                        <p className="text-[10px] text-muted-foreground">Pick an audience segment to expand:</p>
                         <div className="flex flex-wrap gap-1.5">
                           {audienceSuggestions.map(seg => (
                             <button
@@ -7609,10 +7603,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               disabled={aiFillingField === "audience"}
                               className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
                                 selectedAudience === seg
-                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  ? "border-primary bg-primary text-white hover:bg-[#0069BD]"
                                   : selectedAudience !== null
-                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
-                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                                  ? "border-primary/30 bg-primary/5 text-primary opacity-50 hover:opacity-80 hover:bg-primary/15 disabled:opacity-30"
+                                  : "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary disabled:opacity-40"
                               }`}>
                               {expandingAudience === seg && aiFillingField === "audience"
                                 ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{seg}</>
@@ -7625,7 +7619,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                         <button
                           onClick={() => { void fetchAudienceTopics(); }}
                           disabled={loadingAudienceTopics || aiFillingField === "audience"}
-                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          className="text-[10px] text-muted-foreground hover:text-primary disabled:opacity-40 transition-colors">
                           ↻ New suggestions
                         </button>
                       </>
@@ -7634,12 +7628,12 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 )}
 
                 <textarea value={audience} onChange={e => setAudience(e.target.value)} rows={3} placeholder="e.g. IT Directors and CTOs at mid-market companies (100-500 employees) using Microsoft 365…"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(2)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(2)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">← Back</button>
                 <button onClick={() => setStep(4)} disabled={!audience.trim()}
-                  className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+                  className="px-6 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">Next →</button>
               </div>
             </div>
           )}
@@ -7648,27 +7642,27 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-[#E6EDF3]">Your Offer *</label>
+                  <label className="text-xs font-semibold text-foreground">Your Offer *</label>
                   <button
                     onClick={() => { void fetchOfferTopics(); }}
                     disabled={loadingOfferTopics || aiFillingField === "offer"}
-                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {loadingOfferTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
+                    className="text-[10px] px-2 py-0.5 rounded border border-primary/40 text-primary hover:bg-primary/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {loadingOfferTopics ? <><div className="w-2.5 h-2.5 border border-primary border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
 
                 {/* Offer bubble picker */}
                 {(loadingOfferTopics || offerSuggestions !== null) && (
-                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                  <div className="mb-2 p-2.5 bg-background border border-border rounded-lg space-y-2">
                     {loadingOfferTopics && (
-                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
-                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
                         Generating offer ideas…
                       </div>
                     )}
                     {offerSuggestions !== null && !loadingOfferTopics && (
                       <>
-                        <p className="text-[10px] text-[#7D8590]">Pick an offer to expand:</p>
+                        <p className="text-[10px] text-muted-foreground">Pick an offer to expand:</p>
                         <div className="flex flex-wrap gap-1.5">
                           {offerSuggestions.map(ofr => (
                             <button
@@ -7677,10 +7671,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               disabled={aiFillingField === "offer"}
                               className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
                                 selectedOffer === ofr
-                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  ? "border-primary bg-primary text-white hover:bg-[#0069BD]"
                                   : selectedOffer !== null
-                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
-                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                                  ? "border-primary/30 bg-primary/5 text-primary opacity-50 hover:opacity-80 hover:bg-primary/15 disabled:opacity-30"
+                                  : "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary disabled:opacity-40"
                               }`}>
                               {expandingOffer === ofr && aiFillingField === "offer"
                                 ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{ofr}</>
@@ -7693,7 +7687,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                         <button
                           onClick={() => { void fetchOfferTopics(); }}
                           disabled={loadingOfferTopics || aiFillingField === "offer"}
-                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          className="text-[10px] text-muted-foreground hover:text-primary disabled:opacity-40 transition-colors">
                           ↻ New suggestions
                         </button>
                       </>
@@ -7702,12 +7696,12 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 )}
 
                 <textarea value={offer} onChange={e => setOffer(e.target.value)} rows={3} placeholder="e.g. Free 30-min Microsoft Copilot Readiness Assessment ($297 value)…"
-                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                  className="mt-1 w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(3)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(3)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">← Back</button>
                 <button onClick={() => { void previewAssetGeneration(); }} disabled={!offer.trim() || previewing}
-                  className="flex items-center gap-2 px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                  className="flex items-center gap-2 px-6 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 disabled:opacity-40 transition-colors">
                   {previewing ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating Preview…</> : "Preview Campaign →"}
                 </button>
               </div>
@@ -7720,25 +7714,25 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           {step === 5 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-[#E6EDF3]">Review Generated Assets</p>
-                <span className="text-[10px] text-[#7D8590] px-2 py-0.5 rounded-full bg-[#30363D]">Preview — not yet saved</span>
+                <p className="text-sm font-semibold text-foreground">Review Generated Assets</p>
+                <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-border">Preview — not yet saved</span>
               </div>
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {previewAssets.map((asset, idx) => (
-                  <div key={idx} className="bg-[#0D1117] rounded-lg p-3 space-y-2">
+                  <div key={idx} className="bg-background rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-[#E6EDF3]">{asset.title}</span>
+                      <span className="text-xs font-semibold text-foreground">{asset.title}</span>
                       <div className="flex gap-2">
                         <Badge text={asset.assetType} color="blue" />
                         <CopyButton text={asset.content} />
                       </div>
                     </div>
-                    <pre className="text-[10px] text-[#7D8590] whitespace-pre-wrap font-sans line-clamp-4">{asset.content}</pre>
+                    <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap font-sans line-clamp-4">{asset.content}</pre>
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2 pt-2 border-t border-[#30363D]">
-                <button onClick={() => setStep(4)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+              <div className="flex gap-2 pt-2 border-t border-border">
+                <button onClick={() => setStep(4)} className="px-4 py-2 rounded-lg border border-border text-muted-foreground text-sm hover:text-foreground transition-colors">← Back</button>
                 <button onClick={() => { void confirmSave(); }} disabled={saving}
                   className="flex items-center gap-2 flex-1 justify-center py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition-colors">
                   {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : "✓ Confirm & Save Campaign"}
@@ -7756,7 +7750,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   </svg>
                   <div>
                     <p className="text-sm font-semibold text-red-400">Campaign save incomplete</p>
-                    <p className="text-xs text-[#7D8590] mt-1">The campaign wasn't saved successfully — this can happen if the connection dropped or the request timed out. Go back to step 5 (Review) and try saving again.</p>
+                    <p className="text-xs text-muted-foreground mt-1">The campaign wasn't saved successfully — this can happen if the connection dropped or the request timed out. Go back to step 5 (Review) and try saving again.</p>
                   </div>
                 </div>
                 <button
@@ -7789,18 +7783,18 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-emerald-400">Campaign saved!</p>
-                  <p className="text-xs text-[#7D8590]">Your campaign and ad assets are ready to use.</p>
+                  <p className="text-xs text-muted-foreground">Your campaign and ad assets are ready to use.</p>
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {savedCampaignId && (
                   <button
                     onClick={() => setDetailCampaignId(savedCampaignId)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 transition-colors">
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/80 transition-colors">
                     View Campaign Details →
                   </button>
                 )}
-                <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+                <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
                   Create Another Campaign
                 </button>
               </div>
@@ -7927,12 +7921,12 @@ function AdLibrarySection({
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-[#E6EDF3]">Ad Library</h2>
-          <p className="text-xs text-[#7D8590] mt-0.5">All saved ad variations across every campaign</p>
+          <h2 className="text-lg font-bold text-foreground">Ad Library</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">All saved ad variations across every campaign</p>
         </div>
         <button
           onClick={() => { void load(); }}
-          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
         >↻ Refresh</button>
       </div>
 
@@ -7941,32 +7935,32 @@ function AdLibrarySection({
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by title, headline, or description…"
-          className="flex-1 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+          className="flex-1 bg-card border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
         />
         <div className="flex gap-1 flex-wrap">
           <button
             onClick={() => setTypeFilter("all")}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === "all" ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === "all" ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground border border-border"}`}
           >All</button>
           {AD_LIBRARY_TYPES.map(at => (
             <button
               key={at.type}
               onClick={() => setTypeFilter(at.type)}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === at.type ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === at.type ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground border border-border"}`}
             >{at.icon} {at.label}</button>
           ))}
         </div>
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-[#7D8590]">
-          <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           Loading ad library…
         </div>
       )}
 
       {!loading && filtered.length === 0 && (
-        <div className="text-center py-12 text-[#484F58]">
+        <div className="text-center py-12 text-muted-foreground/60">
           <p className="text-3xl mb-3">📭</p>
           <p className="text-sm">
             {search || typeFilter !== "all"
@@ -7978,7 +7972,7 @@ function AdLibrarySection({
 
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
-          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">
+          <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wide font-semibold">
             {filtered.length} asset{filtered.length !== 1 ? "s" : ""}
           </p>
           {filtered.map(asset => {
@@ -7996,15 +7990,15 @@ function AdLibrarySection({
               : 0;
 
             return (
-              <div key={asset.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <div key={asset.id} className="bg-card border border-border rounded-xl overflow-hidden">
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : asset.id)}
-                  className="w-full flex items-start justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left gap-3"
+                  className="w-full flex items-start justify-between px-4 py-3 hover:bg-accent transition-colors text-left gap-3"
                 >
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {typeInfo && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF] font-semibold whitespace-nowrap">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-semibold whitespace-nowrap">
                           {typeInfo.icon} {typeInfo.label}
                         </span>
                       )}
@@ -8018,50 +8012,50 @@ function AdLibrarySection({
                         </button>
                       )}
                     </div>
-                    <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
+                    <p className="text-sm font-semibold text-foreground truncate">{asset.title}</p>
                     <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} hasCampaign={asset.campaignId != null} deletedCount={deletedOfferCount} />
-                    <p className="text-[10px] text-[#484F58]">
+                    <p className="text-[10px] text-muted-foreground/60">
                       {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
                       {new Date(asset.createdAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <span className="text-[#7D8590] text-xs flex-shrink-0 mt-1">{isExpanded ? "▲" : "▼"}</span>
+                  <span className="text-muted-foreground text-xs flex-shrink-0 mt-1">{isExpanded ? "▲" : "▼"}</span>
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-[#30363D] p-4 space-y-3">
+                  <div className="border-t border-border p-4 space-y-3">
                     {variations.length > 0 ? (
                       variations.map((v, i) => (
-                        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-1.5">
+                        <div key={i} className="bg-background border border-border rounded-lg p-3 space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] text-[#484F58] font-semibold uppercase tracking-wide">Variation {i + 1}</span>
+                            <span className="text-[10px] text-muted-foreground/60 font-semibold uppercase tracking-wide">Variation {i + 1}</span>
                             <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
                           </div>
-                          <p className="text-xs font-semibold text-[#E6EDF3]">{v.headline}</p>
-                          <p className="text-xs text-[#7D8590]">{v.description}</p>
-                          {v.cta && <p className="text-[10px] text-[#58A6FF]">CTA: {v.cta}</p>}
+                          <p className="text-xs font-semibold text-foreground">{v.headline}</p>
+                          <p className="text-xs text-muted-foreground">{v.description}</p>
+                          {v.cta && <p className="text-[10px] text-primary">CTA: {v.cta}</p>}
                           {v.url && (
                             <a
                               href={v.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[10px] text-[#484F58] hover:text-[#58A6FF] transition-colors break-all block"
+                              className="text-[10px] text-muted-foreground/60 hover:text-primary transition-colors break-all block"
                             >{v.url}</a>
                           )}
                         </div>
                       ))
                     ) : (
-                      <pre className="text-xs text-[#7D8590] whitespace-pre-wrap break-words">{asset.content}</pre>
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words">{asset.content}</pre>
                     )}
 
                     {asset.campaignId == null && (
-                      <div className="pt-2 border-t border-[#30363D]">
+                      <div className="pt-2 border-t border-border">
                         {linkingAssetId === asset.id ? (
                           <div className="flex items-center gap-2">
                             <select
                               value={linkCampaignId}
                               onChange={e => setLinkCampaignId(e.target.value)}
-                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                              className="flex-1 bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
                             >
                               <option value="">— choose a campaign —</option>
                               {Object.entries(campaignNames).map(([id, name]) => (
@@ -8097,19 +8091,19 @@ function AdLibrarySection({
                                   setLinking(false);
                                 }
                               }}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                              className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                             >
                               {linking ? "Saving…" : "Assign"}
                             </button>
                             <button
                               onClick={() => { setLinkingAssetId(null); setLinkCampaignId(""); }}
-                              className="text-xs px-2 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                              className="text-xs px-2 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
                             >✕</button>
                           </div>
                         ) : (
                           <button
                             onClick={() => { setLinkingAssetId(asset.id); setLinkCampaignId(""); }}
-                            className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                            className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
                           >
                             🔗 Link to campaign
                           </button>
@@ -8203,8 +8197,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
       loading: leadsLoading,
       sub: "Awaiting action",
       icon: "🤖",
-      color: "from-[#0078D4]/20 to-[#0078D4]/5",
-      border: "border-[#0078D4]/30",
+      color: "from-primary/20 to-primary/5",
+      border: "border-primary/30",
       action: () => onNavigate("recommendations"),
     },
     {
@@ -8249,11 +8243,11 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
             <div className="flex items-center justify-between mb-3">
               <span className="text-2xl">{tile.icon}</span>
               {tile.loading
-                ? <div className="w-16 h-7 bg-[#30363D] rounded animate-pulse" />
-                : <span className="text-2xl font-bold text-[#E6EDF3]">{tile.value}</span>}
+                ? <div className="w-16 h-7 bg-border rounded animate-pulse" />
+                : <span className="text-2xl font-bold text-foreground">{tile.value}</span>}
             </div>
-            <p className="text-xs font-semibold text-[#E6EDF3]">{tile.label}</p>
-            <p className="text-[10px] text-[#7D8590] mt-0.5">{tile.sub}</p>
+            <p className="text-xs font-semibold text-foreground">{tile.label}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{tile.sub}</p>
           </button>
         ))}
       </div>
@@ -8266,30 +8260,30 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
         {/* Left: Priority Actions */}
         <div className="space-y-4">
           {/* AI Leads Needing Action */}
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-              <p className="text-sm font-semibold text-[#E6EDF3]">🤖 AI Leads Needing Action</p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <p className="text-sm font-semibold text-foreground">🤖 AI Leads Needing Action</p>
               <button onClick={() => onNavigate("recommendations")}
-                className="text-[10px] text-[#58A6FF] hover:underline">View all →</button>
+                className="text-[10px] text-primary hover:underline">View all →</button>
             </div>
             {leadsLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={3} /></div>
             ) : leadsError ? (
-              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load leads</div>
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-muted-foreground"><span className="text-amber-400">⚠</span>Failed to load leads</div>
             ) : leads.length === 0 ? (
-              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No pending AI leads — generate some in AI Leads</div>
+              <div className="px-4 py-6 text-center text-muted-foreground text-xs">No pending AI leads — generate some in AI Leads</div>
             ) : (
-              <div className="divide-y divide-[#30363D]">
+              <div className="divide-y divide-border">
                 {leads.map(lead => (
                   <button key={lead.id} onClick={() => onNavigate("recommendations")}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left group">
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent transition-colors text-left group">
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{lead.name}</p>
-                      <p className="text-[10px] text-[#7D8590] truncate">{lead.role}{lead.company ? ` · ${lead.company}` : ""}</p>
+                      <p className="text-xs font-medium text-foreground truncate">{lead.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{lead.role}{lead.company ? ` · ${lead.company}` : ""}</p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                       <Badge text={`${lead.confidence}%`} color={lead.confidence >= 80 ? "green" : lead.confidence >= 60 ? "yellow" : "gray"} />
-                      <span className="text-[#30363D] group-hover:text-[#7D8590] text-xs transition-colors">→</span>
+                      <span className="text-border group-hover:text-muted-foreground text-xs transition-colors">→</span>
                     </div>
                   </button>
                 ))}
@@ -8298,27 +8292,27 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
           </div>
 
           {/* Tasks Due */}
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-              <p className="text-sm font-semibold text-[#E6EDF3]">📋 Tasks</p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <p className="text-sm font-semibold text-foreground">📋 Tasks</p>
               <button onClick={() => onNavigate("tasks")}
-                className="text-[10px] text-[#58A6FF] hover:underline">View board →</button>
+                className="text-[10px] text-primary hover:underline">View board →</button>
             </div>
             {tasksLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
             ) : tasksError ? (
-              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load tasks</div>
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-muted-foreground"><span className="text-amber-400">⚠</span>Failed to load tasks</div>
             ) : allPendingTasks.length === 0 ? (
-              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No open tasks</div>
+              <div className="px-4 py-6 text-center text-muted-foreground text-xs">No open tasks</div>
             ) : (
-              <div className="divide-y divide-[#30363D]">
+              <div className="divide-y divide-border">
                 {allPendingTasks.map(task => (
                   <button key={task.id} onClick={() => onNavigate("tasks")}
-                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left group">
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent transition-colors text-left group">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{task.title}</p>
+                      <p className="text-xs font-medium text-foreground truncate">{task.title}</p>
                       {task.dueDate && (
-                        <p className="text-[10px] text-[#7D8590]">Due {new Date(task.dueDate).toLocaleDateString()}</p>
+                        <p className="text-[10px] text-muted-foreground">Due {new Date(task.dueDate).toLocaleDateString()}</p>
                       )}
                     </div>
                     <Badge text={task.status.replace("_", " ")} color={task.status === "in_progress" ? "blue" : task.status === "money_task" ? "green" : "gray"} />
@@ -8332,61 +8326,61 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
         {/* Right: Insights */}
         <div className="space-y-4">
           {/* Traffic Snapshot */}
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-              <p className="text-sm font-semibold text-[#E6EDF3]">📈 Traffic (7 Days)</p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <p className="text-sm font-semibold text-foreground">📈 Traffic (7 Days)</p>
               <button onClick={() => onNavigate("analytics")}
-                className="text-[10px] text-[#58A6FF] hover:underline">Full analytics →</button>
+                className="text-[10px] text-primary hover:underline">Full analytics →</button>
             </div>
             <div className="p-4">
               {analyticsLoading ? (
                 <div className="h-24 flex items-center justify-center">
-                  <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : analyticsError ? (
-                <div className="h-24 flex items-center justify-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load traffic data</div>
+                <div className="h-24 flex items-center justify-center gap-2 text-xs text-muted-foreground"><span className="text-amber-400">⚠</span>Failed to load traffic data</div>
               ) : trafficData.length === 0 ? (
-                <div className="h-24 flex items-center justify-center text-[#7D8590] text-xs">No traffic data yet</div>
+                <div className="h-24 flex items-center justify-center text-muted-foreground text-xs">No traffic data yet</div>
               ) : (
                 <ResponsiveContainer width="100%" height={90}>
                   <LineChart data={trafficData} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
-                    <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#7D8590" }} tickLine={false} axisLine={false} />
+                    <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#8B94A3" }} tickLine={false} axisLine={false} />
                     <YAxis hide />
-                    <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#E6EDF3" }} />
-                    <Line type="monotone" dataKey="visitors" stroke="#0078D4" strokeWidth={2} dot={false} />
+                    <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #232A36", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#E6EDF3" }} />
+                    <Line type="monotone" dataKey="visitors" stroke="#2F6FED" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
               {kpi && (
                 <div className="flex gap-4 mt-2">
-                  <div><p className="text-[10px] text-[#7D8590]">Visitors Today</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.visitorsToday}</p></div>
-                  <div><p className="text-[10px] text-[#7D8590]">Conversion</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.conversionRate}%</p></div>
-                  <div><p className="text-[10px] text-[#7D8590]">Intent Today</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.intentSignalsToday}</p></div>
+                  <div><p className="text-[10px] text-muted-foreground">Visitors Today</p><p className="text-sm font-bold text-foreground">{kpi.visitorsToday}</p></div>
+                  <div><p className="text-[10px] text-muted-foreground">Conversion</p><p className="text-sm font-bold text-foreground">{kpi.conversionRate}%</p></div>
+                  <div><p className="text-[10px] text-muted-foreground">Intent Today</p><p className="text-sm font-bold text-foreground">{kpi.intentSignalsToday}</p></div>
                 </div>
               )}
             </div>
           </div>
 
           {/* Campaign Performance */}
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-              <p className="text-sm font-semibold text-[#E6EDF3]">📣 Campaign Performance</p>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <p className="text-sm font-semibold text-foreground">📣 Campaign Performance</p>
               <button onClick={() => onNavigate("campaigns")}
-                className="text-[10px] text-[#58A6FF] hover:underline">Manage →</button>
+                className="text-[10px] text-primary hover:underline">Manage →</button>
             </div>
             {campaignsLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
             ) : campaignsError ? (
-              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load campaigns</div>
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-muted-foreground"><span className="text-amber-400">⚠</span>Failed to load campaigns</div>
             ) : activeCampaigns.length === 0 ? (
-              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No active campaigns</div>
+              <div className="px-4 py-6 text-center text-muted-foreground text-xs">No active campaigns</div>
             ) : (
-              <div className="divide-y divide-[#30363D]">
+              <div className="divide-y divide-border">
                 {activeCampaigns.map(c => (
                   <div key={c.id} className="px-4 py-3 flex items-center justify-between">
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{c.name}</p>
-                      <p className="text-[10px] text-[#7D8590]">{c.leadsGenerated} leads · {c.emailsSent} emails</p>
+                      <p className="text-xs font-medium text-foreground truncate">{c.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{c.leadsGenerated} leads · {c.emailsSent} emails</p>
                     </div>
                     <span className="text-xs font-bold text-amber-400 flex-shrink-0 ml-3">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
                   </div>
@@ -8397,28 +8391,28 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
 
           {/* SEO Snapshot */}
           {(seoLoading || seoRankings.length > 0 || seoError) && (
-            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-                <p className="text-sm font-semibold text-[#E6EDF3]">🔍 SEO Rankings</p>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <p className="text-sm font-semibold text-foreground">🔍 SEO Rankings</p>
                 <button onClick={() => onNavigate("analytics")}
-                  className="text-[10px] text-[#58A6FF] hover:underline">All rankings →</button>
+                  className="text-[10px] text-primary hover:underline">All rankings →</button>
               </div>
               {seoLoading ? (
                 <div className="p-4 space-y-2"><SkeletonCard count={3} /></div>
               ) : seoError ? (
-                <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load rankings</div>
+                <div className="px-4 py-4 flex items-center gap-2 text-xs text-muted-foreground"><span className="text-amber-400">⚠</span>Failed to load rankings</div>
               ) : (
-                <div className="divide-y divide-[#30363D]">
+                <div className="divide-y divide-border">
                   {seoRankings.map(r => (
                     <div key={r.id} className="px-4 py-2.5 flex items-center justify-between">
-                      <p className="text-xs text-[#E6EDF3] truncate flex-1 mr-3">{r.keyword}</p>
+                      <p className="text-xs text-foreground truncate flex-1 mr-3">{r.keyword}</p>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {r.previousPosition !== null && r.previousPosition !== r.position && (
                           <span className={`text-[10px] font-semibold ${r.position < r.previousPosition ? "text-emerald-400" : "text-red-400"}`}>
                             {r.position < r.previousPosition ? "↑" : "↓"}
                           </span>
                         )}
-                        <span className="text-xs font-bold text-[#E6EDF3]">#{r.position}</span>
+                        <span className="text-xs font-bold text-foreground">#{r.position}</span>
                       </div>
                     </div>
                   ))}
@@ -8430,8 +8424,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
       </div>
 
       {/* Quick Action Bar */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-        <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-3">Quick Actions</p>
+      <div className="bg-card border border-border rounded-xl p-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Quick Actions</p>
         <div className="flex flex-wrap gap-2">
           {[
             { label: "Generate AI Leads", icon: "🤖", section: "recommendations" },
@@ -8442,7 +8436,7 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
             { label: "Manage Tasks", icon: "✅", section: "tasks" },
           ].map(a => (
             <button key={a.section} onClick={() => onNavigate(a.section)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0D1117] border border-[#30363D] text-xs text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors font-medium">
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-background border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors font-medium">
               <span>{a.icon}</span>{a.label}
             </button>
           ))}
@@ -8452,7 +8446,7 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
   );
 }
 
-// ─── IDE Shell config ─────────────────────────────────────────────────────────
+// ─── Section registry (URL-driven; chrome is provided by the global IDE shell) ─
 
 const SECTION_META: Record<string, { label: string; icon: string }> = {
   dashboard:       { label: "Dashboard",    icon: "⊞" },
@@ -8484,180 +8478,6 @@ function getSectionFromSearch(): string {
   return VALID_SECTIONS.has(s) ? s : "dashboard";
 }
 
-const ACTIVITY_ITEMS: ActivityItem[] = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    href: "/command/overview",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
-      </svg>
-    ),
-  },
-  {
-    id: "crm",
-    label: "CRM",
-    href: "/pipeline/leads",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    id: "engines",
-    label: "Engines",
-    href: "/delivery/engagement-projects",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-      </svg>
-    ),
-  },
-  {
-    id: "monitoring",
-    label: "Monitoring",
-    href: "/delivery/activity-logs",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "products",
-    label: "Products",
-    href: "/content/services",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-      </svg>
-    ),
-  },
-  {
-    id: "workflows",
-    label: "Workflows",
-    href: "/workflows/list",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    ),
-  },
-  {
-    id: "marketing",
-    label: "Marketing",
-    isActive: true,
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
-      </svg>
-    ),
-  },
-  {
-    id: "system",
-    label: "System",
-    href: "/system/inbox",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-];
-
-const EXPLORER_SECTIONS: ExplorerSection[] = [
-  {
-    id: "overview",
-    label: "Overview",
-    defaultOpen: true,
-    items: [
-      { id: "dashboard", label: "Dashboard", icon: "⊞" },
-    ],
-  },
-  {
-    id: "leads",
-    label: "Leads",
-    defaultOpen: true,
-    items: [
-      { id: "recommendations", label: "AI Leads", icon: "🤖" },
-      { id: "lead-finder",     label: "Lead Finder", icon: "🔍" },
-    ],
-  },
-  {
-    id: "outreach",
-    label: "Outreach",
-    defaultOpen: true,
-    items: [
-      { id: "outreach",    label: "Outreach", icon: "✉️" },
-      { id: "templates",   label: "Templates", icon: "📋" },
-    ],
-  },
-  {
-    id: "content",
-    label: "Content",
-    defaultOpen: true,
-    items: [
-      { id: "content", label: "Content Hub", icon: "📝" },
-    ],
-  },
-  {
-    id: "campaigns-group",
-    label: "Campaigns",
-    defaultOpen: true,
-    items: [
-      { id: "campaigns", label: "Campaigns", icon: "📣" },
-    ],
-  },
-  {
-    id: "analytics-group",
-    label: "Analytics",
-    defaultOpen: true,
-    items: [
-      { id: "analytics", label: "Analytics", icon: "📊" },
-    ],
-  },
-  {
-    id: "planning",
-    label: "Planning",
-    defaultOpen: false,
-    items: [
-      { id: "tasks", label: "Tasks", icon: "✅" },
-    ],
-  },
-  {
-    id: "more",
-    label: "More",
-    defaultOpen: false,
-    items: [
-      { id: "connections", label: "Connections", icon: "🔗" },
-      { id: "settings",    label: "Settings",    icon: "⚙️" },
-    ],
-  },
-];
-
-const CMDK_ITEMS: CmdKItem[] = [
-  { id: "dashboard",       label: "Dashboard",    section: "Overview",   icon: "⊞" },
-  { id: "recommendations", label: "AI Leads",     section: "Leads",      icon: "🤖" },
-  { id: "lead-finder",     label: "Lead Finder",  section: "Leads",      icon: "🔍" },
-  { id: "outreach",        label: "Outreach",     section: "Outreach",   icon: "✉️" },
-  { id: "templates",       label: "Templates",    section: "Outreach",   icon: "📋" },
-  { id: "content",         label: "Content Hub",  section: "Content",    icon: "📝" },
-  { id: "campaigns",       label: "Campaigns",    section: "Campaigns",  icon: "📣" },
-  { id: "analytics",       label: "Analytics",    section: "Analytics",  icon: "📊" },
-  { id: "tasks",           label: "Tasks",        section: "Planning",   icon: "✅" },
-  { id: "connections",     label: "Connections",  section: "More",       icon: "🔗" },
-  { id: "settings",        label: "Settings",     section: "More",       icon: "⚙️" },
-];
-
-// "templates" is a virtual alias that maps to the outreach section
-const EXPLORER_TO_SECTION: Record<string, string> = {
-  templates: "outreach",
-};
-
-// Sections that are actually rendered (not aliases)
 const RENDERABLE_SECTIONS: string[] = [
   "dashboard",
   "recommendations",
@@ -8671,105 +8491,20 @@ const RENDERABLE_SECTIONS: string[] = [
   "settings",
 ];
 
-// ─── Bottom Panel ─────────────────────────────────────────────────────────────
-
-function MarketingBottomPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
-  const [assets, setAssets] = useState<{ id: number; assetType: string; title: string; createdAt?: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchWithAuth(`${API}/admin/marketing/campaign-assets?limit=20`)
-      .then(r => r.json())
-      .then((d: unknown) => { setAssets(Array.isArray(d) ? (d as { id: number; assetType: string; title: string; createdAt?: string }[]).slice(0, 20) : []); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [fetchWithAuth]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-[#484F58]">
-        <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Loading…
-      </div>
-    );
-  }
-
-  if (assets.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-xs text-[#484F58]">
-        No AI generations yet — generate content in Content Hub or Outreach.
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col divide-y divide-[#21262D]">
-      {assets.map(a => (
-        <div key={a.id} className="flex items-center gap-3 px-4 py-2">
-          <span className="text-sm flex-shrink-0">
-            {a.assetType === "cold_email" ? "✉️" : a.assetType === "linkedin_post" ? "💼" : a.assetType === "blog_post" ? "📝" : a.assetType === "newsletter" ? "📧" : "📄"}
-          </span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-[#C9D1D9] truncate">{a.title}</p>
-            <p className="text-[10px] text-[#484F58] truncate">{a.assetType.replace(/_/g, " ")}</p>
-          </div>
-          {a.createdAt && (
-            <span className="text-[10px] text-[#484F58] flex-shrink-0">
-              {new Date(a.createdAt).toLocaleDateString()}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── URL hydration helpers ────────────────────────────────────────────────────
-
-// All valid explorer item IDs (renderable sections + "templates" virtual alias)
-const ALL_EXPLORER_IDS = new Set([...RENDERABLE_SECTIONS, "templates"]);
-
-/** Returns the explorer item id from the URL (e.g. "templates", "campaigns", "dashboard"). */
-function getExplorerItemFromSearch(): string {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get("tab") ?? "";
-  if (ALL_EXPLORER_IDS.has(raw)) return raw;
-  // Legacy aliases map to section IDs; use those as explorer IDs if valid
-  const aliased = TAB_ALIASES[raw];
-  if (aliased && ALL_EXPLORER_IDS.has(aliased)) return aliased;
-  return "dashboard";
-}
-
-/** Build an IDETab from an explorer item id. */
-function explorerItemToTab(explorerItemId: string): IDETab {
-  const section = EXPLORER_TO_SECTION[explorerItemId] ?? explorerItemId;
-  const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
-  const meta = SECTION_META[resolvedSection] ?? { label: explorerItemId, icon: "📄" };
-  const label = explorerItemId === "templates" ? "Templates" : meta.label;
-  const icon = explorerItemId === "templates" ? "📋" : meta.icon;
-  return { id: explorerItemId, label, icon, closeable: true };
-}
+const MARKETING_PATH = "/command/marketing";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MarketingCommandCenter() {
   const { fetchWithAuth } = useAuth();
+  const [location, navigate] = useLocation();
+  const search = useSearch();
 
   // Compute initial state from URL so deep links work on first render
   const [activeSection, setActiveSection] = useState<string>(() => getSectionFromSearch());
 
-  const [activeExplorer, setActiveExplorer] = useState<string>(() => getExplorerItemFromSearch());
-
-  // Open tabs — Dashboard always pinned; if URL has another section, open its tab too
-  const [openTabs, setOpenTabs] = useState<IDETab[]>(() => {
-    const tabs: IDETab[] = [{ id: "dashboard", label: "Dashboard", icon: "⊞", closeable: false }];
-    const explorerItem = getExplorerItemFromSearch();
-    if (explorerItem !== "dashboard") {
-      tabs.push(explorerItemToTab(explorerItem));
-    }
-    return tabs;
-  });
-
-  // Mounted sections — eager-mount the initial section so it renders immediately on deep link
+  // Mounted sections — sections stay mounted once visited so their state
+  // persists across navigation (shown/hidden with CSS).
   const [mounted, setMounted] = useState<Set<string>>(() => {
     const set = new Set(["dashboard"]);
     const section = getSectionFromSearch();
@@ -8777,169 +8512,85 @@ export default function MarketingCommandCenter() {
     return set;
   });
 
-  const navigate = useCallback((explorerItemId: string) => {
-    // Resolve aliases
-    const section = EXPLORER_TO_SECTION[explorerItemId] ?? explorerItemId;
-    const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
-
-    // Update URL
-    const url = new URL(window.location.href);
-    if (explorerItemId === "dashboard") {
-      url.searchParams.delete("tab");
-    } else {
-      url.searchParams.set("tab", explorerItemId);
-    }
-    history.pushState(null, "", url.toString());
-
-    // Open tab if not already open
-    setOpenTabs(prev => {
-      if (prev.some(t => t.id === explorerItemId)) return prev;
-      const meta = SECTION_META[resolvedSection] ?? { label: explorerItemId, icon: "📄" };
-      // For "templates" give it a distinct label
-      const label = explorerItemId === "templates" ? "Templates" : (meta.label);
-      const icon = explorerItemId === "templates" ? "📋" : meta.icon;
-      return [...prev, { id: explorerItemId, label, icon, closeable: true }];
-    });
-
-    setMounted(prev => {
-      if (prev.has(resolvedSection)) return prev;
-      return new Set([...prev, resolvedSection]);
-    });
-
-    setActiveSection(resolvedSection);
-    setActiveExplorer(explorerItemId);
-  }, []);
+  // Sync the internal section with the URL (?tab=). Explorer-tree clicks in
+  // the global shell, deep links, and browser back/forward all land here.
+  // Only sync while this page owns the location — the component stays mounted
+  // in a hidden shell tab while other routes are active.
+  useEffect(() => {
+    if (location !== MARKETING_PATH) return;
+    const section = getSectionFromSearch();
+    setActiveSection(section);
+    setMounted(prev => (prev.has(section) ? prev : new Set([...prev, section])));
+  }, [location, search]);
 
   // Navigate from within section content (e.g. dashboard quick-actions)
   const navigateSection = useCallback((section: string) => {
     const resolved = TAB_ALIASES[section] ?? section;
-    navigate(resolved);
+    const target = VALID_SECTIONS.has(resolved) ? resolved : "dashboard";
+    navigate(target === "dashboard" ? MARKETING_PATH : `${MARKETING_PATH}?tab=${target}`);
   }, [navigate]);
 
-  // Handle popstate (browser back/forward)
-  useEffect(() => {
-    const onPop = () => {
-      const explorerItem = getExplorerItemFromSearch();
-      const section = getSectionFromSearch();
-      setActiveSection(section);
-      setActiveExplorer(explorerItem);
-      setMounted(prev => (prev.has(section) ? prev : new Set([...prev, section])));
-      // Ensure the tab is in openTabs so the tab bar is consistent
-      setOpenTabs(prev => {
-        if (prev.some(t => t.id === explorerItem)) return prev;
-        return [...prev, explorerItemToTab(explorerItem)];
-      });
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  // Tab select
-  const handleTabSelect = useCallback((tabId: string) => {
-    const section = EXPLORER_TO_SECTION[tabId] ?? tabId;
-    const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
-    setActiveSection(resolvedSection);
-    setActiveExplorer(tabId);
-
-    const url = new URL(window.location.href);
-    if (tabId === "dashboard") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", tabId);
-    history.pushState(null, "", url.toString());
-  }, []);
-
-  // Tab close
-  const handleTabClose = useCallback((tabId: string) => {
-    setOpenTabs(prev => {
-      const next = prev.filter(t => t.id !== tabId);
-      // If we closed the active tab, activate the last remaining tab
-      if (tabId === activeExplorer && next.length > 0) {
-        const last = next[next.length - 1];
-        const s = EXPLORER_TO_SECTION[last.id] ?? last.id;
-        const rs = VALID_SECTIONS.has(s) ? s : "dashboard";
-        setActiveSection(rs);
-        setActiveExplorer(last.id);
-      }
-      return next;
-    });
-  }, [activeExplorer]);
-
   return (
-    <IDEShell
-      activityItems={ACTIVITY_ITEMS}
-      explorerTitle="Marketing"
-      explorerSections={EXPLORER_SECTIONS}
-      activeExplorerItem={activeExplorer}
-      onExplorerItemClick={navigate}
-      tabs={openTabs}
-      activeTabId={activeExplorer}
-      onTabSelect={handleTabSelect}
-      onTabClose={handleTabClose}
-      bottomPanel={<MarketingBottomPanel fetchWithAuth={fetchWithAuth} />}
-      bottomPanelTitle="Recent AI Generations"
-      cmdKItems={CMDK_ITEMS}
-    >
-      {/* All sections mounted lazily; shown/hidden with CSS — preserves state across navigation */}
-      <div className="h-full overflow-hidden relative">
-        {RENDERABLE_SECTIONS.map(sectionId => {
-          if (!mounted.has(sectionId)) return null;
-          const isVisible = activeSection === sectionId;
-          return (
-            <div
-              key={sectionId}
-              className="absolute inset-0 overflow-y-auto p-4 md:p-6"
-              style={{ display: isVisible ? undefined : "none" }}
-            >
-              {sectionId === "dashboard" && (
-                <MarketingDashboard fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
-              )}
-              {sectionId === "recommendations" && (
-                <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />
-              )}
-              {sectionId === "lead-finder" && (
-                <LeadFinderSection fetchWithAuth={fetchWithAuth} />
-              )}
-              {sectionId === "outreach" && (
-                <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />
-              )}
-              {sectionId === "content" && (
-                <ContentHubSection fetchWithAuth={fetchWithAuth} />
-              )}
-              {sectionId === "campaigns" && (
-                <div className="space-y-8">
-                  <CampaignsHubSection fetchWithAuth={fetchWithAuth} />
-                  <div className="border-t border-[#30363D] pt-8">
-                    <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
-                  </div>
+    <div className="h-full overflow-hidden relative">
+      {RENDERABLE_SECTIONS.map(sectionId => {
+        if (!mounted.has(sectionId)) return null;
+        const isVisible = activeSection === sectionId;
+        return (
+          <div
+            key={sectionId}
+            className="absolute inset-0 overflow-y-auto p-4 md:p-6"
+            style={{ display: isVisible ? undefined : "none" }}
+          >
+            {sectionId === "dashboard" && (
+              <MarketingDashboard fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
+            )}
+            {sectionId === "recommendations" && (
+              <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />
+            )}
+            {sectionId === "lead-finder" && (
+              <LeadFinderSection fetchWithAuth={fetchWithAuth} />
+            )}
+            {sectionId === "outreach" && (
+              <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />
+            )}
+            {sectionId === "content" && (
+              <ContentHubSection fetchWithAuth={fetchWithAuth} />
+            )}
+            {sectionId === "campaigns" && (
+              <div className="space-y-8">
+                <CampaignsHubSection fetchWithAuth={fetchWithAuth} />
+                <div className="border-t border-border pt-8">
+                  <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
                 </div>
-              )}
-              {sectionId === "tasks" && (
-                <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigateSection} />
-              )}
-              {sectionId === "analytics" && (
-                <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
-              )}
-              {sectionId === "connections" && (
-                <div className="max-w-2xl space-y-4">
-                  <div className="mb-2">
-                    <h2 className="text-sm font-semibold text-[#E6EDF3]">Social Media Connections</h2>
-                    <p className="text-[11px] text-[#7D8590] mt-0.5">
-                      Monitor the health of your social media tokens. LinkedIn tokens expire every 60 days — this panel alerts you before posts start failing silently.
-                    </p>
-                  </div>
-                  <SocialConnectionsCard fetchWithAuth={fetchWithAuth} />
+              </div>
+            )}
+            {sectionId === "tasks" && (
+              <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigateSection} />
+            )}
+            {sectionId === "analytics" && (
+              <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
+            )}
+            {sectionId === "connections" && (
+              <div className="max-w-2xl space-y-4">
+                <div className="mb-2">
+                  <h2 className="text-sm font-semibold text-foreground">Social Media Connections</h2>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Monitor the health of your social media tokens. LinkedIn tokens expire every 60 days — this panel alerts you before posts start failing silently.
+                  </p>
                 </div>
-              )}
-              {sectionId === "settings" && (
-                <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
-                  <span className="text-4xl">⚙️</span>
-                  <p className="text-sm font-semibold text-[#E6EDF3]">Marketing Settings</p>
-                  <p className="text-xs text-[#7D8590] max-w-xs">Configure ICP, target industries, value proposition, and other marketing preferences. Coming soon.</p>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </IDEShell>
+                <SocialConnectionsCard fetchWithAuth={fetchWithAuth} />
+              </div>
+            )}
+            {sectionId === "settings" && (
+              <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+                <span className="text-4xl">⚙️</span>
+                <p className="text-sm font-semibold text-foreground">Marketing Settings</p>
+                <p className="text-xs text-muted-foreground max-w-xs">Configure ICP, target industries, value proposition, and other marketing preferences. Coming soon.</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

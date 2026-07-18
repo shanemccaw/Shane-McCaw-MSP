@@ -158,7 +158,7 @@ function EntityPickerControl({
   const [search, setSearch] = useState("");
   const selected = Array.isArray(value) ? value : (value ? value.split(",").filter(Boolean) : []);
   const filtered = options.filter(o => !search || o.label.toLowerCase().includes(search.toLowerCase()) || o.id.includes(search));
-  const borderCls = hasError ? "border-red-500" : "border-[#30363D]";
+  const borderCls = hasError ? "border-red-500" : "border-border";
 
   function renderWithGroups(renderItem: (o: EntityOption) => React.ReactNode) {
     const nodes: React.ReactNode[] = [];
@@ -166,7 +166,7 @@ function EntityPickerControl({
     for (const o of filtered) {
       if (o.group && o.group !== lastGroup) {
         nodes.push(
-          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#484F58] bg-[#161B22] border-b border-[#30363D] sticky top-0">
+          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 bg-card border-b border-border sticky top-0">
             {o.group}
           </div>,
         );
@@ -183,19 +183,19 @@ function EntityPickerControl({
       onChange(next);
     };
     return (
-      <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
-          <span className="text-[#484F58] text-xs">🔍</span>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none" />
+      <div className={`border ${borderCls} rounded-lg bg-background overflow-hidden`}>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+          <span className="text-muted-foreground/60 text-xs">🔍</span>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none" />
           {selected.length > 0 && <span className="text-[10px] text-[#F97316] font-medium">{selected.length} selected</span>}
         </div>
         <div className="max-h-44 overflow-y-auto">
-          {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
-          {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+          {loading && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">Loading…</p>}
+          {!loading && filtered.length === 0 && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">No results</p>}
           {!loading && renderWithGroups(o => (
-            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#1C2128] cursor-pointer transition-colors">
+            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-accent cursor-pointer transition-colors">
               <input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggle(o.id)} className="w-3.5 h-3.5 rounded accent-orange-500 flex-shrink-0" />
-              <span className="text-sm text-[#E6EDF3] truncate">{o.label}</span>
+              <span className="text-sm text-foreground truncate">{o.label}</span>
             </label>
           ))}
         </div>
@@ -204,18 +204,18 @@ function EntityPickerControl({
   }
 
   return (
-    <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
-        <span className="text-[#484F58] text-xs">🔍</span>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none" />
+    <div className={`border ${borderCls} rounded-lg bg-background overflow-hidden`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+        <span className="text-muted-foreground/60 text-xs">🔍</span>
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none" />
         {value && <span className="text-[10px] text-[#F97316] truncate max-w-[100px]">{options.find(o => o.id === value)?.label ?? String(value)}</span>}
       </div>
       <div className="max-h-44 overflow-y-auto">
-        {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
-        {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+        {loading && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">Loading…</p>}
+        {!loading && filtered.length === 0 && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">No results</p>}
         {!loading && renderWithGroups(o => (
           <button key={o.id} type="button" onClick={() => { onChange(o.id); setSearch(""); }}
-            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#1C2128] ${String(value) === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-[#E6EDF3]"}`}>
+            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-accent ${String(value) === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-foreground"}`}>
             {o.label}
           </button>
         ))}
@@ -258,26 +258,26 @@ function SmartRunInputModal({
   }
 
   const inputCls = (name: string) =>
-    `w-full bg-[#0D1117] border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-[#30363D] focus:border-[#0078D4]/60"}`;
+    `w-full bg-background border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-border focus:border-primary/60"}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-[#30363D]">
-          <span className="text-[#0078D4]">▶</span>
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Run inputs required</h3>
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+          <span className="text-primary">▶</span>
+          <h3 className="text-sm font-semibold text-foreground">Run inputs required</h3>
         </div>
 
         <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-          <p className="text-xs text-[#7D8590]">This workflow needs a few values before it can start.</p>
+          <p className="text-xs text-muted-foreground">This workflow needs a few values before it can start.</p>
 
           {fields.map(f => (
             <div key={f.variableName} className="space-y-1.5">
-              <label className="text-xs font-medium text-[#E6EDF3]">
+              <label className="text-xs font-medium text-foreground">
                 {f.label || f.variableName}
                 {f.required && <span className="text-red-400 ml-0.5">*</span>}
                 {ENTITY_FIELD_TYPES.includes(f.type) && (
-                  <span className="ml-1.5 text-[10px] text-[#484F58] font-normal capitalize">
+                  <span className="ml-1.5 text-[10px] text-muted-foreground/60 font-normal capitalize">
                     ({f.type.replace("_", " ")}{f.multi ? " · multi" : ""})
                   </span>
                 )}
@@ -329,11 +329,11 @@ function SmartRunInputModal({
           ))}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
-          <button onClick={onCancel} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+        <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+          <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
           <button
             onClick={handleSubmit}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-primary hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             ▶ Run workflow
           </button>
@@ -431,7 +431,7 @@ const STATUS_COLORS: Record<string, string> = {
   running:   "bg-blue-500/20 text-blue-400 border-blue-500/30",
   failed:    "bg-red-500/20 text-red-400 border-red-500/30",
   pending:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  cancelled: "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  cancelled: "bg-border text-muted-foreground border-border",
 };
 
 const STATUS_DOT_COLORS: Record<string, string> = {
@@ -439,13 +439,13 @@ const STATUS_DOT_COLORS: Record<string, string> = {
   pending:   "bg-emerald-400 animate-pulse",   // green throbbing = about to run
   completed: "bg-emerald-500",                  // solid green = last run OK
   failed:    "bg-red-400 animate-pulse",        // red throbbing = last run error
-  cancelled: "bg-[#484F58]",                   // grey = cancelled
+  cancelled: "bg-muted-foreground/60",                   // grey = cancelled
 };
 
 function StatusChip({ status }: { status: string | null }) {
-  if (!status) return <span className="text-[#484F58] text-xs">—</span>;
+  if (!status) return <span className="text-muted-foreground/60 text-xs">—</span>;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLORS[status] ?? "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLORS[status] ?? "bg-accent text-muted-foreground border-border"}`}>
       {status}
     </span>
   );
@@ -531,7 +531,7 @@ function ResizeDivider({
   return (
     <div
       onMouseDown={onMouseDown}
-      className={`flex-shrink-0 ${axis === "x" ? "w-[3px] cursor-col-resize" : "h-[3px] cursor-row-resize"} bg-[#21262D] hover:bg-[#0078D4]/60 transition-colors group relative`}
+      className={`flex-shrink-0 ${axis === "x" ? "w-[3px] cursor-col-resize" : "h-[3px] cursor-row-resize"} bg-accent hover:bg-primary/60 transition-colors group relative`}
     >
       <div className={`absolute inset-0 ${axis === "x" ? "-mx-1" : "-my-1"}`} />
     </div>
@@ -606,7 +606,7 @@ function ContextMenuPortal({
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  const itemCls = "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[#C9D1D9] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors text-left rounded-md";
+  const itemCls = "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-foreground/90 hover:bg-accent hover:text-foreground transition-colors text-left rounded-md";
   const dangerCls = "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left rounded-md";
 
   return (
@@ -615,7 +615,7 @@ function ContextMenuPortal({
       <div className="fixed inset-0 z-[998]" onMouseDown={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }} />
       {/* Menu */}
       <div
-        className="fixed z-[999] bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl p-1 min-w-[180px]"
+        className="fixed z-[999] bg-card border border-border rounded-xl shadow-2xl p-1 min-w-[180px]"
         style={{ left, top }}
         onMouseDown={e => e.stopPropagation()}
       >
@@ -642,7 +642,7 @@ function ContextMenuPortal({
           View Run History
         </button>
 
-        <div className="my-1 border-t border-[#30363D]" />
+        <div className="my-1 border-t border-border" />
 
         {!isSystem && (
           <button className={itemCls} onClick={onRename}>
@@ -669,7 +669,7 @@ function ContextMenuPortal({
 
         {!isSystem && (
           <>
-            <div className="my-1 border-t border-[#30363D]" />
+            <div className="my-1 border-t border-border" />
             <button className={dangerCls} onClick={onDelete}>
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1289,7 +1289,7 @@ export default function WorkflowListPage() {
     const dotColor = isLiveRunForThis  ? "bg-emerald-400 animate-pulse"
                    : hasLastRunError   ? "bg-red-400 animate-pulse"
                    : isPublished       ? "bg-blue-400"
-                   :                    "bg-[#484F58]";
+                   :                    "bg-muted-foreground/60";
 
     function handleClick() {
       setSelectedId(def.id);
@@ -1309,12 +1309,12 @@ export default function WorkflowListPage() {
         onContextMenu={handleContextMenu}
         className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none transition-colors ${
           isSelected
-            ? "bg-[#0078D4]/20 border-l-2 border-[#0078D4]"
-            : "border-l-2 border-transparent hover:bg-[#1C2128]"
+            ? "bg-primary/20 border-l-2 border-primary"
+            : "border-l-2 border-transparent hover:bg-accent"
         }`}
       >
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-        <span className={`flex-1 text-xs truncate ${isSystem ? "text-[#8B949E]" : "text-[#C9D1D9]"} ${isSelected ? "text-[#E6EDF3] font-medium" : ""}`}>
+        <span className={`flex-1 text-xs truncate ${isSystem ? "text-muted-foreground" : "text-foreground/90"} ${isSelected ? "text-foreground font-medium" : ""}`}>
           {def.name}
         </span>
         {/* Today's trigger activity badge */}
@@ -1340,7 +1340,7 @@ export default function WorkflowListPage() {
               <span
                 onClick={e => { e.stopPropagation(); navigate(`/workflows/triggers/${def.id}`); }}
                 title="No trigger activity today"
-                className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-[9px] text-[#484F58] transition-opacity cursor-pointer hover:text-[#7D8590]"
+                className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-[9px] text-muted-foreground/60 transition-opacity cursor-pointer hover:text-muted-foreground"
               >
                 no activity
               </span>
@@ -1350,7 +1350,7 @@ export default function WorkflowListPage() {
         })()}
         <button
           onClick={e => void handleExportWorkflow(def, e)}
-          className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all flex-shrink-0 text-[#484F58] hover:text-[#7D8590]"
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all flex-shrink-0 text-muted-foreground/60 hover:text-muted-foreground"
           title="Export workflow as JSON"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1381,18 +1381,18 @@ export default function WorkflowListPage() {
     return (
       <button
         onClick={() => toggleCategory(name)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-[#1C2128] transition-colors group"
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-left hover:bg-accent transition-colors group"
       >
         <svg
-          className={`w-3 h-3 text-[#484F58] flex-shrink-0 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+          className={`w-3 h-3 text-muted-foreground/60 flex-shrink-0 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span className={`text-[11px] font-semibold uppercase tracking-wider flex-1 truncate ${isSystem ? "text-[#484F58]" : "text-[#7D8590]"}`}>
+        <span className={`text-[11px] font-semibold uppercase tracking-wider flex-1 truncate ${isSystem ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
           {name}
         </span>
-        <span className="text-[10px] text-[#484F58] bg-[#21262D] rounded-full px-1.5 py-px font-medium flex-shrink-0">
+        <span className="text-[10px] text-muted-foreground/60 bg-accent rounded-full px-1.5 py-px font-medium flex-shrink-0">
           {count}
         </span>
       </button>
@@ -1414,22 +1414,22 @@ export default function WorkflowListPage() {
     return (
       <div className="flex flex-col h-full overflow-hidden">
         {/* Detail header */}
-        <div className="px-6 py-5 border-b border-[#21262D] flex-shrink-0">
+        <div className="px-6 py-5 border-b border-accent flex-shrink-0">
           <div className="flex items-start gap-3">
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isSystem ? "bg-violet-500/10 border border-violet-500/20" : "bg-[#0078D4]/10 border border-[#0078D4]/20"}`}>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isSystem ? "bg-violet-500/10 border border-violet-500/20" : "bg-primary/10 border border-primary/20"}`}>
               {isSystem ? (
                 <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
                 </svg>
               ) : (
-                <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold text-[#E6EDF3] leading-tight">{def.name}</h2>
-              {def.description && <p className="text-xs text-[#7D8590] mt-1 leading-relaxed">{def.description}</p>}
+              <h2 className="text-base font-bold text-foreground leading-tight">{def.name}</h2>
+              {def.description && <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{def.description}</p>}
             </div>
           </div>
 
@@ -1438,7 +1438,7 @@ export default function WorkflowListPage() {
             <div className="flex flex-wrap gap-1.5 mt-3">
               {trigCats.map(cat => <CategoryPill key={cat} category={cat} />)}
               {def.triggerTypes.map(t => (
-                <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-[#1C2128] text-[#8B949E] border-[#30363D]">
+                <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-accent text-muted-foreground border-border">
                   {t}
                 </span>
               ))}
@@ -1447,37 +1447,37 @@ export default function WorkflowListPage() {
         </div>
 
         {/* Metadata chips */}
-        <div className="px-6 py-4 border-b border-[#21262D] flex-shrink-0">
+        <div className="px-6 py-4 border-b border-accent flex-shrink-0">
           <div className="flex flex-wrap gap-4">
             <div>
-              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Status</span>
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Status</span>
               <StatusChip status={def.lastRunStatus} />
             </div>
             {def.publishedVersionLabel && (
               <div>
-                <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Version</span>
+                <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Version</span>
                 <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium">
                   {def.publishedVersionLabel}
                 </span>
               </div>
             )}
             <div>
-              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Triggers</span>
-              <span className="text-xs text-[#C9D1D9]">{def.triggerCount}</span>
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Triggers</span>
+              <span className="text-xs text-foreground/90">{def.triggerCount}</span>
             </div>
             <div>
-              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Concurrency</span>
-              <span className="text-xs text-[#C9D1D9]">max {def.concurrencyLimit}</span>
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Concurrency</span>
+              <span className="text-xs text-foreground/90">max {def.concurrencyLimit}</span>
             </div>
             {def.lastRunAt && (
               <div>
-                <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Last Run</span>
-                <span className="text-xs text-[#C9D1D9]">{format(new Date(def.lastRunAt), "MMM d, yyyy h:mm a")}</span>
+                <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Last Run</span>
+                <span className="text-xs text-foreground/90">{format(new Date(def.lastRunAt), "MMM d, yyyy h:mm a")}</span>
               </div>
             )}
             <div>
-              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-1">Created</span>
-              <span className="text-xs text-[#C9D1D9]">{format(new Date(def.createdAt), "MMM d, yyyy")}</span>
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-1">Created</span>
+              <span className="text-xs text-foreground/90">{format(new Date(def.createdAt), "MMM d, yyyy")}</span>
             </div>
           </div>
         </div>
@@ -1489,8 +1489,8 @@ export default function WorkflowListPage() {
           )].sort();
           const datalistId = `cat-suggestions-${def.id}`;
           return (
-            <div className="px-6 py-3 border-b border-[#21262D] flex-shrink-0">
-              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-2">Category</span>
+            <div className="px-6 py-3 border-b border-accent flex-shrink-0">
+              <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider block mb-2">Category</span>
               <div className="flex items-center gap-2">
                 <input
                   list={datalistId}
@@ -1498,7 +1498,7 @@ export default function WorkflowListPage() {
                   onChange={e => setCatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && isCatDirty) patchCategoryMut.mutate({ id: def.id, category: catInput || null }); }}
                   placeholder={isSystem ? "None" : deriveCategory(def.name)}
-                  className="flex-1 min-w-0 bg-[#1C2128] border border-[#30363D] rounded-md px-2.5 py-1.5 text-xs text-[#C9D1D9] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] transition-colors"
+                  className="flex-1 min-w-0 bg-accent border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground/90 placeholder-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
                 />
                 <datalist id={datalistId}>
                   {existingCategories.map(c => <option key={c} value={c} />)}
@@ -1506,7 +1506,7 @@ export default function WorkflowListPage() {
                 <button
                   onClick={() => patchCategoryMut.mutate({ id: def.id, category: catInput || null })}
                   disabled={!isCatDirty || patchCategoryMut.isPending}
-                  className="flex-shrink-0 px-3 py-1.5 bg-[#0078D4]/10 hover:bg-[#0078D4]/20 text-[#0078D4] text-xs font-medium rounded-md border border-[#0078D4]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="flex-shrink-0 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium rounded-md border border-primary/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   {patchCategoryMut.isPending ? "Saving…" : "Save"}
                 </button>
@@ -1514,21 +1514,21 @@ export default function WorkflowListPage() {
                   <button
                     onClick={() => { setCatInput(""); patchCategoryMut.mutate({ id: def.id, category: null }); }}
                     title="Clear category"
-                    className="flex-shrink-0 px-2 py-1.5 text-[#484F58] hover:text-[#8B949E] text-xs rounded-md border border-transparent hover:border-[#30363D] transition-colors"
+                    className="flex-shrink-0 px-2 py-1.5 text-muted-foreground/60 hover:text-muted-foreground text-xs rounded-md border border-transparent hover:border-border transition-colors"
                   >
                     ✕
                   </button>
                 )}
               </div>
               {!currentCategory && !isSystem && (
-                <p className="text-[10px] text-[#484F58] mt-1.5">Auto-derived: <span className="text-[#7D8590]">{deriveCategory(def.name)}</span></p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1.5">Auto-derived: <span className="text-muted-foreground">{deriveCategory(def.name)}</span></p>
               )}
             </div>
           );
         })()}
 
         {/* Action toolbar */}
-        <div className="px-6 py-4 border-b border-[#21262D] flex-shrink-0">
+        <div className="px-6 py-4 border-b border-accent flex-shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             {canRun && (
               <button
@@ -1547,7 +1547,7 @@ export default function WorkflowListPage() {
 
             <button
               onClick={() => navigate(`/workflows/builder/${def.id}`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 hover:bg-[#0078D4]/20 text-[#0078D4] text-xs font-medium rounded-lg border border-[#0078D4]/20 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium rounded-lg border border-primary/20 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -1557,7 +1557,7 @@ export default function WorkflowListPage() {
 
             <button
               onClick={() => navigate(`/workflows/triggers/${def.id}`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-[#21262D] text-[#8B949E] hover:text-[#C9D1D9] text-xs font-medium rounded-lg border border-[#30363D] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent text-muted-foreground hover:text-foreground/90 text-xs font-medium rounded-lg border border-border transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1567,7 +1567,7 @@ export default function WorkflowListPage() {
 
             <button
               onClick={() => navigate(`/workflows/runs?definitionId=${def.id}`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-[#21262D] text-[#8B949E] hover:text-[#C9D1D9] text-xs font-medium rounded-lg border border-[#30363D] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent text-muted-foreground hover:text-foreground/90 text-xs font-medium rounded-lg border border-border transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -1577,7 +1577,7 @@ export default function WorkflowListPage() {
 
             <button
               onClick={() => navigate(`/workflows/builder/${def.id}?trends=1`)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-[#21262D] text-[#8B949E] hover:text-[#C9D1D9] text-xs font-medium rounded-lg border border-[#30363D] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent text-muted-foreground hover:text-foreground/90 text-xs font-medium rounded-lg border border-border transition-colors"
               title="Open execution trends for this workflow in the builder"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1596,7 +1596,7 @@ export default function WorkflowListPage() {
                   ? "Publish a version first — no published version exists for this workflow"
                   : "Publish this workflow to the production database"
               }
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-[#21262D] text-emerald-400 hover:text-emerald-300 text-xs font-medium rounded-lg border border-[#30363D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent text-emerald-400 hover:text-emerald-300 text-xs font-medium rounded-lg border border-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1607,7 +1607,7 @@ export default function WorkflowListPage() {
             {!isSystem && (
               <button
                 onClick={() => setDeleteId(def.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-red-500/10 text-[#484F58] hover:text-red-400 text-xs font-medium rounded-lg border border-[#30363D] hover:border-red-500/20 transition-colors ml-auto"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-red-500/10 text-muted-foreground/60 hover:text-red-400 text-xs font-medium rounded-lg border border-border hover:border-red-500/20 transition-colors ml-auto"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1623,10 +1623,10 @@ export default function WorkflowListPage() {
           <div className="space-y-4">
             {def.triggerEventNames && def.triggerEventNames.length > 0 && (
               <div>
-                <p className="text-[10px] text-[#484F58] uppercase tracking-wider mb-2">Event Triggers</p>
+                <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-2">Event Triggers</p>
                 <div className="flex flex-wrap gap-1.5">
                   {def.triggerEventNames.map(ev => (
-                    <span key={ev} className="text-[10px] bg-[#1C2128] border border-[#30363D] text-[#7D8590] px-2 py-0.5 rounded font-mono">
+                    <span key={ev} className="text-[10px] bg-accent border border-border text-muted-foreground px-2 py-0.5 rounded font-mono">
                       {ev}
                     </span>
                   ))}
@@ -1635,13 +1635,13 @@ export default function WorkflowListPage() {
             )}
             {def.askForInputFields && def.askForInputFields.length > 0 && (
               <div>
-                <p className="text-[10px] text-[#484F58] uppercase tracking-wider mb-2">Input Fields</p>
+                <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-2">Input Fields</p>
                 <div className="space-y-1">
                   {def.askForInputFields.map(f => (
                     <div key={f.variableName} className="flex items-center gap-2 text-xs">
-                      <span className="text-[#7D8590] font-mono">{f.variableName}</span>
-                      <span className="text-[#484F58]">·</span>
-                      <span className="text-[#484F58]">{f.type}</span>
+                      <span className="text-muted-foreground font-mono">{f.variableName}</span>
+                      <span className="text-muted-foreground/60">·</span>
+                      <span className="text-muted-foreground/60">{f.type}</span>
                       {f.required && <span className="text-red-400 text-[10px]">required</span>}
                     </div>
                   ))}
@@ -1659,18 +1659,18 @@ export default function WorkflowListPage() {
     if (!selectedId) {
       return (
         <div className="flex flex-col items-center justify-center h-full text-center px-4">
-          <svg className="w-8 h-8 text-[#30363D] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 text-border mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          <p className="text-[11px] text-[#484F58]">Select a workflow</p>
+          <p className="text-[11px] text-muted-foreground/60">Select a workflow</p>
         </div>
       );
     }
 
     return (
       <div className="flex flex-col h-full">
-        <div className="px-4 py-3 border-b border-[#21262D] flex-shrink-0 flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[#7D8590] uppercase tracking-wider">Recent Runs</span>
+        <div className="px-4 py-3 border-b border-accent flex-shrink-0 flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Recent Runs</span>
           {isLiveRun && (
             <span className="flex items-center gap-1 text-[10px] text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1683,17 +1683,17 @@ export default function WorkflowListPage() {
           {runsLoading ? (
             <div className="p-4 space-y-2">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-10 bg-[#1C2128] rounded animate-pulse" />
+                <div key={i} className="h-10 bg-accent rounded animate-pulse" />
               ))}
             </div>
           ) : !recentRuns || recentRuns.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <p className="text-[11px] text-[#484F58]">No runs yet</p>
+              <p className="text-[11px] text-muted-foreground/60">No runs yet</p>
             </div>
           ) : (
-            <div className="divide-y divide-[#21262D]">
+            <div className="divide-y divide-accent">
               {recentRuns.map(run => {
-                const dotCls = STATUS_DOT_COLORS[run.status] ?? "bg-[#30363D]";
+                const dotCls = STATUS_DOT_COLORS[run.status] ?? "bg-border";
                 const durMs = run.durationMs ?? (run.completedAt && run.startedAt
                   ? new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()
                   : null);
@@ -1701,39 +1701,39 @@ export default function WorkflowListPage() {
                 const ts = run.startedAt ?? run.createdAt;
                 const isExpanded = expandedRunId === run.id;
                 return (
-                  <div key={run.id} className="border-b border-[#21262D] last:border-b-0">
+                  <div key={run.id} className="border-b border-accent last:border-b-0">
                     {/* Clickable run row — toggles inline expansion */}
                     <button
-                      className="w-full text-left px-4 py-2.5 hover:bg-[#1C2128] transition-colors flex items-start gap-2 group"
+                      className="w-full text-left px-4 py-2.5 hover:bg-accent transition-colors flex items-start gap-2 group"
                       onClick={() => setExpandedRunId(isExpanded ? null : run.id)}
                     >
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${dotCls}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-[#C9D1D9] font-medium capitalize flex-1">{run.status}</span>
-                          {durStr && <span className="text-[10px] text-[#484F58]">{durStr}</span>}
-                          <span className="text-[10px] text-[#484F58] group-hover:text-[#7D8590] transition-colors">
+                          <span className="text-[11px] text-foreground/90 font-medium capitalize flex-1">{run.status}</span>
+                          {durStr && <span className="text-[10px] text-muted-foreground/60">{durStr}</span>}
+                          <span className="text-[10px] text-muted-foreground/60 group-hover:text-muted-foreground transition-colors">
                             {isExpanded ? "▾" : "▸"}
                           </span>
                         </div>
-                        <p className="text-[10px] text-[#484F58] mt-0.5">{formatRelative(ts)}</p>
+                        <p className="text-[10px] text-muted-foreground/60 mt-0.5">{formatRelative(ts)}</p>
                       </div>
                     </button>
 
                     {/* Inline expanded run detail */}
                     {isExpanded && (
-                      <div className="border-t border-[#21262D] bg-[#0D1117]">
+                      <div className="border-t border-accent bg-background">
                         {/* Mini header: open-full-view link + close button */}
-                        <div className="flex items-center justify-between px-4 py-2 border-b border-[#21262D]">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-accent">
                           <button
                             onClick={() => navigate(`/workflows/runs/${run.id}`)}
-                            className="text-[11px] text-[#0078D4] hover:text-[#58A6FF] transition-colors"
+                            className="text-[11px] text-primary hover:text-primary transition-colors"
                           >
                             Open full view →
                           </button>
                           <button
                             onClick={() => setExpandedRunId(null)}
-                            className="text-[#484F58] hover:text-[#C9D1D9] transition-colors p-0.5"
+                            className="text-muted-foreground/60 hover:text-foreground/90 transition-colors p-0.5"
                             title="Collapse"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1754,10 +1754,10 @@ export default function WorkflowListPage() {
           )}
         </div>
 
-        <div className="px-4 py-2.5 border-t border-[#21262D] flex-shrink-0">
+        <div className="px-4 py-2.5 border-t border-accent flex-shrink-0">
           <button
             onClick={() => navigate(`/workflows/runs?definitionId=${selectedId}`)}
-            className="text-[11px] text-[#0078D4] hover:text-[#58A6FF] transition-colors"
+            className="text-[11px] text-primary hover:text-primary transition-colors"
           >
             View all runs →
           </button>
@@ -1768,7 +1768,7 @@ export default function WorkflowListPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full bg-[#0D1117] overflow-hidden">
+    <div className="flex flex-col h-full bg-background overflow-hidden">
 
       {/* IDE shell — three-column layout */}
       <div className="flex flex-1 min-h-0">
@@ -1776,18 +1776,18 @@ export default function WorkflowListPage() {
         {/* ── Left sidebar — Workflow Explorer ── */}
         <div
           ref={sidebarRef}
-          className="flex flex-col flex-shrink-0 bg-[#161B22] border-r border-[#21262D] overflow-hidden outline-none"
+          className="flex flex-col flex-shrink-0 bg-card border-r border-accent overflow-hidden outline-none"
           style={{ width: sidebar.size }}
           tabIndex={0}
           onKeyDown={handleSidebarKeyDown}
         >
           {/* Sidebar header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#21262D] flex-shrink-0">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#484F58]">Explorer</span>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-accent flex-shrink-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Explorer</span>
             <div className="flex items-center gap-0.5">
               <button
                 onClick={() => openRunHistory()}
-                className={`p-1 rounded transition-colors ${centerView.kind === "run-history" ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128]"}`}
+                className={`p-1 rounded transition-colors ${centerView.kind === "run-history" ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent"}`}
                 title="Run History"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1796,7 +1796,7 @@ export default function WorkflowListPage() {
               </button>
               <button
                 onClick={() => { setWfImportJson(""); setWfImportName(""); setShowWfImport(true); }}
-                className="p-1 rounded text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors"
+                className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent transition-colors"
                 title="Import Workflow from JSON"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1805,7 +1805,7 @@ export default function WorkflowListPage() {
               </button>
               <button
                 onClick={() => void handleDownloadNodeCatalog()}
-                className="p-1 rounded text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors"
+                className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent transition-colors"
                 title="Download Node Catalog (AI reference)"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1814,7 +1814,7 @@ export default function WorkflowListPage() {
               </button>
               <button
                 onClick={() => setShowCreate(true)}
-                className="p-1 rounded text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
+                className="p-1 rounded text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors"
                 title="New Workflow"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1835,9 +1835,9 @@ export default function WorkflowListPage() {
           />
 
           {/* Search */}
-          <div className="px-3 py-2 border-b border-[#21262D] flex-shrink-0">
-            <div className="flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-md px-2 py-1">
-              <svg className="w-3 h-3 text-[#484F58] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="px-3 py-2 border-b border-accent flex-shrink-0">
+            <div className="flex items-center gap-2 bg-background border border-border rounded-md px-2 py-1">
+              <svg className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -1845,10 +1845,10 @@ export default function WorkflowListPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search workflows…"
-                className="flex-1 bg-transparent text-[11px] text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                className="flex-1 bg-transparent text-[11px] text-foreground placeholder-muted-foreground/60 outline-none"
               />
               {search && (
-                <button onClick={() => setSearch("")} className="text-[#484F58] hover:text-[#7D8590] transition-colors">
+                <button onClick={() => setSearch("")} className="text-muted-foreground/60 hover:text-muted-foreground transition-colors">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -1862,14 +1862,14 @@ export default function WorkflowListPage() {
             {isLoading ? (
               <div className="space-y-1 p-2">
                 {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-6 bg-[#1C2128] rounded animate-pulse" />
+                  <div key={i} className="h-6 bg-accent rounded animate-pulse" />
                 ))}
               </div>
             ) : (
               <>
                 {userGroups.length === 0 && filteredSystemDefs.length === 0 ? (
                   <div className="px-3 py-6 text-center">
-                    <p className="text-[11px] text-[#484F58]">{search ? "No matches" : "No workflows yet"}</p>
+                    <p className="text-[11px] text-muted-foreground/60">{search ? "No matches" : "No workflows yet"}</p>
                   </div>
                 ) : (
                   <>
@@ -1899,16 +1899,16 @@ export default function WorkflowListPage() {
                                 <div key={sg.name}>
                                   <button
                                     onClick={() => toggleCategory(subKey)}
-                                    className="w-full flex items-center gap-1.5 px-2 py-0.5 text-left hover:bg-[#1C2128] transition-colors"
+                                    className="w-full flex items-center gap-1.5 px-2 py-0.5 text-left hover:bg-accent transition-colors"
                                   >
                                     <svg
-                                      className={`w-2.5 h-2.5 text-[#30363D] flex-shrink-0 transition-transform ${collapsedCategories.has(subKey) ? "" : "rotate-90"}`}
+                                      className={`w-2.5 h-2.5 text-border flex-shrink-0 transition-transform ${collapsedCategories.has(subKey) ? "" : "rotate-90"}`}
                                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
                                     >
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                     </svg>
-                                    <span className="text-[10px] font-medium text-[#484F58] flex-1 truncate">{sg.name}</span>
-                                    <span className="text-[9px] text-[#30363D] flex-shrink-0">{sg.defs.length}</span>
+                                    <span className="text-[10px] font-medium text-muted-foreground/60 flex-1 truncate">{sg.name}</span>
+                                    <span className="text-[9px] text-border flex-shrink-0">{sg.defs.length}</span>
                                   </button>
                                   {!collapsedCategories.has(subKey) && (
                                     <div className="pl-2">
@@ -1933,7 +1933,7 @@ export default function WorkflowListPage() {
         <ResizeDivider onDrag={delta => sidebar.persist(sidebar.size + delta)} />
 
         {/* ── Center panel — editor / run-history / empty ── */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117] overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 bg-background overflow-hidden">
           {centerView.kind === "editor" ? (
             <WorkflowBuilderPage
               key={centerView.defId}
@@ -1957,18 +1957,18 @@ export default function WorkflowListPage() {
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="w-16 h-16 bg-[#1C2128] border border-[#30363D] rounded-2xl flex items-center justify-center mb-4">
-                <svg className="w-7 h-7 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-accent border border-border rounded-2xl flex items-center justify-center mb-4">
+                <svg className="w-7 h-7 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
               </div>
-              <p className="text-[#E6EDF3] font-medium text-sm">Select a workflow</p>
-              <p className="text-xs text-[#7D8590] mt-1 max-w-xs">
+              <p className="text-foreground font-medium text-sm">Select a workflow</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
                 Click a workflow in the explorer to open it in the editor, or right-click for more options.
               </p>
               <button
                 onClick={() => setShowCreate(true)}
-                className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+                className="mt-4 flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1986,11 +1986,11 @@ export default function WorkflowListPage() {
 
         {/* ── Right panel — Activity Feed (collapses to icon strip on narrow screens) ── */}
         {activityCollapsed ? (
-          <div className="flex-shrink-0 w-10 bg-[#161B22] border-l border-[#21262D] flex flex-col items-center py-2 gap-3">
+          <div className="flex-shrink-0 w-10 bg-card border-l border-accent flex flex-col items-center py-2 gap-3">
             <button
               onClick={() => setActivityCollapsed(false)}
               title="Show activity feed"
-              className="p-1.5 rounded text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
+              className="p-1.5 rounded text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -2000,20 +2000,20 @@ export default function WorkflowListPage() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Run in progress" />
             )}
             {selectedId && recentRuns && recentRuns.length > 0 && (
-              <span className="text-[9px] text-[#484F58] font-mono leading-none">{recentRuns.length}</span>
+              <span className="text-[9px] text-muted-foreground/60 font-mono leading-none">{recentRuns.length}</span>
             )}
           </div>
         ) : (
           <div
-            className="flex-shrink-0 bg-[#161B22] border-l border-[#21262D] overflow-hidden flex flex-col"
+            className="flex-shrink-0 bg-card border-l border-accent overflow-hidden flex flex-col"
             style={{ width: activity.size }}
           >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#21262D] flex-shrink-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#484F58]">Activity</span>
+            <div className="flex items-center justify-between px-3 py-2 border-b border-accent flex-shrink-0">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Activity</span>
               <button
                 onClick={() => setActivityCollapsed(true)}
                 title="Collapse activity feed"
-                className="p-0.5 rounded text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors"
+                className="p-0.5 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -2028,9 +2028,9 @@ export default function WorkflowListPage() {
       </div>
 
       {/* ── Status bar ── */}
-      <div className="flex items-center justify-between px-4 h-7 flex-shrink-0 bg-[#0A2540] border-t border-[#1C2128]">
+      <div className="flex items-center justify-between px-4 h-7 flex-shrink-0 bg-[#0A2540] border-t border-accent">
         <div className="flex items-center gap-4">
-          <span className="text-[10px] text-[#58A6FF] font-mono">
+          <span className="text-[10px] text-primary font-mono">
             {defs.length} workflow{defs.length !== 1 ? "s" : ""}
           </span>
           {runningCount > 0 && (
@@ -2040,14 +2040,14 @@ export default function WorkflowListPage() {
             </span>
           )}
           {selectedDef && (
-            <span className="text-[10px] text-[#484F58] font-mono truncate max-w-[200px]">
+            <span className="text-[10px] text-muted-foreground/60 font-mono truncate max-w-[200px]">
               {selectedDef.name}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${prodDbConnected ? "bg-emerald-400" : "bg-[#484F58]"}`} />
-          <span className="text-[10px] text-[#484F58] font-mono">
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${prodDbConnected ? "bg-emerald-400" : "bg-muted-foreground/60"}`} />
+          <span className="text-[10px] text-muted-foreground/60 font-mono">
             {prodDbConnected ? "prod connected" : "prod not configured"}
           </span>
         </div>
@@ -2058,27 +2058,27 @@ export default function WorkflowListPage() {
       {/* Create dialog */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowCreate(false); setSelectedTemplateId(null); }}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="font-semibold text-[#E6EDF3]">New Workflow</h2>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-foreground">New Workflow</h2>
             <div className="space-y-3">
               <div>
-                <p className="text-xs text-[#7D8590] mb-2">Start from a template or build from scratch</p>
+                <p className="text-xs text-muted-foreground mb-2">Start from a template or build from scratch</p>
                 <div className="space-y-2">
                   <button
                     onClick={() => setSelectedTemplateId(null)}
-                    className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === null ? "border-[#0078D4]/60 bg-[#0078D4]/10" : "border-[#30363D] bg-[#0D1117] hover:border-[#484F58]"}`}
+                    className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === null ? "border-primary/60 bg-primary/10" : "border-border bg-background hover:border-muted-foreground/60"}`}
                   >
-                    <p className="text-sm font-medium text-[#E6EDF3]">Blank workflow</p>
-                    <p className="text-[11px] text-[#484F58] mt-0.5">Start with a single Start node</p>
+                    <p className="text-sm font-medium text-foreground">Blank workflow</p>
+                    <p className="text-[11px] text-muted-foreground/60 mt-0.5">Start with a single Start node</p>
                   </button>
                   {WF_TEMPLATES.map(tpl => (
                     <button
                       key={tpl.id}
                       onClick={() => { setSelectedTemplateId(tpl.id); if (!newName.trim()) setNewName(tpl.name); }}
-                      className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === tpl.id ? "border-[#7C3AED]/60 bg-[#7C3AED]/10" : "border-[#30363D] bg-[#0D1117] hover:border-[#484F58]"}`}
+                      className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === tpl.id ? "border-[#7C3AED]/60 bg-[#7C3AED]/10" : "border-border bg-background hover:border-muted-foreground/60"}`}
                     >
-                      <p className="text-sm font-medium text-[#E6EDF3]">📡 {tpl.name}</p>
-                      <p className="text-[11px] text-[#484F58] mt-0.5">{tpl.description}</p>
+                      <p className="text-sm font-medium text-foreground">📡 {tpl.name}</p>
+                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">{tpl.description}</p>
                     </button>
                   ))}
                 </div>
@@ -2088,22 +2088,22 @@ export default function WorkflowListPage() {
                 onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && newName.trim()) createMut.mutate(); }}
                 placeholder="Workflow name"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
               />
               <textarea
                 value={newDesc}
                 onChange={e => setNewDesc(e.target.value)}
                 placeholder="Description (optional)"
                 rows={2}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none"
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowCreate(false); setSelectedTemplateId(null); }} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => { setShowCreate(false); setSelectedTemplateId(null); }} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={() => createMut.mutate()}
                 disabled={!newName.trim() || createMut.isPending}
-                className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                className="px-4 py-2 bg-primary hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 {createMut.isPending ? "Creating…" : "Create & Open Builder"}
               </button>
@@ -2115,11 +2115,11 @@ export default function WorkflowListPage() {
       {/* Delete confirm */}
       {deleteId !== null && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setDeleteId(null)}>
-          <div className="bg-[#161B22] border border-red-500/30 rounded-xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="font-semibold text-[#E6EDF3]">Delete Workflow</h2>
-            <p className="text-sm text-[#7D8590]">This will permanently delete the workflow and all its versions, triggers, and run history.</p>
+          <div className="bg-card border border-red-500/30 rounded-xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-foreground">Delete Workflow</h2>
+            <p className="text-sm text-muted-foreground">This will permanently delete the workflow and all its versions, triggers, and run history.</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={() => deleteMut.mutate(deleteId)}
                 disabled={deleteMut.isPending}
@@ -2167,22 +2167,22 @@ export default function WorkflowListPage() {
       {/* ── Rename dialog ── */}
       {renameDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setRenameDialog(null)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-[#E6EDF3]">Rename Workflow</h3>
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-foreground">Rename Workflow</h3>
             <input
               autoFocus
               value={renameDialog.name}
               onChange={e => setRenameDialog(d => d ? { ...d, name: e.target.value } : d)}
               onKeyDown={e => { if (e.key === "Enter" && renameDialog.name.trim()) renameMut.mutate({ id: renameDialog.def.id, name: renameDialog.name.trim() }); if (e.key === "Escape") setRenameDialog(null); }}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
               placeholder="Workflow name"
             />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setRenameDialog(null)} className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => setRenameDialog(null)} className="px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={() => renameDialog.name.trim() && renameMut.mutate({ id: renameDialog.def.id, name: renameDialog.name.trim() })}
                 disabled={!renameDialog.name.trim() || renameMut.isPending}
-                className="px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                className="px-4 py-1.5 bg-primary hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 {renameMut.isPending ? "Saving…" : "Rename"}
               </button>
@@ -2209,18 +2209,18 @@ export default function WorkflowListPage() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={handleClose}>
             <div
-              className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden"
+              className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden"
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="px-4 py-3 border-b border-[#21262D] flex items-center justify-between gap-3">
+              <div className="px-4 py-3 border-b border-accent flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-[#E6EDF3]">Assign Category</h3>
-                  <p className="text-[11px] text-[#7D8590] truncate">{categoryDialog.def.name}</p>
+                  <h3 className="text-sm font-semibold text-foreground">Assign Category</h3>
+                  <p className="text-[11px] text-muted-foreground truncate">{categoryDialog.def.name}</p>
                 </div>
                 <button
                   onClick={handleClose}
-                  className="p-1 rounded hover:bg-[#21262D] text-[#484F58] hover:text-[#7D8590] transition-colors flex-shrink-0"
+                  className="p-1 rounded hover:bg-accent text-muted-foreground/60 hover:text-muted-foreground transition-colors flex-shrink-0"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2231,7 +2231,7 @@ export default function WorkflowListPage() {
               {/* Category list */}
               <div className="max-h-64 overflow-y-auto py-1">
                 {allCategories.length === 0 ? (
-                  <p className="text-[11px] text-[#484F58] text-center py-6">No categories yet — add one below</p>
+                  <p className="text-[11px] text-muted-foreground/60 text-center py-6">No categories yet — add one below</p>
                 ) : (
                   allCategories.map(cat => {
                     const isSelected = cat === currentCat;
@@ -2245,17 +2245,17 @@ export default function WorkflowListPage() {
                         disabled={patchCategoryMut.isPending}
                         className={`flex items-center gap-3 w-full px-4 py-2.5 text-left transition-colors disabled:opacity-60 ${
                           isSelected
-                            ? "bg-[#0078D4]/10 text-[#58A6FF]"
-                            : "text-[#C9D1D9] hover:bg-[#1C2128]"
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground/90 hover:bg-accent"
                         }`}
                       >
-                        <span className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? "text-[#0078D4]" : "text-transparent"}`}>
+                        <span className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? "text-primary" : "text-transparent"}`}>
                           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                           </svg>
                         </span>
                         <span className="flex-1 text-sm font-medium">{cat}</span>
-                        <span className="text-[11px] text-[#484F58] tabular-nums">{count}</span>
+                        <span className="text-[11px] text-muted-foreground/60 tabular-nums">{count}</span>
                       </button>
                     );
                   })
@@ -2263,7 +2263,7 @@ export default function WorkflowListPage() {
               </div>
 
               {/* Divider + Add New */}
-              <div className="border-t border-[#21262D]">
+              <div className="border-t border-accent">
                 {categoryDialog.adding ? (
                   <div className="flex items-center gap-2 p-3">
                     <input
@@ -2275,18 +2275,18 @@ export default function WorkflowListPage() {
                         if (e.key === "Escape") setCategoryDialog(d => d ? { ...d, adding: false, newName: "" } : d);
                       }}
                       placeholder="Category name…"
-                      className="flex-1 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-md px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors"
+                      className="flex-1 bg-background border border-border focus:border-primary/60 rounded-md px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none transition-colors"
                     />
                     <button
                       onClick={handleAddNew}
                       disabled={!categoryDialog.newName.trim() || patchCategoryMut.isPending}
-                      className="px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-md transition-colors flex-shrink-0"
+                      className="px-3 py-1.5 bg-primary hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-md transition-colors flex-shrink-0"
                     >
                       {patchCategoryMut.isPending ? "…" : "Add"}
                     </button>
                     <button
                       onClick={() => setCategoryDialog(d => d ? { ...d, adding: false, newName: "" } : d)}
-                      className="p-1.5 text-[#484F58] hover:text-[#7D8590] transition-colors flex-shrink-0"
+                      className="p-1.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors flex-shrink-0"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2296,7 +2296,7 @@ export default function WorkflowListPage() {
                 ) : (
                   <button
                     onClick={() => setCategoryDialog(d => d ? { ...d, adding: true } : d)}
-                    className="flex items-center gap-2 w-full px-4 py-3 text-left text-[#0078D4] hover:bg-[#0078D4]/5 transition-colors"
+                    className="flex items-center gap-2 w-full px-4 py-3 text-left text-primary hover:bg-primary/5 transition-colors"
                   >
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -2313,30 +2313,30 @@ export default function WorkflowListPage() {
       {/* Import Workflow modal */}
       {showWfImport && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xl mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D]">
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Import Workflow</h2>
-              <button onClick={() => setShowWfImport(false)} className="text-[#484F58] hover:text-[#C9D1D9] transition-colors">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-xl mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-sm font-semibold text-foreground">Import Workflow</h2>
+              <button onClick={() => setShowWfImport(false)} className="text-muted-foreground/60 hover:text-foreground/90 transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-xs text-[#7D8590]">Paste a workflow export JSON or load from file. The workflow is imported as a new draft — it will not overwrite any existing workflow.</p>
+              <p className="text-xs text-muted-foreground">Paste a workflow export JSON or load from file. The workflow is imported as a new draft — it will not overwrite any existing workflow.</p>
               <div className="space-y-1">
-                <label className="text-[10px] font-medium text-[#484F58] uppercase tracking-wider">Name (optional override)</label>
+                <label className="text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">Name (optional override)</label>
                 <input
                   value={wfImportName}
                   onChange={e => setWfImportName(e.target.value)}
                   placeholder="Leave blank to use the name from the file"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground/90 placeholder-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
                 />
               </div>
               <div>
                 <button
                   onClick={() => wfFileRef.current?.click()}
-                  className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                  className="text-xs px-3 py-1.5 rounded border border-border bg-accent text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
                 >
                   Load from file…
                 </button>
@@ -2346,17 +2346,17 @@ export default function WorkflowListPage() {
                 onChange={e => setWfImportJson(e.target.value)}
                 placeholder='{"version":1,"workflow":{...}}'
                 rows={10}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] font-mono focus:outline-none focus:border-[#0078D4] transition-colors resize-none"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground/90 placeholder-muted-foreground/60 font-mono focus:outline-none focus:border-primary transition-colors resize-none"
               />
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#30363D]">
-              <button onClick={() => setShowWfImport(false)} className="px-4 py-2 text-xs rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+              <button onClick={() => setShowWfImport(false)} className="px-4 py-2 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
                 Cancel
               </button>
               <button
                 onClick={() => void handleImportWorkflow()}
                 disabled={!wfImportJson.trim() || wfImporting}
-                className="px-4 py-2 text-xs rounded-lg bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-xs rounded-lg bg-primary text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {wfImporting ? "Importing…" : "Import Workflow"}
               </button>

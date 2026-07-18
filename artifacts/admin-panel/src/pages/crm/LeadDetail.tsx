@@ -101,11 +101,11 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
   contacted: "bg-yellow-500/15 text-yellow-400",
   qualified: "bg-purple-500/15 text-purple-400",
   converted: "bg-green-500/15 text-green-400",
-  archived: "bg-[#30363D]/50 text-[#7D8590]",
+  archived: "bg-border/50 text-muted-foreground",
 };
 
 const SOURCE_COLORS: Record<LeadSource, string> = {
-  contact_form: "bg-[#0078D4]/10 text-[#0078D4]",
+  contact_form: "bg-primary/10 text-primary",
   lead_magnet: "bg-teal-500/15 text-teal-400",
   ai_recommended: "bg-violet-500/15 text-violet-400",
 };
@@ -170,10 +170,10 @@ function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
   const color = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-yellow-400" : "bg-red-400";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-[#1C2128] rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-accent rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs font-semibold text-[#E6EDF3] w-6 text-right">{score}</span>
+      <span className="text-xs font-semibold text-foreground w-6 text-right">{score}</span>
     </div>
   );
 }
@@ -195,9 +195,9 @@ function CategoryChip({ label, score, max = 10 }: { label: string; score: number
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-        <h2 className="text-sm font-bold text-[#E6EDF3]">{title}</h2>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-border bg-accent">
+        <h2 className="text-sm font-bold text-foreground">{title}</h2>
       </div>
       <div className="px-5 py-5">{children}</div>
     </div>
@@ -208,7 +208,7 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{label}</p>
-      <div className="text-sm text-[#E6EDF3]">{children}</div>
+      <div className="text-sm text-foreground">{children}</div>
     </div>
   );
 }
@@ -224,17 +224,17 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
   );
 
   return (
-    <div className="bg-[#1C2128] border border-border rounded-xl p-4 space-y-4">
+    <div className="bg-accent border border-border rounded-xl p-4 space-y-4">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="space-y-1.5">
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
             {QUIZ_TYPE_LABELS[quiz.quizType] ?? quiz.quizType}
           </span>
           <div className="flex items-center gap-2 flex-wrap mt-1.5">
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${TIER_COLORS[quiz.tier] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${TIER_COLORS[quiz.tier] ?? "bg-border/50 text-muted-foreground"}`}>
               {quiz.tier}
             </span>
-            <span className="text-sm font-bold text-[#E6EDF3]">{quiz.totalScore} <span className="text-xs font-normal text-muted-foreground">/ {totalMax}</span></span>
+            <span className="text-sm font-bold text-foreground">{quiz.totalScore} <span className="text-xs font-normal text-muted-foreground">/ {totalMax}</span></span>
           </div>
         </div>
         <p className="text-xs text-muted-foreground flex-shrink-0">{new Date(quiz.createdAt).toLocaleDateString()}</p>
@@ -243,7 +243,7 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
       {quiz.recommendedService && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Recommended</p>
-          <p className="text-xs text-[#E6EDF3] font-medium">{quiz.recommendedService}</p>
+          <p className="text-xs text-foreground font-medium">{quiz.recommendedService}</p>
         </div>
       )}
 
@@ -266,7 +266,7 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
         <div>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1.5 text-xs text-[#0078D4] font-semibold hover:underline"
+            className="flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -276,21 +276,21 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
           {expanded && quiz.analysisText && (
             <div className="mt-3 space-y-3">
               {quiz.analysisText.whatThisMeans && (
-                <div className="bg-[#161B22] rounded-lg p-3">
-                  <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wider mb-1">What This Means</p>
-                  <p className="text-xs text-[#E6EDF3] leading-relaxed">{quiz.analysisText.whatThisMeans}</p>
+                <div className="bg-card rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">What This Means</p>
+                  <p className="text-xs text-foreground leading-relaxed">{quiz.analysisText.whatThisMeans}</p>
                 </div>
               )}
               {quiz.analysisText.whyThisFits && (
-                <div className="bg-[#161B22] rounded-lg p-3">
-                  <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wider mb-1">Why This Fits</p>
-                  <p className="text-xs text-[#E6EDF3] leading-relaxed">{quiz.analysisText.whyThisFits}</p>
+                <div className="bg-card rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Why This Fits</p>
+                  <p className="text-xs text-foreground leading-relaxed">{quiz.analysisText.whyThisFits}</p>
                 </div>
               )}
               {quiz.analysisText.roiProjection && (
-                <div className="bg-[#161B22] rounded-lg p-3">
-                  <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wider mb-1">ROI Projection</p>
-                  <p className="text-xs text-[#E6EDF3] leading-relaxed">{quiz.analysisText.roiProjection}</p>
+                <div className="bg-card rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">ROI Projection</p>
+                  <p className="text-xs text-foreground leading-relaxed">{quiz.analysisText.roiProjection}</p>
                 </div>
               )}
             </div>
@@ -303,7 +303,7 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
 
 function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-[#1C2128] px-4 py-8 text-center">
+    <div className="rounded-lg border border-dashed border-border bg-accent px-4 py-8 text-center">
       <div className="w-10 h-10 mx-auto text-muted-foreground/30 mb-2">{icon}</div>
       <p className="text-sm font-medium text-muted-foreground">{title}</p>
       <p className="text-xs text-muted-foreground/60 mt-0.5">{subtitle}</p>
@@ -314,7 +314,7 @@ function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: s
 const STAGE_COLORS: Record<string, string> = {
   Hot:  "bg-purple-500/20 text-purple-300 border-purple-500/30",
   Warm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  Cold: "bg-[#21262D] text-[#7D8590] border-[#30363D]",
+  Cold: "bg-accent text-muted-foreground border-border",
   Junk: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
@@ -322,7 +322,7 @@ const STATUS_BADGE: Record<string, string> = {
   approved: "bg-green-500/20 text-green-300",
   rejected: "bg-red-500/20 text-red-300",
   snoozed: "bg-yellow-500/20 text-yellow-300",
-  pending: "bg-[#30363D] text-[#7D8590]",
+  pending: "bg-border text-muted-foreground",
 };
 
 function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
@@ -361,22 +361,22 @@ function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
           <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#0078D4" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#0078D4" stopOpacity={0} />
+                <stop offset="5%" stopColor="#2F6FED" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#2F6FED" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
-            <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#232A36" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: "#8B94A3", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 100]} tick={{ fill: "#8B94A3", fontSize: 10 }} axisLine={false} tickLine={false} />
             <RechartsTooltip
-              contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 8, fontSize: 12 }}
+              contentStyle={{ background: "#171C26", border: "1px solid #232A36", borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: "#E6EDF3", fontWeight: 700 }}
-              itemStyle={{ color: "#0078D4" }}
+              itemStyle={{ color: "#2F6FED" }}
               formatter={(value: number) => [`${value}/100`, "Score"]}
             />
             <ReferenceLine y={60} stroke="#3B82F6" strokeDasharray="4 2" label={{ value: "Warm", fill: "#3B82F6", fontSize: 9, position: "right" }} />
             <ReferenceLine y={75} stroke="#A855F7" strokeDasharray="4 2" label={{ value: "Hot", fill: "#A855F7", fontSize: 9, position: "right" }} />
-            <Area type="monotone" dataKey="score" stroke="#0078D4" strokeWidth={2} fill="url(#scoreGrad)" dot={{ fill: "#0078D4", r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            <Area type="monotone" dataKey="score" stroke="#2F6FED" strokeWidth={2} fill="url(#scoreGrad)" dot={{ fill: "#2F6FED", r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -394,18 +394,18 @@ function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
               <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${
                 q.stage === "Hot"  ? "bg-purple-500 border-purple-400" :
                 q.stage === "Warm" ? "bg-blue-500 border-blue-400" :
-                "bg-[#0078D4] border-[#005A9E]"
+                "bg-primary border-[#005A9E]"
               }`} />
-              <div className="bg-[#1C2128] border border-border rounded-lg px-3.5 py-2.5 space-y-1.5">
+              <div className="bg-accent border border-border rounded-lg px-3.5 py-2.5 space-y-1.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-[#E6EDF3]">{q.previousScore} → {q.newScore}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
+                    <span className="text-sm font-bold text-foreground">{q.previousScore} → {q.newScore}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
                     {delta !== 0 && (
                       <span className={`text-xs font-semibold ${delta > 0 ? "text-green-400" : "text-red-400"}`}>
                         {delta > 0 ? `+${delta}` : delta}
                       </span>
                     )}
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${STAGE_COLORS[q.stage] ?? "bg-[#30363D] text-[#7D8590] border-border"}`}>
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${STAGE_COLORS[q.stage] ?? "bg-border text-muted-foreground border-border"}`}>
                       {q.stage}
                     </span>
                     <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${STATUS_BADGE[q.status] ?? STATUS_BADGE.pending}`}>
@@ -427,21 +427,21 @@ function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
                     ["Urgency", q.scoreUrgency],
                   ] as [string, number][]).map(([label, val]) => (
                     <span key={label} className="text-[10px] text-muted-foreground">
-                      {label} <span className="text-[#E6EDF3] font-semibold">{val}</span>
+                      {label} <span className="text-foreground font-semibold">{val}</span>
                     </span>
                   ))}
                 </div>
 
                 {q.recommendedNextStep && (
                   <p className="text-xs text-muted-foreground leading-snug">
-                    <span className="text-[#0078D4] font-semibold">Next: </span>{q.recommendedNextStep}
+                    <span className="text-primary font-semibold">Next: </span>{q.recommendedNextStep}
                   </p>
                 )}
 
                 {Array.isArray(q.evidence) && q.evidence.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-0.5">
                     {q.evidence.map((e, ei) => (
-                      <span key={ei} className="text-[10px] bg-[#161B22] border border-border rounded px-1.5 py-0.5 text-muted-foreground">{e}</span>
+                      <span key={ei} className="text-[10px] bg-card border border-border rounded px-1.5 py-0.5 text-muted-foreground">{e}</span>
                     ))}
                   </div>
                 )}
@@ -500,8 +500,8 @@ function TagInput({
                 onClick={() => toggle(opt)}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium flex items-center gap-1 ${
                   isSelected
-                    ? "bg-[#0078D4]/20 border-[#0078D4]/60 text-[#0078D4]"
-                    : "bg-[#1C2128] border-border text-muted-foreground hover:border-[#0078D4]/40 hover:text-[#E6EDF3]"
+                    ? "bg-primary/20 border-primary/60 text-primary"
+                    : "bg-accent border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
                 }`}
               >
                 {opt}
@@ -514,10 +514,10 @@ function TagInput({
               </button>
               {reason && isSelected && (
                 <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover/tag:opacity-100 transition-opacity duration-150">
-                  <div className="bg-[#0D1117] border border-[#30363D] text-[#E6EDF3] text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap max-w-[220px] text-center">
+                  <div className="bg-background border border-border text-foreground text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap max-w-[220px] text-center">
                     {reason}
                   </div>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-[#30363D]" />
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-border" />
                 </div>
               )}
             </div>
@@ -760,7 +760,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -769,7 +769,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Lead not found.</p>
-        <button onClick={() => navigate("/crm/leads")} className="mt-4 text-sm text-[#0078D4] hover:underline">
+        <button onClick={() => navigate("/crm/leads")} className="mt-4 text-sm text-primary hover:underline">
           ← Back to Leads
         </button>
       </div>
@@ -784,11 +784,11 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   return (
     <div className="p-4 sm:p-6 max-w-[900px] space-y-6">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 pt-5 pb-4 bg-[#0D1117] border-b border-border">
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 pt-5 pb-4 bg-background border-b border-border">
         <div className="flex items-start gap-4 flex-wrap">
           <button
             onClick={() => navigate("/crm/leads")}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#E6EDF3] transition-colors mt-0.5"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mt-0.5"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -798,7 +798,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-lg font-bold text-[#E6EDF3] truncate">{lead.name}</h1>
+              <h1 className="text-lg font-bold text-foreground truncate">{lead.name}</h1>
               {lead.company && <span className="text-sm text-muted-foreground truncate">{lead.company}</span>}
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
                 {lead.status}
@@ -809,7 +809,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             <a
               href={`mailto:${lead.email}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#0078D4]/90 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
@@ -832,7 +832,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
             <button
               onClick={() => void copyEmail()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-[#1C2128] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-accent transition-colors"
             >
               {copySuccess ? (
                 <>
@@ -859,7 +859,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 void saveStatus(s);
               }}
               disabled={saving}
-              className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-[#161B22] focus:outline-none focus:ring-2 focus:ring-[#0078D4] text-[#E6EDF3] disabled:opacity-40"
+              className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-card focus:outline-none focus:ring-2 focus:ring-primary text-foreground disabled:opacity-40"
             >
               <option value="new">New</option>
               <option value="contacted">Contacted</option>
@@ -876,7 +876,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <InfoRow label="Name">{lead.name}</InfoRow>
           <InfoRow label="Email">
-            <a href={`mailto:${lead.email}`} className="text-[#0078D4] hover:underline">{lead.email}</a>
+            <a href={`mailto:${lead.email}`} className="text-primary hover:underline">{lead.email}</a>
           </InfoRow>
           {lead.company && (
             <InfoRow label="Company">
@@ -887,7 +887,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           {lead.howFound && <InfoRow label="How They Found Shane">{lead.howFound}</InfoRow>}
           <InfoRow label="Source">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source] ?? "bg-border/50 text-muted-foreground"}`}>
                 {lead.source === "ai_recommended" && (
                   <span className="mr-1">✦</span>
                 )}
@@ -904,7 +904,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       {/* Message */}
       {lead.message && (
         <SectionCard title="Message">
-          <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{lead.message}</p>
+          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{lead.message}</p>
         </SectionCard>
       )}
 
@@ -913,7 +913,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         const parsed = parseAiNote(lead.notes);
         if (!parsed && !lead.notes) return null;
         return (
-          <div className="bg-[#161B22] border border-violet-500/30 rounded-xl overflow-hidden">
+          <div className="bg-card border border-violet-500/30 rounded-xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-violet-500/20 bg-violet-500/10 flex items-center gap-2">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 text-violet-400 flex-shrink-0">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
@@ -932,13 +932,13 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                   {parsed.whyFit && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Why This Lead Fits</p>
-                      <p className="text-sm text-[#E6EDF3] leading-relaxed">{parsed.whyFit}</p>
+                      <p className="text-sm text-foreground leading-relaxed">{parsed.whyFit}</p>
                     </div>
                   )}
                   {parsed.recommendedService && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Service</p>
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
                         {parsed.recommendedService}
                       </span>
                     </div>
@@ -946,7 +946,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 </>
               ) : (
                 lead.notes && (
-                  <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{lead.notes}</p>
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{lead.notes}</p>
                 )
               )}
             </div>
@@ -955,10 +955,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       })()}
 
       {/* Qualification Profile */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between gap-3 flex-wrap">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-sm font-bold text-[#E6EDF3]">Qualification Profile</h2>
+            <h2 className="text-sm font-bold text-foreground">Qualification Profile</h2>
             {lead.score > 0 && (
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
@@ -966,18 +966,18 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                     ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
                     : lead.stage === "Warm"
                       ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                      : "bg-[#30363D] text-[#7D8590] border-border"
+                      : "bg-border text-muted-foreground border-border"
                 }`}>
                   {lead.stage ?? "Cold"}
                 </span>
-                <span className="text-sm font-bold text-[#E6EDF3]">{lead.score}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
+                <span className="text-sm font-bold text-foreground">{lead.score}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
               </div>
             )}
             {quizMatches.length > 0 && (lead.painPoints.length > 0 || lead.maturityIndicators.length > 0 || lead.engagementSignals.length > 0 || lead.urgencySignals.length > 0) && (
               <button
                 type="button"
                 onClick={reimportFromQuiz}
-                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border border-[#0078D4]/40 text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border border-primary/40 text-primary hover:bg-primary/10 transition-colors"
               >
                 {reimportFlash ? (
                   <>
@@ -1007,15 +1007,15 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
             if (entries.length === 0) return null;
             const totalMax = entries.length * 10;
             return (
-              <div className="p-3 bg-[#1C2128] rounded-xl border border-border">
+              <div className="p-3 bg-accent rounded-xl border border-border">
                 <div className="flex items-center gap-2 flex-wrap mb-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     Quiz Scores
                   </p>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                     {QUIZ_TYPE_LABELS[best.quizType] ?? best.quizType}
                   </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TIER_COLORS[best.tier] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TIER_COLORS[best.tier] ?? "bg-border/50 text-muted-foreground"}`}>
                     {best.tier}
                   </span>
                   <span className="text-[10px] text-muted-foreground ml-auto">
@@ -1039,7 +1039,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 value={qualProfile.industry}
                 onChange={e => setQualProfile(p => ({ ...p, industry: e.target.value }))}
                 placeholder="e.g. Technology, Healthcare"
-                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full bg-accent border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
@@ -1050,7 +1050,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 onChange={e => setQualProfile(p => ({ ...p, employeeCount: e.target.value }))}
                 placeholder="e.g. 250"
                 min={1}
-                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full bg-accent border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
@@ -1058,7 +1058,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
               <select
                 value={qualProfile.licenseTier}
                 onChange={e => setQualProfile(p => ({ ...p, licenseTier: e.target.value }))}
-                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full bg-accent border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">Not Known</option>
                 <option value="E5">Microsoft 365 E5</option>
@@ -1078,7 +1078,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 onChange={e => setQualProfile(p => ({ ...p, tenantAge: e.target.value }))}
                 placeholder="e.g. 3"
                 min={0}
-                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full bg-accent border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
@@ -1089,24 +1089,24 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 onChange={e => setQualProfile(p => ({ ...p, itTeamSize: e.target.value }))}
                 placeholder="e.g. 5"
                 min={0}
-                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full bg-accent border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
 
           {/* Auto-fill banner */}
           {autoFillBannerVisible && (
-            <div className="flex items-start gap-3 rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/10 px-4 py-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5">
+            <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-primary flex-shrink-0 mt-0.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <p className="text-xs text-[#E6EDF3] flex-1 leading-relaxed">
-                <span className="font-semibold text-[#0078D4]">Auto-filled from quiz answers</span> — review and save to apply.
+              <p className="text-xs text-foreground flex-1 leading-relaxed">
+                <span className="font-semibold text-primary">Auto-filled from quiz answers</span> — review and save to apply.
               </p>
               <button
                 type="button"
                 onClick={() => setAutoFillBannerVisible(false)}
-                className="flex-shrink-0 text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Dismiss"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
@@ -1152,7 +1152,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
             <button
               onClick={() => void saveQualProfile()}
               disabled={qualSaving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-xs font-bold hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {qualSaving ? (
                 <>
@@ -1185,9 +1185,9 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* Score History */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Score History</h2>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+          <h2 className="text-sm font-bold text-foreground">Score History</h2>
           <span className="text-xs text-muted-foreground">{qualHistory.length} event{qualHistory.length !== 1 ? "s" : ""}</span>
         </div>
         <div className="px-5 py-5">
@@ -1196,9 +1196,9 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* Quiz Submissions */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Quiz Submissions</h2>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+          <h2 className="text-sm font-bold text-foreground">Quiz Submissions</h2>
           <span className="text-xs text-muted-foreground">{quizMatches.length} match{quizMatches.length !== 1 ? "es" : ""}</span>
         </div>
         <div className="px-5 py-5">
@@ -1217,9 +1217,9 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* Outreach Sent */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Outreach Sent</h2>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+          <h2 className="text-sm font-bold text-foreground">Outreach Sent</h2>
           <span className="text-xs text-muted-foreground">{outreachEmails.length} email{outreachEmails.length !== 1 ? "s" : ""}</span>
         </div>
         <div className="px-5 py-5">
@@ -1236,12 +1236,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                   {i < outreachEmails.length - 1 && (
                     <div className="absolute left-3 top-8 bottom-0 w-px bg-border" />
                   )}
-                  <div className="absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-[#00B4D8] bg-[#161B22]" />
+                  <div className="absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-[#00B4D8] bg-card" />
                   <div className="pb-4">
-                    <div className="bg-[#1C2128] border border-border rounded-xl px-4 py-3">
+                    <div className="bg-accent border border-border rounded-xl px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#E6EDF3] truncate">{email.subject ?? "(no subject)"}</p>
+                          <p className="text-sm font-semibold text-foreground truncate">{email.subject ?? "(no subject)"}</p>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">To: {email.recipient ?? "—"}</p>
                         </div>
                         <p className="text-xs text-muted-foreground/70 flex-shrink-0 whitespace-nowrap">
@@ -1258,10 +1258,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* Email History */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Email History</h2>
-          <a href="/admin-panel/email-activity" className="text-xs text-[#0078D4] hover:underline font-medium">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent flex items-center justify-between">
+          <h2 className="text-sm font-bold text-foreground">Email History</h2>
+          <a href="/admin-panel/email-activity" className="text-xs text-primary hover:underline font-medium">
             Open Inbox →
           </a>
         </div>
@@ -1281,13 +1281,13 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                     <div className="absolute left-3 top-8 bottom-0 w-px bg-border" />
                   )}
                   {/* Timeline dot */}
-                  <div className="absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-[#0078D4] bg-[#161B22]" />
+                  <div className="absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-primary bg-card" />
 
                   <div className="pb-4">
-                    <div className="bg-[#1C2128] border border-border rounded-xl px-4 py-3">
+                    <div className="bg-accent border border-border rounded-xl px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#E6EDF3] truncate">{email.subject ?? "(no subject)"}</p>
+                          <p className="text-sm font-semibold text-foreground truncate">{email.subject ?? "(no subject)"}</p>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">{email.rawFrom ?? email.senderAddress}</p>
                           {email.bodyPreview && (
                             <p className="text-xs text-muted-foreground/70 mt-1.5 line-clamp-2">{email.bodyPreview}</p>
@@ -1311,9 +1311,9 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         <div className="space-y-0">
           {/* Created milestone */}
           <div className="relative pl-7 pb-4">
-            <div className="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-[#0078D4]" />
+            <div className="absolute left-1.5 top-1.5 w-3 h-3 rounded-full bg-primary" />
             <div className="absolute left-3 top-5 bottom-0 w-px bg-border" />
-            <p className="text-sm font-medium text-[#E6EDF3]">Lead Submitted</p>
+            <p className="text-sm font-medium text-foreground">Lead Submitted</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {new Date(lead.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
             </p>
@@ -1326,8 +1326,8 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
             return (
               <div key={milestone.status} className={`relative pl-7 ${isLast ? "" : "pb-4"}`}>
                 {!isLast && <div className="absolute left-3 top-5 bottom-0 w-px bg-border" />}
-                <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${reached ? "bg-[#0078D4] border-[#0078D4]" : "bg-[#161B22] border-border"}`} />
-                <p className={`text-sm font-medium ${reached ? "text-[#E6EDF3]" : "text-muted-foreground/50"}`}>
+                <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${reached ? "bg-primary border-primary" : "bg-card border-border"}`} />
+                <p className={`text-sm font-medium ${reached ? "text-foreground" : "text-muted-foreground/50"}`}>
                   {milestone.label}
                 </p>
                 {reached && lead.status === milestone.status && lead.updatedAt !== lead.createdAt && (

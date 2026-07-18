@@ -122,7 +122,7 @@ const RULE_TYPES = [
 function RuleTypePill({ ruleType }: { ruleType: string }) {
   const opt = RULE_TYPES.find(o => o.value === ruleType);
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${opt?.color ?? "bg-[#30363D] text-[#7D8590]"}`}>
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${opt?.color ?? "bg-border text-muted-foreground"}`}>
       {opt?.label ?? ruleType}
     </span>
   );
@@ -132,16 +132,16 @@ function RuleTypePill({ ruleType }: { ruleType: string }) {
 
 function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; onChange: (f: IntelFormFields) => void }) {
   const set = <K extends keyof IntelFormFields>(k: K, v: string) => onChange({ ...value, [k]: v });
-  const cls = "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono w-full";
-  const sel = "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full";
-  const lbl = "block text-[10px] text-[#7D8590] mb-0.5";
+  const cls = "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-full";
+  const sel = "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full";
+  const lbl = "block text-[10px] text-muted-foreground mb-0.5";
   const num = (k: keyof IntelFormFields, label: string) => (
     <div><label className={lbl}>{label}</label><input type="number" value={value[k]} onChange={e => set(k, e.target.value)} className={cls} /></div>
   );
   return (
     <div className="space-y-2.5">
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1">Core</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Core</p>
         <div className="grid grid-cols-3 gap-2">
           <div>
             <label className={lbl}>Category</label>
@@ -165,7 +165,7 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1">Impact</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Impact</p>
         <div className="grid grid-cols-3 gap-2">
           {num("pricingImpact", "Pricing")}
           {num("priorityScoreContribution", "Priority score")}
@@ -179,7 +179,7 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1">Trend</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">Trend</p>
         <div className="grid grid-cols-3 gap-2">
           {num("trendValue", "Trend value")}
           <div>
@@ -194,7 +194,7 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1">CRM</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1">CRM</p>
         <div className="grid grid-cols-3 gap-2">
           {num("crmFitContribution", "Fit")}
           {num("crmPainContribution", "Pain")}
@@ -232,25 +232,25 @@ function RuleRow({
 
   if (isEditing) {
     return (
-      <div className="px-4 py-3 bg-[#1C2128] space-y-2">
+      <div className="px-4 py-3 bg-accent space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <select value={editRuleForm.ruleType} onChange={e => setEditRuleForm(f => ({ ...f, ruleType: e.target.value }))}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs">
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs">
             {RULE_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <input value={editRuleForm.sourceKey} onChange={e => setEditRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono"
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono"
             placeholder="Source key" />
         </div>
         {needsCompare(editRuleForm.ruleType) && (
           <input value={editRuleForm.compareValue} onChange={e => setEditRuleForm(f => ({ ...f, compareValue: e.target.value }))}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono w-32"
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-32"
             placeholder="Value" />
         )}
         <input value={editRuleForm.description} onChange={e => setEditRuleForm(f => ({ ...f, description: e.target.value }))}
-          className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
+          className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full"
           placeholder="Description" />
-        <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-2">
+        <div className="rounded border border-border bg-background/40 p-2">
           <IntelligenceFieldsPanel value={editRuleForm.intel} onChange={intel => setEditRuleForm(f => ({ ...f, intel }))} />
         </div>
         {conflictError && (
@@ -261,10 +261,10 @@ function RuleRow({
         )}
         <div className="flex gap-2">
           <button onClick={onSave} disabled={savingRule}
-            className="px-3 py-1 bg-[#0078D4] text-white text-xs rounded hover:bg-[#0078D4]/90 disabled:opacity-50 flex items-center gap-1">
+            className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1">
             {savingRule ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
           </button>
-          <button onClick={() => setEditingRuleId(null)} className="px-3 py-1 bg-[#161B22] text-[#7D8590] text-xs rounded hover:text-[#E6EDF3]">
+          <button onClick={() => setEditingRuleId(null)} className="px-3 py-1 bg-card text-muted-foreground text-xs rounded hover:text-foreground">
             Cancel
           </button>
         </div>
@@ -275,21 +275,21 @@ function RuleRow({
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 group">
       <RuleTypePill ruleType={rule.ruleType} />
-      <code className="text-xs text-[#C9D1D9] font-mono flex-1 truncate">{rule.sourceKey}</code>
-      {rule.compareValue && <code className="text-xs text-[#7D8590] font-mono">{rule.compareValue}</code>}
-      {rule.description && <p className="text-xs text-[#484F58] truncate max-w-32">{rule.description}</p>}
+      <code className="text-xs text-foreground/90 font-mono flex-1 truncate">{rule.sourceKey}</code>
+      {rule.compareValue && <code className="text-xs text-muted-foreground font-mono">{rule.compareValue}</code>}
+      {rule.description && <p className="text-xs text-muted-foreground/60 truncate max-w-32">{rule.description}</p>}
       {rule.category && (
-        <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full flex-shrink-0">
+        <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full flex-shrink-0">
           {rule.category}
         </span>
       )}
       {isConflict && <span title={conflictText}><AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /></span>}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-        <button onClick={() => onEdit(rule)} className="p-1 text-[#7D8590] hover:text-[#0078D4] transition-colors">
+        <button onClick={() => onEdit(rule)} className="p-1 text-muted-foreground hover:text-primary transition-colors">
           <Pencil className="w-3.5 h-3.5" />
         </button>
         <button onClick={onDelete} disabled={deletingRuleId === rule.id}
-          className="p-1 text-[#7D8590] hover:text-red-500 transition-colors disabled:opacity-50">
+          className="p-1 text-muted-foreground hover:text-red-500 transition-colors disabled:opacity-50">
           {deletingRuleId === rule.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
         </button>
       </div>
@@ -534,20 +534,20 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
     );
   }
 
-  const inputCls = "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40";
+  const inputCls = "w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40";
 
   return (
-    <div className="flex gap-0 min-h-[28rem] border border-[#30363D] rounded-xl overflow-hidden">
+    <div className="flex gap-0 min-h-[28rem] border border-border rounded-xl overflow-hidden">
       {/* ── Left: signal key list ────────────────────────────────────────────── */}
-      <div className="w-52 flex-shrink-0 border-r border-[#30363D] bg-[#0D1117] flex flex-col">
-        <div className="px-3 py-2 border-b border-[#30363D]">
-          <p className="text-[10px] uppercase tracking-wide text-[#484F58] font-semibold">
+      <div className="w-52 flex-shrink-0 border-r border-border bg-background flex flex-col">
+        <div className="px-3 py-2 border-b border-border">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 font-semibold">
             {engineLabel} Signals
           </p>
         </div>
         <div className="flex-1 overflow-y-auto">
           {signalKeys.length === 0 && !showNewSignalInput && (
-            <p className="px-3 py-4 text-xs text-[#484F58] italic">No signals yet — add one below.</p>
+            <p className="px-3 py-4 text-xs text-muted-foreground/60 italic">No signals yet — add one below.</p>
           )}
           {signalKeys.map(key => {
             const shortKey = key.startsWith(`${categoryPrefix}:`) ? key.slice(categoryPrefix.length + 1) : key;
@@ -557,14 +557,14 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
               <button
                 key={key}
                 onClick={() => setSelectedSignal(key)}
-                className={`w-full text-left px-3 py-2.5 border-b border-[#30363D]/50 transition-colors ${
+                className={`w-full text-left px-3 py-2.5 border-b border-border/50 transition-colors ${
                   selectedSignal === key
-                    ? "bg-[#0078D4]/15 text-[#58A6FF]"
-                    : "text-[#8B949E] hover:bg-[#1C2128] hover:text-[#C9D1D9]"
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground/90"
                 }`}
               >
                 <p className="text-xs font-mono truncate leading-tight">{shortKey}</p>
-                <p className="text-[10px] text-[#484F58] mt-0.5">
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5">
                   {groupCount}g · {ruleCount}r
                 </p>
               </button>
@@ -572,14 +572,14 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
           })}
         </div>
         {/* Add new signal key */}
-        <div className="border-t border-[#30363D] p-2">
+        <div className="border-t border-border p-2">
           {showNewSignalInput ? (
             <div className="space-y-1.5">
               <input
                 value={newSignalKey}
                 onChange={e => setNewSignalKey(e.target.value)}
                 placeholder={`${categoryPrefix}:my-signal`}
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/40"
                 onKeyDown={e => {
                   if (e.key === "Enter") {
                     const key = newSignalKey.trim();
@@ -597,13 +597,13 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                     if (key) { setSelectedSignal(key); }
                     setShowNewSignalInput(false);
                   }}
-                  className="flex-1 text-xs bg-[#0078D4] text-white rounded px-2 py-1 hover:bg-[#0078D4]/90"
+                  className="flex-1 text-xs bg-primary text-white rounded px-2 py-1 hover:bg-primary/90"
                 >
                   Use
                 </button>
                 <button
                   onClick={() => { setShowNewSignalInput(false); setNewSignalKey(`${categoryPrefix}:`); }}
-                  className="flex-1 text-xs bg-[#1C2128] text-[#7D8590] rounded px-2 py-1 hover:text-[#C9D1D9]"
+                  className="flex-1 text-xs bg-accent text-muted-foreground rounded px-2 py-1 hover:text-foreground/90"
                 >
                   Cancel
                 </button>
@@ -612,7 +612,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
           ) : (
             <button
               onClick={() => { setNewSignalKey(`${categoryPrefix}:`); setShowNewSignalInput(true); }}
-              className="w-full flex items-center justify-center gap-1.5 text-xs text-[#7D8590] hover:text-[#0078D4] py-1 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-primary py-1 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> New signal key
             </button>
@@ -621,17 +621,17 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
       </div>
 
       {/* ── Right: rules/groups editor ───────────────────────────────────────── */}
-      <div className="flex-1 bg-[#0D1117] overflow-y-auto">
+      <div className="flex-1 bg-background overflow-y-auto">
         {!selectedSignal ? (
-          <div className="flex items-center justify-center h-full text-sm text-[#484F58] italic">
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground/60 italic">
             Select a signal key on the left to edit its rules
           </div>
         ) : (
           <div className="p-4 space-y-4">
             {/* Signal key header */}
             <div className="flex items-center gap-2">
-              <code className="text-sm font-semibold text-[#58A6FF] font-mono">{selectedSignal}</code>
-              <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full">
+              <code className="text-sm font-semibold text-primary font-mono">{selectedSignal}</code>
+              <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full">
                 {selectedGroups.length} group{selectedGroups.length !== 1 ? "s" : ""} · {selectedRules.length} rule{selectedRules.length !== 1 ? "s" : ""}
               </span>
             </div>
@@ -640,8 +640,8 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
             {selectedGroups.map(group => {
               const groupRules = selectedRules.filter(r => r.groupId === group.id);
               return (
-                <div key={group.id} className="border border-[#30363D] rounded-xl overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-[#1C2128] border-b border-[#30363D]">
+                <div key={group.id} className="border border-border rounded-xl overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-accent border-b border-border">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => void handleToggleGroupLogic(group)}
@@ -654,9 +654,9 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                       >
                         {group.logic}
                       </button>
-                      <span className="text-sm font-semibold text-[#C9D1D9]">{group.label ?? `Group ${group.id}`}</span>
+                      <span className="text-sm font-semibold text-foreground/90">{group.label ?? `Group ${group.id}`}</span>
                       {group.category && (
-                        <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full">
                           {group.category}
                         </span>
                       )}
@@ -673,14 +673,14 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                           setEditingGroupId(group.id);
                           setEditGroupForm({ label: group.label ?? "", logic: group.logic, intel: intelFromRow(group) });
                         }}
-                        className="text-[#7D8590] hover:text-[#0078D4] transition-colors"
+                        className="text-muted-foreground hover:text-primary transition-colors"
                         title="Edit group"
                       >
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => void handleDeleteGroup(group.id)}
-                        className="text-[#484F58] hover:text-red-500 transition-colors"
+                        className="text-muted-foreground/60 hover:text-red-500 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -688,41 +688,41 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                   </div>
 
                   {editingGroupId === group.id && (
-                    <div className="px-4 py-3 bg-[#161B22] border-b border-[#30363D] space-y-2">
+                    <div className="px-4 py-3 bg-card border-b border-border space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-[#7D8590] mb-0.5">Label</label>
+                          <label className="block text-[10px] text-muted-foreground mb-0.5">Label</label>
                           <input value={editGroupForm.label}
                             onChange={e => setEditGroupForm(f => ({ ...f, label: e.target.value }))}
                             placeholder="Label (optional)" className={inputCls} />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-[#7D8590] mb-0.5">Logic</label>
+                          <label className="block text-[10px] text-muted-foreground mb-0.5">Logic</label>
                           <select value={editGroupForm.logic}
                             onChange={e => setEditGroupForm(f => ({ ...f, logic: e.target.value as "AND" | "OR" }))}
-                            className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm">
+                            className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm">
                             <option value="OR">OR</option>
                             <option value="AND">AND</option>
                           </select>
                         </div>
                       </div>
-                      <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-2">
+                      <div className="rounded border border-border bg-background/40 p-2">
                         <IntelligenceFieldsPanel value={editGroupForm.intel} onChange={intel => setEditGroupForm(f => ({ ...f, intel }))} />
                       </div>
                       <div className="flex gap-2 pt-1">
                         <button onClick={() => void handleSaveEditGroup(group.id)} disabled={savingGroupEdit}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50">
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50">
                           {savingGroupEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
                         </button>
                         <button onClick={() => setEditingGroupId(null)}
-                          className="px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs rounded-lg hover:bg-[#30363D]">
+                          className="px-3 py-1.5 bg-accent text-foreground/90 text-xs rounded-lg hover:bg-border">
                           Cancel
                         </button>
                       </div>
                     </div>
                   )}
 
-                  <div className="divide-y divide-[#30363D]/50">
+                  <div className="divide-y divide-border/50">
                     {groupRules.map(rule => (
                       <RuleRow key={rule.id} rule={rule} conflicts={conflicts}
                         editingRuleId={editingRuleId} editRuleForm={editRuleForm}
@@ -735,7 +735,7 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                       />
                     ))}
                     {groupRules.length === 0 && (
-                      <p className="px-4 py-3 text-xs text-[#484F58] italic">
+                      <p className="px-4 py-3 text-xs text-muted-foreground/60 italic">
                         No rules in this group yet — add rules below and assign them to this group.
                       </p>
                     )}
@@ -747,10 +747,10 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
             {/* Ungrouped rules */}
             {selectedRules.filter(r => r.groupId == null).length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   Ungrouped Rules
                 </p>
-                <div className="border border-[#30363D] rounded-xl divide-y divide-[#30363D]/50 overflow-hidden">
+                <div className="border border-border rounded-xl divide-y divide-border/50 overflow-hidden">
                   {selectedRules.filter(r => r.groupId == null).map(rule => (
                     <RuleRow key={rule.id} rule={rule} conflicts={conflicts}
                       editingRuleId={editingRuleId} editRuleForm={editRuleForm}
@@ -767,24 +767,24 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
             )}
 
             {selectedRules.length === 0 && selectedGroups.length === 0 && (
-              <p className="text-sm text-[#7D8590] italic py-2">
+              <p className="text-sm text-muted-foreground italic py-2">
                 No rules or groups for this signal yet. Use the forms below to add some.
               </p>
             )}
 
             {/* ── Add Rule form ──────────────────────────────────────────────── */}
-            <div className="border border-dashed border-[#30363D] rounded-xl p-4 space-y-3 bg-[#0D1117]">
-              <p className="text-xs font-bold text-[#C9D1D9] uppercase tracking-wide">Add Rule</p>
+            <div className="border border-dashed border-border rounded-xl p-4 space-y-3 bg-background">
+              <p className="text-xs font-bold text-foreground/90 uppercase tracking-wide">Add Rule</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-[#7D8590] mb-1">Rule Type</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Rule Type</label>
                   <select value={addRuleForm.ruleType} onChange={e => setAddRuleForm(f => ({ ...f, ruleType: e.target.value }))}
-                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40">
+                    className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
                     {RULE_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-[#7D8590] mb-1">
+                  <label className="block text-xs text-muted-foreground mb-1">
                     {addRuleForm.ruleType === "findings_keyword" ? "Keyword" : "Profile Key"}
                   </label>
                   <input value={addRuleForm.sourceKey} onChange={e => setAddRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
@@ -794,15 +794,15 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
               <div className="grid grid-cols-2 gap-3">
                 {needsCompare(addRuleForm.ruleType) && (
                   <div>
-                    <label className="block text-xs text-[#7D8590] mb-1">Compare Value</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Compare Value</label>
                     <input value={addRuleForm.compareValue} onChange={e => setAddRuleForm(f => ({ ...f, compareValue: e.target.value }))}
                       placeholder="e.g. 60" className={inputCls} />
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs text-[#7D8590] mb-1">Group (optional)</label>
+                  <label className="block text-xs text-muted-foreground mb-1">Group (optional)</label>
                   <select value={addRuleForm.groupId} onChange={e => setAddRuleForm(f => ({ ...f, groupId: e.target.value }))}
-                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40">
+                    className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
                     <option value="">— Ungrouped —</option>
                     {selectedGroups.map(g => (
                       <option key={g.id} value={g.id}>{g.label ?? `Group ${g.id}`} ({g.logic})</option>
@@ -811,16 +811,16 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-[#7D8590] mb-1">Description (optional)</label>
+                <label className="block text-xs text-muted-foreground mb-1">Description (optional)</label>
                 <input value={addRuleForm.description} onChange={e => setAddRuleForm(f => ({ ...f, description: e.target.value }))}
                   placeholder="Why does this rule matter?" className={inputCls} />
               </div>
               <button onClick={() => setShowAddRuleIntel(v => !v)}
-                className="text-xs text-[#7D8590] hover:text-[#C9D1D9] transition-colors">
+                className="text-xs text-muted-foreground hover:text-foreground/90 transition-colors">
                 {showAddRuleIntel ? "▲ Hide intelligence fields" : "▼ Show intelligence fields"}
               </button>
               {showAddRuleIntel && (
-                <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-3">
+                <div className="rounded border border-border bg-background/40 p-3">
                   <IntelligenceFieldsPanel value={addRuleForm.intel} onChange={intel => setAddRuleForm(f => ({ ...f, intel }))} />
                 </div>
               )}
@@ -832,33 +832,33 @@ export default function EngineRuleEditor({ engineKey, categoryPrefix, engineLabe
               )}
               <div className="flex items-center gap-3 pt-1">
                 <button onClick={() => void handleAddRule()} disabled={savingRule || !addRuleForm.sourceKey.trim()}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   {savingRule ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add Rule
                 </button>
 
                 {/* Add Group inline */}
                 <div className="flex items-center gap-2 ml-auto">
-                  <span className="text-xs text-[#7D8590]">Add Group:</span>
+                  <span className="text-xs text-muted-foreground">Add Group:</span>
                   <select value={addGroupForm.logic} onChange={e => setAddGroupForm(f => ({ ...f, logic: e.target.value as "AND" | "OR" }))}
-                    className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none">
+                    className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none">
                     <option value="OR">OR</option>
                     <option value="AND">AND</option>
                   </select>
                   <input value={addGroupForm.label} onChange={e => setAddGroupForm(f => ({ ...f, label: e.target.value }))}
                     placeholder="Label (optional)"
-                    className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none w-36" />
+                    className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none w-36" />
                   <button onClick={() => setShowAddGroupIntel(v => !v)}
-                    className="px-2 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:bg-[#30363D] transition-colors">
+                    className="px-2 py-1 bg-accent text-muted-foreground text-xs rounded hover:bg-border transition-colors">
                     {showAddGroupIntel ? "Hide" : "More"}
                   </button>
                   <button onClick={() => void handleAddGroup()} disabled={savingGroup}
-                    className="px-2 py-1 bg-[#1C2128] text-[#C9D1D9] text-xs rounded hover:bg-[#30363D] transition-colors disabled:opacity-50">
+                    className="px-2 py-1 bg-accent text-foreground/90 text-xs rounded hover:bg-border transition-colors disabled:opacity-50">
                     {savingGroup ? <Loader2 className="w-3 h-3 animate-spin" /> : "+"}
                   </button>
                 </div>
               </div>
               {showAddGroupIntel && (
-                <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-3 mt-1">
+                <div className="rounded border border-border bg-background/40 p-3 mt-1">
                   <IntelligenceFieldsPanel value={addGroupForm.intel} onChange={intel => setAddGroupForm(f => ({ ...f, intel }))} />
                 </div>
               )}

@@ -43,10 +43,10 @@ import { EditorView } from "@codemirror/view";
 // Defined locally rather than imported from the canvas — components import
 // useModal from this file, so importing back from them would be a cycle.
 const editorSurfaceTheme = EditorView.theme({
-  "&": { backgroundColor: "#0D1117" },
-  ".cm-gutters": { backgroundColor: "#0D1117", borderRight: "1px solid #21262D" },
-  ".cm-activeLine": { backgroundColor: "#161B2280" },
-  ".cm-activeLineGutter": { backgroundColor: "#161B2280" },
+  "&": { backgroundColor: "#0A0D12" },
+  ".cm-gutters": { backgroundColor: "#0A0D12", borderRight: "1px solid #171C26" },
+  ".cm-activeLine": { backgroundColor: "#11151C80" },
+  ".cm-activeLineGutter": { backgroundColor: "#11151C80" },
 });
 
 export type ModalType = "execute-scenario" | "edit-script" | "new-script" | "engine-trace" | null;
@@ -134,7 +134,7 @@ function EngineTraceModal() {
               {data.trace.map((step: any, i: number) => (
                 <div key={i} className="text-foreground">
                   <div className="flex items-center gap-2">
-                    <span className="text-[#58A6FF] font-bold text-xs">{step.ruleId}:</span>
+                    <span className="text-primary font-bold text-xs">{step.ruleId}:</span>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${
                       step.outcome === "FIRED"
                         ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/25"
@@ -232,7 +232,7 @@ function ExecuteScenarioModal() {
       case "billing": return <CreditCard className="w-5 h-5 text-destructive animate-pulse" />;
       case "security": return <Shield className="w-5 h-5 text-emerald-400 animate-pulse" />;
       case "sla": return <Clock className="w-5 h-5 text-amber-400 animate-pulse" />;
-      default: return <RefreshCw className="w-5 h-5 text-[#58A6FF] animate-pulse" />;
+      default: return <RefreshCw className="w-5 h-5 text-primary animate-pulse" />;
     }
   };
 
@@ -264,7 +264,7 @@ function ExecuteScenarioModal() {
           <p className="text-xs text-foreground/90 leading-relaxed">{event?.description}</p>
         </div>
         {event?.demoSpeakerNote && (
-          <div className="bg-[#58A6FF]/10 border border-[#58A6FF]/30 rounded-lg p-3 text-[11px] text-[#58A6FF] flex gap-2">
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 text-[11px] text-primary flex gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold uppercase tracking-wider block text-[9px] mb-0.5">Speaker Note (Demo Walkthrough)</span>
@@ -413,7 +413,7 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
       <DialogHeader>
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-card border border-border">
-            <TerminalIcon className="w-5 h-5 text-[#58A6FF]" />
+            <TerminalIcon className="w-5 h-5 text-primary" />
           </div>
           <div>
             <DialogTitle className="text-lg font-semibold text-foreground">
@@ -455,7 +455,7 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
 
       <div className="space-y-1.5">
         <Label className="text-xs font-semibold text-muted-foreground">SQL Query</Label>
-        <div className="border border-border rounded-lg overflow-hidden bg-[#0D1117] text-[11px] leading-relaxed">
+        <div className="border border-border rounded-lg overflow-hidden bg-background text-[11px] leading-relaxed">
           <CodeMirror
             value={query}
             height="180px"

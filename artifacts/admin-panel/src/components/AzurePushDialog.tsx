@@ -18,7 +18,7 @@ export const AZURE_PUSH_STEPS = [
 function StepIcon({ status }: { status: AzureStepStatus }) {
   if (status === "running") {
     return (
-      <div className="w-4 h-4 border-2 border-[#0078D4]/40 border-t-[#58A6FF] rounded-full animate-spin flex-shrink-0" />
+      <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin flex-shrink-0" />
     );
   }
   if (status === "done") {
@@ -35,7 +35,7 @@ function StepIcon({ status }: { status: AzureStepStatus }) {
       </svg>
     );
   }
-  return <div className="w-4 h-4 rounded-full border-2 border-[#30363D] flex-shrink-0" />;
+  return <div className="w-4 h-4 rounded-full border-2 border-border flex-shrink-0" />;
 }
 
 export function AzurePushDialog({
@@ -54,16 +54,16 @@ export function AzurePushDialog({
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Content
-          className="fixed left-[50%] top-[50%] z-50 w-full max-w-sm translate-x-[-50%] translate-y-[-50%] rounded-lg border border-[#30363D] bg-[#161B22] shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
+          className="fixed left-[50%] top-[50%] z-50 w-full max-w-sm translate-x-[-50%] translate-y-[-50%] rounded-lg border border-border bg-card shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]"
           onInteractOutside={e => { if (!isDismissible) e.preventDefault(); }}
           onEscapeKeyDown={e => { if (!isDismissible) e.preventDefault(); else onClose(); }}
         >
           <div className="px-6 pt-6 pb-5">
             <div className="flex items-center gap-2 mb-5">
-              <svg className="w-4 h-4 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Push to Azure Automation</h2>
+              <h2 className="text-sm font-semibold text-foreground">Push to Azure Automation</h2>
             </div>
 
             <ol className="space-y-3">
@@ -73,10 +73,10 @@ export function AzurePushDialog({
                   <li key={label} className="flex items-center gap-3">
                     <StepIcon status={status} />
                     <span className={`text-sm ${
-                      status === "running" ? "text-[#E6EDF3]" :
+                      status === "running" ? "text-foreground" :
                       status === "done" ? "text-green-400" :
                       status === "error" ? "text-red-400" :
-                      "text-[#484F58]"
+                      "text-muted-foreground/60"
                     }`}>
                       {label}
                     </span>
@@ -94,7 +94,7 @@ export function AzurePushDialog({
             {isDismissible && (
               <button
                 onClick={onClose}
-                className="mt-5 w-full py-2 rounded text-sm font-medium bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="mt-5 w-full py-2 rounded text-sm font-medium bg-accent border border-border text-foreground hover:bg-border transition-colors"
               >
                 Close
               </button>

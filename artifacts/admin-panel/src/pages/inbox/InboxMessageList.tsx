@@ -78,7 +78,7 @@ function MessageRow({
     <button
       onClick={onSelect}
       className={`w-full text-left px-3 py-2.5 flex gap-2.5 transition-colors ${
-        active ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : "hover:bg-[#1C2128]/60 border-l-2 border-transparent"
+        active ? "bg-primary/10 border-l-2 border-primary" : "hover:bg-accent/60 border-l-2 border-transparent"
       }`}
     >
       <div className={`w-8 h-8 rounded-full ${color} flex items-center justify-center text-white text-[10px] font-bold shrink-0 mt-0.5`}>
@@ -86,7 +86,7 @@ function MessageRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1.5">
-          <span className={`text-xs truncate ${!msg.isRead ? "font-semibold text-[#E6EDF3]" : "text-[#C9D1D9]"}`}>
+          <span className={`text-xs truncate ${!msg.isRead ? "font-semibold text-foreground" : "text-foreground/90"}`}>
             {senderName}
           </span>
           <div className="flex items-center gap-1 shrink-0">
@@ -99,22 +99,22 @@ function MessageRow({
               </svg>
             )}
             {msg.hasAttachments && (
-              <svg className="w-3 h-3 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
             )}
-            <span className="text-[10px] text-[#7D8590]">{ts ? timeAgo(ts) : ""}</span>
+            <span className="text-[10px] text-muted-foreground">{ts ? timeAgo(ts) : ""}</span>
           </div>
         </div>
-        <p className={`text-xs truncate mt-0.5 ${!msg.isRead ? "font-medium text-[#C9D1D9]" : "text-[#7D8590]"}`}>
+        <p className={`text-xs truncate mt-0.5 ${!msg.isRead ? "font-medium text-foreground/90" : "text-muted-foreground"}`}>
           {msg.subject ?? "(no subject)"}
         </p>
-        <p className="text-[11px] text-[#7D8590] truncate mt-0.5 leading-tight">
+        <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-tight">
           {msg.bodyPreview ?? ""}
         </p>
         {!msg.isRead && (
           <div className="mt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] inline-block" />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
           </div>
         )}
       </div>
@@ -283,25 +283,25 @@ export default function InboxMessageList({ searchResults }: { searchResults?: In
   if (!graphAvailable && !searchResults) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 px-6 text-center">
-        <div className="w-12 h-12 rounded-xl bg-[#161B22] flex items-center justify-center">
-          <svg className="w-6 h-6 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-12 h-12 rounded-xl bg-card flex items-center justify-center">
+          <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
           </svg>
         </div>
         <div>
-          <p className="text-sm font-medium text-[#C9D1D9]">Microsoft Graph not configured</p>
-          <p className="text-xs text-[#7D8590] mt-1">Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_MAIL_USER_ID to connect your mailbox.</p>
+          <p className="text-sm font-medium text-foreground/90">Microsoft Graph not configured</p>
+          <p className="text-xs text-muted-foreground mt-1">Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_MAIL_USER_ID to connect your mailbox.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#161B22]">
+    <div className="flex flex-col h-full bg-card">
       {/* CRM view header */}
       {isCrmView && (
-        <div className="px-3 py-2 bg-[#0D1117] border-b border-[#30363D] shrink-0">
-          <p className="text-[10px] font-semibold text-[#7D8590] uppercase">
+        <div className="px-3 py-2 bg-background border-b border-border shrink-0">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase">
             {crmType === "leads" ? "Emails linked to Leads" : crmType === "prospects" ? "Emails linked to Opportunities" : "Emails linked to Customers"}
           </p>
         </div>
@@ -309,18 +309,18 @@ export default function InboxMessageList({ searchResults }: { searchResults?: In
 
       {loading ? (
         <div className="flex justify-center items-center h-32">
-          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : error ? (
         <div className="p-4 text-sm text-red-400">{error}</div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
-          <div className="w-10 h-10 bg-[#1C2128] rounded-xl flex items-center justify-center">
-            <svg className="w-5 h-5 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
+            <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
             </svg>
           </div>
-          <p className="text-xs text-[#7D8590]">
+          <p className="text-xs text-muted-foreground">
             {searchResults !== undefined
               ? "No messages match your search."
               : isCrmView
@@ -331,7 +331,7 @@ export default function InboxMessageList({ searchResults }: { searchResults?: In
           </p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto divide-y divide-[#30363D]">
+        <div className="flex-1 overflow-y-auto divide-y divide-border">
           {filtered.map(msg => (
             <MessageRow
               key={msg.id}
@@ -344,7 +344,7 @@ export default function InboxMessageList({ searchResults }: { searchResults?: In
           <div ref={loaderRef} className="h-4" />
           {loadingMore && (
             <div className="flex justify-center py-3">
-              <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
         </div>

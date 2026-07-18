@@ -216,8 +216,8 @@ function StringListEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">{label}</span>
-        <button type="button" onClick={addItem} className="text-[9px] font-semibold text-[#0078D4] hover:underline">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
+        <button type="button" onClick={addItem} className="text-[9px] font-semibold text-primary hover:underline">
           + Add
         </button>
       </div>
@@ -226,13 +226,13 @@ function StringListEditor({
           <div key={i} className="flex items-center gap-1">
             <div className="flex flex-col gap-0.5 flex-shrink-0">
               <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
-                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
+                className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
                 </svg>
               </button>
               <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
-                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
+                className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -242,16 +242,16 @@ function StringListEditor({
               value={item}
               placeholder={placeholder ?? "Enter item…"}
               onChange={e => updateItem(i, e.target.value)}
-              className="flex-1 border border-[#30363D] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <button type="button" onClick={() => removeItem(i)} className="flex-shrink-0 p-1 text-[#484F58] hover:text-red-400">
+            <button type="button" onClick={() => removeItem(i)} className="flex-shrink-0 p-1 text-muted-foreground/60 hover:text-red-400">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         ))}
-        {items.length === 0 && <p className="text-[10px] text-[#7D8590] italic">No items yet.</p>}
+        {items.length === 0 && <p className="text-[10px] text-muted-foreground italic">No items yet.</p>}
       </div>
     </div>
   );
@@ -283,8 +283,8 @@ function ChecklistEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Checklist</span>
-        <button type="button" onClick={addItem} className="text-[9px] font-semibold text-[#0078D4] hover:underline">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Checklist</span>
+        <button type="button" onClick={addItem} className="text-[9px] font-semibold text-primary hover:underline">
           + Add item
         </button>
       </div>
@@ -293,33 +293,33 @@ function ChecklistEditor({
           <div key={item.id} className="flex items-center gap-1">
             <div className="flex flex-col gap-0.5 flex-shrink-0">
               <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
-                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
+                className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
                 </svg>
               </button>
               <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
-                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
+                className="p-0.5 text-muted-foreground/60 hover:text-muted-foreground disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
             </div>
-            <span className="flex-shrink-0 w-3.5 h-3.5 rounded border border-[#30363D] bg-[#161B22]" />
+            <span className="flex-shrink-0 w-3.5 h-3.5 rounded border border-border bg-card" />
             <input
               value={item.label}
               placeholder="Checklist item…"
               onChange={e => updateLabel(item.id, e.target.value)}
-              className="flex-1 border border-[#30363D] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <button type="button" onClick={() => removeItem(item.id)} className="flex-shrink-0 p-1 text-[#484F58] hover:text-red-400">
+            <button type="button" onClick={() => removeItem(item.id)} className="flex-shrink-0 p-1 text-muted-foreground/60 hover:text-red-400">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         ))}
-        {items.length === 0 && <p className="text-[10px] text-[#7D8590] italic">No checklist items yet.</p>}
+        {items.length === 0 && <p className="text-[10px] text-muted-foreground italic">No checklist items yet.</p>}
       </div>
     </div>
   );
@@ -389,7 +389,7 @@ function SortableStepCard({
         ref={setNodeRef}
         style={style}
         className={`flex flex-col gap-2 px-3 py-2.5 rounded-lg border shadow-sm ${
-          isSelected ? "bg-[#0078D4]/10 border-[#0078D4]" : "bg-[#161B22] border-[#0078D4]"
+          isSelected ? "bg-primary/10 border-primary" : "bg-card border-primary"
         }`}
       >
         <input
@@ -400,19 +400,19 @@ function SortableStepCard({
             if (e.key === "Enter") { e.stopPropagation(); commitEdit(); }
             if (e.key === "Escape") { e.stopPropagation(); cancelEdit(); }
           }}
-          className="w-full border border-[#0078D4] rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+          className="w-full border border-primary rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <div className="flex items-center gap-2">
           <button
             onClick={e => { e.stopPropagation(); commitEdit(); }}
             disabled={!editVal.trim()}
-            className="text-xs bg-[#0078D4] text-white px-3 py-1 rounded font-medium hover:bg-[#006CBE] disabled:opacity-50"
+            className="text-xs bg-primary text-white px-3 py-1 rounded font-medium hover:bg-[#006CBE] disabled:opacity-50"
           >
             Save
           </button>
           <button
             onClick={cancelEdit}
-            className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-2 py-1"
+            className="text-xs text-muted-foreground hover:text-foreground/90 px-2 py-1"
           >
             Cancel
           </button>
@@ -427,8 +427,8 @@ function SortableStepCard({
       style={style}
       className={`group flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
         isSelected
-          ? "bg-[#0078D4]/10 border-[#0078D4] shadow-sm"
-          : "bg-[#161B22] border-[#30363D] hover:border-[#484F58] hover:bg-[#1C2128]"
+          ? "bg-primary/10 border-primary shadow-sm"
+          : "bg-card border-border hover:border-muted-foreground/60 hover:bg-accent"
       }`}
       onClick={onSelect}
     >
@@ -438,7 +438,7 @@ function SortableStepCard({
         <button
           {...attributes}
           {...listeners}
-          className="flex-shrink-0 p-0.5 text-[#484F58] hover:text-[#7D8590] cursor-grab active:cursor-grabbing"
+          className="flex-shrink-0 p-0.5 text-muted-foreground/60 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
           onClick={e => e.stopPropagation()}
           title="Drag to reorder"
         >
@@ -451,16 +451,16 @@ function SortableStepCard({
 
         {/* Step number badge */}
         <div className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
-          isSelected ? "bg-[#0078D4] text-white" : "bg-[#30363D]/60 text-[#7D8590]"
+          isSelected ? "bg-primary text-white" : "bg-border/60 text-muted-foreground"
         }`}>
           {idx + 1}
         </div>
 
         {/* Title + task count pill */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
-          <span className="text-sm font-medium text-[#E6EDF3] truncate leading-snug">{step.title}</span>
+          <span className="text-sm font-medium text-foreground truncate leading-snug">{step.title}</span>
           {taskCount > 0 && (
-            <span className="flex-shrink-0 text-[10px] text-[#7D8590] bg-[#1C2128] border border-[#30363D] rounded-full px-1.5 py-0.5 leading-none">
+            <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-accent border border-border rounded-full px-1.5 py-0.5 leading-none">
               {taskCount}
             </span>
           )}
@@ -478,7 +478,7 @@ function SortableStepCard({
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={startEdit}
-            className="p-1 text-[#484F58] hover:text-[#0078D4] rounded"
+            className="p-1 text-muted-foreground/60 hover:text-primary rounded"
             title="Rename step"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -488,7 +488,7 @@ function SortableStepCard({
           <button
             onClick={e => { e.stopPropagation(); onGenerateScripts(); }}
             disabled={taskCount === 0}
-            className="p-1 text-[#484F58] hover:text-[#00B4D8] disabled:opacity-20 rounded"
+            className="p-1 text-muted-foreground/60 hover:text-[#00B4D8] disabled:opacity-20 rounded"
             title={taskCount === 0 ? "No tasks to generate scripts for" : "Generate PowerShell scripts for this step's tasks"}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -497,7 +497,7 @@ function SortableStepCard({
           </button>
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="p-1 text-[#484F58] hover:text-red-500 rounded"
+            className="p-1 text-muted-foreground/60 hover:text-red-500 rounded"
             title="Delete step"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -687,15 +687,15 @@ function GenerateStepScriptsDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={state.phase === "running" ? undefined : handleClose} />
-      <div className="relative bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
+      <div className="relative bg-card border border-border rounded-xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h3 className="font-semibold text-[#E6EDF3] text-sm">Generate Scripts</h3>
-            <p className="text-xs text-[#7D8590] mt-0.5 truncate max-w-[380px]">{step.title}</p>
+            <h3 className="font-semibold text-foreground text-sm">Generate Scripts</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[380px]">{step.title}</p>
           </div>
           {state.phase !== "running" && (
-            <button onClick={handleClose} className="p-1.5 text-[#7D8590] hover:text-[#C9D1D9] rounded">
+            <button onClick={handleClose} className="p-1.5 text-muted-foreground hover:text-foreground/90 rounded">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -708,20 +708,20 @@ function GenerateStepScriptsDialog({
           {state.phase === "confirm" && (
             <>
               {packageExists === null ? (
-                <div className="flex items-center justify-center py-6 text-[#7D8590] text-xs gap-2">
-                  <div className="w-4 h-4 border-2 border-[#7D8590] border-t-transparent rounded-full animate-spin" />
+                <div className="flex items-center justify-center py-6 text-muted-foreground text-xs gap-2">
+                  <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
                   Checking for existing package…
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-[#C9D1D9]">
-                    AI will classify each task in <span className="font-semibold text-[#E6EDF3]">"{step.title}"</span>,
+                  <p className="text-sm text-foreground/90">
+                    AI will classify each task in <span className="font-semibold text-foreground">"{step.title}"</span>,
                     skip human-only tasks, and generate a PowerShell script for each automatable task.
                     Results are saved as a Script Package named{" "}
                     <span className="font-semibold text-[#00B4D8]">"{step.title} Scripts"</span>.
                   </p>
-                  <div className="text-xs text-[#7D8590] bg-[#1C2128] rounded-lg px-3 py-2">
-                    <span className="font-semibold text-[#E6EDF3]">{step.tasks?.length ?? 0}</span> task
+                  <div className="text-xs text-muted-foreground bg-accent rounded-lg px-3 py-2">
+                    <span className="font-semibold text-foreground">{step.tasks?.length ?? 0}</span> task
                     {(step.tasks?.length ?? 0) !== 1 ? "s" : ""} will be classified
                     {packageExists && (
                       <span className="ml-2 text-amber-400">· A package named "{step.title} Scripts" already exists</span>
@@ -729,7 +729,7 @@ function GenerateStepScriptsDialog({
                   </div>
                   {packageExists && (
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
                         Since the package already exists:
                       </p>
                       <div className="space-y-1.5">
@@ -741,13 +741,13 @@ function GenerateStepScriptsDialog({
                               value={m}
                               checked={state.mode === m}
                               onChange={() => setState(s => ({ ...s, mode: m }))}
-                              className="mt-0.5 accent-[#0078D4]"
+                              className="mt-0.5 accent-primary"
                             />
-                            <span className="text-sm text-[#C9D1D9]">
+                            <span className="text-sm text-foreground/90">
                               {m === "replace" ? (
-                                <><span className="font-semibold text-[#E6EDF3]">Replace</span> — delete existing scripts and write fresh ones</>
+                                <><span className="font-semibold text-foreground">Replace</span> — delete existing scripts and write fresh ones</>
                               ) : (
-                                <><span className="font-semibold text-[#E6EDF3]">Append</span> — add new scripts to the existing package</>
+                                <><span className="font-semibold text-foreground">Append</span> — add new scripts to the existing package</>
                               )}
                             </span>
                           </label>
@@ -765,23 +765,23 @@ function GenerateStepScriptsDialog({
               {/* Current task */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#7D8590]">
+                  <span className="text-muted-foreground">
                     {state.currentStatus === "classifying"
                       ? "Classifying…"
                       : state.currentStatus === "generating"
                       ? "Generating script…"
                       : "Processing…"}
                   </span>
-                  <span className="text-[#7D8590]">{state.current}/{state.total}</span>
+                  <span className="text-muted-foreground">{state.current}/{state.total}</span>
                 </div>
-                <div className="w-full bg-[#30363D] rounded-full h-1.5">
+                <div className="w-full bg-border rounded-full h-1.5">
                   <div
                     className="h-1.5 rounded-full bg-[#00B4D8] transition-all duration-500"
                     style={{ width: state.total > 0 ? `${(state.current / state.total) * 100}%` : "0%" }}
                   />
                 </div>
                 {state.currentTaskTitle && (
-                  <p className="text-xs text-[#C9D1D9] truncate">{state.currentTaskTitle}</p>
+                  <p className="text-xs text-foreground/90 truncate">{state.currentTaskTitle}</p>
                 )}
               </div>
 
@@ -791,7 +791,7 @@ function GenerateStepScriptsDialog({
                   {state.log.map((entry, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs py-0.5">
                       {entry.skipped ? (
-                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[#7D8590]">—</span>
+                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-muted-foreground">—</span>
                       ) : entry.saved ? (
                         <svg className="w-4 h-4 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -801,10 +801,10 @@ function GenerateStepScriptsDialog({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       )}
-                      <span className={`truncate ${entry.skipped ? "text-[#484F58]" : entry.saved ? "text-[#C9D1D9]" : "text-red-400"}`}>
+                      <span className={`truncate ${entry.skipped ? "text-muted-foreground/60" : entry.saved ? "text-foreground/90" : "text-red-400"}`}>
                         {entry.taskTitle}
                       </span>
-                      <span className="flex-shrink-0 text-[9px] text-[#7D8590]">
+                      <span className="flex-shrink-0 text-[9px] text-muted-foreground">
                         {entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
                       </span>
                     </div>
@@ -823,31 +823,31 @@ function GenerateStepScriptsDialog({
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#E6EDF3]">Scripts generated</p>
-                  <p className="text-xs text-[#7D8590] mt-0.5">Saved to "{state.summary.packageTitle}"</p>
+                  <p className="text-sm font-semibold text-foreground">Scripts generated</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Saved to "{state.summary.packageTitle}"</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2 text-center">
                   <p className="text-lg font-bold text-green-400">{state.summary.generated}</p>
-                  <p className="text-[10px] text-[#7D8590] mt-0.5">Generated</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Generated</p>
                 </div>
-                <div className="bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2 text-center">
-                  <p className="text-lg font-bold text-[#7D8590]">{state.summary.skipped}</p>
-                  <p className="text-[10px] text-[#7D8590] mt-0.5">Skipped</p>
+                <div className="bg-accent border border-border rounded-lg px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-muted-foreground">{state.summary.skipped}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Skipped</p>
                 </div>
-                <div className={`rounded-lg px-3 py-2 text-center border ${state.summary.failed > 0 ? "bg-red-500/10 border-red-500/20" : "bg-[#1C2128] border-[#30363D]"}`}>
-                  <p className={`text-lg font-bold ${state.summary.failed > 0 ? "text-red-400" : "text-[#7D8590]"}`}>{state.summary.failed}</p>
-                  <p className="text-[10px] text-[#7D8590] mt-0.5">Failed</p>
+                <div className={`rounded-lg px-3 py-2 text-center border ${state.summary.failed > 0 ? "bg-red-500/10 border-red-500/20" : "bg-accent border-border"}`}>
+                  <p className={`text-lg font-bold ${state.summary.failed > 0 ? "text-red-400" : "text-muted-foreground"}`}>{state.summary.failed}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Failed</p>
                 </div>
               </div>
               {/* Log */}
               {state.log.length > 0 && (
-                <div ref={logRef} className="space-y-1 max-h-36 overflow-y-auto bg-[#1C2128] rounded-lg p-2">
+                <div ref={logRef} className="space-y-1 max-h-36 overflow-y-auto bg-accent rounded-lg p-2">
                   {state.log.map((entry, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs py-0.5">
                       {entry.skipped ? (
-                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[#7D8590]">—</span>
+                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-muted-foreground">—</span>
                       ) : entry.saved ? (
                         <svg className="w-4 h-4 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -857,10 +857,10 @@ function GenerateStepScriptsDialog({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       )}
-                      <span className={`truncate ${entry.skipped ? "text-[#484F58]" : entry.saved ? "text-[#C9D1D9]" : "text-red-400"}`}>
+                      <span className={`truncate ${entry.skipped ? "text-muted-foreground/60" : entry.saved ? "text-foreground/90" : "text-red-400"}`}>
                         {entry.taskTitle}
                       </span>
-                      <span className="flex-shrink-0 text-[9px] text-[#7D8590]">
+                      <span className="flex-shrink-0 text-[9px] text-muted-foreground">
                         {entry.classification === "USER_ACCOUNT_REQUIRED" ? "UI+script" : entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
                       </span>
                     </div>
@@ -894,10 +894,10 @@ function GenerateStepScriptsDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#30363D] flex-shrink-0">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border flex-shrink-0">
           {state.phase === "confirm" && (
             <>
-              <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128]">
+              <button onClick={handleClose} className="text-xs text-muted-foreground hover:text-foreground/90 px-3 py-1.5 rounded hover:bg-accent">
                 Cancel
               </button>
               <button
@@ -913,12 +913,12 @@ function GenerateStepScriptsDialog({
             </>
           )}
           {state.phase === "running" && (
-            <p className="text-xs text-[#7D8590] italic">Generating… please wait</p>
+            <p className="text-xs text-muted-foreground italic">Generating… please wait</p>
           )}
           {(state.phase === "done" || state.phase === "error") && (
             <button
               onClick={handleClose}
-              className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors"
+              className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors"
             >
               Done
             </button>
@@ -962,24 +962,24 @@ function RunbookCombobox({
   return (
     <div ref={containerRef} className="relative">
       <div
-        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#0D1117]"
+        className="w-full border border-border rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary bg-background"
         onClick={() => setOpen(o => !o)}
         tabIndex={0}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setOpen(o => !o); }}
       >
-        <span className={selected ? "text-[#E6EDF3]" : "text-[#484F58]"}>
+        <span className={selected ? "text-foreground" : "text-muted-foreground/60"}>
           {selected ? selected.title : "None"}
         </span>
-        <svg className="w-3.5 h-3.5 text-[#7D8590] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </div>
       {open && (
-        <div className="absolute z-50 mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl overflow-hidden">
-          <div className="p-2 border-b border-[#21262D]">
+        <div className="absolute z-50 mt-1 w-full bg-card border border-border rounded-lg shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-accent">
             <input
               autoFocus
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="w-full bg-background border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Search runbooks…"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -988,7 +988,7 @@ function RunbookCombobox({
           </div>
           <ul className="max-h-48 overflow-y-auto py-1">
             <li
-              className="px-3 py-1.5 text-xs text-[#7D8590] hover:bg-[#1C2128] cursor-pointer"
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent cursor-pointer"
               onClick={() => { onChange(null); setOpen(false); setQuery(""); }}
             >
               None
@@ -996,15 +996,15 @@ function RunbookCombobox({
             {filtered.map(s => (
               <li
                 key={s.id}
-                className={`px-3 py-1.5 text-xs cursor-pointer flex items-center gap-2 ${s.id === value ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                className={`px-3 py-1.5 text-xs cursor-pointer flex items-center gap-2 ${s.id === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent"}`}
                 onClick={() => { onChange(s.id); setOpen(false); setQuery(""); }}
               >
-                {s.id === value && <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />}
+                {s.id === value && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
                 {s.title}
               </li>
             ))}
             {filtered.length === 0 && (
-              <li className="px-3 py-2 text-xs text-[#484F58]">No matching runbooks</li>
+              <li className="px-3 py-2 text-xs text-muted-foreground/60">No matching runbooks</li>
             )}
           </ul>
         </div>
@@ -1068,7 +1068,7 @@ function SortableTaskRow({
     script:               { bg: "bg-orange-500/15", text: "text-orange-400" },
     manualScript:         { bg: "bg-amber-500/15",  text: "text-amber-400" },
   };
-  const typeStyle = task.taskType ? (taskTypeMeta[task.taskType] ?? { bg: "bg-[#30363D]", text: "text-[#7D8590]" }) : null;
+  const typeStyle = task.taskType ? (taskTypeMeta[task.taskType] ?? { bg: "bg-border", text: "text-muted-foreground" }) : null;
 
   // Asset chip helpers
   const instrName  = task.instructionSetId  ? (instructionSets.find(a => a.id === task.instructionSetId)?.title  ?? `#${task.instructionSetId}`)  : null;
@@ -1080,7 +1080,7 @@ function SortableTaskRow({
 
   const chipBase = "flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border leading-none";
   const linkedChip = `${chipBase} bg-teal-500/10 text-teal-400 border-teal-500/25`;
-  const missingChip = `${chipBase} bg-transparent text-[#484F58] border-[#30363D] border-dashed`;
+  const missingChip = `${chipBase} bg-transparent text-muted-foreground/60 border-border border-dashed`;
 
   return (
     <div
@@ -1089,7 +1089,7 @@ function SortableTaskRow({
       className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
         isMissingAssets
           ? "bg-amber-500/5 border-amber-500/20 hover:border-amber-400/40 hover:bg-amber-500/10"
-          : "bg-[#161B22] border-[#30363D] hover:border-[#0078D4]/50 hover:bg-[#0078D4]/5"
+          : "bg-card border-border hover:border-primary/50 hover:bg-primary/5"
       }`}
       onClick={() => onEdit(task)}
     >
@@ -1097,7 +1097,7 @@ function SortableTaskRow({
       <button
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 p-0.5 mt-0.5 text-[#484F58] hover:text-[#7D8590] cursor-grab active:cursor-grabbing"
+        className="flex-shrink-0 p-0.5 mt-0.5 text-muted-foreground/60 hover:text-muted-foreground cursor-grab active:cursor-grabbing"
         onClick={e => e.stopPropagation()}
         title="Drag to reorder"
       >
@@ -1111,7 +1111,7 @@ function SortableTaskRow({
       <div className="flex-1 min-w-0 space-y-1.5">
         {/* Line 1: title + type badge + missing flag */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm font-semibold text-[#E6EDF3] leading-snug">{task.title}</span>
+          <span className="text-sm font-semibold text-foreground leading-snug">{task.title}</span>
           {typeStyle && (
             <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded leading-none ${typeStyle.bg} ${typeStyle.text}`}>
               {TASK_TYPE_LABELS[task.taskType!] ?? task.taskType}
@@ -1136,7 +1136,7 @@ function SortableTaskRow({
         <div className="flex items-center gap-1 flex-wrap">
           {/* Runbook */}
           {rbName ? (
-            <span className={`${chipBase} bg-[#0078D4]/15 text-[#0078D4] border-[#0078D4]/25`} title={`Runbook: ${rbName}`}>
+            <span className={`${chipBase} bg-primary/15 text-primary border-primary/25`} title={`Runbook: ${rbName}`}>
               ▶ {rbName.length > 18 ? rbName.slice(0, 18) + "…" : rbName}
             </span>
           ) : null}
@@ -1179,7 +1179,7 @@ function SortableTaskRow({
             onGenerateScript(task).finally(() => setIsGenerating(false));
           }}
           disabled={isGenerating}
-          className="p-1.5 text-[#7D8590] hover:text-violet-400 rounded hover:bg-violet-500/10 disabled:opacity-50 disabled:cursor-wait"
+          className="p-1.5 text-muted-foreground hover:text-violet-400 rounded hover:bg-violet-500/10 disabled:opacity-50 disabled:cursor-wait"
           title={task.runbookId ? "Regenerate PowerShell script" : "Generate PowerShell script for this task"}
         >
           {isGenerating ? (
@@ -1192,7 +1192,7 @@ function SortableTaskRow({
         </button>
         <button
           onClick={() => onEdit(task)}
-          className="p-1.5 text-[#7D8590] hover:text-[#0078D4] rounded hover:bg-[#0078D4]/10"
+          className="p-1.5 text-muted-foreground hover:text-primary rounded hover:bg-primary/10"
           title="Edit task"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1201,7 +1201,7 @@ function SortableTaskRow({
         </button>
         <button
           onClick={() => onDelete(task)}
-          className="p-1.5 text-[#7D8590] hover:text-red-500 rounded hover:bg-red-500/10"
+          className="p-1.5 text-muted-foreground hover:text-red-500 rounded hover:bg-red-500/10"
           title="Delete task"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1284,16 +1284,16 @@ function TaskDrawer({
 
       {/* Drawer panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-[#161B22] shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-[480px] bg-card shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
-          <h3 className="font-semibold text-[#E6EDF3] text-base">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <h3 className="font-semibold text-foreground text-base">
             {isNew ? "Add Task" : "Edit Task"}
           </h3>
-          <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#7D8590] rounded">
+          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-muted-foreground rounded">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -1301,15 +1301,15 @@ function TaskDrawer({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-[#30363D] px-5 flex-shrink-0">
+        <div className="flex border-b border-border px-5 flex-shrink-0">
           {(["basic", "assets", "inline"] as DrawerTab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-3 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
                 tab === t
-                  ? "border-[#0078D4] text-[#0078D4]"
-                  : "border-transparent text-[#7D8590] hover:text-[#C9D1D9]"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground/90"
               }`}
             >
               {t === "basic" ? "Basic" : t === "assets" ? "Asset Library" : "Inline Detail"}
@@ -1322,30 +1322,30 @@ function TaskDrawer({
           {tab === "basic" && (
             <>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Title *</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Title *</label>
                 <input
                   autoFocus
                   type="text"
                   value={form.title}
                   placeholder="Task title"
                   onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Group</label>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Group</label>
                   <select
                     value={form.groupName}
                     onChange={e => setForm(p => ({ ...p, groupName: e.target.value }))}
-                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">No group</option>
                     {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Type</label>
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Type</label>
                   <select
                     value={form.taskType}
                     onChange={e => {
@@ -1361,7 +1361,7 @@ function TaskDrawer({
                           : null,
                       }));
                     }}
-                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="">No type</option>
                     {TASK_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1370,18 +1370,18 @@ function TaskDrawer({
               </div>
 
               {form.taskType === "document_generation" && (
-                <div className="rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-4 space-y-3">
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-4 space-y-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wide">Document Generation Config</p>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide">Document Generation Config</p>
                   </div>
-                  <p className="text-[10px] text-[#7D8590] leading-relaxed -mt-1">
+                  <p className="text-[10px] text-muted-foreground leading-relaxed -mt-1">
                     When this card becomes active, the AI automatically generates and delivers the selected document to the client portal.
                   </p>
                   <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Category</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Category</label>
                     <div className="flex gap-2">
                       {(["report", "consulting"] as const).map(cat => (
                         <button
@@ -1400,8 +1400,8 @@ function TaskDrawer({
                           }}
                           className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
                             form.documentGeneration?.category === cat
-                              ? "bg-[#0078D4] border-[#0078D4] text-white"
-                              : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+                              ? "bg-primary border-primary text-white"
+                              : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"
                           }`}
                         >
                           {cat === "report" ? "Report" : "Consulting"}
@@ -1410,7 +1410,7 @@ function TaskDrawer({
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Document Type</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Document Type</label>
                     <select
                       value={form.documentGeneration?.docType ?? ""}
                       onChange={e => {
@@ -1423,7 +1423,7 @@ function TaskDrawer({
                             : { category: "report", docType, title: label },
                         }));
                       }}
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary"
                     >
                       {(form.documentGeneration?.category === "consulting" ? CONSULTING_DOC_TYPES : REPORT_DOC_TYPES).map(o => (
                         <option key={o.value} value={o.value}>{o.label}</option>
@@ -1431,7 +1431,7 @@ function TaskDrawer({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Document Title</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Document Title</label>
                     <input
                       type="text"
                       value={form.documentGeneration?.title ?? ""}
@@ -1442,9 +1442,9 @@ function TaskDrawer({
                           : { category: "report", docType: "executive_summary", title: e.target.value },
                       }))}
                       placeholder="e.g. Q1 Executive Summary"
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary"
                     />
-                    <p className="text-[10px] text-[#7D8590] mt-1">Auto-filled from document type — edit to customize.</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Auto-filled from document type — edit to customize.</p>
                   </div>
                 </div>
               )}
@@ -1457,13 +1457,13 @@ function TaskDrawer({
                     </svg>
                     <p className="text-xs font-bold text-[#7C3AED] uppercase tracking-wide">Run Workflow Config</p>
                   </div>
-                  <p className="text-[10px] text-[#7D8590] leading-relaxed -mt-1">
+                  <p className="text-[10px] text-muted-foreground leading-relaxed -mt-1">
                     When this card becomes active, the selected sub-workflow runs automatically with the client and project injected as context.
                   </p>
                   <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Workflow</label>
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Workflow</label>
                     {wfDefinitionsLoading ? (
-                      <p className="text-xs text-[#7D8590]">Loading workflows…</p>
+                      <p className="text-xs text-muted-foreground">Loading workflows…</p>
                     ) : (
                       <select
                         value={form.runWorkflow?.workflowId ?? 0}
@@ -1476,7 +1476,7 @@ function TaskDrawer({
                               : { workflowId: wid, inputMapping: [] },
                           }));
                         }}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED]"
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-[#7C3AED]"
                       >
                         <option value={0}>— select a workflow —</option>
                         {wfDefinitions.map(def => (
@@ -1487,7 +1487,7 @@ function TaskDrawer({
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-[#7D8590] uppercase tracking-wide">
+                      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Input Mapping <span className="font-normal normal-case">(optional)</span>
                       </label>
                       <button
@@ -1502,7 +1502,7 @@ function TaskDrawer({
                       >+ Add row</button>
                     </div>
                     {(form.runWorkflow?.inputMapping ?? []).length === 0 ? (
-                      <p className="text-[10px] text-[#484F58] italic">No input mappings — clientUserId and projectId are passed automatically.</p>
+                      <p className="text-[10px] text-muted-foreground/60 italic">No input mappings — clientUserId and projectId are passed automatically.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {(form.runWorkflow?.inputMapping ?? []).map((row, idx) => (
@@ -1520,9 +1520,9 @@ function TaskDrawer({
                                   return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
                                 });
                               }}
-                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED] min-w-0"
+                              className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-[#7C3AED] min-w-0"
                             />
-                            <span className="text-[#484F58] text-xs flex-shrink-0">=</span>
+                            <span className="text-muted-foreground/60 text-xs flex-shrink-0">=</span>
                             <input
                               type="text"
                               value={row.expr}
@@ -1536,7 +1536,7 @@ function TaskDrawer({
                                   return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
                                 });
                               }}
-                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED] min-w-0"
+                              className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-[#7C3AED] min-w-0"
                             />
                             <button
                               type="button"
@@ -1545,7 +1545,7 @@ function TaskDrawer({
                                 const mapping = p.runWorkflow.inputMapping.filter((_, i) => i !== idx);
                                 return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
                               })}
-                              className="text-[#484F58] hover:text-red-400 flex-shrink-0"
+                              className="text-muted-foreground/60 hover:text-red-400 flex-shrink-0"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1560,24 +1560,24 @@ function TaskDrawer({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Description</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Description</label>
                 <textarea
                   value={form.description}
                   placeholder="Optional description…"
                   rows={4}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                  className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 />
               </div>
               <div className={`flex items-start gap-3 rounded-lg border px-3 py-3 cursor-pointer select-none transition-colors ${
                 form.isCustomerTask
                   ? "bg-amber-500/10 border-amber-500/30"
-                  : "bg-[#0D1117] border-[#30363D] hover:border-[#484F58]"
+                  : "bg-background border-border hover:border-muted-foreground/60"
               }`}
                 onClick={() => setForm(p => ({ ...p, isCustomerTask: !p.isCustomerTask }))}
               >
                 <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  form.isCustomerTask ? "bg-amber-500 border-amber-500" : "border-[#484F58]"
+                  form.isCustomerTask ? "bg-amber-500 border-amber-500" : "border-muted-foreground/60"
                 }`}>
                   {form.isCustomerTask && (
                     <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1586,36 +1586,36 @@ function TaskDrawer({
                   )}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-[#E6EDF3]">Customer Task</p>
-                  <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">
+                  <p className="text-xs font-semibold text-foreground">Customer Task</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                     When added to the Kanban board, this task will land in the <span className="font-semibold text-amber-400">"Waiting For You"</span> bucket on the customer's board instead of Backlog.
                   </p>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Linked Runbook</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Linked Runbook</label>
                 <RunbookCombobox
                   value={form.runbookId ?? null}
                   onChange={id => setForm(p => ({ ...p, runbookId: id, triggersHealthScore: id ? p.triggersHealthScore : false }))}
                   scripts={publishedScripts}
                 />
-                <p className="text-[10px] text-[#7D8590] mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   When set, a "Run Script" button will appear on this task's kanban card and modal.
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Customer Download Script</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Customer Download Script</label>
                 <select
                   value={form.customerDownloadScriptId ?? ""}
                   onChange={e => setForm(p => ({ ...p, customerDownloadScriptId: e.target.value || null }))}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary"
                 >
                   <option value="">None</option>
                   {allPsScripts.map(s => (
                     <option key={s.id} value={s.id}>{s.title}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-[#7D8590] mt-1">
+                <p className="text-[10px] text-muted-foreground mt-1">
                   When set, a download button will appear on this task's kanban card so the client can retrieve and run the script manually.
                 </p>
               </div>
@@ -1623,10 +1623,10 @@ function TaskDrawer({
                 title={!form.runbookId ? "Link a runbook first" : undefined}
                 className={`flex items-start gap-3 rounded-lg border px-3 py-3 transition-colors ${
                   !form.runbookId
-                    ? "opacity-40 cursor-not-allowed bg-[#0D1117] border-[#30363D]"
+                    ? "opacity-40 cursor-not-allowed bg-background border-border"
                     : form.triggersHealthScore
-                    ? "cursor-pointer select-none bg-[#0078D4]/10 border-[#0078D4]/40"
-                    : "cursor-pointer select-none bg-[#0D1117] border-[#30363D] hover:border-[#484F58]"
+                    ? "cursor-pointer select-none bg-primary/10 border-primary/40"
+                    : "cursor-pointer select-none bg-background border-border hover:border-muted-foreground/60"
                 }`}
                 onClick={() => {
                   if (!form.runbookId) return;
@@ -1634,7 +1634,7 @@ function TaskDrawer({
                 }}
               >
                 <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  form.triggersHealthScore && form.runbookId ? "bg-[#0078D4] border-[#0078D4]" : "border-[#484F58]"
+                  form.triggersHealthScore && form.runbookId ? "bg-primary border-primary" : "border-muted-foreground/60"
                 }`}>
                   {form.triggersHealthScore && form.runbookId && (
                     <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1643,8 +1643,8 @@ function TaskDrawer({
                   )}
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-[#E6EDF3]">Updates M365 Health Score</p>
-                  <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">
+                  <p className="text-xs font-semibold text-foreground">Updates M365 Health Score</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">
                     When this task's script completes successfully, a new M365 Health Score snapshot is automatically recorded for the client.
                   </p>
                 </div>
@@ -1660,44 +1660,44 @@ function TaskDrawer({
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Instruction Set</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Instruction Set</label>
                 <select
                   value={form.instructionSetId ?? ""}
                   onChange={e => setForm(p => ({ ...p, instructionSetId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">None (use inline)</option>
                   {instructionSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Checklist</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Checklist</label>
                 <select
                   value={form.checklistId ?? ""}
                   onChange={e => setForm(p => ({ ...p, checklistId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">None (use inline)</option>
                   {checklists.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Artifact Set</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Artifact Set</label>
                 <select
                   value={form.artifactsId ?? ""}
                   onChange={e => setForm(p => ({ ...p, artifactsId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">None (use inline)</option>
                   {artifactSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Deliverable Set</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wide">Deliverable Set</label>
                 <select
                   value={form.deliverablesId ?? ""}
                   onChange={e => setForm(p => ({ ...p, deliverablesId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">None (use inline)</option>
                   {deliverableSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
@@ -1735,17 +1735,17 @@ function TaskDrawer({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[#30363D] flex-shrink-0 bg-[#161B22]">
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border flex-shrink-0 bg-card">
           <button
             onClick={onClose}
-            className="text-sm text-[#7D8590] px-4 py-2 rounded-lg hover:bg-[#1C2128] font-medium"
+            className="text-sm text-muted-foreground px-4 py-2 rounded-lg hover:bg-accent font-medium"
           >
             Cancel
           </button>
           <button
             onClick={onSave}
             disabled={!form.title.trim()}
-            className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors"
+            className="bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors"
           >
             {isNew ? "Add Task" : "Save Changes"}
           </button>
@@ -2574,18 +2574,18 @@ export default function WorkflowsPage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Template list sidebar ──────────────────────────────────────────── */}
-      <div className="w-64 flex-shrink-0 border-r border-[#30363D] bg-[#161B22] overflow-y-auto flex flex-col">
-        <div className="p-4 border-b border-[#30363D] flex items-center justify-between">
+      <div className="w-64 flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col">
+        <div className="p-4 border-b border-border flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-[#E6EDF3] text-sm">Workflow Templates</h2>
-            <p className="text-xs text-[#7D8590] mt-0.5">{templates.length} templates</p>
+            <h2 className="font-semibold text-foreground text-sm">Workflow Templates</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{templates.length} templates</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => void handleExportAllTemplates()}
               disabled={templates.length === 0}
               title="Download all templates as JSON"
-              className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#0078D4] px-2.5 py-1.5 rounded-lg border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary px-2.5 py-1.5 rounded-lg border border-border hover:border-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -2595,21 +2595,21 @@ export default function WorkflowsPage() {
             <button
               onClick={() => void createTemplate()}
               disabled={saving}
-              className="bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+              className="bg-primary text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
             >
               + New
             </button>
           </div>
         </div>
         {loading ? (
-          <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
         ) : templates.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-sm text-[#7D8590] mb-3">No templates yet.</p>
+            <p className="text-sm text-muted-foreground mb-3">No templates yet.</p>
             <button
               onClick={() => void createTemplate()}
               disabled={saving}
-              className="bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+              className="bg-primary text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
             >
               + Create your first template
             </button>
@@ -2623,9 +2623,9 @@ export default function WorkflowsPage() {
               const taskCount = t.steps?.flatMap(s => s.tasks ?? []).length ?? null;
               const isActive = selected?.id === t.id;
 
-              let dotColor = "bg-[#30363D]";
+              let dotColor = "bg-border";
               if (rc) {
-                if (rc.total === 0) dotColor = "bg-[#30363D]";
+                if (rc.total === 0) dotColor = "bg-border";
                 else if (rc.ready === rc.total) dotColor = "bg-green-500";
                 else dotColor = "bg-amber-500";
               }
@@ -2636,8 +2636,8 @@ export default function WorkflowsPage() {
                   onClick={() => void selectTemplate(t)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg border transition-colors ${
                     isActive
-                      ? "bg-[#0078D4]/10 border-[#0078D4]"
-                      : "bg-[#0D1117] border-[#21262D] hover:border-[#30363D] hover:bg-[#1C2128]"
+                      ? "bg-primary/10 border-primary"
+                      : "bg-background border-accent hover:border-border hover:bg-accent"
                   }`}
                 >
                   <div className="flex items-start gap-2">
@@ -2648,12 +2648,12 @@ export default function WorkflowsPage() {
                       `${rc.total - rc.ready} tasks missing sets`
                     } />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium leading-snug truncate ${isActive ? "text-[#0078D4]" : "text-[#E6EDF3]"}`}>{t.name}</p>
+                      <p className={`text-sm font-medium leading-snug truncate ${isActive ? "text-primary" : "text-foreground"}`}>{t.name}</p>
                       {linkedSvc && (
-                        <p className="text-[10px] text-[#7D8590] mt-0.5 truncate">{linkedSvc.name}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{linkedSvc.name}</p>
                       )}
                       {rc && (
-                        <p className="text-[9px] text-[#484F58] mt-0.5">
+                        <p className="text-[9px] text-muted-foreground/60 mt-0.5">
                           {rc.ready}/{rc.total} ready
                           {stepCount != null && ` · ${stepCount} step${stepCount !== 1 ? "s" : ""}`}
                         </p>
@@ -2669,21 +2669,21 @@ export default function WorkflowsPage() {
 
       {/* ── Main content ───────────────────────────────────────────────────── */}
       {!selected ? (
-        <div className="flex-1 flex items-center justify-center bg-[#0D1117]">
+        <div className="flex-1 flex items-center justify-center bg-background">
           <div className="text-center max-w-xs">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#1C2128] border border-[#30363D] flex items-center justify-center">
-              <svg className="w-8 h-8 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-accent border border-border flex items-center justify-center">
+              <svg className="w-8 h-8 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4zM8 6h8M6 8v8M18 8v8M8 18h8" />
               </svg>
             </div>
-            <h3 className="text-[#E6EDF3] font-semibold text-base mb-2">Workflow Templates</h3>
-            <p className="text-[#7D8590] text-sm leading-relaxed mb-5">
+            <h3 className="text-foreground font-semibold text-base mb-2">Workflow Templates</h3>
+            <p className="text-muted-foreground text-sm leading-relaxed mb-5">
               Templates define the steps and tasks that get generated when a service is activated for a client. Select a template from the sidebar or create a new one.
             </p>
             <button
               onClick={() => void createTemplate()}
               disabled={saving}
-              className="bg-[#0078D4] text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+              className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60"
             >
               + Create your first template
             </button>
@@ -2692,36 +2692,36 @@ export default function WorkflowsPage() {
       ) : (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* ── Command Bar ─────────────────────────────────────────────────── */}
-          <form onSubmit={saveTemplate} className="flex-shrink-0 border-b border-[#21262D] bg-[#0D1117] px-4 py-3">
+          <form onSubmit={saveTemplate} className="flex-shrink-0 border-b border-accent bg-background px-4 py-3">
             <div className="flex items-center gap-3">
               {/* Left: fields */}
               <div className="flex-1 min-w-0 flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-0.5">Name</label>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Name</label>
                   <input
                     type="text"
                     value={detailForm.name}
                     required
                     onChange={e => setDetailForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full bg-[#161B22] border border-[#30363D] rounded-md px-2.5 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4] focus:border-[#0078D4]"
+                    className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-0.5">Description</label>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Description</label>
                   <input
                     type="text"
                     value={detailForm.description}
                     onChange={e => setDetailForm(p => ({ ...p, description: e.target.value }))}
-                    className="w-full bg-[#161B22] border border-[#30363D] rounded-md px-2.5 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-1 focus:ring-[#0078D4] focus:border-[#0078D4]"
+                    className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
                     placeholder="Optional"
                   />
                 </div>
                 <div className="w-44 flex-shrink-0">
-                  <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-0.5">Default Service</label>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-0.5">Default Service</label>
                   <select
                     value={detailForm.serviceId ?? ""}
                     onChange={e => setDetailForm(p => ({ ...p, serviceId: e.target.value ? parseInt(e.target.value) : null }))}
-                    className="w-full bg-[#161B22] border border-[#30363D] text-[#E6EDF3] rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                    className="w-full bg-card border border-border text-foreground rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     <option value="">None</option>
                     {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -2730,7 +2730,7 @@ export default function WorkflowsPage() {
               </div>
 
               {/* Divider */}
-              <div className="flex-shrink-0 w-px h-8 bg-[#21262D]" />
+              <div className="flex-shrink-0 w-px h-8 bg-accent" />
 
               {/* Right: health badge + actions */}
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -2783,7 +2783,7 @@ export default function WorkflowsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex items-center gap-1.5 bg-[#0078D4] text-white rounded-md px-3 py-1.5 text-xs font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+                  className="flex items-center gap-1.5 bg-primary text-white rounded-md px-3 py-1.5 text-xs font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60"
                 >
                   <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -2797,12 +2797,12 @@ export default function WorkflowsPage() {
           {/* Two-column body */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* ── Steps column ──────────────────────────────────────────── */}
-            <div className="w-72 flex-shrink-0 border-r border-[#30363D] bg-[#0D1117] flex flex-col overflow-hidden">
+            <div className="w-72 flex-shrink-0 border-r border-border bg-background flex flex-col overflow-hidden">
               {/* Steps header */}
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#21262D] flex-shrink-0">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#7D8590]">
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-accent flex-shrink-0">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Steps
-                  <span className="ml-1.5 text-[#484F58] font-normal normal-case tracking-normal">({steps.length})</span>
+                  <span className="ml-1.5 text-muted-foreground/60 font-normal normal-case tracking-normal">({steps.length})</span>
                 </h3>
               </div>
 
@@ -2810,11 +2810,11 @@ export default function WorkflowsPage() {
               {(() => {
                 const hasLinkedService = services.some(s => s.workflowTemplateId === selected.id);
                 return (
-                  <div className="flex-shrink-0 flex items-center gap-0.5 px-2 py-1.5 border-b border-[#21262D] bg-[#161B22]">
+                  <div className="flex-shrink-0 flex items-center gap-0.5 px-2 py-1.5 border-b border-accent bg-card">
                     <button
                       onClick={exportToJson}
                       title="Export steps as JSON"
-                      className="flex items-center gap-1 text-[10px] font-medium text-[#7D8590] hover:text-[#0078D4] px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
+                      className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-primary px-2 py-1 rounded hover:bg-primary/10 transition-colors"
                     >
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M17 8v-2a2 2 0 00-2-2H5a2 2 0 00-2 2v2M9 12l3-3 3 3M12 21V9" />
@@ -2825,7 +2825,7 @@ export default function WorkflowsPage() {
                       onClick={() => { setJsonImportOpen(v => !v); setEngImportOpen(false); setAiGenerateOpen(false); setJsonImportText(""); }}
                       title="Import steps from JSON"
                       className={`flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded transition-colors ${
-                        jsonImportOpen ? "bg-[#00B4D8]/15 text-[#00B4D8]" : "text-[#7D8590] hover:text-[#00B4D8] hover:bg-[#00B4D8]/10"
+                        jsonImportOpen ? "bg-[#00B4D8]/15 text-[#00B4D8]" : "text-muted-foreground hover:text-[#00B4D8] hover:bg-[#00B4D8]/10"
                       }`}
                     >
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2837,7 +2837,7 @@ export default function WorkflowsPage() {
                       onClick={() => { setEngImportOpen(v => !v); setJsonImportOpen(false); setAiGenerateOpen(false); setEngImportText(""); }}
                       title="Import engineer fields by task title"
                       className={`flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded transition-colors ${
-                        engImportOpen ? "bg-purple-500/15 text-purple-400" : "text-[#7D8590] hover:text-purple-400 hover:bg-purple-500/10"
+                        engImportOpen ? "bg-purple-500/15 text-purple-400" : "text-muted-foreground hover:text-purple-400 hover:bg-purple-500/10"
                       }`}
                     >
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2858,10 +2858,10 @@ export default function WorkflowsPage() {
                       title={!hasLinkedService ? "Link a service to this template first" : "Generate steps & tasks from the linked service using AI"}
                       className={`flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded transition-colors ${
                         !hasLinkedService
-                          ? "text-[#484F58] cursor-not-allowed opacity-50"
+                          ? "text-muted-foreground/60 cursor-not-allowed opacity-50"
                           : aiGenerateOpen
                           ? "bg-violet-500/15 text-violet-400"
-                          : "text-[#7D8590] hover:text-violet-400 hover:bg-violet-500/10"
+                          : "text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10"
                       }`}
                     >
                       <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2886,13 +2886,13 @@ export default function WorkflowsPage() {
                         value={jsonImportText}
                         onChange={e => setJsonImportText(e.target.value)}
                         placeholder={`[\n  {\n    "title": "Discovery",\n    "tasks": [\n      { "title": "Review tenant" }\n    ]\n  }\n]`}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00B4D8] resize-y"
+                        className="w-full bg-background border border-border rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00B4D8] resize-y"
                       />
                       {jsonImportText.trim() && error && (
                         <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 font-mono">{error}</p>
                       )}
                       {parsed && parsed.length > 0 && (
-                        <p className="text-[10px] text-[#7D8590]">
+                        <p className="text-[10px] text-muted-foreground">
                           {parsed.length} step{parsed.length !== 1 ? "s" : ""} · {parsed.reduce((n, s) => n + (s.tasks?.length ?? 0), 0)} tasks
                         </p>
                       )}
@@ -2900,14 +2900,14 @@ export default function WorkflowsPage() {
                         <button
                           disabled={!parsed || jsonImporting}
                           onClick={() => void importStepsFromJson()}
-                          className="bg-[#0078D4] text-white text-[10px] font-semibold px-3 py-1.5 rounded hover:bg-[#006CBE] disabled:opacity-40 flex items-center gap-1"
+                          className="bg-primary text-white text-[10px] font-semibold px-3 py-1.5 rounded hover:bg-[#006CBE] disabled:opacity-40 flex items-center gap-1"
                         >
                           {jsonImporting
                             ? <><div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Importing…</>
                             : `Import ${parsed ? parsed.length : ""} Step${parsed?.length !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setJsonImportOpen(false); setJsonImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-[#30363D] text-[#7D8590]">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-border text-muted-foreground">
                           Cancel
                         </button>
                       </div>
@@ -2929,20 +2929,20 @@ export default function WorkflowsPage() {
                   return (
                     <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 space-y-2">
                       <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wide">Import Engineer Fields</p>
-                      <p className="text-[9px] text-[#7D8590]">Paste tasks by title — only the 4 engineer fields are updated.</p>
+                      <p className="text-[9px] text-muted-foreground">Paste tasks by title — only the 4 engineer fields are updated.</p>
                       <textarea
                         autoFocus
                         rows={6}
                         value={engImportText}
                         onChange={e => setEngImportText(e.target.value)}
                         placeholder={`[\n  {\n    "title": "Review tenant",\n    "instructions": ["Log into admin"]\n  }\n]`}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y"
+                        className="w-full bg-background border border-border rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 resize-y"
                       />
                       {engImportText.trim() && error && (
                         <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 font-mono">{error}</p>
                       )}
                       {parsed && parsed.length > 0 && (
-                        <p className="text-[10px] text-[#7D8590]">
+                        <p className="text-[10px] text-muted-foreground">
                           {matchCount} will update{skipCount > 0 && <span className="text-amber-400 ml-1">· {skipCount} not matched</span>}
                         </p>
                       )}
@@ -2957,7 +2957,7 @@ export default function WorkflowsPage() {
                             : `Update ${matchCount} Task${matchCount !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setEngImportOpen(false); setEngImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-[#30363D] text-[#7D8590]">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-border text-muted-foreground">
                           Cancel
                         </button>
                       </div>
@@ -2976,11 +2976,11 @@ export default function WorkflowsPage() {
                         )}
                       </div>
                     )}
-                    <p className="text-[10px] text-[#7D8590] leading-snug">
+                    <p className="text-[10px] text-muted-foreground leading-snug">
                       Claude reads the linked service and generates a complete set of workflow steps and engineer tasks.
                     </p>
                     <div>
-                      <p className="text-[9px] font-bold text-[#484F58] uppercase tracking-wide mb-1.5">Mode</p>
+                      <p className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-wide mb-1.5">Mode</p>
                       <div className="flex gap-1.5">
                         {(["replace", "append"] as const).map(m => (
                           <button
@@ -2989,14 +2989,14 @@ export default function WorkflowsPage() {
                             className={`flex-1 text-[10px] font-semibold py-1 rounded border transition-colors capitalize ${
                               aiGenerateMode === m
                                 ? "bg-violet-600 text-white border-violet-500"
-                                : "text-[#7D8590] border-[#30363D] hover:border-violet-500/50 hover:text-violet-300"
+                                : "text-muted-foreground border-border hover:border-violet-500/50 hover:text-violet-300"
                             }`}
                           >
                             {m}
                           </button>
                         ))}
                       </div>
-                      <p className="text-[9px] text-[#484F58] mt-1">
+                      <p className="text-[9px] text-muted-foreground/60 mt-1">
                         {aiGenerateMode === "replace" ? "⚠ Clears all existing steps first" : "Appends after existing steps"}
                       </p>
                     </div>
@@ -3021,14 +3021,14 @@ export default function WorkflowsPage() {
                       {aiPromptExpanded && (
                         <div className="border-t border-violet-500/20 p-2 space-y-2">
                           {aiPromptLoading ? (
-                            <p className="text-[10px] text-[#484F58] text-center py-2">Loading…</p>
+                            <p className="text-[10px] text-muted-foreground/60 text-center py-2">Loading…</p>
                           ) : (
                             <>
                               <textarea
                                 value={aiPromptText}
                                 onChange={e => { setAiPromptText(e.target.value); setAiPromptDirty(true); }}
                                 rows={10}
-                                className="w-full text-[10px] leading-relaxed font-mono bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-[#C9D1D9] placeholder-[#484F58] resize-y focus:outline-none focus:border-violet-500/50"
+                                className="w-full text-[10px] leading-relaxed font-mono bg-background border border-border rounded px-2 py-1.5 text-foreground/90 placeholder-muted-foreground/60 resize-y focus:outline-none focus:border-violet-500/50"
                                 spellCheck={false}
                               />
                               <div className="flex gap-1.5">
@@ -3042,12 +3042,12 @@ export default function WorkflowsPage() {
                                 <button
                                   onClick={resetAiPromptToDefault}
                                   disabled={aiPromptLoading || aiPromptText === aiPromptDefaultBody}
-                                  className="text-[10px] font-semibold px-2.5 py-1 rounded border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+                                  className="text-[10px] font-semibold px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground/90 hover:border-muted-foreground/60 disabled:opacity-40 transition-colors"
                                 >
                                   Reset
                                 </button>
                               </div>
-                              <p className="text-[9px] text-[#484F58]">
+                              <p className="text-[9px] text-muted-foreground/60">
                                 Changes are saved globally — all future generations will use this prompt.
                               </p>
                             </>
@@ -3112,14 +3112,14 @@ export default function WorkflowsPage() {
                 </DndContext>
 
                 {steps.length === 0 && !addingStep && (
-                  <div className="rounded-lg border border-dashed border-[#30363D] px-4 py-6 text-center">
-                    <svg className="w-6 h-6 text-[#484F58] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="rounded-lg border border-dashed border-border px-4 py-6 text-center">
+                    <svg className="w-6 h-6 text-muted-foreground/60 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
                     </svg>
-                    <p className="text-[11px] text-[#484F58]">No steps yet</p>
+                    <p className="text-[11px] text-muted-foreground/60">No steps yet</p>
                     <button
                       onClick={() => setAddingStep(true)}
-                      className="mt-2 text-[10px] text-[#0078D4] hover:underline font-medium"
+                      className="mt-2 text-[10px] text-primary hover:underline font-medium"
                     >
                       Add your first step
                     </button>
@@ -3128,7 +3128,7 @@ export default function WorkflowsPage() {
               </div>
 
               {/* Add step */}
-              <div className="flex-shrink-0 p-2.5 border-t border-[#21262D] bg-[#0D1117]">
+              <div className="flex-shrink-0 p-2.5 border-t border-accent bg-background">
                 {addingStep ? (
                   <div className="space-y-2">
                     <input
@@ -3141,19 +3141,19 @@ export default function WorkflowsPage() {
                         if (e.key === "Enter") void addStep();
                         if (e.key === "Escape") { setAddingStep(false); setNewStepTitle(""); }
                       }}
-                      className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                      className="w-full bg-card border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={() => void addStep()}
                         disabled={!newStepTitle.trim()}
-                        className="flex-1 bg-[#0078D4] text-white text-xs font-semibold py-1.5 rounded-lg hover:bg-[#006CBE] disabled:opacity-50"
+                        className="flex-1 bg-primary text-white text-xs font-semibold py-1.5 rounded-lg hover:bg-[#006CBE] disabled:opacity-50"
                       >
                         Add Step
                       </button>
                       <button
                         onClick={() => { setAddingStep(false); setNewStepTitle(""); }}
-                        className="text-xs text-[#7D8590] px-3 py-1.5 hover:text-[#C9D1D9]"
+                        className="text-xs text-muted-foreground px-3 py-1.5 hover:text-foreground/90"
                       >
                         Cancel
                       </button>
@@ -3162,7 +3162,7 @@ export default function WorkflowsPage() {
                 ) : (
                   <button
                     onClick={() => setAddingStep(true)}
-                    className="w-full bg-[#161B22] border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] text-xs font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full bg-card border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/60 text-xs font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -3174,25 +3174,25 @@ export default function WorkflowsPage() {
             </div>
 
             {/* ── Task panel ────────────────────────────────────────────── */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#0D1117]">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
               {!selectedStep ? (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center max-w-xs">
-                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-[#161B22] border border-[#30363D] flex items-center justify-center">
-                      <svg className="w-6 h-6 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-card border border-border flex items-center justify-center">
+                      <svg className="w-6 h-6 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
                       </svg>
                     </div>
-                    <p className="text-sm text-[#7D8590]">Select a step to manage its tasks</p>
+                    <p className="text-sm text-muted-foreground">Select a step to manage its tasks</p>
                   </div>
                 </div>
               ) : (
                 <>
                   {/* Task panel header */}
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-[#21262D] flex-shrink-0 bg-[#0D1117]">
+                  <div className="flex items-center justify-between px-5 py-3 border-b border-accent flex-shrink-0 bg-background">
                     <div>
-                      <h3 className="font-semibold text-[#E6EDF3] text-sm">{selectedStep.title}</h3>
-                      <p className="text-[10px] text-[#7D8590] mt-0.5">
+                      <h3 className="font-semibold text-foreground text-sm">{selectedStep.title}</h3>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
                         {showMissingOnly
                           ? `${stepTasks.length} of ${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""} missing sets`
                           : `${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""}`}
@@ -3226,16 +3226,16 @@ export default function WorkflowsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <p className="text-sm font-medium text-green-400">All tasks have asset sets linked.</p>
-                            <button onClick={() => setShowMissingOnly(false)} className="text-xs text-[#7D8590] hover:underline">Show all tasks</button>
+                            <button onClick={() => setShowMissingOnly(false)} className="text-xs text-muted-foreground hover:underline">Show all tasks</button>
                           </div>
                         )
                         : (
-                          <div className="rounded-lg border border-dashed border-[#30363D] px-5 py-8 text-center">
-                            <svg className="w-8 h-8 text-[#484F58] mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="rounded-lg border border-dashed border-border px-5 py-8 text-center">
+                            <svg className="w-8 h-8 text-muted-foreground/60 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
-                            <p className="text-sm text-[#7D8590] mb-1">No tasks yet for this step</p>
-                            <button onClick={openDrawerNew} className="text-xs text-[#0078D4] hover:underline font-medium">
+                            <p className="text-sm text-muted-foreground mb-1">No tasks yet for this step</p>
+                            <button onClick={openDrawerNew} className="text-xs text-primary hover:underline font-medium">
                               Add your first task for this step
                             </button>
                           </div>
@@ -3248,8 +3248,8 @@ export default function WorkflowsPage() {
                           renderedGroups.map(group => (
                             <div key={group}>
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590]">{group}</span>
-                                <div className="flex-1 h-px bg-[#1C2128]" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{group}</span>
+                                <div className="flex-1 h-px bg-accent" />
                               </div>
                               <div className="space-y-1.5">
                                 {(tasksByGroup[group] ?? []).map(task => (
@@ -3276,10 +3276,10 @@ export default function WorkflowsPage() {
                   </div>
 
                   {/* Add Task button */}
-                  <div className="flex-shrink-0 px-5 py-4 border-t border-[#21262D] bg-[#0D1117]">
+                  <div className="flex-shrink-0 px-5 py-4 border-t border-accent bg-background">
                     <button
                       onClick={openDrawerNew}
-                      className="w-full bg-[#0078D4] text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#006CBE] transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-primary text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#006CBE] transition-colors flex items-center justify-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -3294,7 +3294,7 @@ export default function WorkflowsPage() {
           </div>
 
           {/* ── VS Code-style status bar ─────────────────────────────────── */}
-          <div className="flex-shrink-0 h-7 bg-[#0078D4] flex items-center px-3 gap-4 text-[10px] font-medium text-white/80 border-t border-[#0078D4]">
+          <div className="flex-shrink-0 h-7 bg-primary flex items-center px-3 gap-4 text-[10px] font-medium text-white/80 border-t border-primary">
             <span className="flex items-center gap-1">
               <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h4v4H4zM16 4h4v4h-4zM4 16h4v4H4zM16 16h4v4h-4zM8 6h8M6 8v8M18 8v8M8 18h8" />

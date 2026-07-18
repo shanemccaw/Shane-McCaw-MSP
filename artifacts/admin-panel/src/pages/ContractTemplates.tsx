@@ -102,20 +102,20 @@ export default function ContractTemplatesPage() {
   return (
     <div className="flex flex-col lg:flex-row h-full">
       {/* Service list */}
-      <div className="w-full lg:w-72 flex-shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r border-[#30363D] bg-[#161B22] overflow-y-auto max-h-60 lg:max-h-none">
-        <div className="p-4 border-b border-[#30363D]">
-          <h2 className="font-semibold text-[#E6EDF3] text-sm">Contract Templates</h2>
-          <p className="text-xs text-[#7D8590] mt-0.5">One per service offering</p>
+      <div className="w-full lg:w-72 flex-shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r border-border bg-card overflow-y-auto max-h-60 lg:max-h-none">
+        <div className="p-4 border-b border-border">
+          <h2 className="font-semibold text-foreground text-sm">Contract Templates</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">One per service offering</p>
         </div>
         {loadingServices ? (
-          <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
         ) : (
-          <div className="divide-y divide-[#30363D]">
+          <div className="divide-y divide-border">
             {services.map(s => (
               <button key={s.id} onClick={() => void selectService(s)}
-                className={`w-full text-left px-4 py-3.5 hover:bg-[#1C2128] transition-colors ${selected?.id === s.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""}`}>
-                <p className="font-medium text-sm text-[#E6EDF3] leading-snug truncate">{s.name}</p>
-                {s.category && <p className="text-xs text-[#7D8590] mt-0.5">{s.category}</p>}
+                className={`w-full text-left px-4 py-3.5 hover:bg-accent transition-colors ${selected?.id === s.id ? "bg-primary/10 border-l-2 border-primary" : ""}`}>
+                <p className="font-medium text-sm text-foreground leading-snug truncate">{s.name}</p>
+                {s.category && <p className="text-xs text-muted-foreground mt-0.5">{s.category}</p>}
               </button>
             ))}
           </div>
@@ -126,7 +126,7 @@ export default function ContractTemplatesPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {!selected ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-[#7D8590]">
+            <div className="text-center text-muted-foreground">
               <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
@@ -134,20 +134,20 @@ export default function ContractTemplatesPage() {
             </div>
           </div>
         ) : loading ? (
-          <div className="flex items-center justify-center h-full text-[#7D8590] text-sm">Loading contract…</div>
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">Loading contract…</div>
         ) : (
           <div className="flex flex-col h-full">
             {/* Top bar */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card flex-shrink-0">
               <div>
-                <h2 className="font-bold text-[#E6EDF3] text-base">{selected.name}</h2>
+                <h2 className="font-bold text-foreground text-base">{selected.name}</h2>
                 <div className="flex items-center gap-3 mt-0.5">
                   {template?.version && (
-                    <span className="text-xs text-[#7D8590]">
-                      <span className="font-medium text-[#0078D4]">{template.version}</span>
+                    <span className="text-xs text-muted-foreground">
+                      <span className="font-medium text-primary">{template.version}</span>
                     </span>
                   )}
-                  <span className="text-xs text-[#7D8590]">Last saved: {formatDate(template?.updatedAt ?? null)}</span>
+                  <span className="text-xs text-muted-foreground">Last saved: {formatDate(template?.updatedAt ?? null)}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -162,14 +162,14 @@ export default function ContractTemplatesPage() {
                 )}
                 <button
                   onClick={() => setPreview(p => !p)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${preview ? "border-[#0078D4] text-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${preview ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:border-muted-foreground/60"}`}
                 >
                   {preview ? "Edit" : "Preview"}
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saving}
-                  className="bg-[#0078D4] text-white rounded-lg px-4 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+                  className="bg-primary text-white rounded-lg px-4 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
                 >
                   {saving ? "Saving…" : "Save"}
                 </button>
@@ -180,28 +180,28 @@ export default function ContractTemplatesPage() {
             <div className="flex-1 overflow-hidden">
               {preview ? (
                 <div className="h-full overflow-y-auto p-6">
-                  <div className="max-w-3xl mx-auto bg-[#161B22] rounded-xl border border-[#30363D] p-8">
-                    <h3 className="text-lg font-bold text-[#E6EDF3] mb-4">Contract Preview</h3>
+                  <div className="max-w-3xl mx-auto bg-card rounded-xl border border-border p-8">
+                    <h3 className="text-lg font-bold text-foreground mb-4">Contract Preview</h3>
                     {body ? (
-                      <pre className="whitespace-pre-wrap text-sm text-[#C9D1D9] font-sans leading-relaxed">{body}</pre>
+                      <pre className="whitespace-pre-wrap text-sm text-foreground/90 font-sans leading-relaxed">{body}</pre>
                     ) : (
-                      <p className="text-[#7D8590] text-sm italic">No contract body yet. Switch to Edit to write one.</p>
+                      <p className="text-muted-foreground text-sm italic">No contract body yet. Switch to Edit to write one.</p>
                     )}
                   </div>
                 </div>
               ) : (
                 <div className="h-full flex flex-col p-6">
                   <div className="mb-2 flex items-center gap-2">
-                    <label className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Contract Body (Markdown / Plain text)</label>
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Contract Body (Markdown / Plain text)</label>
                   </div>
-                  <p className="text-xs text-[#7D8590] mb-3">
+                  <p className="text-xs text-muted-foreground mb-3">
                     This is the contract text shown to clients at sign-time. Use Markdown for formatting.
-                    Variables: <code className="bg-[#1C2128] px-1 rounded">{`{{client_name}}`}</code>, <code className="bg-[#1C2128] px-1 rounded">{`{{service_name}}`}</code>, <code className="bg-[#1C2128] px-1 rounded">{`{{price}}`}</code>, <code className="bg-[#1C2128] px-1 rounded">{`{{date}}`}</code>
+                    Variables: <code className="bg-accent px-1 rounded">{`{{client_name}}`}</code>, <code className="bg-accent px-1 rounded">{`{{service_name}}`}</code>, <code className="bg-accent px-1 rounded">{`{{price}}`}</code>, <code className="bg-accent px-1 rounded">{`{{date}}`}</code>
                   </p>
                   <textarea
                     value={body}
                     onChange={e => setBody(e.target.value)}
-                    className="flex-1 w-full border border-[#30363D] rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none leading-relaxed"
+                    className="flex-1 w-full border border-border rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary resize-none leading-relaxed"
                     placeholder={`# Service Agreement\n\nThis Agreement is entered into between Shane McCaw Consulting and {{client_name}}...\n\n## Scope of Work\n\n{{service_name}}\n\n## Fees\n\n{{price}}\n\n## Terms\n\n...`}
                   />
                 </div>

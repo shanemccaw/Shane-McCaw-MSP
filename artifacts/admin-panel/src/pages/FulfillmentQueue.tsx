@@ -53,13 +53,13 @@ interface QueueMeta {
 const STATUS_CONFIG: Record<DeliveryStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   not_started: {
     label: "Not Started",
-    color: "text-[#8B949E]",
-    bg: "bg-[#21262D]",
+    color: "text-muted-foreground",
+    bg: "bg-accent",
     icon: <Clock className="w-3 h-3" />,
   },
   in_progress: {
     label: "In Progress",
-    color: "text-[#58A6FF]",
+    color: "text-primary",
     bg: "bg-[#0D2035]",
     icon: <Loader2 className="w-3 h-3 animate-spin" />,
   },
@@ -71,7 +71,7 @@ const STATUS_CONFIG: Record<DeliveryStatus, { label: string; color: string; bg: 
   },
   blocked: {
     label: "Blocked",
-    color: "text-[#F85149]",
+    color: "text-destructive",
     bg: "bg-[#2B0D0D]",
     icon: <XCircle className="w-3 h-3" />,
   },
@@ -86,7 +86,7 @@ const SOURCE_CONFIG: Record<SourceType, { label: string; icon: React.ReactNode; 
   sow: {
     label: "SOW",
     icon: <FileText className="w-3 h-3" />,
-    color: "text-[#0078D4]",
+    color: "text-primary",
   },
   bundle: {
     label: "Bundle",
@@ -228,15 +228,15 @@ export default function FulfillmentQueuePage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-[#E6EDF3]">Fulfillment Queue</h1>
-          <p className="text-sm text-[#8B949E] mt-0.5">
+          <h1 className="text-xl font-semibold text-foreground">Fulfillment Queue</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Everything sold that requires delivery — across all MSPs and customers.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
             onClick={() => setShowSlaPanel(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#8B949E] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#8B949E] rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground rounded-md transition-colors"
           >
             <Settings className="w-3.5 h-3.5" />
             SLA Config
@@ -244,7 +244,7 @@ export default function FulfillmentQueuePage() {
           <button
             onClick={syncQueue}
             disabled={syncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#0078D4] hover:bg-[#006BBF] text-white rounded-md transition-colors disabled:opacity-60"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary hover:bg-[#006BBF] text-white rounded-md transition-colors disabled:opacity-60"
           >
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Sync from Purchases
@@ -255,20 +255,20 @@ export default function FulfillmentQueuePage() {
       {/* Metric pills */}
       {meta && (
         <div className="flex flex-wrap gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg text-xs text-[#8B949E]">
-            <span className="text-[#E6EDF3] font-medium">{meta.total}</span> total
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-card border border-border rounded-lg text-xs text-muted-foreground">
+            <span className="text-foreground font-medium">{meta.total}</span> total
           </div>
           {meta.overdue > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2B0D0D] border border-[#F85149] rounded-lg text-xs text-[#F85149] font-medium">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#2B0D0D] border border-destructive rounded-lg text-xs text-destructive font-medium">
               <AlertTriangle className="w-3.5 h-3.5" />
               {meta.overdue} overdue
             </div>
           )}
           {(["not_started", "in_progress", "blocked"] as DeliveryStatus[]).map(s => (
             meta.byStatus[s] > 0 && (
-              <div key={s} className={`flex items-center gap-1.5 px-3 py-1.5 ${STATUS_CONFIG[s].bg} border border-[#30363D] rounded-lg text-xs ${STATUS_CONFIG[s].color}`}>
+              <div key={s} className={`flex items-center gap-1.5 px-3 py-1.5 ${STATUS_CONFIG[s].bg} border border-border rounded-lg text-xs ${STATUS_CONFIG[s].color}`}>
                 {STATUS_CONFIG[s].icon}
-                <span className="text-[#E6EDF3] font-medium">{meta.byStatus[s]}</span> {STATUS_CONFIG[s].label.toLowerCase()}
+                <span className="text-foreground font-medium">{meta.byStatus[s]}</span> {STATUS_CONFIG[s].label.toLowerCase()}
               </div>
             )
           ))}
@@ -277,11 +277,11 @@ export default function FulfillmentQueuePage() {
 
       {/* SLA Config panel */}
       {showSlaPanel && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2 mb-2">
-            <Settings className="w-4 h-4 text-[#8B949E]" />
-            <span className="text-sm font-medium text-[#E6EDF3]">Internal Fulfillment SLA Thresholds</span>
-            <span className="text-xs text-[#8B949E]">— operator-facing, separate from customer-facing SLAs</span>
+            <Settings className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-foreground">Internal Fulfillment SLA Thresholds</span>
+            <span className="text-xs text-muted-foreground">— operator-facing, separate from customer-facing SLAs</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {slaConfigs.map(cfg => {
@@ -289,8 +289,8 @@ export default function FulfillmentQueuePage() {
               const displayVal = edit !== undefined ? edit : String(cfg.thresholdDays);
               const isDirty = edit !== undefined && edit !== String(cfg.thresholdDays);
               return (
-                <div key={cfg.key} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-2">
-                  <div className="text-xs font-medium text-[#E6EDF3]">{cfg.label}</div>
+                <div key={cfg.key} className="bg-background border border-border rounded-lg p-3 space-y-2">
+                  <div className="text-xs font-medium text-foreground">{cfg.label}</div>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -298,14 +298,14 @@ export default function FulfillmentQueuePage() {
                       max={365}
                       value={displayVal}
                       onChange={e => setSlaEdits(prev => ({ ...prev, [cfg.key]: e.target.value }))}
-                      className="w-16 px-2 py-1 text-xs bg-[#161B22] border border-[#30363D] rounded text-[#E6EDF3] focus:outline-none focus:border-[#58A6FF]"
+                      className="w-16 px-2 py-1 text-xs bg-card border border-border rounded text-foreground focus:outline-none focus:border-primary"
                     />
-                    <span className="text-xs text-[#8B949E]">days</span>
+                    <span className="text-xs text-muted-foreground">days</span>
                     {isDirty && (
                       <button
                         onClick={() => saveSlaConfig(cfg.key, parseInt(displayVal, 10))}
                         disabled={savingSla || !parseInt(displayVal, 10)}
-                        className="text-xs px-2 py-1 bg-[#0078D4] text-white rounded hover:bg-[#006BBF] disabled:opacity-50"
+                        className="text-xs px-2 py-1 bg-primary text-white rounded hover:bg-[#006BBF] disabled:opacity-50"
                       >
                         Save
                       </button>
@@ -320,23 +320,23 @@ export default function FulfillmentQueuePage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg text-xs text-[#8B949E]">
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-card border border-border rounded-lg text-xs text-muted-foreground">
           <Search className="w-3.5 h-3.5" />
           <input
             type="text"
             placeholder="Search client, title…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="bg-transparent outline-none text-[#E6EDF3] placeholder-[#8B949E] w-48"
+            className="bg-transparent outline-none text-foreground placeholder-muted-foreground w-48"
           />
         </div>
 
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg text-xs">
-          <Filter className="w-3.5 h-3.5 text-[#8B949E]" />
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-card border border-border rounded-lg text-xs">
+          <Filter className="w-3.5 h-3.5 text-muted-foreground" />
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value as DeliveryStatus | "")}
-            className="bg-transparent outline-none text-[#E6EDF3] cursor-pointer"
+            className="bg-transparent outline-none text-foreground cursor-pointer"
           >
             <option value="">All statuses</option>
             {(["not_started", "in_progress", "delivered", "blocked"] as DeliveryStatus[]).map(s => (
@@ -345,11 +345,11 @@ export default function FulfillmentQueuePage() {
           </select>
         </div>
 
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg text-xs">
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-card border border-border rounded-lg text-xs">
           <select
             value={filterSource}
             onChange={e => setFilterSource(e.target.value as SourceType | "")}
-            className="bg-transparent outline-none text-[#E6EDF3] cursor-pointer"
+            className="bg-transparent outline-none text-foreground cursor-pointer"
           >
             <option value="">All types</option>
             {(["offer", "sow", "bundle"] as SourceType[]).map(s => (
@@ -358,21 +358,21 @@ export default function FulfillmentQueuePage() {
           </select>
         </div>
 
-        <label className="flex items-center gap-1.5 px-2 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg text-xs text-[#8B949E] cursor-pointer select-none">
+        <label className="flex items-center gap-1.5 px-2 py-1.5 bg-card border border-border rounded-lg text-xs text-muted-foreground cursor-pointer select-none">
           <input
             type="checkbox"
             checked={filterOverdue}
             onChange={e => setFilterOverdue(e.target.checked)}
-            className="accent-[#F85149]"
+            className="accent-destructive"
           />
-          <AlertTriangle className="w-3.5 h-3.5 text-[#F85149]" />
+          <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
           Overdue only
         </label>
 
         {(filterStatus || filterSource || filterOverdue || search) && (
           <button
             onClick={() => { setFilterStatus(""); setFilterSource(""); setFilterOverdue(false); setSearch(""); }}
-            className="text-xs text-[#8B949E] hover:text-[#E6EDF3] underline"
+            className="text-xs text-muted-foreground hover:text-foreground underline"
           >
             Clear filters
           </button>
@@ -382,34 +382,34 @@ export default function FulfillmentQueuePage() {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-6 h-6 text-[#0078D4] animate-spin" />
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <AlertCircle className="w-10 h-10 text-[#30363D] mb-3" />
-          <p className="text-[#8B949E] text-sm">No fulfillment items found.</p>
-          <p className="text-[#8B949E] text-xs mt-1">
-            Click <span className="text-[#E6EDF3]">Sync from Purchases</span> to populate the queue from existing purchases.
+          <AlertCircle className="w-10 h-10 text-border mb-3" />
+          <p className="text-muted-foreground text-sm">No fulfillment items found.</p>
+          <p className="text-muted-foreground text-xs mt-1">
+            Click <span className="text-foreground">Sync from Purchases</span> to populate the queue from existing purchases.
           </p>
         </div>
       ) : (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#30363D]">
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Item</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Customer</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">MSP</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Type</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Status</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">SLA Due</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Purchased</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Amount</th>
-                  <th className="text-left text-xs text-[#8B949E] font-medium px-4 py-3">Links</th>
+                <tr className="border-b border-border">
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Item</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Customer</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">MSP</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Type</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Status</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">SLA Due</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Purchased</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Amount</th>
+                  <th className="text-left text-xs text-muted-foreground font-medium px-4 py-3">Links</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#30363D]">
+              <tbody className="divide-y divide-border">
                 {items.map(item => {
                   const sc = STATUS_CONFIG[item.deliveryStatus];
                   const src = SOURCE_CONFIG[item.sourceType];
@@ -417,29 +417,29 @@ export default function FulfillmentQueuePage() {
                   return (
                     <tr
                       key={item.id}
-                      className={`hover:bg-[#1C2128] transition-colors ${item.isOverdue && item.deliveryStatus !== "delivered" ? "border-l-2 border-l-[#F85149]" : ""}`}
+                      className={`hover:bg-accent transition-colors ${item.isOverdue && item.deliveryStatus !== "delivered" ? "border-l-2 border-l-destructive" : ""}`}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-[#E6EDF3] max-w-[200px] truncate" title={item.itemTitle}>
+                        <div className="font-medium text-foreground max-w-[200px] truncate" title={item.itemTitle}>
                           {item.isOverdue && item.deliveryStatus !== "delivered" && (
-                            <AlertTriangle className="w-3.5 h-3.5 text-[#F85149] inline mr-1 mb-0.5" />
+                            <AlertTriangle className="w-3.5 h-3.5 text-destructive inline mr-1 mb-0.5" />
                           )}
                           {item.itemTitle}
                         </div>
                         {item.itemDescription && (
-                          <div className="text-xs text-[#8B949E] mt-0.5 max-w-[200px] truncate">{item.itemDescription}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5 max-w-[200px] truncate">{item.itemDescription}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-[#E6EDF3] text-xs">{item.clientName ?? item.clientEmail ?? "—"}</div>
+                        <div className="text-foreground text-xs">{item.clientName ?? item.clientEmail ?? "—"}</div>
                         {item.clientEmail && item.clientName && (
-                          <div className="text-[#8B949E] text-xs">{item.clientEmail}</div>
+                          <div className="text-muted-foreground text-xs">{item.clientEmail}</div>
                         )}
                         {item.customerName && (
-                          <div className="text-[#8B949E] text-xs mt-0.5">{item.customerName}</div>
+                          <div className="text-muted-foreground text-xs mt-0.5">{item.customerName}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-[#8B949E]">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {item.mspName ?? "—"}
                       </td>
                       <td className="px-4 py-3">
@@ -458,23 +458,23 @@ export default function FulfillmentQueuePage() {
                           <ChevronDown className="w-3 h-3 opacity-60" />
                         </button>
                         {item.statusNote && (
-                          <div className="text-xs text-[#8B949E] mt-0.5 max-w-[140px] truncate" title={item.statusNote}>
+                          <div className="text-xs text-muted-foreground mt-0.5 max-w-[140px] truncate" title={item.statusNote}>
                             {item.statusNote}
                           </div>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {item.slaDueAt ? (
-                          <span className={`text-xs ${item.isOverdue && item.deliveryStatus !== "delivered" ? "text-[#F85149] font-semibold" : "text-[#8B949E]"}`}>
+                          <span className={`text-xs ${item.isOverdue && item.deliveryStatus !== "delivered" ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
                             {formatDate(item.slaDueAt)}
                             {item.isOverdue && item.deliveryStatus !== "delivered" && " ⚠"}
                           </span>
-                        ) : <span className="text-xs text-[#8B949E]">—</span>}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs text-[#8B949E]">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {formatDate(item.purchasedAt)}
                       </td>
-                      <td className="px-4 py-3 text-xs text-[#E6EDF3]">
+                      <td className="px-4 py-3 text-xs text-foreground">
                         {formatCents(item.purchaseAmountCents)}
                       </td>
                       <td className="px-4 py-3">
@@ -483,12 +483,12 @@ export default function FulfillmentQueuePage() {
                             href={deepLink.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-[#58A6FF] hover:underline"
+                            className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                           >
                             {deepLink.label}
                             <ExternalLink className="w-3 h-3" />
                           </a>
-                        ) : <span className="text-xs text-[#8B949E]">—</span>}
+                        ) : <span className="text-xs text-muted-foreground">—</span>}
                       </td>
                     </tr>
                   );
@@ -502,13 +502,13 @@ export default function FulfillmentQueuePage() {
       {/* Status update modal */}
       {statusModalItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setStatusModalItem(null)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-semibold text-[#E6EDF3] mb-1">Update Delivery Status</h2>
-            <p className="text-xs text-[#8B949E] mb-4 truncate">{statusModalItem.itemTitle}</p>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-foreground mb-1">Update Delivery Status</h2>
+            <p className="text-xs text-muted-foreground mb-4 truncate">{statusModalItem.itemTitle}</p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-[#8B949E] mb-1.5">Status</label>
+                <label className="block text-xs text-muted-foreground mb-1.5">Status</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["not_started", "in_progress", "delivered", "blocked"] as DeliveryStatus[]).map(s => {
                     const sc = STATUS_CONFIG[s];
@@ -518,7 +518,7 @@ export default function FulfillmentQueuePage() {
                         onClick={() => setNewStatus(s)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors ${newStatus === s
                           ? `${sc.bg} border-current ${sc.color} font-medium`
-                          : "bg-[#0D1117] border-[#30363D] text-[#8B949E] hover:border-[#58A6FF]"
+                          : "bg-background border-border text-muted-foreground hover:border-primary"
                         }`}
                       >
                         {sc.icon}
@@ -530,13 +530,13 @@ export default function FulfillmentQueuePage() {
               </div>
 
               <div>
-                <label className="block text-xs text-[#8B949E] mb-1.5">Note (optional)</label>
+                <label className="block text-xs text-muted-foreground mb-1.5">Note (optional)</label>
                 <textarea
                   rows={2}
                   value={statusNote}
                   onChange={e => setStatusNote(e.target.value)}
                   placeholder="Add context about this status change…"
-                  className="w-full px-3 py-2 bg-[#0D1117] border border-[#30363D] rounded-lg text-xs text-[#E6EDF3] placeholder-[#8B949E] focus:outline-none focus:border-[#58A6FF] resize-none"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
             </div>
@@ -544,14 +544,14 @@ export default function FulfillmentQueuePage() {
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setStatusModalItem(null)}
-                className="px-3 py-1.5 text-xs text-[#8B949E] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors"
+                className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={saveStatus}
                 disabled={updatingId === statusModalItem.id}
-                className="px-4 py-1.5 text-xs bg-[#0078D4] hover:bg-[#006BBF] text-white rounded-lg transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                className="px-4 py-1.5 text-xs bg-primary hover:bg-[#006BBF] text-white rounded-lg transition-colors disabled:opacity-60 flex items-center gap-1.5"
               >
                 {updatingId === statusModalItem.id && <Loader2 className="w-3 h-3 animate-spin" />}
                 Save Status

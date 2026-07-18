@@ -51,7 +51,7 @@ export function SqlQueryOutput({ output }: { output: SqlOutput }) {
               key={key}
               onClick={() => setView(key)}
               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                view === key ? "bg-accent text-[#58A6FF]" : "text-muted-foreground/50 hover:text-muted-foreground"
+                view === key ? "bg-accent text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"
               }`}
               title={key === "table" ? "Show results as a table" : "Show results as raw JSON"}
             >

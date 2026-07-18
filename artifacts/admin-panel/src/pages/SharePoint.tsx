@@ -31,7 +31,7 @@ function formatBytes(bytes: number): string {
 function FileIcon({ type }: { type: "folder" | "file" }) {
   if (type === "folder") {
     return (
-      <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+      <svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
         <path d="M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z" />
       </svg>
     );
@@ -46,7 +46,7 @@ function FileIcon({ type }: { type: "folder" | "file" }) {
 function Spinner() {
   return (
     <div className="flex items-center justify-center py-12">
-      <div className="w-7 h-7 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      <div className="w-7 h-7 border-3 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }
@@ -162,7 +162,7 @@ export default function SharePointPage() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#E6EDF3]">Hub Storage</h1>
+        <h1 className="text-2xl font-bold text-foreground">Hub Storage</h1>
         <p className="text-sm text-muted-foreground mt-1">Browse your SharePoint hub site and manage per-client site provisioning.</p>
       </div>
 
@@ -180,18 +180,18 @@ export default function SharePointPage() {
       )}
 
       {/* Hub site configuration */}
-      <div className="bg-[#161B22] border border-border rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-wider mb-4">Hub Site Configuration</h2>
+      <div className="bg-card border border-border rounded-xl p-5 mb-6">
+        <h2 className="text-sm font-bold text-foreground uppercase tracking-wider mb-4">Hub Site Configuration</h2>
         {configLoading ? (
           <div className="h-10 bg-muted/20 rounded animate-pulse" />
         ) : (
           <div className="space-y-3">
             {config?.hubSiteUrl && (
-              <div className="flex items-center gap-2 text-sm text-[#E6EDF3]/70">
+              <div className="flex items-center gap-2 text-sm text-foreground/70">
                 <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="truncate">Saved: <a href={config.hubSiteUrl} target="_blank" rel="noopener noreferrer" className="text-[#0078D4] underline">{config.hubSiteUrl}</a></span>
+                <span className="truncate">Saved: <a href={config.hubSiteUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">{config.hubSiteUrl}</a></span>
               </div>
             )}
             <div className="flex gap-2">
@@ -200,12 +200,12 @@ export default function SharePointPage() {
                 value={hubUrlInput}
                 onChange={e => setHubUrlInput(e.target.value)}
                 placeholder="https://contoso.sharepoint.com/sites/SMC-Hub"
-                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button
                 onClick={() => void handleSaveConfig()}
                 disabled={savingConfig || !hubUrlInput.trim()}
-                className="bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50"
+                className="bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {savingConfig ? "Saving…" : "Save"}
               </button>
@@ -214,7 +214,7 @@ export default function SharePointPage() {
                   href={config.hubSiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
+                  className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-accent transition-colors text-foreground"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
@@ -228,7 +228,7 @@ export default function SharePointPage() {
       </div>
 
       {/* File browser */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-1.5 text-sm min-w-0">
             {breadcrumbs.map((crumb, i) => (
@@ -238,8 +238,8 @@ export default function SharePointPage() {
                   onClick={() => navigateToBreadcrumb(crumb)}
                   className={`truncate transition-colors ${
                     i === breadcrumbs.length - 1
-                      ? "font-semibold text-[#E6EDF3] cursor-default"
-                      : "text-[#0078D4] hover:underline"
+                      ? "font-semibold text-foreground cursor-default"
+                      : "text-primary hover:underline"
                   }`}
                 >
                   {crumb.name}
@@ -250,7 +250,7 @@ export default function SharePointPage() {
           {config?.hubSiteId && config.graphConfigured && (
             <button
               onClick={() => void loadItems(currentPath)}
-              className="text-xs text-muted-foreground hover:text-[#0078D4] flex items-center gap-1 flex-shrink-0"
+              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 flex-shrink-0"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
@@ -269,17 +269,17 @@ export default function SharePointPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-[#E6EDF3]">Graph credentials required</p>
+            <p className="text-sm font-semibold text-foreground">Graph credentials required</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">Configure the Graph API credentials in Replit Secrets to browse SharePoint files here.</p>
           </div>
         ) : !config.hubSiteId ? (
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-            <div className="w-12 h-12 rounded-2xl bg-[#0078D4]/10 flex items-center justify-center mb-3">
-              <svg className="w-6 h-6 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
+              <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-[#E6EDF3]">No hub site configured</p>
+            <p className="text-sm font-semibold text-foreground">No hub site configured</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">Enter your SharePoint hub site URL above and click Save. The site ID will be resolved automatically.</p>
           </div>
         ) : itemsLoading ? (
@@ -288,7 +288,7 @@ export default function SharePointPage() {
           <div className="flex flex-col items-center justify-center py-12 text-center px-6">
             <p className="text-sm font-semibold text-red-400">Error loading files</p>
             <p className="text-xs text-muted-foreground mt-1">{itemsError}</p>
-            <button onClick={() => void loadItems(currentPath)} className="mt-3 text-xs text-[#0078D4] hover:underline">Try again</button>
+            <button onClick={() => void loadItems(currentPath)} className="mt-3 text-xs text-primary hover:underline">Try again</button>
           </div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -300,11 +300,11 @@ export default function SharePointPage() {
               <button
                 key={item.id}
                 onClick={() => navigateToFolder(item)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-[#1C2128] transition-colors text-left group"
+                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-accent transition-colors text-left group"
               >
                 <FileIcon type={item.type} />
                 <span className="flex-1 min-w-0">
-                  <span className={`text-sm truncate block ${item.type === "folder" ? "font-medium text-[#E6EDF3]" : "text-[#E6EDF3]/80"}`}>
+                  <span className={`text-sm truncate block ${item.type === "folder" ? "font-medium text-foreground" : "text-foreground/80"}`}>
                     {item.name}
                   </span>
                   {item.size != null && (

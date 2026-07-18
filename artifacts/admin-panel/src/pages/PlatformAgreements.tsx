@@ -125,11 +125,11 @@ export default function PlatformAgreementsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-[#E6EDF3] text-lg font-semibold flex items-center gap-2">
-            <FileText className="size-5 text-[#0078D4]" />
+          <h2 className="text-foreground text-lg font-semibold flex items-center gap-2">
+            <FileText className="size-5 text-primary" />
             Platform Agreements
           </h2>
-          <p className="text-[#7D8590] text-sm mt-0.5">
+          <p className="text-muted-foreground text-sm mt-0.5">
             Manage versioned MSA + DPA clickwrap agreements shown to MSPs at signup.
             Publishing a new version does not affect prior accepted records.
           </p>
@@ -137,7 +137,7 @@ export default function PlatformAgreementsPage() {
         <Button
           onClick={() => setShowNew(true)}
           size="sm"
-          className="bg-[#0078D4] hover:bg-[#106EBE] text-white shrink-0"
+          className="bg-primary hover:bg-[#106EBE] text-white shrink-0"
         >
           <Plus className="size-4 mr-1.5" />
           New Version
@@ -150,7 +150,7 @@ export default function PlatformAgreementsPage() {
           <CheckCircle2 className="size-4 text-green-400 mt-0.5 shrink-0" />
           <div className="text-sm">
             <span className="text-green-300 font-medium">Active version: {current.version}</span>
-            <span className="text-[#7D8590] ml-2">
+            <span className="text-muted-foreground ml-2">
               Published {current.publishedAt ? new Date(current.publishedAt).toLocaleDateString() : "—"}
             </span>
           </div>
@@ -173,42 +173,42 @@ export default function PlatformAgreementsPage() {
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-[#30363D] bg-[#161B22] overflow-hidden">
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-[#30363D] hover:bg-transparent">
-              <TableHead className="text-[#7D8590]">Version</TableHead>
-              <TableHead className="text-[#7D8590]">Title</TableHead>
-              <TableHead className="text-[#7D8590]">Status</TableHead>
-              <TableHead className="text-[#7D8590]">Created</TableHead>
-              <TableHead className="text-[#7D8590] text-right">Actions</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-muted-foreground">Version</TableHead>
+              <TableHead className="text-muted-foreground">Title</TableHead>
+              <TableHead className="text-muted-foreground">Status</TableHead>
+              <TableHead className="text-muted-foreground">Created</TableHead>
+              <TableHead className="text-muted-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-[#7D8590] py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   Loading…
                 </TableCell>
               </TableRow>
             ) : agreements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-[#7D8590] py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No agreement versions yet. Create one to get started.
                 </TableCell>
               </TableRow>
             ) : (
               agreements.map((a) => (
-                <TableRow key={a.id} className="border-[#30363D] hover:bg-[#1C2128]">
-                  <TableCell className="text-[#E6EDF3] font-mono text-sm">{a.version}</TableCell>
-                  <TableCell className="text-[#E6EDF3]">{a.title}</TableCell>
+                <TableRow key={a.id} className="border-border hover:bg-accent">
+                  <TableCell className="text-foreground font-mono text-sm">{a.version}</TableCell>
+                  <TableCell className="text-foreground">{a.title}</TableCell>
                   <TableCell>
                     {a.isCurrentVersion ? (
                       <Badge className="bg-green-900/30 text-green-400 border-green-800/50">
                         Current
                       </Badge>
                     ) : a.publishedAt ? (
-                      <Badge variant="outline" className="text-[#7D8590] border-[#30363D]">
+                      <Badge variant="outline" className="text-muted-foreground border-border">
                         Superseded
                       </Badge>
                     ) : (
@@ -217,14 +217,14 @@ export default function PlatformAgreementsPage() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-[#7D8590] text-sm">
+                  <TableCell className="text-muted-foreground text-sm">
                     {new Date(a.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-[#7D8590] hover:text-[#E6EDF3]"
+                      className="text-muted-foreground hover:text-foreground"
                       onClick={() => setPreview(a)}
                     >
                       <Eye className="size-4 mr-1" />
@@ -234,7 +234,7 @@ export default function PlatformAgreementsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4]/10"
+                        className="border-primary text-primary hover:bg-primary/10"
                         onClick={() => handlePublish(a.id)}
                         disabled={publishing === a.id}
                       >
@@ -252,10 +252,10 @@ export default function PlatformAgreementsPage() {
 
       {/* New version dialog */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
-        <DialogContent className="max-w-2xl bg-[#161B22] border-[#30363D] text-[#E6EDF3]">
+        <DialogContent className="max-w-2xl bg-card border-border text-foreground">
           <DialogHeader>
             <DialogTitle>New Agreement Version</DialogTitle>
-            <DialogDescription className="text-[#7D8590]">
+            <DialogDescription className="text-muted-foreground">
               Paste the agreement text below. The new version starts as a draft — publish it to
               activate the clickwrap gate for new MSP logins.
             </DialogDescription>
@@ -264,32 +264,32 @@ export default function PlatformAgreementsPage() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-[#7D8590] text-xs">Version *</Label>
+                <Label className="text-muted-foreground text-xs">Version *</Label>
                 <Input
                   placeholder="e.g. v1.0, 2026-07"
                   value={newVersion}
                   onChange={(e) => setNewVersion(e.target.value)}
-                  className="bg-[#0D1117] border-[#30363D] text-[#E6EDF3]"
+                  className="bg-background border-border text-foreground"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[#7D8590] text-xs">Title</Label>
+                <Label className="text-muted-foreground text-xs">Title</Label>
                 <Input
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="bg-[#0D1117] border-[#30363D] text-[#E6EDF3]"
+                  className="bg-background border-border text-foreground"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-[#7D8590] text-xs">Agreement Body *</Label>
+              <Label className="text-muted-foreground text-xs">Agreement Body *</Label>
               <Textarea
                 placeholder="Paste the full agreement text here (plain text or Markdown)…"
                 rows={12}
                 value={newBody}
                 onChange={(e) => setNewBody(e.target.value)}
-                className="bg-[#0D1117] border-[#30363D] text-[#E6EDF3] font-mono text-sm resize-y"
+                className="bg-background border-border text-foreground font-mono text-sm resize-y"
               />
             </div>
 
@@ -301,11 +301,11 @@ export default function PlatformAgreementsPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNew(false)} className="border-[#30363D]">
+            <Button variant="outline" onClick={() => setShowNew(false)} className="border-border">
               Cancel
             </Button>
             <Button
-              className="bg-[#0078D4] hover:bg-[#106EBE] text-white"
+              className="bg-primary hover:bg-[#106EBE] text-white"
               onClick={handleCreate}
               disabled={saving}
             >
@@ -318,20 +318,20 @@ export default function PlatformAgreementsPage() {
       {/* Preview dialog */}
       {preview && (
         <Dialog open={!!preview} onOpenChange={() => setPreview(null)}>
-          <DialogContent className="max-w-2xl bg-[#161B22] border-[#30363D] text-[#E6EDF3]">
+          <DialogContent className="max-w-2xl bg-card border-border text-foreground">
             <DialogHeader>
               <DialogTitle>{preview.title} — v{preview.version}</DialogTitle>
-              <DialogDescription className="text-[#7D8590]">
+              <DialogDescription className="text-muted-foreground">
                 Read-only preview of the agreement body
               </DialogDescription>
             </DialogHeader>
-            <div className="max-h-[60vh] overflow-y-auto rounded-md border border-[#30363D] bg-[#0D1117] p-4">
-              <pre className="text-sm text-[#E6EDF3] whitespace-pre-wrap font-sans leading-relaxed">
+            <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border bg-background p-4">
+              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
                 {preview.body}
               </pre>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setPreview(null)} className="border-[#30363D]">
+              <Button variant="outline" onClick={() => setPreview(null)} className="border-border">
                 Close
               </Button>
             </DialogFooter>

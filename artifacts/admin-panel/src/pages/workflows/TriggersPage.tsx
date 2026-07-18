@@ -67,7 +67,7 @@ function Sparkline({ buckets }: { buckets: TriggerStats["dailyBuckets"] }) {
     return (
       <div className="flex items-end gap-0.5 h-8">
         {Array.from({ length: 30 }).map((_, i) => (
-          <div key={i} className="flex-1 bg-[#1C2128] rounded-sm" style={{ height: "4px" }} />
+          <div key={i} className="flex-1 bg-accent rounded-sm" style={{ height: "4px" }} />
         ))}
       </div>
     );
@@ -90,7 +90,7 @@ function Sparkline({ buckets }: { buckets: TriggerStats["dailyBuckets"] }) {
         return (
           <div
             key={b.day}
-            className={`flex-1 rounded-sm ${hasErrors ? "bg-red-400/70" : b.total > 0 ? "bg-emerald-400/70" : "bg-[#1C2128]"}`}
+            className={`flex-1 rounded-sm ${hasErrors ? "bg-red-400/70" : b.total > 0 ? "bg-emerald-400/70" : "bg-accent"}`}
             style={{ height }}
             title={`${b.day}: ${b.total} fire${b.total !== 1 ? "s" : ""}${b.errors ? `, ${b.errors} error${b.errors !== 1 ? "s" : ""}` : ""}`}
           />
@@ -198,7 +198,7 @@ function TriggerCard({
   };
 
   return (
-    <div className={`bg-[#161B22] border rounded-xl transition-colors ${t.enabled ? "border-[#30363D]" : "border-[#30363D]/40 opacity-70"}`}>
+    <div className={`bg-card border rounded-xl transition-colors ${t.enabled ? "border-border" : "border-border/40 opacity-70"}`}>
       {/* Card header */}
       <div
         className="flex items-center gap-3 p-4 cursor-pointer select-none"
@@ -207,20 +207,20 @@ function TriggerCard({
         <span className="text-xl flex-shrink-0">{TRIGGER_ICONS[t.type]}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-[#E6EDF3] capitalize">{t.type} Trigger</p>
+            <p className="text-sm font-semibold text-foreground capitalize">{t.type} Trigger</p>
             {stats?.lastStatus && (
               <StatusDot status={stats.lastStatus as "fired" | "skipped" | "error"} />
             )}
             {stats?.lastFiredAt && (
-              <span className="text-[10px] text-[#484F58]">
+              <span className="text-[10px] text-muted-foreground/60">
                 Last: {formatDistanceToNow(new Date(stats.lastFiredAt), { addSuffix: true })}
               </span>
             )}
             {stats && stats.total > 0 && (
-              <span className="text-[10px] text-[#484F58]">· {stats.total} total fires</span>
+              <span className="text-[10px] text-muted-foreground/60">· {stats.total} total fires</span>
             )}
           </div>
-          <p className="text-xs text-[#7D8590] mt-0.5">{TRIGGER_DESCRIPTIONS[t.type]}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{TRIGGER_DESCRIPTIONS[t.type]}</p>
         </div>
 
         {/* Sparkline */}
@@ -237,7 +237,7 @@ function TriggerCard({
             className={`px-2.5 py-1 text-[10px] font-semibold rounded-full border transition-colors ${
               t.enabled
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                : "bg-[#1C2128] text-[#7D8590] border-[#30363D] hover:border-[#484F58]"
+                : "bg-accent text-muted-foreground border-border hover:border-muted-foreground/60"
             }`}
           >
             {t.enabled ? "Enabled" : "Disabled"}
@@ -253,7 +253,7 @@ function TriggerCard({
                 }
                 setShowTestPayloadEditor(v => !v);
               }}
-              className={`px-2.5 py-1 text-[10px] font-semibold rounded-full border transition-colors ${showTestPayloadEditor ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "border-[#0078D4]/30 text-[#0078D4] hover:bg-[#0078D4]/10"}`}
+              className={`px-2.5 py-1 text-[10px] font-semibold rounded-full border transition-colors ${showTestPayloadEditor ? "bg-primary/10 border-primary/40 text-primary" : "border-primary/30 text-primary hover:bg-primary/10"}`}
               title="Edit test payload JSON before firing"
             >
               Test Fire ▾
@@ -270,7 +270,7 @@ function TriggerCard({
               </button>
               <button
                 onClick={() => setDeleteConfirm(false)}
-                className="px-2.5 py-1 text-[10px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-2.5 py-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
@@ -278,7 +278,7 @@ function TriggerCard({
           ) : (
             <button
               onClick={() => setDeleteConfirm(true)}
-              className="p-1.5 text-[#484F58] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+              className="p-1.5 text-muted-foreground/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
               title="Delete trigger"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -289,7 +289,7 @@ function TriggerCard({
         </div>
 
         <svg
-          className={`w-4 h-4 text-[#484F58] flex-shrink-0 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
+          className={`w-4 h-4 text-muted-foreground/60 flex-shrink-0 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -301,21 +301,21 @@ function TriggerCard({
       {/* Type-specific config row */}
       <div className="px-4 pb-3 -mt-1">
         {t.type === "schedule" && (
-          <div className="text-xs text-[#484F58] font-mono bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2">
-            cron: <span className="text-[#E6EDF3]">{(t.config.cron as string) ?? "—"}</span>
+          <div className="text-xs text-muted-foreground/60 font-mono bg-background border border-border rounded-lg px-3 py-2">
+            cron: <span className="text-foreground">{(t.config.cron as string) ?? "—"}</span>
             {t.nextRunAt && (
-              <span className="ml-4">next: <span className="text-[#7D8590]">{format(new Date(t.nextRunAt), "MMM d, HH:mm")}</span></span>
+              <span className="ml-4">next: <span className="text-muted-foreground">{format(new Date(t.nextRunAt), "MMM d, HH:mm")}</span></span>
             )}
           </div>
         )}
         {t.type === "webhook" && t.webhookToken && (
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-[10px] bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[#7D8590] font-mono truncate">
+            <code className="flex-1 text-[10px] bg-background border border-border rounded-lg px-3 py-2 text-muted-foreground font-mono truncate">
               POST {webhookBase}/{t.webhookToken}
             </code>
             <button
               onClick={() => copyUrl(`${webhookBase}/${t.webhookToken}`)}
-              className="flex-shrink-0 p-2 text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded-lg border border-[#30363D] transition-colors"
+              className="flex-shrink-0 p-2 text-muted-foreground/60 hover:text-foreground hover:bg-accent rounded-lg border border-border transition-colors"
               title="Copy URL"
             >
               {copying ? (
@@ -331,16 +331,16 @@ function TriggerCard({
           </div>
         )}
         {t.type === "event" && (
-          <div className="text-xs text-[#484F58] font-mono bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2">
-            event: <span className="text-[#E6EDF3]">{(t.config.eventName as string) ?? "—"}</span>
+          <div className="text-xs text-muted-foreground/60 font-mono bg-background border border-border rounded-lg px-3 py-2">
+            event: <span className="text-foreground">{(t.config.eventName as string) ?? "—"}</span>
           </div>
         )}
       </div>
 
       {/* Test Fire payload editor (shown when dropdown is open, regardless of expanded) */}
       {showTestPayloadEditor && (
-        <div className="border-t border-[#30363D] px-4 pb-3 pt-3 space-y-2">
-          <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test Payload (JSON)</p>
+        <div className="border-t border-border px-4 pb-3 pt-3 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Test Payload (JSON)</p>
           <textarea
             value={customPayloadText}
             onChange={e => {
@@ -350,7 +350,7 @@ function TriggerCard({
             }}
             rows={5}
             spellCheck={false}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] font-mono resize-y outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground font-mono resize-y outline-none focus:border-primary/60 placeholder-muted-foreground/60"
             placeholder='{ "key": "value" }'
           />
           {payloadError && <p className="text-[10px] text-red-400">{payloadError}</p>}
@@ -362,14 +362,14 @@ function TriggerCard({
                 setPayloadPrefilled(false);
                 setPayloadError(null);
               }}
-              className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Reset
             </button>
             <button
               onClick={() => testFireMut.mutate()}
               disabled={testFireMut.isPending}
-              className="px-3 py-1.5 text-xs bg-[#0078D4] hover:bg-[#006CBF] disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+              className="px-3 py-1.5 text-xs bg-primary hover:bg-[#006CBF] disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
             >
               {testFireMut.isPending ? "Firing…" : "Fire Now"}
             </button>
@@ -379,9 +379,9 @@ function TriggerCard({
 
       {/* Expanded section */}
       {expanded && (
-        <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+        <div className="border-t border-border px-4 pb-4 pt-3 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Event History</p>
+            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Event History</p>
             {testFireMut.isSuccess && (
               <span className="text-[10px] text-emerald-400">
                 ✓ Fired — run #{testFireMut.data?.runId ?? "n/a"}
@@ -395,18 +395,18 @@ function TriggerCard({
           {eventsLoading ? (
             <div className="space-y-1">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-8 bg-[#0D1117] border border-[#30363D] rounded-lg animate-pulse" />
+                <div key={i} className="h-8 bg-background border border-border rounded-lg animate-pulse" />
               ))}
             </div>
           ) : events.length === 0 ? (
-            <div className="text-center py-6 text-[#484F58] text-xs">
+            <div className="text-center py-6 text-muted-foreground/60 text-xs">
               No events yet — click <strong>Test Fire</strong> to generate the first one.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-[#484F58] text-[10px] uppercase tracking-widest">
+                  <tr className="text-muted-foreground/60 text-[10px] uppercase tracking-widest">
                     <th className="text-left px-2 pb-1 font-normal w-4"></th>
                     <th className="text-left px-2 pb-1 font-normal">When</th>
                     <th className="text-left px-2 pb-1 font-normal">Run</th>
@@ -416,33 +416,33 @@ function TriggerCard({
                 </thead>
                 <tbody>
                   {events.map(evt => (
-                    <tr key={evt.id} className="border-t border-[#1C2128] hover:bg-[#0D1117]/50 transition-colors">
+                    <tr key={evt.id} className="border-t border-accent hover:bg-background/50 transition-colors">
                       <td className="px-2 py-1.5">
                         <StatusDot status={evt.status} />
                       </td>
-                      <td className="px-2 py-1.5 text-[#7D8590] whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-muted-foreground whitespace-nowrap">
                         {formatDistanceToNow(new Date(evt.firedAt), { addSuffix: true })}
                       </td>
                       <td className="px-2 py-1.5">
                         {evt.runId ? (
-                          <span className="font-mono text-[#0078D4]">#{evt.runId}</span>
+                          <span className="font-mono text-primary">#{evt.runId}</span>
                         ) : (
-                          <span className="text-[#484F58]">—</span>
+                          <span className="text-muted-foreground/60">—</span>
                         )}
                       </td>
-                      <td className="px-2 py-1.5 text-[#7D8590] whitespace-nowrap">
+                      <td className="px-2 py-1.5 text-muted-foreground whitespace-nowrap">
                         {evt.durationMs != null ? `${evt.durationMs} ms` : "—"}
                       </td>
                       <td className="px-2 py-1.5">
                         {evt.payload && Object.keys(evt.payload).length > 0 ? (
                           <button
                             onClick={() => setShowPayload(showPayload === evt.id ? null : evt.id)}
-                            className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+                            className="text-[10px] text-primary hover:text-[#2E9EFF] transition-colors"
                           >
                             {showPayload === evt.id ? "Hide" : "View"}
                           </button>
                         ) : (
-                          <span className="text-[#484F58]">{"{}"}</span>
+                          <span className="text-muted-foreground/60">{"{}"}</span>
                         )}
                       </td>
                     </tr>
@@ -457,12 +457,12 @@ function TriggerCard({
                 const json = JSON.stringify(evt.payload, null, 2);
                 return (
                   <div className="mt-2 relative">
-                    <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[10px] text-[#7D8590] font-mono overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
+                    <pre className="bg-background border border-border rounded-lg px-3 py-2 text-[10px] text-muted-foreground font-mono overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap break-all">
                       {json}
                     </pre>
                     <button
                       onClick={() => navigator.clipboard.writeText(json)}
-                      className="absolute top-2 right-2 p-1 rounded text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                      className="absolute top-2 right-2 p-1 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
                       title="Copy JSON"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -484,19 +484,19 @@ function TriggerCard({
 
           {/* Stats row */}
           {stats && (
-            <div className="flex items-center gap-4 pt-1 border-t border-[#1C2128]">
+            <div className="flex items-center gap-4 pt-1 border-t border-accent">
               <div>
-                <p className="text-[9px] uppercase tracking-widest text-[#484F58]">Total fires</p>
-                <p className="text-sm font-bold text-[#E6EDF3]">{stats.total}</p>
+                <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Total fires</p>
+                <p className="text-sm font-bold text-foreground">{stats.total}</p>
               </div>
               {stats.avgDurationMs != null && (
                 <div>
-                  <p className="text-[9px] uppercase tracking-widest text-[#484F58]">Avg duration</p>
-                  <p className="text-sm font-bold text-[#E6EDF3]">{stats.avgDurationMs} ms</p>
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60">Avg duration</p>
+                  <p className="text-sm font-bold text-foreground">{stats.avgDurationMs} ms</p>
                 </div>
               )}
               <div className="flex-1">
-                <p className="text-[9px] uppercase tracking-widest text-[#484F58] mb-1">Last 30 days</p>
+                <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-1">Last 30 days</p>
                 <Sparkline buckets={stats.dailyBuckets} />
               </div>
             </div>
@@ -577,19 +577,19 @@ export default function TriggersPage({ defId }: { defId: number }) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/workflows/list")}
-            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-[#E6EDF3]">Triggers</h1>
-            <p className="text-sm text-[#7D8590] mt-0.5">{def?.name ?? "Loading…"}</p>
+            <h1 className="text-xl font-bold text-foreground">Triggers</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{def?.name ?? "Loading…"}</p>
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-2 bg-primary hover:bg-[#006CBD] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -598,23 +598,23 @@ export default function TriggersPage({ defId }: { defId: number }) {
           </button>
         </div>
 
-        <div className="bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-xl p-4 text-sm text-[#7D8590]">
-          Triggers fire the <strong className="text-[#E6EDF3]">published</strong> version of this workflow.
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 text-sm text-muted-foreground">
+          Triggers fire the <strong className="text-foreground">published</strong> version of this workflow.
           Publish a version in the Builder before activating triggers. Click any trigger to see its event history and statistics.
         </div>
 
         {/* Add dialog */}
         {showAdd && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowAdd(false)}>
-            <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
-              <h2 className="font-semibold text-[#E6EDF3]">Add Trigger</h2>
+            <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
+              <h2 className="font-semibold text-foreground">Add Trigger</h2>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">Type</label>
+                <label className="text-xs font-medium text-muted-foreground">Type</label>
                 <select
                   value={newType}
                   onChange={e => setNewType(e.target.value as typeof newType)}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                 >
                   <option value="schedule">📅 Schedule (cron)</option>
                   <option value="webhook">🔗 Webhook</option>
@@ -625,30 +625,30 @@ export default function TriggersPage({ defId }: { defId: number }) {
               {newType === "schedule" && (
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#7D8590]">Cron Expression</label>
+                    <label className="text-xs font-medium text-muted-foreground">Cron Expression</label>
                     <input
                       value={cronExpr}
                       onChange={e => setCronExpr(e.target.value)}
                       placeholder="0 9 * * 1"
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono"
                     />
-                    <p className="text-[10px] text-[#484F58]">Format: minute hour dom month dow — e.g. "0 9 * * 1" = 9am every Monday</p>
+                    <p className="text-[10px] text-muted-foreground/60">Format: minute hour dom month dow — e.g. "0 9 * * 1" = 9am every Monday</p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#7D8590]">Payload Mode</label>
+                    <label className="text-xs font-medium text-muted-foreground">Payload Mode</label>
                     <div className="flex gap-1">
                       {(["static", "per_record", "batched"] as const).map(mode => (
                         <button
                           key={mode}
                           onClick={() => setSchedulePayloadMode(mode)}
-                          className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium border transition-colors ${schedulePayloadMode === mode ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                          className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium border transition-colors ${schedulePayloadMode === mode ? "bg-primary/10 border-primary/40 text-primary" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
                         >
                           {mode === "static" ? "Static" : mode === "per_record" ? "Per-Record" : "Batched"}
                         </button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-[#484F58]">
+                    <p className="text-[10px] text-muted-foreground/60">
                       {schedulePayloadMode === "static"
                         ? "Fire one run with a fixed JSON payload each tick."
                         : schedulePayloadMode === "per_record"
@@ -659,7 +659,7 @@ export default function TriggersPage({ defId }: { defId: number }) {
 
                   {schedulePayloadMode === "static" && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#7D8590]">Payload (JSON)</label>
+                      <label className="text-xs font-medium text-muted-foreground">Payload (JSON)</label>
                       <textarea
                         rows={3}
                         value={staticPayload}
@@ -668,7 +668,7 @@ export default function TriggersPage({ defId }: { defId: number }) {
                           try { JSON.parse(e.target.value); setStaticPayloadError(null); }
                           catch { setStaticPayloadError("Invalid JSON"); }
                         }}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono resize-none"
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono resize-none"
                       />
                       {staticPayloadError && <p className="text-[10px] text-red-400">{staticPayloadError}</p>}
                     </div>
@@ -676,14 +676,14 @@ export default function TriggersPage({ defId }: { defId: number }) {
 
                   {(schedulePayloadMode === "per_record" || schedulePayloadMode === "batched") && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#7D8590]">
+                      <label className="text-xs font-medium text-muted-foreground">
                         {schedulePayloadMode === "per_record" ? "Fan-Out Query (one run per row)" : "Batch Query (one run with all rows)"}
                       </label>
                       <textarea
                         rows={3}
                         value={fanOutQuery}
                         onChange={e => setFanOutQuery(e.target.value)}
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono resize-none"
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono resize-none"
                       />
                       <p className="text-[10px] text-amber-500/70">
                         {schedulePayloadMode === "per_record"
@@ -697,28 +697,28 @@ export default function TriggersPage({ defId }: { defId: number }) {
 
               {newType === "event" && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Event Name</label>
+                  <label className="text-xs font-medium text-muted-foreground">Event Name</label>
                   <input
                     value={eventName}
                     onChange={e => setEventName(e.target.value)}
                     placeholder="e.g. client.signed_contract"
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 font-mono"
                   />
                 </div>
               )}
 
               {newType === "webhook" && (
-                <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-xs text-[#7D8590]">
+                <div className="bg-background border border-border rounded-lg p-3 text-xs text-muted-foreground">
                   A unique webhook URL will be generated automatically after saving.
                 </div>
               )}
 
               <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-[#7D8590]">Cancel</button>
+                <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-muted-foreground">Cancel</button>
                 <button
                   onClick={() => addMut.mutate()}
                   disabled={addMut.isPending}
-                  className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                  className="px-4 py-2 bg-primary hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   {addMut.isPending ? "Adding…" : "Add Trigger"}
                 </button>
@@ -730,12 +730,12 @@ export default function TriggersPage({ defId }: { defId: number }) {
         {/* Triggers list */}
         {isLoading ? (
           <div className="space-y-3">
-            {[1, 2].map(i => <div key={i} className="h-24 bg-[#161B22] border border-[#30363D] rounded-xl animate-pulse" />)}
+            {[1, 2].map(i => <div key={i} className="h-24 bg-card border border-border rounded-xl animate-pulse" />)}
           </div>
         ) : triggers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-[#E6EDF3] font-medium">No triggers configured</p>
-            <p className="text-sm text-[#7D8590] mt-1">Add a trigger to automate this workflow.</p>
+            <p className="text-foreground font-medium">No triggers configured</p>
+            <p className="text-sm text-muted-foreground mt-1">Add a trigger to automate this workflow.</p>
           </div>
         ) : (
           <div className="space-y-3">

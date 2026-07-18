@@ -156,36 +156,36 @@ function NodePicker({
     <>
       <div className="fixed inset-0 z-[99]" onClick={onClose} />
       <div
-        className="fixed z-[100] w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-hidden"
+        className="fixed z-[100] w-72 bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
         style={{ top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
         onClick={e => e.stopPropagation()}
       >
-      <div className="p-2 border-b border-[#30363D]">
+      <div className="p-2 border-b border-border">
         <input
           ref={inputRef}
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search nodes…"
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+          className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
         />
       </div>
       <div className="max-h-80 overflow-y-auto p-2 space-y-2">
         {(filtered ?? []).length === 0 && search && (
-          <p className="text-xs text-[#484F58] text-center py-3">No nodes match</p>
+          <p className="text-xs text-muted-foreground/60 text-center py-3">No nodes match</p>
         )}
         {filtered
           ? (
             <div className="space-y-0.5">
               {filtered.map(n => {
-                const s = nodeStyles[n.type] ?? nodeStyles["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: n.label };
+                const s = nodeStyles[n.type] ?? nodeStyles["action"] ?? { bg: "#171C26", border: "#232A36", icon: "⚡", label: n.label };
                 return (
                   <button
                     key={n.type}
                     onClick={() => { onPick(n.type); onClose(); }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-left"
                   >
                     <span className="flex-shrink-0 text-base w-6 text-center">{s.icon}</span>
-                    <span className="text-xs text-[#E6EDF3] truncate">{n.label}</span>
+                    <span className="text-xs text-foreground truncate">{n.label}</span>
                   </button>
                 );
               })}
@@ -193,18 +193,18 @@ function NodePicker({
           )
           : libraryCategories.map(cat => (
             <div key={cat.name}>
-              <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-0.5">{cat.name}</p>
+              <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60 px-1 mb-0.5">{cat.name}</p>
               <div className="space-y-0.5">
                 {cat.nodes.map(n => {
-                  const s = nodeStyles[n.type] ?? nodeStyles["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: n.label };
+                  const s = nodeStyles[n.type] ?? nodeStyles["action"] ?? { bg: "#171C26", border: "#232A36", icon: "⚡", label: n.label };
                   return (
                     <button
                       key={n.type}
                       onClick={() => { onPick(n.type); onClose(); }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-left"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors text-left"
                     >
                       <span className="flex-shrink-0 text-base w-6 text-center">{s.icon}</span>
-                      <span className="text-xs text-[#E6EDF3] truncate">{n.label}</span>
+                      <span className="text-xs text-foreground truncate">{n.label}</span>
                     </button>
                   );
                 })}
@@ -392,7 +392,7 @@ function AddButton({
   return (
     <div className="flex justify-center my-1">
       <div className="flex flex-col items-center">
-        <div className="w-px h-3 bg-[#30363D]" />
+        <div className="w-px h-3 bg-border" />
         {label && (
           <span className="mb-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/30 select-none">
             {label}
@@ -402,12 +402,12 @@ function AddButton({
           ref={btnRef}
           onClick={handleOpen}
           onContextMenu={handleContextMenu}
-          className="w-6 h-6 rounded-full bg-[#1C2128] border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 text-[#484F58] hover:text-[#0078D4] flex items-center justify-center transition-colors text-sm font-bold leading-none"
+          className="w-6 h-6 rounded-full bg-accent border border-border hover:border-primary hover:bg-primary/10 text-muted-foreground/60 hover:text-primary flex items-center justify-center transition-colors text-sm font-bold leading-none"
           title={label ? `Add step after loop (runs once when all iterations finish)` : "Add step"}
         >
           +
         </button>
-        <div className="w-px h-3 bg-[#30363D]" />
+        <div className="w-px h-3 bg-border" />
       </div>
 
       {open && pickerPos && (
@@ -424,21 +424,21 @@ function AddButton({
       {pasteMenuOpen && pasteMenuPos && createPortal(
         <div
           ref={pasteMenuRef}
-          className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[180px] text-xs"
+          className="fixed z-[9999] bg-card border border-border rounded-lg shadow-2xl py-1 min-w-[180px] text-xs"
           style={{ top: pasteMenuPos.top, left: pasteMenuPos.left }}
           onClick={e => e.stopPropagation()}
         >
           <button
             onClick={handlePaste}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
           >
             <span className="opacity-60">⎘</span>
             Paste "{pastedLabel}"
           </button>
-          <div className="border-t border-[#30363D] my-1" />
+          <div className="border-t border-border my-1" />
           <button
             onClick={() => { setPasteMenuOpen(false); handleOpen(); }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
           >
             <span className="opacity-60">+</span>
             Add step…
@@ -460,7 +460,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 function CategoryBadge({ category }: { category: string }) {
-  const colors = CATEGORY_COLORS[category] ?? { bg: "#1C2128", text: "#7D8590" };
+  const colors = CATEGORY_COLORS[category] ?? { bg: "#171C26", text: "#8B94A3" };
   return (
     <span
       className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
@@ -488,7 +488,7 @@ function StepAnnotation({
   const [draft, setDraft] = useState(annotation);
   if (!isSelected && !annotation) return null;
   return (
-    <div className="px-3 py-1.5 border-t border-[#30363D] flex items-start gap-1.5">
+    <div className="px-3 py-1.5 border-t border-border flex items-start gap-1.5">
       <svg className="w-3 h-3 text-amber-400/70 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
       </svg>
@@ -508,12 +508,12 @@ function StepAnnotation({
           onKeyDown={e => { if (e.key === "Escape") { setEditing(false); setDraft(annotation); } e.stopPropagation(); }}
           onClick={e => e.stopPropagation()}
           placeholder="Add a note…"
-          className="flex-1 bg-transparent text-[10px] text-amber-200/80 placeholder-[#484F58] outline-none resize-none leading-relaxed"
+          className="flex-1 bg-transparent text-[10px] text-amber-200/80 placeholder-muted-foreground/60 outline-none resize-none leading-relaxed"
         />
       ) : (
         <p
           onClick={e => { if (!isArchived) { e.stopPropagation(); setEditing(true); setDraft(annotation); } }}
-          className={`flex-1 text-[10px] leading-relaxed ${annotation ? "text-amber-200/70" : "text-[#484F58] italic"} ${!isArchived ? "cursor-text hover:text-amber-200/90" : ""}`}
+          className={`flex-1 text-[10px] leading-relaxed ${annotation ? "text-amber-200/70" : "text-muted-foreground/60 italic"} ${!isArchived ? "cursor-text hover:text-amber-200/90" : ""}`}
         >
           {annotation || (isSelected ? "Click to add a note…" : "")}
         </p>
@@ -565,7 +565,7 @@ function StepCard({
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuPortalRef = useRef<HTMLDivElement>(null);
   const style = nodeStyles[step.nodeType] ?? nodeStyles["action"] ?? {
-    bg: "#1C2128", border: "#30363D", icon: "⚡", label: step.nodeType,
+    bg: "#171C26", border: "#232A36", icon: "⚡", label: step.nodeType,
   };
 
   const label = (step.data.label as string) || style.label;
@@ -686,12 +686,12 @@ function StepCard({
         className={`relative transition-all cursor-pointer select-none ${isDragging ? "opacity-40" : ""}`}
         style={{
           background: "#1A1600",
-          border: `1.5px solid ${isSelected ? "#0078D4" : "#78530A"}`,
+          border: `1.5px solid ${isSelected ? "#2F6FED" : "#78530A"}`,
           borderRadius: 10,
           padding: "10px 14px 12px",
           minWidth: 0,
           boxShadow: isSelected
-            ? "0 0 0 3px #0078D440, 0 2px 8px rgba(202,138,4,0.15)"
+            ? "0 0 0 3px #2F6FED40, 0 2px 8px rgba(202,138,4,0.15)"
             : "0 2px 6px rgba(0,0,0,0.35)",
         }}
         onClick={e => { e.stopPropagation(); onSelect(); }}
@@ -702,10 +702,10 @@ function StepCard({
       >
         {/* Drop indicators */}
         {isDropTarget && ctx.dropPosition === "before" && (
-          <div className="absolute -top-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+          <div className="absolute -top-1 left-0 right-0 h-0.5 bg-primary rounded-full z-10 pointer-events-none" />
         )}
         {isDropTarget && ctx.dropPosition === "after" && (
-          <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+          <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full z-10 pointer-events-none" />
         )}
 
         {/* Header row */}
@@ -757,15 +757,15 @@ function StepCard({
               {menuOpen && menuPos && createPortal(
                 <div
                   ref={menuPortalRef}
-                  className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
+                  className="fixed z-[9999] bg-card border border-border rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
                   style={{ top: menuPos.top, right: menuPos.right }}
                 >
-                  <button onClick={handleMoveUp}   className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Up</button>
-                  <button onClick={handleMoveDown} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Down</button>
-                  <button onClick={handleDuplicate} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Duplicate</button>
-                  <button onClick={handleCopy}      className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Copy</button>
-                  <div className="border-t border-[#30363D] my-1" />
-                  <button onClick={handleDelete} className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-[#21262D] transition-colors">Delete</button>
+                  <button onClick={handleMoveUp}   className="w-full text-left px-3 py-1.5 text-foreground hover:bg-accent transition-colors">Move Up</button>
+                  <button onClick={handleMoveDown} className="w-full text-left px-3 py-1.5 text-foreground hover:bg-accent transition-colors">Move Down</button>
+                  <button onClick={handleDuplicate} className="w-full text-left px-3 py-1.5 text-foreground hover:bg-accent transition-colors">Duplicate</button>
+                  <button onClick={handleCopy}      className="w-full text-left px-3 py-1.5 text-foreground hover:bg-accent transition-colors">Copy</button>
+                  <div className="border-t border-border my-1" />
+                  <button onClick={handleDelete} className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-accent transition-colors">Delete</button>
                 </div>,
                 document.body
               )}
@@ -796,16 +796,16 @@ function StepCard({
       className={`relative rounded-xl border transition-all cursor-pointer select-none
         ${isDragging ? "opacity-40" : ""}
         ${isReplayDimmed ? "opacity-30 pointer-events-none" : ""}
-        ${isLiveActive ? "ring-2 ring-[#0078D4] ring-offset-1 ring-offset-[#0D1117] shadow-[0_0_16px_4px_rgba(0,120,212,0.35)]" : ""}
+        ${isLiveActive ? "ring-2 ring-primary ring-offset-1 ring-offset-background shadow-[0_0_16px_4px_rgba(0,120,212,0.35)]" : ""}
         ${isLiveCompleted && !isSelected ? "ring-1 ring-[#22C55E]/40" : ""}
         ${isLiveFailed && !isSelected ? "ring-1 ring-[#EF4444]/40" : ""}
         ${isReplayActive ? "ring-2 ring-violet-500/60 shadow-[0_0_12px_2px_rgba(139,92,246,0.3)]" : ""}
-        ${isTokenHighlight ? "ring-2 ring-purple-400 ring-offset-1 ring-offset-[#0D1117] shadow-[0_0_16px_4px_rgba(168,85,247,0.45)]" : ""}
+        ${isTokenHighlight ? "ring-2 ring-purple-400 ring-offset-1 ring-offset-background shadow-[0_0_16px_4px_rgba(168,85,247,0.45)]" : ""}
         ${isSelected
-          ? "border-[#0078D4] ring-1 ring-[#0078D4]/40 shadow-[0_0_0_3px_rgba(0,120,212,0.12)]"
-          : `hover:border-[#484F58]`
+          ? "border-primary ring-1 ring-primary/40 shadow-[0_0_0_3px_rgba(0,120,212,0.12)]"
+          : `hover:border-muted-foreground/60`
         }`}
-      style={{ borderColor: isSelected ? "#0078D4" : isLiveActive ? "#0078D4" : isLiveFailed ? "#EF4444" : isLiveCompleted ? "#22C55E" : style.border }}
+      style={{ borderColor: isSelected ? "#2F6FED" : isLiveActive ? "#2F6FED" : isLiveFailed ? "#EF4444" : isLiveCompleted ? "#22C55E" : style.border }}
       data-node-id={step.id}
       onClick={e => { e.stopPropagation(); onSelect(); }}
       onContextMenu={handleContextMenu}
@@ -815,10 +815,10 @@ function StepCard({
     >
       {/* Drop indicator lines */}
       {isDropTarget && ctx.dropPosition === "before" && (
-        <div className="absolute -top-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+        <div className="absolute -top-1 left-0 right-0 h-0.5 bg-primary rounded-full z-10 pointer-events-none" />
       )}
       {isDropTarget && ctx.dropPosition === "after" && (
-        <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+        <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary rounded-full z-10 pointer-events-none" />
       )}
 
       {/* Card header */}
@@ -833,7 +833,7 @@ function StepCard({
             onDragStart={handleDragStart}
             onDragEnd={e => { e.stopPropagation(); ctx.onDragEnd(); }}
             onClick={e => e.stopPropagation()}
-            className="flex-shrink-0 cursor-grab active:cursor-grabbing text-[#484F58] hover:text-[#7D8590] px-0.5 py-0.5 rounded"
+            className="flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-muted-foreground px-0.5 py-0.5 rounded"
             title="Drag to reorder"
           >
             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -846,8 +846,8 @@ function StepCard({
 
         <span className="text-base flex-shrink-0">{style.icon}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-[#E6EDF3] truncate">{label}</p>
-          <p className="text-[10px] text-[#7D8590] truncate">{step.id}</p>
+          <p className="text-xs font-semibold text-foreground truncate">{label}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{step.id}</p>
         </div>
 
         {/* Execution result badge (inspect mode overlay) — click to expand log */}
@@ -879,7 +879,7 @@ function StepCard({
         {isContainer && (
           <button
             onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
-            className="flex-shrink-0 p-1 rounded hover:bg-black/20 text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="flex-shrink-0 p-1 rounded hover:bg-black/20 text-muted-foreground hover:text-foreground transition-colors"
             title={collapsed ? "Expand" : "Collapse"}
           >
             <svg
@@ -906,7 +906,7 @@ function StepCard({
                 }
                 setMenuOpen(v => !v);
               }}
-              className="p-1 rounded hover:bg-black/20 text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              className="p-1 rounded hover:bg-black/20 text-muted-foreground hover:text-foreground transition-colors"
               title="Step actions"
             >
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
@@ -920,7 +920,7 @@ function StepCard({
         {!isArchived && menuOpen && menuPos && createPortal(
           <div
             ref={menuPortalRef}
-            className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
+            className="fixed z-[9999] bg-card border border-border rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
             style={{ top: menuPos.top, right: menuPos.right }}
             onClick={e => e.stopPropagation()}
           >
@@ -928,13 +928,13 @@ function StepCard({
                   <>
                     <button
                       onClick={handleMoveUp}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
                     >
                       ↑ Move Up
                     </button>
                     <button
                       onClick={handleMoveDown}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
                     >
                       ↓ Move Down
                     </button>
@@ -942,19 +942,19 @@ function StepCard({
                 )}
                 <button
                   onClick={handleDuplicate}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
                 >
                   ⧉ Duplicate
                 </button>
                 <button
                   onClick={handleCopy}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-accent transition-colors"
                 >
                   ⎘ Copy
                 </button>
                 {step.nodeType !== "start" && (
                   <>
-                    <div className="border-t border-[#30363D] my-1" />
+                    <div className="border-t border-border my-1" />
                     <button
                       onClick={handleDelete}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10 transition-colors"
@@ -970,11 +970,11 @@ function StepCard({
 
       {/* generate_script: show source mode + target summary */}
       {step.nodeType === "generate_script" && (
-        <div className="px-3 py-1.5 border-t border-[#30363D] text-[10px] text-[#7D8590] flex items-center gap-1.5 truncate">
+        <div className="px-3 py-1.5 border-t border-border text-[10px] text-muted-foreground flex items-center gap-1.5 truncate">
           <span className="flex-shrink-0">
             {(step.data.sourceMode as string | undefined) === "document" ? "📄 Document" : "⚙️ Service"}
           </span>
-          <span className="text-[#484F58]">→</span>
+          <span className="text-muted-foreground/60">→</span>
           <span className="truncate">
             {(step.data.targetName as string | undefined)?.trim() || (step.data.targetId as string | undefined)?.trim() || "Not configured"}
           </span>
@@ -989,7 +989,7 @@ function StepCard({
         const previewColors = { ok: "text-emerald-300/60", error: "text-red-400/70", skipped: "text-amber-300/60" };
         return (
           <div
-            className={`px-3 py-0.5 border-t border-[#30363D]/40 text-[10px] font-mono truncate cursor-pointer hover:opacity-80 ${previewColors[r.status]}`}
+            className={`px-3 py-0.5 border-t border-border/40 text-[10px] font-mono truncate cursor-pointer hover:opacity-80 ${previewColors[r.status]}`}
             onClick={e => { e.stopPropagation(); setStepLogOpen(true); }}
             title="Click to expand log"
           >
@@ -1004,19 +1004,19 @@ function StepCard({
         const logs = r.fullLogs ?? (r.logPreview ? [r.logPreview] : []);
         const hasData = (r.input != null && Object.keys(r.input).length > 0) || (r.output != null && Object.keys(r.output ?? {}).length > 0);
         return (
-          <div className="border-t border-[#30363D]/60 bg-[#0D1117]/60 text-[10px] font-mono">
+          <div className="border-t border-border/60 bg-background/60 text-[10px] font-mono">
             {/* Tab bar + close */}
             <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
               <div className="flex items-center gap-0.5">
                 <button
-                  className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "logs" ? "bg-[#30363D] text-[#E6EDF3]" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                  className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "logs" ? "bg-border text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   onClick={e => { e.stopPropagation(); setDrawerTab("logs"); }}
                 >
                   Logs
                 </button>
                 {hasData && (
                   <button
-                    className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "data" ? "bg-[#30363D] text-[#E6EDF3]" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "data" ? "bg-border text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                     onClick={e => { e.stopPropagation(); setDrawerTab("data"); }}
                   >
                     I/O Data
@@ -1028,7 +1028,7 @@ function StepCard({
                 </span>
               </div>
               <button
-                className="text-[#484F58] hover:text-[#7D8590] text-[11px]"
+                className="text-muted-foreground/60 hover:text-muted-foreground text-[11px]"
                 onClick={e => { e.stopPropagation(); setStepLogOpen(false); }}
                 title="Close"
               >✕</button>
@@ -1038,20 +1038,20 @@ function StepCard({
             {drawerTab === "logs" && (
               <div className="px-3 pb-2">
                 {r.errorMessage && (
-                  <div className="text-red-300/80 break-words whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto mb-1 border-b border-[#30363D]/40 pb-1">
+                  <div className="text-red-300/80 break-words whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto mb-1 border-b border-border/40 pb-1">
                     {r.errorMessage}
                   </div>
                 )}
                 {logs.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto space-y-0.5">
                     {logs.map((line, li) => (
-                      <div key={li} className="text-[#7D8590] break-words whitespace-pre-wrap leading-relaxed">
-                        <span className="select-none text-[#484F58] mr-1.5">{li + 1}</span>{line}
+                      <div key={li} className="text-muted-foreground break-words whitespace-pre-wrap leading-relaxed">
+                        <span className="select-none text-muted-foreground/60 mr-1.5">{li + 1}</span>{line}
                       </div>
                     ))}
                   </div>
                 ) : r.status === "ok" ? (
-                  <div className="text-[#484F58] italic">Step completed without log output.</div>
+                  <div className="text-muted-foreground/60 italic">Step completed without log output.</div>
                 ) : r.status === "skipped" ? (
                   <div className="text-amber-200/60 italic">Skipped — all upstream branches were skipped.</div>
                 ) : null}
@@ -1171,7 +1171,7 @@ function ParallelBranchColumn({
       onDrop={handleDrop}
     >
       <div
-        className="px-2 py-1.5 border-b border-[#30363D] flex items-center gap-1.5"
+        className="px-2 py-1.5 border-b border-border flex items-center gap-1.5"
         style={{ background: isColumnTarget ? `${color}20` : `${color}0D` }}
       >
         <span className="text-[9px] uppercase tracking-widest font-bold truncate flex-1" style={{ color }}>
@@ -1279,17 +1279,17 @@ function CollapsibleBranchHeader({
   onToggle: () => void;
 }) {
   return (
-    <div className="px-3 py-1.5 border-b border-[#30363D] flex items-center justify-between gap-2">
+    <div className="px-3 py-1.5 border-b border-border flex items-center justify-between gap-2">
       <span className="text-[9px] uppercase tracking-widest font-bold" style={color ? { color } : undefined}>
         {label}
       </span>
       <button
         onClick={e => { e.stopPropagation(); onToggle(); }}
-        className="flex items-center gap-1 text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+        className="flex items-center gap-1 text-[9px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
         title={collapsed ? "Expand branch" : "Collapse branch"}
       >
         {collapsed && stepCount > 0 && (
-          <span className="bg-[#1C2128] border border-[#30363D] rounded-full px-1.5 py-0.5 font-semibold text-[#7D8590]">
+          <span className="bg-accent border border-border rounded-full px-1.5 py-0.5 font-semibold text-muted-foreground">
             {stepCount} step{stepCount !== 1 ? "s" : ""}
           </span>
         )}
@@ -1419,10 +1419,10 @@ function ContainerBody({
     const noSteps  = branches["no"]  ?? [];
     return (
       <div className="border-t border-[#2DD4BF]/30 rounded-b-xl overflow-hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#30363D]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-border">
           {/* Passed branch */}
           <BranchColumn containerId={step.id} branchKey="yes" className="bg-teal-500/5">
-            <div className="px-3 py-1.5 border-b border-[#30363D]">
+            <div className="px-3 py-1.5 border-b border-border">
               <span className="text-[9px] uppercase tracking-widest font-bold text-[#2DD4BF]">✓ Passed</span>
             </div>
             <div className="px-2 pb-3 pt-1">
@@ -1446,8 +1446,8 @@ function ContainerBody({
           </BranchColumn>
 
           {/* On Failure branch */}
-          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
-            <div className="px-3 py-1.5 border-b border-[#30363D]">
+          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-border">
+            <div className="px-3 py-1.5 border-b border-border">
               <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">✕ On Failure</span>
             </div>
             <div className="px-2 pb-3 pt-1">
@@ -1482,7 +1482,7 @@ function ContainerBody({
     const noCollapsed  = collapsedBranches.has("no");
     return (
       <div className="border-t border-[#F59E0B]/30 rounded-b-xl overflow-hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#30363D]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-border">
           {/* Yes arm (true branch) */}
           <BranchColumn containerId={step.id} branchKey="yes" className="bg-emerald-500/5">
             <CollapsibleBranchHeader
@@ -1515,7 +1515,7 @@ function ContainerBody({
           </BranchColumn>
 
           {/* No arm (false branch) */}
-          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
+          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-border">
             <CollapsibleBranchHeader
               label={<>✕ No — False</>}
               color="#F87171"
@@ -1552,13 +1552,13 @@ function ContainerBody({
   // ── Switch / Case — scrolls horizontally on small screens ──
   if (nodeType === "switch_case") {
     const cases = (step.data.cases as Array<{ id: string; matchValue: string; label?: string }> | undefined) ?? [];
-    const branchColors = ["#0078D4", "#A855F7", "#F59E0B", "#10B981", "#EF4444"];
+    const branchColors = ["#2F6FED", "#A855F7", "#F59E0B", "#10B981", "#EF4444"];
 
     // If no cases configured yet, show a nudge instead of just a bare Default column
     if (cases.length === 0) {
       return (
         <div className="border-t border-[#FB923C]/30 rounded-b-xl bg-[#FB923C]/5 px-4 py-3">
-          <p className="text-[11px] text-[#7D8590] italic">
+          <p className="text-[11px] text-muted-foreground italic">
             No cases defined — open the config panel to add cases.
           </p>
           <div className="mt-2">
@@ -1589,7 +1589,7 @@ function ContainerBody({
     return (
       <div className="border-t border-[#FB923C]/30 rounded-b-xl overflow-x-auto">
         <div
-          className="grid divide-x divide-[#30363D]"
+          className="grid divide-x divide-border"
           style={{ gridTemplateColumns: `repeat(${branchKeys.length}, minmax(140px, 1fr))` }}
         >
           {branchKeys.map((key, bi) => {
@@ -1646,7 +1646,7 @@ function ContainerBody({
     return (
       <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-x-auto">
         <div
-          className="grid divide-x divide-[#30363D]"
+          className="grid divide-x divide-border"
           style={{ gridTemplateColumns: `repeat(${branchKeys.length}, minmax(140px, 1fr))` }}
         >
           {branchKeys.map((key, bi) => {
@@ -1681,7 +1681,7 @@ function ContainerBody({
         {/* Join footer */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-[#06B6D4]/20 bg-[#06B6D4]/5">
           <span className="text-[9px] text-[#06B6D4]/70 font-mono">⇊ join</span>
-          <span className="text-[9px] text-[#484F58]">awaited branches merged here</span>
+          <span className="text-[9px] text-muted-foreground/60">awaited branches merged here</span>
         </div>
       </div>
     );
@@ -1856,13 +1856,13 @@ function BranchStepList({
         <div
           className={`w-full border border-dashed rounded-lg py-3 flex items-center justify-center transition-colors ${
             isDragActive
-              ? "border-[#0078D4] bg-[#0078D4]/10 cursor-copy"
-              : "border-[#30363D]"
+              ? "border-primary bg-primary/10 cursor-copy"
+              : "border-border"
           }`}
           onDragOver={isDragActive ? (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; } : undefined}
           onDrop={isDragActive ? (e) => { e.preventDefault(); e.stopPropagation(); ctx.onDropIntoBranch(containerId, branchKey); } : undefined}
         >
-          <span className="text-[10px] text-[#484F58]">
+          <span className="text-[10px] text-muted-foreground/60">
             {isDragActive ? "Drop here" : "Empty branch"}
           </span>
         </div>
@@ -2044,18 +2044,18 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
   const [viewerDialog, setViewerDialog] = useState<{ open: boolean; json: unknown; title: string }>({ open: false, json: null, title: "" });
   const hasInput = input != null && Object.keys(input).length > 0;
   const hasOutput = output != null && Object.keys(output).length > 0;
-  if (!hasInput && !hasOutput) return <div className="text-[#484F58] italic">No I/O data recorded for this step.</div>;
+  if (!hasInput && !hasOutput) return <div className="text-muted-foreground/60 italic">No I/O data recorded for this step.</div>;
   return (
     <>
     <div className="space-y-2">
       {hasInput && (
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Input</p>
+            <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Input</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setViewerDialog({ open: true, json: input, title: "Input JSON" })}
-                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#0078D4] transition-colors"
+                className="flex items-center gap-0.5 text-[8px] text-muted-foreground/60 hover:text-primary transition-colors"
                 title="Open in JSON Viewer"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
@@ -2063,7 +2063,7 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
               </button>
               <button
                 onClick={() => copyInput(JSON.stringify(input, null, 2))}
-                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                className="flex items-center gap-0.5 text-[8px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                 title="Copy input JSON"
               >
                 {inputCopied ? (
@@ -2075,7 +2075,7 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
               </button>
             </div>
           </div>
-          <pre className="max-h-32 overflow-y-auto text-[9px] text-[#7D8590] bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+          <pre className="max-h-32 overflow-y-auto text-[9px] text-muted-foreground bg-[#0A0E13] rounded-lg p-2 border border-accent whitespace-pre-wrap break-all leading-relaxed">
             {JSON.stringify(input, null, 2)}
           </pre>
         </div>
@@ -2083,11 +2083,11 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
       {hasOutput && (
         <div>
           <div className="flex items-center justify-between mb-0.5">
-            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Output</p>
+            <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Output</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setViewerDialog({ open: true, json: output, title: "Output JSON" })}
-                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#0078D4] transition-colors"
+                className="flex items-center gap-0.5 text-[8px] text-muted-foreground/60 hover:text-primary transition-colors"
                 title="Open in JSON Viewer"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
@@ -2095,7 +2095,7 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
               </button>
               <button
                 onClick={() => copyOutput(JSON.stringify(output, null, 2))}
-                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                className="flex items-center gap-0.5 text-[8px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                 title="Copy output JSON"
               >
                 {outputCopied ? (
@@ -2107,7 +2107,7 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
               </button>
             </div>
           </div>
-          <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+          <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-accent whitespace-pre-wrap break-all leading-relaxed">
             {JSON.stringify(output, null, 2)}
           </pre>
         </div>
@@ -2461,20 +2461,20 @@ export default function FlowCanvas({
     return (
       <FlowCanvasContext.Provider value={ctx}>
         <div
-          className="flex-1 overflow-auto bg-[#0D1117] flex items-center justify-center"
+          className="flex-1 overflow-auto bg-background flex items-center justify-center"
           onClick={handleCanvasClick}
         >
           {isLoading ? (
             <div className="flex flex-col items-center gap-3 pointer-events-none">
-              <svg className="w-6 h-6 text-[#0078D4] animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-primary animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
               </svg>
-              <p className="text-xs text-[#484F58]">Loading workflow…</p>
+              <p className="text-xs text-muted-foreground/60">Loading workflow…</p>
             </div>
           ) : (
-            <div className="text-center text-[#484F58] pointer-events-none">
-              <p className="font-medium text-[#7D8590] text-sm">Canvas is empty</p>
+            <div className="text-center text-muted-foreground/60 pointer-events-none">
+              <p className="font-medium text-muted-foreground text-sm">Canvas is empty</p>
               <p className="mt-1 text-xs">Add steps from the library on the left, or use Build with AI.</p>
             </div>
           )}
@@ -2486,12 +2486,12 @@ export default function FlowCanvas({
   return (
     <FlowCanvasContext.Provider value={ctx}>
       <div
-        className="flex-1 overflow-auto bg-[#0D1117]"
+        className="flex-1 overflow-auto bg-background"
         onClick={handleCanvasClick}
       >
         {/* Dot-grid background */}
         <div className="min-h-full w-full" style={{
-          backgroundImage: "radial-gradient(circle, #1C2128 1px, transparent 1px)",
+          backgroundImage: "radial-gradient(circle, #171C26 1px, transparent 1px)",
           backgroundSize: "24px 24px",
         }}>
           <div className="max-w-2xl mx-auto py-8 px-4">

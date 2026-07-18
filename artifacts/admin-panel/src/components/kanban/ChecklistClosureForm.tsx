@@ -18,7 +18,7 @@ interface Props {
 }
 
 const inputCls =
-  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#1C2128] placeholder:text-muted-foreground/60";
+  "w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 bg-accent placeholder:text-muted-foreground/60";
 
 const ChecklistClosureForm = forwardRef<ChecklistClosureFormHandle, Props>(
   ({ fields }, ref) => {
@@ -140,7 +140,7 @@ const ChecklistClosureForm = forwardRef<ChecklistClosureFormHandle, Props>(
                 <button
                   type="button"
                   onClick={() => addRow(f.id)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />

@@ -124,12 +124,12 @@ function intelFormToBody(f: IntelFormFields): Record<string, unknown> {
 function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFormFields; onChange: (f: IntelFormFields) => void; compact?: boolean }) {
   const set = <K extends keyof IntelFormFields>(key: K, v: string) => onChange({ ...value, [key]: v });
   const inputCls = compact
-    ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono w-full"
-    : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40";
+    ? "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-full"
+    : "w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40";
   const selectCls = compact
-    ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
-    : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40";
-  const labelCls = compact ? "block text-[10px] text-[#7D8590] mb-0.5" : "block text-xs text-[#7D8590] mb-1";
+    ? "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full"
+    : "w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
+  const labelCls = compact ? "block text-[10px] text-muted-foreground mb-0.5" : "block text-xs text-muted-foreground mb-1";
   const numField = (key: keyof IntelFormFields, label: string, placeholder = "0") => (
     <div>
       <label className={labelCls}>{label}</label>
@@ -140,7 +140,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Core</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1.5">Core</p>
         <div className={gridCls}>
           <div>
             <label className={labelCls}>Category</label>
@@ -153,7 +153,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
           </div>
           <div>
             <label className={labelCls}>Pillar</label>
-            <input value={value.pillar} onChange={e => set("pillar", e.target.value)} placeholder="e.g. licensing" className={compact ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full" : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"} />
+            <input value={value.pillar} onChange={e => set("pillar", e.target.value)} placeholder="e.g. licensing" className={compact ? "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full" : "w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"} />
           </div>
           <div>
             <label className={labelCls}>Severity</label>
@@ -171,7 +171,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Impact & contribution</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1.5">Impact & contribution</p>
         <div className={gridCls}>
           {numField("pricingImpact", "Pricing impact")}
           {numField("priorityScoreContribution", "Priority score contrib.")}
@@ -185,7 +185,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Trend & forecasting</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1.5">Trend & forecasting</p>
         <div className={gridCls}>
           {numField("trendValue", "Trend value")}
           <div>
@@ -202,7 +202,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
         </div>
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">CRM contribution</p>
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground/60 mb-1.5">CRM contribution</p>
         <div className={gridCls}>
           {numField("crmFitContribution", "Fit")}
           {numField("crmPainContribution", "Pain")}
@@ -343,7 +343,7 @@ const RULE_TYPE_OPTIONS = [
 function ruleTypePill(ruleType: string) {
   const opt = RULE_TYPE_OPTIONS.find(o => o.value === ruleType);
   return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${opt?.color ?? "bg-[#30363D] text-[#7D8590]"}`}>
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${opt?.color ?? "bg-border text-muted-foreground"}`}>
       {opt?.label ?? ruleType}
     </span>
   );
@@ -1171,7 +1171,7 @@ export default function TenantSignalsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 text-[#0078D4] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     );
   }
@@ -1186,19 +1186,19 @@ export default function TenantSignalsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Top toolbar ───────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-[#30363D] bg-[#0D1117] gap-2 flex-wrap">
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-border bg-background gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           {/* View switcher */}
-          <div className="flex items-center border border-[#30363D] rounded-lg overflow-hidden">
+          <div className="flex items-center border border-border rounded-lg overflow-hidden">
             <button
               onClick={() => setPageView("rules")}
-              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${pageView === "rules" ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${pageView === "rules" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
             >
               Signal Rules
             </button>
             <button
               onClick={() => { setPageView("simulate"); void loadSimProfiles(); void loadClientsWithRuns(); }}
-              className={`px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 ${pageView === "simulate" ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 ${pageView === "simulate" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
             >
               <FlaskConical className="w-3 h-3" /> Simulate
             </button>
@@ -1207,19 +1207,19 @@ export default function TenantSignalsPage() {
             <>
               <button
                 onClick={() => { setShowTestModal(true); void loadSimProfiles(); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded-lg border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary text-xs font-semibold rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
               >
                 <Play className="w-3.5 h-3.5" /> Test Evaluation
               </button>
               <button
                 onClick={() => { setShowPreviewModal(true); void handlePreviewProjects(); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-primary/40 transition-colors"
               >
                 <Eye className="w-3.5 h-3.5" /> Preview Projects
               </button>
               <button
                 onClick={() => { setShowDryRunModal(true); void loadClients(); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-primary/40 transition-colors"
               >
                 <Zap className="w-3.5 h-3.5" /> Dry-Run SOW
               </button>
@@ -1230,7 +1230,7 @@ export default function TenantSignalsPage() {
           <button
             onClick={() => { void handlePreviewPublish(); }}
             disabled={publishDiffLoading || publishingToProd}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
           >
             {publishDiffLoading
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1242,7 +1242,7 @@ export default function TenantSignalsPage() {
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
               conflicts.length > 0
                 ? "bg-amber-900/20 text-amber-400 border-amber-500/30 hover:bg-amber-900/30"
-                : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+                : "bg-accent text-muted-foreground border-border"
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
@@ -1254,13 +1254,13 @@ export default function TenantSignalsPage() {
       {/* Publish-to-prod diff modal */}
       {publishDiff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-base font-bold text-[#E6EDF3] mb-1">Review Changes</h2>
-            <p className="text-xs text-[#7D8590] mb-4">These changes will be applied to the production database. Groups and rules are replaced in full.</p>
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-base font-bold text-foreground mb-1">Review Changes</h2>
+            <p className="text-xs text-muted-foreground mb-4">These changes will be applied to the production database. Groups and rules are replaced in full.</p>
             <div className="space-y-2 mb-5">
               {(publishDiff.customSignals.added.length > 0 || publishDiff.customSignals.removed.length > 0) && (
-                <div className="rounded-lg bg-[#1C2128] border border-[#30363D] px-3 py-2 space-y-1">
-                  <p className="text-xs font-semibold text-[#C9D1D9]">Custom Signals</p>
+                <div className="rounded-lg bg-accent border border-border px-3 py-2 space-y-1">
+                  <p className="text-xs font-semibold text-foreground/90">Custom Signals</p>
                   {publishDiff.customSignals.added.length > 0 && (
                     <p className="text-[11px] text-emerald-400">+ {publishDiff.customSignals.added.join(", ")}</p>
                   )}
@@ -1269,20 +1269,20 @@ export default function TenantSignalsPage() {
                   )}
                 </div>
               )}
-              <div className="rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/20 px-3 py-2 space-y-1">
-                <p className="text-xs font-semibold text-[#58A6FF]">Rule Groups</p>
-                <p className="text-[11px] text-[#58A6FF]/70">{publishDiff.groups.current} → {publishDiff.groups.incoming} group{publishDiff.groups.incoming !== 1 ? "s" : ""}</p>
+              <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 space-y-1">
+                <p className="text-xs font-semibold text-primary">Rule Groups</p>
+                <p className="text-[11px] text-primary/70">{publishDiff.groups.current} → {publishDiff.groups.incoming} group{publishDiff.groups.incoming !== 1 ? "s" : ""}</p>
               </div>
-              <div className="rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/20 px-3 py-2 space-y-1">
-                <p className="text-xs font-semibold text-[#58A6FF]">Derivation Rules</p>
-                <p className="text-[11px] text-[#58A6FF]/70">{publishDiff.rules.current} → {publishDiff.rules.incoming} rule{publishDiff.rules.incoming !== 1 ? "s" : ""}</p>
+              <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 space-y-1">
+                <p className="text-xs font-semibold text-primary">Derivation Rules</p>
+                <p className="text-[11px] text-primary/70">{publishDiff.rules.current} → {publishDiff.rules.incoming} rule{publishDiff.rules.incoming !== 1 ? "s" : ""}</p>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setPublishDiff(null)}
                 disabled={publishingToProd}
-                className="text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+                className="text-sm font-semibold px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground/90 hover:border-muted-foreground/60 disabled:opacity-40 transition-colors"
               >
                 Cancel
               </button>
@@ -1301,25 +1301,25 @@ export default function TenantSignalsPage() {
 
       {/* ── Simulate view ─────────────────────────────────────────────────────── */}
       {pageView === "simulate" && (
-        <div className="flex-1 overflow-y-auto bg-[#0D1117] p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto bg-background p-6 space-y-6">
           {/* Header row */}
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-base font-bold text-[#E6EDF3]">Simulation Profiles</h2>
-              <p className="text-xs text-[#7D8590] mt-0.5">
+              <h2 className="text-base font-bold text-foreground">Simulation Profiles</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Test rule changes against saved tenant data snapshots before publishing. Profiles can be created manually or imported directly from a real client's script run history.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => { setShowFromClientModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded-lg border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary text-xs font-semibold rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
               >
                 <Database className="w-3.5 h-3.5" /> Import from Tenant
               </button>
               <button
                 onClick={() => { setShowTestModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-primary/40 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" /> New Manual Profile
               </button>
@@ -1331,15 +1331,15 @@ export default function TenantSignalsPage() {
             value={simProfileSearch}
             onChange={e => setSimProfileSearch(e.target.value)}
             placeholder="Search profiles by name or tag…"
-            className="w-full max-w-sm border border-[#30363D] bg-[#1C2128] text-[#C9D1D9] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+            className="w-full max-w-sm border border-border bg-accent text-foreground/90 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
 
           {/* Profile cards */}
           {filteredSimProfiles.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <FlaskConical className="w-10 h-10 text-[#30363D] mb-3" />
-              <p className="text-sm font-semibold text-[#7D8590]">No simulation profiles yet</p>
-              <p className="text-xs text-[#484F58] mt-1 max-w-sm">Import real tenant data or create a manual profile to test signal rules before they affect live SOW generation.</p>
+              <FlaskConical className="w-10 h-10 text-border mb-3" />
+              <p className="text-sm font-semibold text-muted-foreground">No simulation profiles yet</p>
+              <p className="text-xs text-muted-foreground/60 mt-1 max-w-sm">Import real tenant data or create a manual profile to test signal rules before they affect live SOW generation.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1348,7 +1348,7 @@ export default function TenantSignalsPage() {
                 const isExpanded = expandedProfileIds.has(profile.id);
                 const isRunning = runningProfileId === profile.id;
                 return (
-                  <div key={profile.id} className="border border-[#30363D] rounded-xl overflow-hidden bg-[#161B22]">
+                  <div key={profile.id} className="border border-border rounded-xl overflow-hidden bg-card">
                     {/* Profile header */}
                     <div className="flex items-center justify-between px-5 py-3.5 gap-3">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1356,22 +1356,22 @@ export default function TenantSignalsPage() {
                           onClick={() => setExpandedProfileIds(prev => { const s = new Set(prev); isExpanded ? s.delete(profile.id) : s.add(profile.id); return s; })}
                           className="flex items-center gap-2 min-w-0 flex-1 text-left"
                         >
-                          <ChevronRight className={`w-4 h-4 text-[#7D8590] flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          <ChevronRight className={`w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#E6EDF3] truncate">{profile.name}</p>
+                            <p className="text-sm font-semibold text-foreground truncate">{profile.name}</p>
                             {profile.description && (
-                              <p className="text-xs text-[#484F58] truncate">{profile.description}</p>
+                              <p className="text-xs text-muted-foreground/60 truncate">{profile.description}</p>
                             )}
                           </div>
                         </button>
                         <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
                           {profile.tags.map(t => (
-                            <span key={t} className={`text-xs px-2 py-0.5 rounded-full font-medium ${t === "tenant-import" ? "bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20" : "bg-[#30363D] text-[#7D8590]"}`}>
+                            <span key={t} className={`text-xs px-2 py-0.5 rounded-full font-medium ${t === "tenant-import" ? "bg-primary/15 text-primary border border-primary/20" : "bg-border text-muted-foreground"}`}>
                               {t === "tenant-import" ? <><Database className="w-2.5 h-2.5 inline mr-1" />{t}</> : t}
                             </span>
                           ))}
                           {profile.lastRunAt && (
-                            <span className="text-xs text-[#484F58] flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground/60 flex items-center gap-1">
                               <Clock className="w-2.5 h-2.5" />
                               {new Date(profile.lastRunAt).toLocaleDateString()}
                             </span>
@@ -1382,7 +1382,7 @@ export default function TenantSignalsPage() {
                         <button
                           onClick={() => void handleRunSimProfile(profile.id)}
                           disabled={isRunning}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                           title="Run simulation"
                         >
                           {isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
@@ -1390,14 +1390,14 @@ export default function TenantSignalsPage() {
                         </button>
                         <button
                           onClick={() => { preloadProfile(profile); setShowTestModal(true); }}
-                          className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]/50 rounded transition-colors"
+                          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-border/50 rounded transition-colors"
                           title="Edit in test modal"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => void handleDeleteSimProfile(profile.id)}
-                          className="p-1.5 text-[#7D8590] hover:text-red-500 hover:bg-red-900/10 rounded transition-colors"
+                          className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-900/10 rounded transition-colors"
                           title="Delete profile"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1407,7 +1407,7 @@ export default function TenantSignalsPage() {
 
                     {/* Expanded result */}
                     {isExpanded && result && (
-                      <div className="border-t border-[#30363D] px-5 py-4 space-y-4">
+                      <div className="border-t border-border px-5 py-4 space-y-4">
 
                         {/* ── Delta vs previous run ────────────────────────────── */}
                         {result.previousRunDiff && (() => {
@@ -1415,9 +1415,9 @@ export default function TenantSignalsPage() {
                           const hasChanges = d.newlyIncluded.length > 0 || d.movedToExcluded.length > 0 || d.newlyFired.length > 0 || d.stoppedFiring.length > 0;
                           if (!hasChanges) {
                             return (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-[#1C2128] border border-[#30363D] rounded-lg">
+                              <div className="flex items-center gap-2 px-3 py-2 bg-accent border border-border rounded-lg">
                                 <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-                                <p className="text-xs text-[#7D8590]">No changes from previous run — results are identical.</p>
+                                <p className="text-xs text-muted-foreground">No changes from previous run — results are identical.</p>
                               </div>
                             );
                           }
@@ -1474,10 +1474,10 @@ export default function TenantSignalsPage() {
                                     )}
                                     {d.stoppedFiring.length > 0 && (
                                       <div>
-                                        <p className="text-xs font-semibold text-[#7D8590] mb-1.5">Signals stopped ({d.stoppedFiring.length})</p>
+                                        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Signals stopped ({d.stoppedFiring.length})</p>
                                         <div className="flex flex-wrap gap-1.5">
                                           {d.stoppedFiring.map(s => (
-                                            <span key={s.key} className="text-xs bg-[#30363D]/60 text-[#484F58] border border-[#30363D] px-2 py-0.5 rounded-full font-medium line-through">
+                                            <span key={s.key} className="text-xs bg-border/60 text-muted-foreground/60 border border-border px-2 py-0.5 rounded-full font-medium line-through">
                                               {s.label}
                                             </span>
                                           ))}
@@ -1501,9 +1501,9 @@ export default function TenantSignalsPage() {
                             const isStale = !!(profile.lastRunAt && latestRuleUpdatedAt && latestRuleUpdatedAt > profile.lastRunAt);
                             return (
                               <div className="flex items-center flex-wrap gap-2 mb-2">
-                                <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide">Signals Fired ({result.firedSignals.length})</p>
+                                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Signals Fired ({result.firedSignals.length})</p>
                                 {profile.lastRunAt && (
-                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent border border-border text-muted-foreground">
                                     <Clock className="w-2.5 h-2.5 flex-shrink-0" />
                                     Run {timeAgo(profile.lastRunAt)}
                                   </span>
@@ -1524,15 +1524,15 @@ export default function TenantSignalsPage() {
                                   <Check className="w-3 h-3 inline mr-1" />{s.label}
                                 </span>
                                 {s.expectedImpact && (
-                                  <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-72 bg-[#1C2128] border border-[#30363D] rounded-xl p-3 text-xs text-[#C9D1D9] z-50 shadow-xl">
-                                    <p className="font-semibold text-[#E6EDF3] mb-1">Why this matters</p>
+                                  <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-72 bg-accent border border-border rounded-xl p-3 text-xs text-foreground/90 z-50 shadow-xl">
+                                    <p className="font-semibold text-foreground mb-1">Why this matters</p>
                                     {s.expectedImpact}
                                   </div>
                                 )}
                               </div>
                             ))}
                             {result.firedSignals.length === 0 && (
-                              <p className="text-xs text-[#484F58] italic">No signals fired</p>
+                              <p className="text-xs text-muted-foreground/60 italic">No signals fired</p>
                             )}
                           </div>
                         </div>
@@ -1548,34 +1548,34 @@ export default function TenantSignalsPage() {
                                 <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-green-950/20 border border-green-500/10 rounded-lg">
                                   <div className="flex items-center gap-2 min-w-0">
                                     <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
-                                    <span className="text-xs text-[#C9D1D9] truncate">{p.title}</span>
+                                    <span className="text-xs text-foreground/90 truncate">{p.title}</span>
                                   </div>
                                   {p.priceRange && (
-                                    <span className="text-xs text-[#484F58] flex-shrink-0">{p.priceRange}</span>
+                                    <span className="text-xs text-muted-foreground/60 flex-shrink-0">{p.priceRange}</span>
                                   )}
                                 </div>
                               ))}
                               {result.includedProjects.length === 0 && (
-                                <p className="text-xs text-[#7D8590] italic px-2">No projects would be included.</p>
+                                <p className="text-xs text-muted-foreground italic px-2">No projects would be included.</p>
                               )}
                             </div>
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-[#484F58] uppercase tracking-wide mb-2">
+                            <p className="text-xs font-bold text-muted-foreground/60 uppercase tracking-wide mb-2">
                               Excluded Projects ({result.excludedProjects.length})
                             </p>
                             <div className="space-y-1.5 max-h-52 overflow-y-auto">
                               {result.excludedProjects.map((e, i) => (
-                                <div key={i} className="px-3 py-2 bg-[#1C2128] rounded-lg">
+                                <div key={i} className="px-3 py-2 bg-accent rounded-lg">
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <X className="w-3.5 h-3.5 text-[#484F58] flex-shrink-0" />
-                                    <span className="text-xs text-[#7D8590] truncate">{e.project.title}</span>
+                                    <X className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                                    <span className="text-xs text-muted-foreground truncate">{e.project.title}</span>
                                   </div>
-                                  <p className="text-xs text-[#30363D] ml-5 mt-0.5 truncate" title={e.reason}>{e.reason}</p>
+                                  <p className="text-xs text-border ml-5 mt-0.5 truncate" title={e.reason}>{e.reason}</p>
                                 </div>
                               ))}
                               {result.excludedProjects.length === 0 && (
-                                <p className="text-xs text-[#7D8590] italic px-2">No projects excluded.</p>
+                                <p className="text-xs text-muted-foreground italic px-2">No projects excluded.</p>
                               )}
                             </div>
                           </div>
@@ -1585,8 +1585,8 @@ export default function TenantSignalsPage() {
 
                     {/* Expanded but no result yet */}
                     {isExpanded && !result && (
-                      <div className="border-t border-[#30363D] px-5 py-6 text-center">
-                        <p className="text-xs text-[#7D8590]">Click <strong className="text-[#C9D1D9]">Run</strong> to see which projects would be included or excluded for this profile.</p>
+                      <div className="border-t border-border px-5 py-6 text-center">
+                        <p className="text-xs text-muted-foreground">Click <strong className="text-foreground/90">Run</strong> to see which projects would be included or excluded for this profile.</p>
                       </div>
                     )}
                   </div>
@@ -1601,42 +1601,42 @@ export default function TenantSignalsPage() {
       {pageView === "rules" && (
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left panel ──────────────────────────────────────────────────────── */}
-        <div className="w-72 flex-shrink-0 border-r border-[#30363D] flex flex-col overflow-hidden bg-[#0D1117]">
+        <div className="w-72 flex-shrink-0 border-r border-border flex flex-col overflow-hidden bg-background">
           {/* Header */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-            <span className="text-sm font-bold text-[#E6EDF3]">Signals</span>
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border">
+            <span className="text-sm font-bold text-foreground">Signals</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { setNewSignalForm({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: signalSection === "adjustment" }); setNewSignalError(null); setShowNewSignalModal(true); }}
-                className="p-1.5 text-[#0078D4] hover:text-white hover:bg-[#0078D4] rounded transition-colors"
+                className="p-1.5 text-primary hover:text-white hover:bg-primary rounded transition-colors"
                 title="New Signal"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleExport}
-                className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
                 title="Export JSON"
               >
                 <Download className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => { setBundleJson(""); setShowBundleModal(true); }}
-                className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
                 title="Import Bundle (group + rules)"
               >
                 <Package className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => { setShowImportModal(true); }}
-                className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
                 title="Import JSON"
               >
                 <Upload className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => { setShowSnapshotsPanel(true); }}
-                className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
+                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
                 title="Snapshots"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -1645,13 +1645,13 @@ export default function TenantSignalsPage() {
           </div>
 
           {/* Section switcher */}
-          <div className="flex-shrink-0 flex border-b border-[#30363D]">
+          <div className="flex-shrink-0 flex border-b border-border">
             <button
               onClick={() => { setSignalSection("project"); if (selectedSignal?.startsWith("adj:")) setSelectedSignal(null); }}
               className={`flex-1 py-2 text-xs font-semibold transition-colors border-b-2 ${
                 signalSection === "project"
-                  ? "border-[#0078D4] text-[#0078D4] bg-[#0078D4]/5"
-                  : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               Project Signals
@@ -1661,7 +1661,7 @@ export default function TenantSignalsPage() {
               className={`flex-1 py-2 text-xs font-semibold transition-colors border-b-2 ${
                 signalSection === "adjustment"
                   ? "border-[#00B4D8] text-[#00B4D8] bg-[#00B4D8]/5"
-                  : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
               Pricing Adjustments
@@ -1677,7 +1677,7 @@ export default function TenantSignalsPage() {
               const hp = health[sig.key];
               const isSelected = selectedSignal === sig.key;
 
-              let dotColor = "bg-[#484F58]";
+              let dotColor = "bg-muted-foreground/60";
               if (conflictsForSig > 0) dotColor = "bg-amber-400";
               else if (hasRules || sig.key === "alwaysInclude") dotColor = "bg-green-500";
               else if (signalSection === "adjustment") dotColor = "bg-[#00B4D8]/40";
@@ -1690,14 +1690,14 @@ export default function TenantSignalsPage() {
               return (
                 <div
                   key={sig.key}
-                  className={`group relative flex items-center border-b border-[#30363D]/50 transition-colors ${
+                  className={`group relative flex items-center border-b border-border/50 transition-colors ${
                     !isEnabled ? "opacity-50" : ""
                   } ${
                     isSelected
                       ? signalSection === "adjustment"
                         ? "bg-[#00B4D8]/10 border-l-2 border-l-[#00B4D8]"
-                        : "bg-[#0078D4]/10 border-l-2 border-l-[#0078D4]"
-                      : "hover:bg-[#1C2128]"
+                        : "bg-primary/10 border-l-2 border-l-primary"
+                      : "hover:bg-accent"
                   }`}
                 >
                   {isConfirmingDelete ? (
@@ -1709,7 +1709,7 @@ export default function TenantSignalsPage() {
                       >Yes</button>
                       <button
                         onClick={() => setDeletingSignalKey(null)}
-                        className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                       >No</button>
                     </div>
                   ) : (
@@ -1721,9 +1721,9 @@ export default function TenantSignalsPage() {
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-[#E6EDF3] truncate">{sig.label}</span>
+                            <span className="text-sm font-semibold text-foreground truncate">{sig.label}</span>
                             {sr.length > 0 && (
-                              <span className="text-xs text-[#484F58] bg-[#1C2128] px-1.5 py-0.5 rounded font-mono">{sr.length}</span>
+                              <span className="text-xs text-muted-foreground/60 bg-accent px-1.5 py-0.5 rounded font-mono">{sr.length}</span>
                             )}
                             {conflictsForSig > 0 && (
                               <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
@@ -1733,10 +1733,10 @@ export default function TenantSignalsPage() {
                             )}
                           </div>
                           {hp && (
-                            <p className="text-xs text-[#484F58] mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
+                            <p className="text-xs text-muted-foreground/60 mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
                           )}
                         </div>
-                        <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-[#0078D4]") + " rotate-90" : "text-[#484F58]"}`} />
+                        <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-primary") + " rotate-90" : "text-muted-foreground/60"}`} />
                       </button>
                       <button
                         onClick={e => { e.stopPropagation(); void handleToggleSignalEnabled(sig); }}
@@ -1744,7 +1744,7 @@ export default function TenantSignalsPage() {
                         title={isEnabled ? "Disable signal (it will never fire)" : "Enable signal"}
                         aria-label={isEnabled ? `Disable ${sig.label}` : `Enable ${sig.label}`}
                         className={`mr-2 relative inline-flex h-4.5 w-8 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
-                          isEnabled ? "bg-[#0078D4]" : "bg-[#30363D]"
+                          isEnabled ? "bg-primary" : "bg-border"
                         }`}
                       >
                         <span
@@ -1756,7 +1756,7 @@ export default function TenantSignalsPage() {
                       {isCustom && (
                         <button
                           onClick={e => { e.stopPropagation(); setDeletingSignalKey(sig.key); }}
-                          className="opacity-0 group-hover:opacity-100 mr-2 p-1 text-[#484F58] hover:text-red-400 transition-all rounded"
+                          className="opacity-0 group-hover:opacity-100 mr-2 p-1 text-muted-foreground/60 hover:text-red-400 transition-all rounded"
                           title="Delete signal"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1769,16 +1769,16 @@ export default function TenantSignalsPage() {
             })}
             {signalSection === "adjustment" && adjustmentSignals.length === 0 && (
               <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                <p className="text-xs text-[#484F58]">No adjustment signals loaded.</p>
+                <p className="text-xs text-muted-foreground/60">No adjustment signals loaded.</p>
               </div>
             )}
           </div>
 
           {/* Footer: Script Field Explorer */}
-          <div className="flex-shrink-0 border-t border-[#30363D] p-3">
+          <div className="flex-shrink-0 border-t border-border p-3">
             <button
               onClick={() => { setShowScriptExplorer(true); void loadScriptFields(); }}
-              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-[#1C2128] text-[#7D8590] text-xs font-semibold rounded-lg hover:text-[#E6EDF3] hover:bg-[#30363D]/50 transition-colors"
+              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-accent text-muted-foreground text-xs font-semibold rounded-lg hover:text-foreground hover:bg-border/50 transition-colors"
             >
               <Search className="w-3.5 h-3.5" /> Script Field Explorer
             </button>
@@ -1786,41 +1786,41 @@ export default function TenantSignalsPage() {
         </div>
 
         {/* ── Right panel ─────────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[#0D1117]">
+        <div className="flex-1 overflow-hidden flex flex-col bg-background">
           {!selectedSignal ? (
-            <div className="flex items-center justify-center h-full text-[#7D8590] text-sm">
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               Select a signal to configure rules
             </div>
           ) : (
             <>
               {/* Signal header */}
-              <div className="flex-shrink-0 px-6 py-4 border-b border-[#30363D]">
+              <div className="flex-shrink-0 px-6 py-4 border-b border-border">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-lg font-bold text-[#E6EDF3]">{selectedSignalData?.label}</h2>
-                  <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-2 py-0.5 rounded font-mono border border-[#30363D]">{selectedSignal}</code>
+                  <h2 className="text-lg font-bold text-foreground">{selectedSignalData?.label}</h2>
+                  <code className="text-xs bg-accent text-[#00B4D8] px-2 py-0.5 rounded font-mono border border-border">{selectedSignal}</code>
                   <button
                     onClick={() => { setSignalImportJson(""); setShowSignalImportModal(true); }}
-                    className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 bg-[#1C2128] text-[#7D8590] text-xs font-semibold rounded-lg border border-[#30363D] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                    className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 bg-accent text-muted-foreground text-xs font-semibold rounded-lg border border-border hover:text-foreground hover:border-primary/40 transition-colors"
                     title="Import JSON rules for this signal"
                   >
                     <Upload className="w-3.5 h-3.5" /> Import Rules
                   </button>
                 </div>
                 {selectedSignalData?.description && (
-                  <p className="text-sm text-[#7D8590] mt-1">{selectedSignalData.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{selectedSignalData.description}</p>
                 )}
               </div>
 
               {/* Tabs */}
-              <div className="flex-shrink-0 flex gap-0 border-b border-[#30363D]">
+              <div className="flex-shrink-0 flex gap-0 border-b border-border">
                 {(["rules", "projects", "docs", "audit"] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
                       activeTab === tab
-                        ? "border-[#0078D4] text-[#0078D4]"
-                        : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {tab === "docs" ? "Documentation" : tab === "audit" ? "Audit Log" : tab === "projects" ? "Projects" : "Rules"}
@@ -1837,8 +1837,8 @@ export default function TenantSignalsPage() {
                     {selectedGroups.map(group => {
                       const groupRules = selectedRules.filter(r => r.groupId === group.id);
                       return (
-                        <div key={group.id} className="border border-[#30363D] rounded-xl overflow-hidden">
-                          <div className="flex items-center justify-between px-4 py-2.5 bg-[#1C2128] border-b border-[#30363D]">
+                        <div key={group.id} className="border border-border rounded-xl overflow-hidden">
+                          <div className="flex items-center justify-between px-4 py-2.5 bg-accent border-b border-border">
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => void handleToggleGroupLogic(group)}
@@ -1851,15 +1851,15 @@ export default function TenantSignalsPage() {
                               >
                                 {group.logic}
                               </button>
-                              <span className="text-sm font-semibold text-[#C9D1D9]">{group.label ?? `Group ${group.id}`}</span>
+                              <span className="text-sm font-semibold text-foreground/90">{group.label ?? `Group ${group.id}`}</span>
                               {group.category && (
-                                <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full">{group.category}</span>
+                                <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full">{group.category}</span>
                               )}
                               {group.severity && (
                                 <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded-full">{group.severity}</span>
                               )}
                               {(group.priority != null || group.weight != null) && (
-                                <span className="text-[10px] text-[#7D8590] font-mono">
+                                <span className="text-[10px] text-muted-foreground font-mono">
                                   {group.priority != null ? `p${group.priority}` : ""}{group.priority != null && group.weight != null ? " · " : ""}{group.weight != null ? `w${group.weight}` : ""}
                                 </span>
                               )}
@@ -1871,43 +1871,43 @@ export default function TenantSignalsPage() {
                                   setEditingGroupId(group.id);
                                   setEditGroupForm({ label: group.label ?? "", intel: intelFormFromRow(group) });
                                 }}
-                                className="text-[#7D8590] hover:text-[#0078D4] transition-colors"
+                                className="text-muted-foreground hover:text-primary transition-colors"
                                 title="Edit group intelligence fields"
                               >
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
-                              <button onClick={() => void handleDeleteGroup(group.id)} className="text-[#484F58] hover:text-red-500 transition-colors">
+                              <button onClick={() => void handleDeleteGroup(group.id)} className="text-muted-foreground/60 hover:text-red-500 transition-colors">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
                           {editingGroupId === group.id && (
-                            <div className="px-4 py-3 bg-[#161B22] border-b border-[#30363D] space-y-2">
+                            <div className="px-4 py-3 bg-card border-b border-border space-y-2">
                               <input
                                 value={editGroupForm.label}
                                 onChange={e => setEditGroupForm(f => ({ ...f, label: e.target.value }))}
                                 placeholder="Label (optional)"
-                                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                                className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                               />
                               <IntelligenceFieldsPanel value={editGroupForm.intel} onChange={intel => setEditGroupForm(f => ({ ...f, intel }))} compact />
                               <div className="flex items-center gap-2 pt-1">
                                 <button
                                   onClick={() => void handleSaveEditGroup(group.id)}
                                   disabled={savingGroupEdit}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                                 >
                                   {savingGroupEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
                                 </button>
                                 <button
                                   onClick={() => setEditingGroupId(null)}
-                                  className="px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs rounded-lg hover:bg-[#30363D] transition-colors"
+                                  className="px-3 py-1.5 bg-accent text-foreground/90 text-xs rounded-lg hover:bg-border transition-colors"
                                 >
                                   Cancel
                                 </button>
                               </div>
                             </div>
                           )}
-                          <div className="divide-y divide-[#30363D]/50">
+                          <div className="divide-y divide-border/50">
                             {groupRules.map(rule => (
                               <RuleRow
                                 key={rule.id}
@@ -1927,7 +1927,7 @@ export default function TenantSignalsPage() {
                               />
                             ))}
                             {groupRules.length === 0 && (
-                              <p className="px-4 py-3 text-xs text-[#484F58] italic">No rules in this group yet — add rules below and assign them to this group.</p>
+                              <p className="px-4 py-3 text-xs text-muted-foreground/60 italic">No rules in this group yet — add rules below and assign them to this group.</p>
                             )}
                           </div>
                         </div>
@@ -1937,8 +1937,8 @@ export default function TenantSignalsPage() {
                     {/* Ungrouped rules */}
                     {selectedRules.filter(r => r.groupId === null || r.groupId === undefined).length > 0 && (
                       <div>
-                        <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-2">Ungrouped Rules (each acts as its own OR condition)</p>
-                        <div className="border border-[#30363D] rounded-xl divide-y divide-[#30363D]/50 overflow-hidden">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ungrouped Rules (each acts as its own OR condition)</p>
+                        <div className="border border-border rounded-xl divide-y divide-border/50 overflow-hidden">
                           {selectedRules.filter(r => r.groupId === null || r.groupId === undefined).map(rule => (
                             <RuleRow
                               key={rule.id}
@@ -1962,53 +1962,53 @@ export default function TenantSignalsPage() {
                     )}
 
                     {selectedRules.length === 0 && selectedGroups.length === 0 && (
-                      <p className="text-sm text-[#7D8590] italic">No rules configured for this signal yet.</p>
+                      <p className="text-sm text-muted-foreground italic">No rules configured for this signal yet.</p>
                     )}
 
                     {/* Add rule form */}
-                    <div className="border border-dashed border-[#30363D] rounded-xl p-5 space-y-4">
-                      <p className="text-xs font-bold text-[#C9D1D9] uppercase tracking-wide">Add Rule</p>
+                    <div className="border border-dashed border-border rounded-xl p-5 space-y-4">
+                      <p className="text-xs font-bold text-foreground/90 uppercase tracking-wide">Add Rule</p>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs text-[#7D8590] mb-1">Rule Type</label>
+                          <label className="block text-xs text-muted-foreground mb-1">Rule Type</label>
                           <select
                             value={addRuleForm.ruleType}
                             onChange={e => setAddRuleForm(f => ({ ...f, ruleType: e.target.value }))}
-                            className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                            className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                           >
                             {RULE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs text-[#7D8590] mb-1">
+                          <label className="block text-xs text-muted-foreground mb-1">
                             {addRuleForm.ruleType === "findings_keyword" ? "Keyword" : "Profile Key"}
                           </label>
                           <input
                             value={addRuleForm.sourceKey}
                             onChange={e => setAddRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
                             placeholder="e.g. mfaEnforced"
-                            className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                            className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
                           />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         {needsCompareValue(addRuleForm.ruleType) && (
                           <div>
-                            <label className="block text-xs text-[#7D8590] mb-1">Compare Value</label>
+                            <label className="block text-xs text-muted-foreground mb-1">Compare Value</label>
                             <input
                               value={addRuleForm.compareValue}
                               onChange={e => setAddRuleForm(f => ({ ...f, compareValue: e.target.value }))}
                               placeholder="e.g. 60"
-                              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                              className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
                             />
                           </div>
                         )}
                         <div>
-                          <label className="block text-xs text-[#7D8590] mb-1">Group (optional)</label>
+                          <label className="block text-xs text-muted-foreground mb-1">Group (optional)</label>
                           <select
                             value={addRuleForm.groupId}
                             onChange={e => setAddRuleForm(f => ({ ...f, groupId: e.target.value }))}
-                            className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                            className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                           >
                             <option value="">— Ungrouped —</option>
                             {selectedGroups.map(g => (
@@ -2018,15 +2018,15 @@ export default function TenantSignalsPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-xs text-[#7D8590] mb-1">Description (optional)</label>
+                        <label className="block text-xs text-muted-foreground mb-1">Description (optional)</label>
                         <input
                           value={addRuleForm.description}
                           onChange={e => setAddRuleForm(f => ({ ...f, description: e.target.value }))}
                           placeholder="Why does this rule matter?"
-                          className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                          className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                         />
                       </div>
-                      <div className="rounded-lg border border-[#30363D] bg-[#0D1117]/40 p-3">
+                      <div className="rounded-lg border border-border bg-background/40 p-3">
                         <IntelligenceFieldsPanel value={addRuleForm.intel} onChange={intel => setAddRuleForm(f => ({ ...f, intel }))} compact />
                       </div>
                       {addRuleConflictError && (
@@ -2042,16 +2042,16 @@ export default function TenantSignalsPage() {
                         <button
                           onClick={() => void handleAddRule()}
                           disabled={savingRule || !addRuleForm.sourceKey.trim()}
-                          className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                          className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                         >
                           {savingRule ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add Rule
                         </button>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#7D8590]">Add Group:</span>
+                          <span className="text-xs text-muted-foreground">Add Group:</span>
                           <select
                             value={addGroupForm.logic}
                             onChange={e => setAddGroupForm(f => ({ ...f, logic: e.target.value as "AND" | "OR" }))}
-                            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none"
+                            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none"
                           >
                             <option value="OR">OR</option>
                             <option value="AND">AND</option>
@@ -2060,25 +2060,25 @@ export default function TenantSignalsPage() {
                             value={addGroupForm.label}
                             onChange={e => setAddGroupForm(f => ({ ...f, label: e.target.value }))}
                             placeholder="Label (optional)"
-                            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none w-36"
+                            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none w-36"
                           />
                           <button
                             onClick={() => setShowAddGroupIntel(v => !v)}
-                            className="px-2 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:bg-[#30363D] transition-colors"
+                            className="px-2 py-1 bg-accent text-muted-foreground text-xs rounded hover:bg-border transition-colors"
                           >
                             {showAddGroupIntel ? "Hide fields" : "More fields"}
                           </button>
                           <button
                             onClick={() => void handleAddGroup()}
                             disabled={savingGroup}
-                            className="px-2 py-1 bg-[#1C2128] text-[#C9D1D9] text-xs rounded hover:bg-[#30363D] transition-colors"
+                            className="px-2 py-1 bg-accent text-foreground/90 text-xs rounded hover:bg-border transition-colors"
                           >
                             {savingGroup ? <Loader2 className="w-3 h-3 animate-spin" /> : "+"}
                           </button>
                         </div>
                       </div>
                       {showAddGroupIntel && (
-                        <div className="rounded-lg border border-[#30363D] bg-[#0D1117]/40 p-3 mt-2">
+                        <div className="rounded-lg border border-border bg-background/40 p-3 mt-2">
                           <IntelligenceFieldsPanel value={addGroupForm.intel} onChange={intel => setAddGroupForm(f => ({ ...f, intel }))} compact />
                         </div>
                       )}
@@ -2090,23 +2090,23 @@ export default function TenantSignalsPage() {
                 {activeTab === "docs" && selectedSignalData && (
                   <div className="space-y-8 max-w-2xl">
                     <div>
-                      <h3 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-wide mb-2">Expected Impact</h3>
-                      <p className="text-sm text-[#C9D1D9] leading-relaxed bg-[#1C2128] rounded-xl p-4 border border-[#30363D]">
+                      <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">Expected Impact</h3>
+                      <p className="text-sm text-foreground/90 leading-relaxed bg-accent rounded-xl p-4 border border-border">
                         {selectedSignalData.expectedImpact}
                       </p>
                     </div>
 
                     <div>
-                      <h3 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-wide mb-2">Projects Unlocked by This Signal</h3>
+                      <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">Projects Unlocked by This Signal</h3>
                       {(selectedSignalData.unlocksProjects ?? []).length === 0 ? (
-                        <p className="text-sm text-[#7D8590] italic">No projects are currently triggered by this signal — set triggeredBy on an Engagement Project to link one.</p>
+                        <p className="text-sm text-muted-foreground italic">No projects are currently triggered by this signal — set triggeredBy on an Engagement Project to link one.</p>
                       ) : (
                         <div className="flex flex-wrap gap-2">
                           {(selectedSignalData.unlocksProjects ?? []).map(p => (
                             <a
                               key={p.id}
                               href="/admin-panel/delivery/engagement-projects"
-                              className="text-xs bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-2.5 py-1 rounded-full hover:bg-[#0078D4]/20 transition-colors"
+                              className="text-xs bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-full hover:bg-primary/20 transition-colors"
                             >
                               {p.title}
                             </a>
@@ -2117,11 +2117,11 @@ export default function TenantSignalsPage() {
 
                     {selectedSignalData.recommendedRules.length > 0 && (
                       <div>
-                        <h3 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-wide mb-2">Recommended Rule Patterns</h3>
+                        <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-2">Recommended Rule Patterns</h3>
                         <div className="overflow-x-auto">
-                          <table className="w-full text-sm border border-[#30363D] rounded-xl overflow-hidden">
+                          <table className="w-full text-sm border border-border rounded-xl overflow-hidden">
                             <thead>
-                              <tr className="bg-[#1C2128] text-[#7D8590] text-xs">
+                              <tr className="bg-accent text-muted-foreground text-xs">
                                 <th className="text-left px-4 py-2.5">Rule Type</th>
                                 <th className="text-left px-4 py-2.5">Source Key</th>
                                 <th className="text-left px-4 py-2.5">Value</th>
@@ -2129,17 +2129,17 @@ export default function TenantSignalsPage() {
                                 <th className="px-4 py-2.5"></th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#30363D]">
+                            <tbody className="divide-y divide-border">
                               {selectedSignalData.recommendedRules.map((r, i) => (
-                                <tr key={i} className="bg-[#0D1117]">
+                                <tr key={i} className="bg-background">
                                   <td className="px-4 py-2.5">{ruleTypePill(r.ruleType)}</td>
-                                  <td className="px-4 py-2.5 font-mono text-xs text-[#C9D1D9]">{r.sourceKey}</td>
-                                  <td className="px-4 py-2.5 font-mono text-xs text-[#7D8590]">{r.compareValue ?? "—"}</td>
-                                  <td className="px-4 py-2.5 text-xs text-[#7D8590]">{r.rationale}</td>
+                                  <td className="px-4 py-2.5 font-mono text-xs text-foreground/90">{r.sourceKey}</td>
+                                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{r.compareValue ?? "—"}</td>
+                                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{r.rationale}</td>
                                   <td className="px-4 py-2.5">
                                     <button
                                       onClick={() => applyRulePreset(r)}
-                                      className="text-xs text-[#0078D4] hover:underline whitespace-nowrap"
+                                      className="text-xs text-primary hover:underline whitespace-nowrap"
                                     >
                                       Use
                                     </button>
@@ -2158,21 +2158,21 @@ export default function TenantSignalsPage() {
                 {activeTab === "projects" && (
                   <div className="space-y-6">
                     <div>
-                      <p className="text-xs font-bold text-[#E6EDF3] uppercase tracking-wide mb-3">
+                      <p className="text-xs font-bold text-foreground uppercase tracking-wide mb-3">
                         Linked to this signal
-                        <span className="ml-2 text-[#484F58] font-normal normal-case">({associatedProjects.length})</span>
+                        <span className="ml-2 text-muted-foreground/60 font-normal normal-case">({associatedProjects.length})</span>
                       </p>
                       {projectsLoading ? (
-                        <div className="flex items-center gap-2 text-[#7D8590] text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
                       ) : associatedProjects.length === 0 ? (
-                        <p className="text-sm text-[#484F58] italic">No engagement projects linked yet — add one from the list below.</p>
+                        <p className="text-sm text-muted-foreground/60 italic">No engagement projects linked yet — add one from the list below.</p>
                       ) : (
                         <div className="space-y-2">
                           {associatedProjects.map(p => (
-                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-[#0078D4]/5 rounded-xl border border-[#0078D4]/20">
+                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-primary/5 rounded-xl border border-primary/20">
                               <div className="min-w-0">
-                                <p className="text-sm font-semibold text-[#E6EDF3] truncate">{p.title}</p>
-                                <p className="text-xs text-[#7D8590]">{p.priceRange}</p>
+                                <p className="text-sm font-semibold text-foreground truncate">{p.title}</p>
+                                <p className="text-xs text-muted-foreground">{p.priceRange}</p>
                               </div>
                               <button
                                 onClick={() => void handleToggleProject(p, false)}
@@ -2187,24 +2187,24 @@ export default function TenantSignalsPage() {
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-3">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-3">
                         Available to link
                         <span className="ml-2 font-normal normal-case">({availableProjects.length})</span>
                       </p>
                       {!projectsLoading && availableProjects.length === 0 && (
-                        <p className="text-sm text-[#484F58] italic">All engagement projects are already linked to this signal.</p>
+                        <p className="text-sm text-muted-foreground/60 italic">All engagement projects are already linked to this signal.</p>
                       )}
                       {!projectsLoading && (
                         <div className="space-y-2">
                           {availableProjects.map(p => (
-                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-[#0D1117] rounded-xl border border-[#30363D] hover:border-[#0078D4]/30 transition-colors">
+                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-background rounded-xl border border-border hover:border-primary/30 transition-colors">
                               <div className="min-w-0">
-                                <p className="text-sm font-semibold text-[#C9D1D9] truncate">{p.title}</p>
-                                <p className="text-xs text-[#484F58]">{p.priceRange}</p>
+                                <p className="text-sm font-semibold text-foreground/90 truncate">{p.title}</p>
+                                <p className="text-xs text-muted-foreground/60">{p.priceRange}</p>
                               </div>
                               <button
                                 onClick={() => void handleToggleProject(p, true)}
-                                className="ml-4 flex-shrink-0 inline-flex items-center gap-1 text-xs text-[#0078D4] hover:text-[#1A91E8] border border-[#0078D4]/30 hover:border-[#0078D4]/60 px-2.5 py-1 rounded-lg transition-colors"
+                                className="ml-4 flex-shrink-0 inline-flex items-center gap-1 text-xs text-primary hover:text-[#1A91E8] border border-primary/30 hover:border-primary/60 px-2.5 py-1 rounded-lg transition-colors"
                               >
                                 <Plus className="w-3 h-3" /> Add
                               </button>
@@ -2220,25 +2220,25 @@ export default function TenantSignalsPage() {
                 {activeTab === "audit" && (
                   <div>
                     {auditLoading ? (
-                      <div className="flex items-center gap-2 text-[#7D8590] text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+                      <div className="flex items-center gap-2 text-muted-foreground text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
                     ) : auditLog.length === 0 ? (
-                      <p className="text-sm text-[#7D8590] italic">No audit log entries for this signal yet.</p>
+                      <p className="text-sm text-muted-foreground italic">No audit log entries for this signal yet.</p>
                     ) : (
                       <div className="space-y-2">
                         {auditLog.map(entry => (
-                          <div key={entry.id} className="flex items-start gap-3 p-3 bg-[#1C2128] rounded-lg border border-[#30363D]">
+                          <div key={entry.id} className="flex items-start gap-3 p-3 bg-accent rounded-lg border border-border">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
                               entry.action === "create" ? "bg-green-900/30 text-green-400" :
                               entry.action === "delete" ? "bg-red-900/30 text-red-400" :
                               entry.action === "import" ? "bg-blue-900/30 text-blue-400" :
                               entry.action === "restore_version" ? "bg-purple-900/30 text-purple-400" :
-                              "bg-[#30363D] text-[#7D8590]"
+                              "bg-border text-muted-foreground"
                             }`}>{entry.action}</span>
                             <div className="flex-1 min-w-0">
-                              {entry.note && <p className="text-xs text-[#C9D1D9]">{entry.note}</p>}
-                              {entry.ruleId && <p className="text-xs text-[#7D8590]">Rule #{entry.ruleId}</p>}
+                              {entry.note && <p className="text-xs text-foreground/90">{entry.note}</p>}
+                              {entry.ruleId && <p className="text-xs text-muted-foreground">Rule #{entry.ruleId}</p>}
                             </div>
-                            <span className="text-xs text-[#484F58] flex-shrink-0">{new Date(entry.createdAt).toLocaleString()}</span>
+                            <span className="text-xs text-muted-foreground/60 flex-shrink-0">{new Date(entry.createdAt).toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
@@ -2259,31 +2259,31 @@ export default function TenantSignalsPage() {
         <Modal title="Test Evaluation" onClose={() => setShowTestModal(false)} wide>
           <div className="flex gap-4 h-[60vh]">
             {/* Left: Simulation Profiles */}
-            <div className="w-64 flex-shrink-0 flex flex-col border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="flex-shrink-0 px-3 py-2 border-b border-[#30363D] bg-[#1C2128]">
-                <p className="text-xs font-bold text-[#C9D1D9]">Saved Profiles</p>
+            <div className="w-64 flex-shrink-0 flex flex-col border border-border rounded-xl overflow-hidden">
+              <div className="flex-shrink-0 px-3 py-2 border-b border-border bg-accent">
+                <p className="text-xs font-bold text-foreground/90">Saved Profiles</p>
                 <input
                   value={simProfileSearch}
                   onChange={e => setSimProfileSearch(e.target.value)}
                   placeholder="Search…"
-                  className="mt-1.5 w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none"
+                  className="mt-1.5 w-full border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none"
                 />
               </div>
-              <div className="flex-1 overflow-y-auto divide-y divide-[#30363D]/50">
+              <div className="flex-1 overflow-y-auto divide-y divide-border/50">
                 {filteredSimProfiles.map(p => (
                   <div key={p.id} className="px-3 py-2.5">
                     <div className="flex items-start justify-between gap-1">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-[#E6EDF3] truncate">{p.name}</p>
+                        <p className="text-xs font-semibold text-foreground truncate">{p.name}</p>
                         {p.tags.length > 0 && (
                           <div className="flex flex-wrap gap-0.5 mt-0.5">
                             {p.tags.map(t => (
-                              <span key={t} className="text-xs bg-[#30363D] text-[#7D8590] px-1.5 py-0.5 rounded-full">{t}</span>
+                              <span key={t} className="text-xs bg-border text-muted-foreground px-1.5 py-0.5 rounded-full">{t}</span>
                             ))}
                           </div>
                         )}
                         {p.lastRunAt && (
-                          <p className="text-xs text-[#484F58] mt-0.5 flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground/60 mt-0.5 flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5" />
                             {new Date(p.lastRunAt).toLocaleDateString()}
                             {p.lastRunResult && (
@@ -2293,13 +2293,13 @@ export default function TenantSignalsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-0.5 flex-shrink-0">
-                        <button onClick={() => preloadProfile(p)} className="p-1 text-[#7D8590] hover:text-[#0078D4] transition-colors" title="Load">
+                        <button onClick={() => preloadProfile(p)} className="p-1 text-muted-foreground hover:text-primary transition-colors" title="Load">
                           <Download className="w-3 h-3" />
                         </button>
-                        <button onClick={() => void handleRunSimProfile(p.id)} className="p-1 text-[#7D8590] hover:text-green-400 transition-colors" title="Run">
+                        <button onClick={() => void handleRunSimProfile(p.id)} className="p-1 text-muted-foreground hover:text-green-400 transition-colors" title="Run">
                           <Play className="w-3 h-3" />
                         </button>
-                        <button onClick={() => void handleDeleteSimProfile(p.id)} className="p-1 text-[#7D8590] hover:text-red-500 transition-colors" title="Delete">
+                        <button onClick={() => void handleDeleteSimProfile(p.id)} className="p-1 text-muted-foreground hover:text-red-500 transition-colors" title="Delete">
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
@@ -2307,27 +2307,27 @@ export default function TenantSignalsPage() {
                   </div>
                 ))}
                 {filteredSimProfiles.length === 0 && (
-                  <p className="px-3 py-4 text-xs text-[#484F58] italic">No profiles yet.</p>
+                  <p className="px-3 py-4 text-xs text-muted-foreground/60 italic">No profiles yet.</p>
                 )}
               </div>
-              <div className="flex-shrink-0 border-t border-[#30363D] p-3 space-y-1.5">
-                <p className="text-xs text-[#7D8590] font-semibold">Save current JSON as profile</p>
+              <div className="flex-shrink-0 border-t border-border p-3 space-y-1.5">
+                <p className="text-xs text-muted-foreground font-semibold">Save current JSON as profile</p>
                 <input
                   value={newProfileForm.name}
                   onChange={e => setNewProfileForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Profile name"
-                  className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none"
+                  className="w-full border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none"
                 />
                 <input
                   value={newProfileForm.tags}
                   onChange={e => setNewProfileForm(f => ({ ...f, tags: e.target.value }))}
                   placeholder="Tags (comma-separated)"
-                  className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none"
+                  className="w-full border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs focus:outline-none"
                 />
                 <button
                   onClick={() => void handleSaveSimProfile()}
                   disabled={savingProfile || !newProfileForm.name.trim()}
-                  className="w-full px-2 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
+                  className="w-full px-2 py-1.5 bg-primary/10 text-primary text-xs font-semibold rounded hover:bg-primary/20 disabled:opacity-50 transition-colors"
                 >
                   {savingProfile ? <Loader2 className="w-3 h-3 animate-spin mx-auto" /> : "Save Profile"}
                 </button>
@@ -2338,11 +2338,11 @@ export default function TenantSignalsPage() {
             <div className="flex-1 flex flex-col gap-4 overflow-hidden">
               <div className="flex-1 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs text-[#7D8590] font-semibold">JSON Input</label>
+                  <label className="text-xs text-muted-foreground font-semibold">JSON Input</label>
                   <button
                     onClick={() => void handleRunTest()}
                     disabled={testRunning}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     {testRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
                   </button>
@@ -2350,7 +2350,7 @@ export default function TenantSignalsPage() {
                 <textarea
                   value={testJson}
                   onChange={e => setTestJson(e.target.value)}
-                  className="flex-1 border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+                  className="flex-1 border border-border bg-background text-foreground/90 rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                   spellCheck={false}
                 />
               </div>
@@ -2358,7 +2358,7 @@ export default function TenantSignalsPage() {
               {testResult && (
                 <div className="flex-1 overflow-y-auto space-y-4">
                   <div>
-                    <p className="text-xs font-bold text-[#C9D1D9] uppercase tracking-wide mb-2">Fired Signals</p>
+                    <p className="text-xs font-bold text-foreground/90 uppercase tracking-wide mb-2">Fired Signals</p>
                     <div className="flex flex-wrap gap-2">
                       {testResult.firedSignals.map(s => (
                         <div key={s.key} className="group relative">
@@ -2366,37 +2366,37 @@ export default function TenantSignalsPage() {
                             <Check className="w-3 h-3 inline mr-1" />{s.label}
                           </span>
                           {s.expectedImpact && (
-                            <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-72 bg-[#1C2128] border border-[#30363D] rounded-xl p-3 text-xs text-[#C9D1D9] z-50 shadow-xl">
-                              <p className="font-semibold text-[#E6EDF3] mb-1">Why this matters</p>
+                            <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-72 bg-accent border border-border rounded-xl p-3 text-xs text-foreground/90 z-50 shadow-xl">
+                              <p className="font-semibold text-foreground mb-1">Why this matters</p>
                               {s.expectedImpact}
                             </div>
                           )}
                         </div>
                       ))}
                       {testResult.firedSignals.length === 0 && (
-                        <p className="text-xs text-[#7D8590] italic">No signals fired</p>
+                        <p className="text-xs text-muted-foreground italic">No signals fired</p>
                       )}
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-[#C9D1D9] uppercase tracking-wide mb-2">Rule Trace</p>
+                    <p className="text-xs font-bold text-foreground/90 uppercase tracking-wide mb-2">Rule Trace</p>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs border border-[#30363D] rounded-xl overflow-hidden">
+                      <table className="w-full text-xs border border-border rounded-xl overflow-hidden">
                         <thead>
-                          <tr className="bg-[#1C2128] text-[#7D8590]">
+                          <tr className="bg-accent text-muted-foreground">
                             <th className="text-left px-3 py-2">Signal</th>
                             <th className="text-left px-3 py-2">Rule #</th>
                             <th className="text-left px-3 py-2">Result</th>
                             <th className="text-left px-3 py-2">Reason</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-[#30363D]">
+                        <tbody className="divide-y divide-border">
                           {testResult.ruleTrace.map((t, i) => (
-                            <tr key={i} className={t.result ? "bg-green-950/20" : "bg-[#0D1117]"}>
+                            <tr key={i} className={t.result ? "bg-green-950/20" : "bg-background"}>
                               <td className="px-3 py-1.5 font-mono">{t.signalKey}</td>
-                              <td className="px-3 py-1.5 text-[#7D8590]">{t.ruleId}</td>
-                              <td className="px-3 py-1.5">{t.result ? <Check className="w-3 h-3 text-green-400" /> : <X className="w-3 h-3 text-[#484F58]" />}</td>
-                              <td className="px-3 py-1.5 text-[#7D8590]">{t.reason}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground">{t.ruleId}</td>
+                              <td className="px-3 py-1.5">{t.result ? <Check className="w-3 h-3 text-green-400" /> : <X className="w-3 h-3 text-muted-foreground/60" />}</td>
+                              <td className="px-3 py-1.5 text-muted-foreground">{t.reason}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -2415,11 +2415,11 @@ export default function TenantSignalsPage() {
         <Modal title="Preview Projects" onClose={() => setShowPreviewModal(false)} wide>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-[#7D8590]">Projects that would be included based on current JSON in Test Evaluation.</p>
+              <p className="text-sm text-muted-foreground">Projects that would be included based on current JSON in Test Evaluation.</p>
               <button
                 onClick={() => void handlePreviewProjects()}
                 disabled={previewRunning}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-xs font-semibold rounded-lg disabled:opacity-50"
               >
                 {previewRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run Preview
               </button>
@@ -2430,23 +2430,23 @@ export default function TenantSignalsPage() {
                   <p className="text-xs font-bold text-green-400 uppercase tracking-wide mb-2">Included ({previewResult.included.length})</p>
                   <div className="space-y-1.5">
                     {previewResult.included.map((p: { id: number; title: string }) => (
-                      <div key={p.id} className="flex items-center gap-2 text-sm text-[#C9D1D9]">
+                      <div key={p.id} className="flex items-center gap-2 text-sm text-foreground/90">
                         <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" /> {p.title}
                       </div>
                     ))}
-                    {previewResult.included.length === 0 && <p className="text-sm text-[#7D8590] italic">None</p>}
+                    {previewResult.included.length === 0 && <p className="text-sm text-muted-foreground italic">None</p>}
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Excluded ({previewResult.excluded.length})</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Excluded ({previewResult.excluded.length})</p>
                   <div className="space-y-1.5">
                     {previewResult.excluded.map((e: { project: { id: number; title: string }; reason: string }, i: number) => (
-                      <div key={i} className="text-sm text-[#484F58]" title={e.reason}>
-                        <X className="w-3.5 h-3.5 inline mr-1.5 text-[#484F58]" />{e.project.title}
-                        <p className="text-xs text-[#30363D] ml-5">{e.reason}</p>
+                      <div key={i} className="text-sm text-muted-foreground/60" title={e.reason}>
+                        <X className="w-3.5 h-3.5 inline mr-1.5 text-muted-foreground/60" />{e.project.title}
+                        <p className="text-xs text-border ml-5">{e.reason}</p>
                       </div>
                     ))}
-                    {previewResult.excluded.length === 0 && <p className="text-sm text-[#7D8590] italic">None excluded</p>}
+                    {previewResult.excluded.length === 0 && <p className="text-sm text-muted-foreground italic">None excluded</p>}
                   </div>
                 </div>
               </div>
@@ -2460,11 +2460,11 @@ export default function TenantSignalsPage() {
         <Modal title="Dry-Run SOW" onClose={() => setShowDryRunModal(false)} wide>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1.5">Select client</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">Select client</label>
               <select
                 value={dryRunClientId}
                 onChange={e => setDryRunClientId(e.target.value)}
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               >
                 <option value="">— choose a client —</option>
                 {clients.map(c => (
@@ -2478,7 +2478,7 @@ export default function TenantSignalsPage() {
               <button
                 onClick={() => void handleDryRunSow()}
                 disabled={dryRunRunning || !dryRunClientId}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {dryRunRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} Run Dry-Run
               </button>
@@ -2491,15 +2491,15 @@ export default function TenantSignalsPage() {
                 <div>
                   <p className="text-xs font-bold text-green-400 uppercase tracking-wide mb-2">Included Projects</p>
                   {dryRunResult.includedProjects.map((p, i) => (
-                    <p key={i} className="text-sm text-[#C9D1D9] flex items-center gap-1.5 mb-1"><Check className="w-3.5 h-3.5 text-green-400" /> {p.title}</p>
+                    <p key={i} className="text-sm text-foreground/90 flex items-center gap-1.5 mb-1"><Check className="w-3.5 h-3.5 text-green-400" /> {p.title}</p>
                   ))}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Excluded Projects</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Excluded Projects</p>
                   {dryRunResult.excludedProjects.map((e, i) => (
                     <div key={i} className="mb-1">
-                      <p className="text-sm text-[#484F58] flex items-center gap-1.5"><X className="w-3.5 h-3.5" /> {e.project.title}</p>
-                      <p className="text-xs text-[#30363D] ml-5">{e.reason}</p>
+                      <p className="text-sm text-muted-foreground/60 flex items-center gap-1.5"><X className="w-3.5 h-3.5" /> {e.project.title}</p>
+                      <p className="text-xs text-border ml-5">{e.reason}</p>
                     </div>
                   ))}
                 </div>
@@ -2513,7 +2513,7 @@ export default function TenantSignalsPage() {
       {showConflictsPanel && (
         <Modal title={`Rule Conflicts (${conflicts.length})`} onClose={() => setShowConflictsPanel(false)}>
           {conflicts.length === 0 ? (
-            <p className="text-sm text-[#7D8590] italic">No conflicts detected.</p>
+            <p className="text-sm text-muted-foreground italic">No conflicts detected.</p>
           ) : (
             <div className="space-y-3">
               {conflicts.map((c, i) => (
@@ -2521,8 +2521,8 @@ export default function TenantSignalsPage() {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm text-[#C9D1D9]">{c.description}</p>
-                      <p className="text-xs text-[#7D8590] mt-1">Rule IDs: {c.ruleIds.join(", ")}</p>
+                      <p className="text-sm text-foreground/90">{c.description}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Rule IDs: {c.ruleIds.join(", ")}</p>
                     </div>
                   </div>
                 </div>
@@ -2541,32 +2541,32 @@ export default function TenantSignalsPage() {
                 value={snapshotName}
                 onChange={e => setSnapshotName(e.target.value)}
                 placeholder="Snapshot name…"
-                className="flex-1 border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="flex-1 border border-border bg-background text-foreground/90 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
               <button
                 onClick={() => void handleSaveSnapshot()}
                 disabled={savingSnapshot || !snapshotName.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {savingSnapshot ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
               </button>
             </div>
             <div className="space-y-2 max-h-80 overflow-y-auto">
               {versions.map(v => (
-                <div key={v.id} className="flex items-center justify-between p-3 bg-[#1C2128] rounded-xl border border-[#30363D]">
+                <div key={v.id} className="flex items-center justify-between p-3 bg-accent rounded-xl border border-border">
                   <div>
-                    <p className="text-sm font-semibold text-[#E6EDF3]">{v.name}</p>
-                    <p className="text-xs text-[#7D8590]">{v.ruleCount} rules · {new Date(v.createdAt).toLocaleString()}</p>
+                    <p className="text-sm font-semibold text-foreground">{v.name}</p>
+                    <p className="text-xs text-muted-foreground">{v.ruleCount} rules · {new Date(v.createdAt).toLocaleString()}</p>
                   </div>
                   <button
                     onClick={() => void handleRestoreVersion(v.id, v.name)}
-                    className="text-xs text-[#0078D4] hover:underline"
+                    className="text-xs text-primary hover:underline"
                   >
                     Restore
                   </button>
                 </div>
               ))}
-              {versions.length === 0 && <p className="text-sm text-[#7D8590] italic">No snapshots yet.</p>}
+              {versions.length === 0 && <p className="text-sm text-muted-foreground italic">No snapshots yet.</p>}
             </div>
           </div>
         </Modal>
@@ -2580,15 +2580,15 @@ export default function TenantSignalsPage() {
               value={scriptFieldSearch}
               onChange={e => setScriptFieldSearch(e.target.value)}
               placeholder="Search profile keys…"
-              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             {filteredScriptFields.length === 0 ? (
-              <p className="text-sm text-[#7D8590] italic">No script fields found. Run some scripts first.</p>
+              <p className="text-sm text-muted-foreground italic">No script fields found. Run some scripts first.</p>
             ) : (
               <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-sm border border-[#30363D] rounded-xl overflow-hidden">
+                <table className="w-full text-sm border border-border rounded-xl overflow-hidden">
                   <thead>
-                    <tr className="bg-[#1C2128] text-[#7D8590] text-xs">
+                    <tr className="bg-accent text-muted-foreground text-xs">
                       <th className="text-left px-4 py-2.5">Key</th>
                       <th className="text-left px-4 py-2.5">Type</th>
                       <th className="text-left px-4 py-2.5">Examples</th>
@@ -2596,21 +2596,21 @@ export default function TenantSignalsPage() {
                       <th className="px-4 py-2.5"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#30363D]">
+                  <tbody className="divide-y divide-border">
                     {filteredScriptFields.map(f => (
-                      <tr key={f.key} className="bg-[#0D1117]">
-                        <td className="px-4 py-2.5 font-mono text-xs text-[#C9D1D9]">{f.key}</td>
+                      <tr key={f.key} className="bg-background">
+                        <td className="px-4 py-2.5 font-mono text-xs text-foreground/90">{f.key}</td>
                         <td className="px-4 py-2.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
                             f.type === "boolean" ? "bg-green-900/30 text-green-400" :
                             f.type === "number" ? "bg-blue-900/30 text-blue-400" :
-                            "bg-[#30363D] text-[#7D8590]"
+                            "bg-border text-muted-foreground"
                           }`}>{f.type}</span>
                         </td>
-                        <td className="px-4 py-2.5 text-xs text-[#7D8590] font-mono">{f.examples.map(e => JSON.stringify(e)).join(", ")}</td>
-                        <td className="px-4 py-2.5 text-xs text-[#484F58]">{f.seenInNRuns} run{f.seenInNRuns !== 1 ? "s" : ""}</td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">{f.examples.map(e => JSON.stringify(e)).join(", ")}</td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground/60">{f.seenInNRuns} run{f.seenInNRuns !== 1 ? "s" : ""}</td>
                         <td className="px-4 py-2.5">
-                          <button onClick={() => applyScriptFieldToRule(f.key)} className="text-xs text-[#0078D4] hover:underline">
+                          <button onClick={() => applyScriptFieldToRule(f.key)} className="text-xs text-primary hover:underline">
                             Use in rule
                           </button>
                         </td>
@@ -2628,7 +2628,7 @@ export default function TenantSignalsPage() {
       {showImportModal && (
         <Modal title="Import Rules" onClose={() => setShowImportModal(false)}>
           <div className="space-y-4">
-            <p className="text-sm text-[#7D8590]">Paste JSON below. Current rules will be backed up as a snapshot before import.</p>
+            <p className="text-sm text-muted-foreground">Paste JSON below. Current rules will be backed up as a snapshot before import.</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -2644,7 +2644,7 @@ export default function TenantSignalsPage() {
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-sm rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-sm rounded-lg border border-border hover:border-primary/40 transition-colors"
             >
               <Upload className="w-4 h-4" /> Upload JSON File
             </button>
@@ -2653,14 +2653,14 @@ export default function TenantSignalsPage() {
               onChange={e => setImportJson(e.target.value)}
               rows={10}
               placeholder='{"rules": [...], "groups": [...]}'
-              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+              className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
             />
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
               <button
                 onClick={() => void handleImport()}
                 disabled={importRunning || !importJson.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {importRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
               </button>
@@ -2673,10 +2673,10 @@ export default function TenantSignalsPage() {
       {showBundleModal && (
         <Modal title="Import Bundle" onClose={() => { setShowBundleModal(false); setBundleJson(""); }}>
           <div className="space-y-4">
-            <p className="text-sm text-[#7D8590] leading-relaxed">
-              Paste a <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-[#30363D]">{"{ group, rules }"}</code> bundle.
-              A new group is created on <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-[#30363D]">group.signalKey</code> and all rules are added into it.
-              Existing rules for that signal are <strong className="text-[#C9D1D9]">not</strong> removed — the bundle appends a new group.
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Paste a <code className="text-xs bg-accent text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-border">{"{ group, rules }"}</code> bundle.
+              A new group is created on <code className="text-xs bg-accent text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-border">group.signalKey</code> and all rules are added into it.
+              Existing rules for that signal are <strong className="text-foreground/90">not</strong> removed — the bundle appends a new group.
             </p>
 
             {/* Live preview */}
@@ -2687,15 +2687,15 @@ export default function TenantSignalsPage() {
                 const r = p.rules as unknown[] | undefined;
                 if (g && Array.isArray(r)) {
                   return (
-                    <div className="rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-3 space-y-1">
-                      <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wide">Preview</p>
-                      <p className="text-sm text-[#E6EDF3]">
+                    <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 space-y-1">
+                      <p className="text-xs font-bold text-primary uppercase tracking-wide">Preview</p>
+                      <p className="text-sm text-foreground">
                         Signal: <code className="font-mono text-[#00B4D8]">{String(g.signalKey ?? "—")}</code>
                       </p>
-                      <p className="text-sm text-[#C9D1D9]">
+                      <p className="text-sm text-foreground/90">
                         Group: <span className="font-semibold">{String(g.label ?? "—")}</span> ({String(g.logic ?? "OR")})
                       </p>
-                      <p className="text-sm text-[#7D8590]">{r.length} rule{r.length !== 1 ? "s" : ""} will be created</p>
+                      <p className="text-sm text-muted-foreground">{r.length} rule{r.length !== 1 ? "s" : ""} will be created</p>
                     </div>
                   );
                 }
@@ -2718,10 +2718,10 @@ export default function TenantSignalsPage() {
               }}
             />
             <div className="flex items-center gap-2">
-              <label className="block text-xs text-[#7D8590]">JSON</label>
+              <label className="block text-xs text-muted-foreground">JSON</label>
               <button
                 onClick={() => bundleFileRef.current?.click()}
-                className="ml-auto text-xs text-[#7D8590] hover:text-[#E6EDF3] underline transition-colors"
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground underline transition-colors"
               >Upload file</button>
             </div>
             <textarea
@@ -2729,17 +2729,17 @@ export default function TenantSignalsPage() {
               onChange={e => setBundleJson(e.target.value)}
               rows={12}
               placeholder={'{\n  "group": { "signalKey": "adj:my-signal", "logic": "OR", "label": "My Group" },\n  "rules": [ ... ]\n}'}
-              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+              className="w-full border border-border bg-background text-foreground/90 rounded px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
             />
             <div className="flex justify-end gap-3 pt-1">
               <button
                 onClick={() => { setShowBundleModal(false); setBundleJson(""); }}
-                className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >Cancel</button>
               <button
                 onClick={() => void handleBundleImport()}
                 disabled={bundleRunning || !bundleJson.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {bundleRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
                 Import Bundle
@@ -2753,11 +2753,11 @@ export default function TenantSignalsPage() {
       {showNewSignalModal && (
         <Modal title="New Signal" onClose={() => setShowNewSignalModal(false)}>
           <div className="space-y-4">
-            <p className="text-sm text-[#7D8590]">
+            <p className="text-sm text-muted-foreground">
               Create a custom signal. Once created, select it in the left panel to add rules to it.
             </p>
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1">Label <span className="text-red-400">*</span></label>
+              <label className="block text-xs text-muted-foreground mb-1">Label <span className="text-red-400">*</span></label>
               <input
                 value={newSignalForm.label}
                 onChange={e => {
@@ -2769,48 +2769,48 @@ export default function TenantSignalsPage() {
                   }));
                 }}
                 placeholder="e.g. Teams Rooms Deployment"
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1">Signal Key</label>
+              <label className="block text-xs text-muted-foreground mb-1">Signal Key</label>
               <input
                 value={newSignalForm.key}
                 onChange={e => setNewSignalForm(f => ({ ...f, key: e.target.value }))}
                 placeholder="auto-generated from label"
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
-              <p className="text-[10px] text-[#484F58] mt-1">Lowercase letters, numbers, hyphens and colons only. Cannot match a built-in signal key.</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">Lowercase letters, numbers, hyphens and colons only. Cannot match a built-in signal key.</p>
             </div>
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1">Description</label>
+              <label className="block text-xs text-muted-foreground mb-1">Description</label>
               <input
                 value={newSignalForm.description}
                 onChange={e => setNewSignalForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="What does this signal detect?"
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1">Expected Impact</label>
+              <label className="block text-xs text-muted-foreground mb-1">Expected Impact</label>
               <input
                 value={newSignalForm.expectedImpact}
                 onChange={e => setNewSignalForm(f => ({ ...f, expectedImpact: e.target.value }))}
                 placeholder="What happens in the SOW when this signal fires?"
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1">Signal Type</label>
+              <label className="block text-xs text-muted-foreground mb-1">Signal Type</label>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
                     checked={!newSignalForm.isAdjustment}
                     onChange={() => setNewSignalForm(f => ({ ...f, isAdjustment: false }))}
-                    className="accent-[#0078D4]"
+                    className="accent-primary"
                   />
-                  <span className="text-sm text-[#C9D1D9]">Project Signal</span>
+                  <span className="text-sm text-foreground/90">Project Signal</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -2819,7 +2819,7 @@ export default function TenantSignalsPage() {
                     onChange={() => setNewSignalForm(f => ({ ...f, isAdjustment: true }))}
                     className="accent-[#00B4D8]"
                   />
-                  <span className="text-sm text-[#C9D1D9]">Pricing Adjustment</span>
+                  <span className="text-sm text-foreground/90">Pricing Adjustment</span>
                 </label>
               </div>
             </div>
@@ -2832,12 +2832,12 @@ export default function TenantSignalsPage() {
             <div className="flex justify-end gap-3 pt-1">
               <button
                 onClick={() => setShowNewSignalModal(false)}
-                className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >Cancel</button>
               <button
                 onClick={() => void handleCreateSignal()}
                 disabled={savingNewSignal || !newSignalForm.label.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {savingNewSignal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                 Create Signal
@@ -2851,8 +2851,8 @@ export default function TenantSignalsPage() {
       {showSignalImportModal && selectedSignal && (
         <Modal title={`Import Rules — ${selectedSignal}`} onClose={() => { setShowSignalImportModal(false); setSignalImportJson(""); }}>
           <div className="space-y-4">
-            <p className="text-sm text-[#7D8590]">
-              Paste a JSON array of rules for <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1.5 py-0.5 rounded font-mono border border-[#30363D]">{selectedSignal}</code>.
+            <p className="text-sm text-muted-foreground">
+              Paste a JSON array of rules for <code className="text-xs bg-accent text-[#00B4D8] px-1.5 py-0.5 rounded font-mono border border-border">{selectedSignal}</code>.
               Existing rules for this signal will be replaced. Other signals are unaffected.
             </p>
             <input
@@ -2871,7 +2871,7 @@ export default function TenantSignalsPage() {
             />
             <button
               onClick={() => signalFileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-sm rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-sm rounded-lg border border-border hover:border-primary/40 transition-colors"
             >
               <Upload className="w-4 h-4" /> Upload JSON File
             </button>
@@ -2887,19 +2887,19 @@ export default function TenantSignalsPage() {
     "description": "Description here"
   }
 ]`}
-              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+              className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
             />
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => { setShowSignalImportModal(false); setSignalImportJson(""); }}
-                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleSignalImport()}
                 disabled={signalImportRunning || !signalImportJson.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {signalImportRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
               </button>
@@ -2912,22 +2912,22 @@ export default function TenantSignalsPage() {
       {showFromClientModal && (
         <Modal title="Import from Tenant" onClose={() => { setShowFromClientModal(false); setFromClientSearch(""); setFromClientId(""); setFromClientName(""); }} wide>
           <div className="space-y-4">
-            <p className="text-sm text-[#7D8590]">
-              Select a client to pull their most recent script run results. A simulation profile will be created from the merged <code className="text-xs bg-[#1C2128] px-1 rounded">profileUpdates</code> and <code className="text-xs bg-[#1C2128] px-1 rounded">parsedFindings</code> across all completed runs.
+            <p className="text-sm text-muted-foreground">
+              Select a client to pull their most recent script run results. A simulation profile will be created from the merged <code className="text-xs bg-accent px-1 rounded">profileUpdates</code> and <code className="text-xs bg-accent px-1 rounded">parsedFindings</code> across all completed runs.
             </p>
 
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1.5">Search client</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">Search client</label>
               <input
                 value={fromClientSearch}
                 onChange={e => { setFromClientSearch(e.target.value); setFromClientId(""); setFromClientName(""); }}
                 placeholder="Name, email, or company…"
-                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
 
             {fromClientSearch && (
-              <div className="border border-[#30363D] rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+              <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
                 {clientsWithRuns
                   .filter(c =>
                     c.email.toLowerCase().includes(fromClientSearch.toLowerCase()) ||
@@ -2939,12 +2939,12 @@ export default function TenantSignalsPage() {
                     <button
                       key={c.id}
                       onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
-                      className={`w-full text-left px-4 py-2.5 text-sm border-b border-[#30363D]/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+                      className={`w-full text-left px-4 py-2.5 text-sm border-b border-border/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent"}`}
                     >
                       <span className="font-medium">{c.name ?? "—"}</span>
-                      <span className="text-[#7D8590] ml-2">{c.email}</span>
-                      {c.company && <span className="text-[#484F58] ml-1">· {c.company}</span>}
-                      <span className="ml-2 text-xs text-[#484F58]">{c.runCount} run{c.runCount !== 1 ? "s" : ""}</span>
+                      <span className="text-muted-foreground ml-2">{c.email}</span>
+                      {c.company && <span className="text-muted-foreground/60 ml-1">· {c.company}</span>}
+                      <span className="ml-2 text-xs text-muted-foreground/60">{c.runCount} run{c.runCount !== 1 ? "s" : ""}</span>
                     </button>
                   ))}
                 {clientsWithRuns.filter(c =>
@@ -2952,37 +2952,37 @@ export default function TenantSignalsPage() {
                   (c.name ?? "").toLowerCase().includes(fromClientSearch.toLowerCase()) ||
                   (c.company ?? "").toLowerCase().includes(fromClientSearch.toLowerCase())
                 ).length === 0 && (
-                  <p className="px-4 py-3 text-sm text-[#7D8590]">No clients with completed script runs found.</p>
+                  <p className="px-4 py-3 text-sm text-muted-foreground">No clients with completed script runs found.</p>
                 )}
               </div>
             )}
 
             {!fromClientSearch && clientsWithRuns.length > 0 && (
-              <div className="border border-[#30363D] rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+              <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
                 {clientsWithRuns.slice(0, 10).map(c => (
                   <button
                     key={c.id}
                     onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm border-b border-[#30363D]/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+                    className={`w-full text-left px-4 py-2.5 text-sm border-b border-border/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent"}`}
                   >
                     <span className="font-medium">{c.name ?? "—"}</span>
-                    <span className="text-[#7D8590] ml-2">{c.email}</span>
-                    {c.company && <span className="text-[#484F58] ml-1">· {c.company}</span>}
-                    <span className="ml-2 text-xs text-[#484F58]">{c.runCount} run{c.runCount !== 1 ? "s" : ""} · last {new Date(c.lastRunAt).toLocaleDateString()}</span>
+                    <span className="text-muted-foreground ml-2">{c.email}</span>
+                    {c.company && <span className="text-muted-foreground/60 ml-1">· {c.company}</span>}
+                    <span className="ml-2 text-xs text-muted-foreground/60">{c.runCount} run{c.runCount !== 1 ? "s" : ""} · last {new Date(c.lastRunAt).toLocaleDateString()}</span>
                   </button>
                 ))}
               </div>
             )}
 
             {!fromClientSearch && clientsWithRuns.length === 0 && (
-              <p className="text-sm text-[#7D8590] italic">No clients with completed script runs found. Run some assessment scripts first.</p>
+              <p className="text-sm text-muted-foreground italic">No clients with completed script runs found. Run some assessment scripts first.</p>
             )}
 
             {fromClientId && (
-              <div className="flex items-center gap-2 p-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg">
-                <Check className="w-4 h-4 text-[#0078D4] flex-shrink-0" />
-                <p className="text-sm text-[#C9D1D9]">
-                  Will create a simulation profile from <strong className="text-[#E6EDF3]">{fromClientName}</strong>'s script run history.
+              <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-sm text-foreground/90">
+                  Will create a simulation profile from <strong className="text-foreground">{fromClientName}</strong>'s script run history.
                 </p>
               </div>
             )}
@@ -2990,14 +2990,14 @@ export default function TenantSignalsPage() {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => { setShowFromClientModal(false); setFromClientSearch(""); setFromClientId(""); setFromClientName(""); }}
-                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void handleImportFromClient()}
                 disabled={importingFromClient || !fromClientId}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
               >
                 {importingFromClient ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
                 {importingFromClient ? "Importing…" : "Create Profile"}
@@ -3013,10 +3013,10 @@ export default function TenantSignalsPage() {
 function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-      <div className={`bg-[#161B22] rounded-2xl shadow-2xl border border-[#30363D] flex flex-col w-full ${wide ? "max-w-4xl" : "max-w-xl"} max-h-[90vh]`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] flex-shrink-0">
-          <h3 className="text-base font-bold text-[#E6EDF3]">{title}</h3>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+      <div className={`bg-card rounded-2xl shadow-2xl border border-border flex flex-col w-full ${wide ? "max-w-4xl" : "max-w-xl"} max-h-[90vh]`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <h3 className="text-base font-bold text-foreground">{title}</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -3052,19 +3052,19 @@ function RuleRow({
 
   if (isEditing) {
     return (
-      <div className="px-4 py-3 bg-[#1C2128] space-y-2">
+      <div className="px-4 py-3 bg-accent space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <select
             value={editRuleForm.ruleType}
             onChange={e => setEditRuleForm({ ...editRuleForm, ruleType: e.target.value })}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs"
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs"
           >
             {RULE_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <input
             value={editRuleForm.sourceKey}
             onChange={e => setEditRuleForm({ ...editRuleForm, sourceKey: e.target.value })}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono"
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono"
             placeholder="Source key"
           />
         </div>
@@ -3072,17 +3072,17 @@ function RuleRow({
           <input
             value={editRuleForm.compareValue}
             onChange={e => setEditRuleForm({ ...editRuleForm, compareValue: e.target.value })}
-            className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono w-32"
+            className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-32"
             placeholder="Value"
           />
         )}
         <input
           value={editRuleForm.description}
           onChange={e => setEditRuleForm({ ...editRuleForm, description: e.target.value })}
-          className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
+          className="border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full"
           placeholder="Description"
         />
-        <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-2">
+        <div className="rounded border border-border bg-background/40 p-2">
           <IntelligenceFieldsPanel value={editRuleForm.intel} onChange={intel => setEditRuleForm({ ...editRuleForm, intel })} compact />
         </div>
         {editRuleConflictError && (
@@ -3092,10 +3092,10 @@ function RuleRow({
           </div>
         )}
         <div className="flex gap-2">
-          <button onClick={onSave} disabled={savingRule} className="px-3 py-1 bg-[#0078D4] text-white text-xs rounded hover:bg-[#0078D4]/90 disabled:opacity-50">
+          <button onClick={onSave} disabled={savingRule} className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary/90 disabled:opacity-50">
             {savingRule ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
           </button>
-          <button onClick={() => { setEditingRuleId(null); }} className="px-3 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:text-[#E6EDF3]">Cancel</button>
+          <button onClick={() => { setEditingRuleId(null); }} className="px-3 py-1 bg-accent text-muted-foreground text-xs rounded hover:text-foreground">Cancel</button>
         </div>
       </div>
     );
@@ -3104,13 +3104,13 @@ function RuleRow({
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 group">
       {ruleTypePill(rule.ruleType)}
-      <code className="text-xs text-[#C9D1D9] font-mono flex-1 truncate">{rule.sourceKey}</code>
+      <code className="text-xs text-foreground/90 font-mono flex-1 truncate">{rule.sourceKey}</code>
       {rule.compareValue && (
-        <code className="text-xs text-[#7D8590] font-mono">{rule.compareValue}</code>
+        <code className="text-xs text-muted-foreground font-mono">{rule.compareValue}</code>
       )}
-      {rule.description && <p className="text-xs text-[#484F58] truncate max-w-32">{rule.description}</p>}
+      {rule.description && <p className="text-xs text-muted-foreground/60 truncate max-w-32">{rule.description}</p>}
       {rule.category && (
-        <span className="text-[10px] uppercase tracking-wide bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full flex-shrink-0">
+        <span className="text-[10px] uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full flex-shrink-0">
           {rule.category}
         </span>
       )}
@@ -3120,10 +3120,10 @@ function RuleRow({
         </span>
       )}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-        <button onClick={() => onEdit(rule)} className="p-1 text-[#7D8590] hover:text-[#0078D4] transition-colors">
+        <button onClick={() => onEdit(rule)} className="p-1 text-muted-foreground hover:text-primary transition-colors">
           <Pencil className="w-3.5 h-3.5" />
         </button>
-        <button onClick={onDelete} disabled={deletingRuleId === rule.id} className="p-1 text-[#7D8590] hover:text-red-500 transition-colors">
+        <button onClick={onDelete} disabled={deletingRuleId === rule.id} className="p-1 text-muted-foreground hover:text-red-500 transition-colors">
           {deletingRuleId === rule.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
         </button>
       </div>

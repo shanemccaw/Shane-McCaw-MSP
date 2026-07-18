@@ -187,7 +187,7 @@ export default function QuizPainConfigPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -221,7 +221,7 @@ export default function QuizPainConfigPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-4 py-1.5 text-sm rounded bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-1.5 text-sm rounded bg-primary hover:bg-primary/90 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? "Saving…" : "Save Changes"}
           </button>
@@ -229,7 +229,7 @@ export default function QuizPainConfigPage() {
       </div>
 
       {/* Quiz Type → Pain Points */}
-      <section className="bg-[#161B22] border border-gray-700 rounded-lg overflow-hidden">
+      <section className="bg-card border border-gray-700 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-700">
           <h2 className="text-base font-semibold text-white">Quiz Type → Pain Points</h2>
           <p className="text-xs text-gray-400 mt-0.5">
@@ -244,7 +244,7 @@ export default function QuizPainConfigPage() {
                 value={key}
                 onChange={e => updateQtKey(idx, e.target.value)}
                 placeholder="quiz-type"
-                className="w-40 shrink-0 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+                className="w-40 shrink-0 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
               />
               <span className="text-gray-500 text-sm shrink-0">→</span>
               <input
@@ -252,7 +252,7 @@ export default function QuizPainConfigPage() {
                 value={pains.join(", ")}
                 onChange={e => updateQtPains(idx, e.target.value)}
                 placeholder="Pain Tag, Another Tag"
-                className="flex-1 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+                className="flex-1 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
               />
               <button
                 onClick={() => removeQtRow(idx)}
@@ -265,13 +265,13 @@ export default function QuizPainConfigPage() {
               </button>
             </div>
           ))}
-          <div className="flex items-center gap-3 px-5 py-3 bg-[#0D1117]/40">
+          <div className="flex items-center gap-3 px-5 py-3 bg-background/40">
             <input
               type="text"
               value={newQtKey}
               onChange={e => setNewQtKey(e.target.value)}
               placeholder="new-quiz-type"
-              className="w-40 shrink-0 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+              className="w-40 shrink-0 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
             />
             <span className="text-gray-500 text-sm shrink-0">→</span>
             <input
@@ -280,11 +280,11 @@ export default function QuizPainConfigPage() {
               onChange={e => setNewQtPains(e.target.value)}
               placeholder="Pain Tag, Another Tag"
               onKeyDown={e => e.key === "Enter" && addQtRow()}
-              className="flex-1 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+              className="flex-1 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
             />
             <button
               onClick={addQtRow}
-              className="text-[#0078D4] hover:text-[#0078D4]/80 transition-colors shrink-0 font-medium text-sm"
+              className="text-primary hover:text-primary/80 transition-colors shrink-0 font-medium text-sm"
             >
               + Add
             </button>
@@ -293,7 +293,7 @@ export default function QuizPainConfigPage() {
       </section>
 
       {/* Category Key → Pain Tag */}
-      <section className="bg-[#161B22] border border-gray-700 rounded-lg overflow-hidden">
+      <section className="bg-card border border-gray-700 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-700">
           <h2 className="text-base font-semibold text-white">Category Score → Pain Tag</h2>
           <p className="text-xs text-gray-400 mt-0.5">
@@ -309,7 +309,7 @@ export default function QuizPainConfigPage() {
                 value={key}
                 onChange={e => updateCatKey(idx, e.target.value)}
                 placeholder="category-substring"
-                className="w-40 shrink-0 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+                className="w-40 shrink-0 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
               />
               <span className="text-gray-500 text-sm shrink-0">→</span>
               <input
@@ -317,7 +317,7 @@ export default function QuizPainConfigPage() {
                 value={pain}
                 onChange={e => updateCatPain(idx, e.target.value)}
                 placeholder="Pain Tag"
-                className="flex-1 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+                className="flex-1 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
               />
               <button
                 onClick={() => removeCatRow(idx)}
@@ -330,13 +330,13 @@ export default function QuizPainConfigPage() {
               </button>
             </div>
           ))}
-          <div className="flex items-center gap-3 px-5 py-3 bg-[#0D1117]/40">
+          <div className="flex items-center gap-3 px-5 py-3 bg-background/40">
             <input
               type="text"
               value={newCatKey}
               onChange={e => setNewCatKey(e.target.value)}
               placeholder="category-substring"
-              className="w-40 shrink-0 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+              className="w-40 shrink-0 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
             />
             <span className="text-gray-500 text-sm shrink-0">→</span>
             <input
@@ -345,11 +345,11 @@ export default function QuizPainConfigPage() {
               onChange={e => setNewCatPain(e.target.value)}
               placeholder="Pain Tag"
               onKeyDown={e => e.key === "Enter" && addCatRow()}
-              className="flex-1 bg-[#0D1117] border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-[#0078D4]"
+              className="flex-1 bg-background border border-gray-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-primary"
             />
             <button
               onClick={addCatRow}
-              className="text-[#0078D4] hover:text-[#0078D4]/80 transition-colors shrink-0 font-medium text-sm"
+              className="text-primary hover:text-primary/80 transition-colors shrink-0 font-medium text-sm"
             >
               + Add
             </button>
@@ -358,7 +358,7 @@ export default function QuizPainConfigPage() {
       </section>
 
       {/* Bulk Recalculate */}
-      <section className="bg-[#161B22] border border-gray-700 rounded-lg p-5">
+      <section className="bg-card border border-gray-700 rounded-lg p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-semibold text-white">Re-score Existing Leads</h2>

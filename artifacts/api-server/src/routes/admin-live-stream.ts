@@ -14,6 +14,7 @@ const CHANNEL_TAXONOMY = [
   "admin.content",
   "admin.exceptions",
   "admin.insights",
+  "admin.shell",
   "audit",
   "auth",
   "billing",

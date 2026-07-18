@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   active: "text-emerald-400",
   trialing: "text-blue-400",
   past_due: "text-amber-400",
-  canceled: "text-[#484F58]",
+  canceled: "text-muted-foreground/60",
   unpaid: "text-red-400",
 };
 
@@ -54,7 +54,7 @@ export default function PlatformRevenueDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#7D8590] text-sm">
+      <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
         Loading revenue data…
       </div>
     );
@@ -78,14 +78,14 @@ export default function PlatformRevenueDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[#E6EDF3] text-xl font-semibold">Platform Revenue</h1>
-          <p className="text-[#7D8590] text-sm mt-1">
+          <h1 className="text-foreground text-xl font-semibold">Platform Revenue</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             MRR from MSP platform subscriptions, churn, and per-MSP breakdown.
           </p>
         </div>
         <button
           onClick={() => void load()}
-          className="text-xs text-[#0078D4] hover:text-blue-400 transition-colors"
+          className="text-xs text-primary hover:text-blue-400 transition-colors"
         >
           Refresh
         </button>
@@ -93,51 +93,51 @@ export default function PlatformRevenueDashboard() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4">
-          <p className="text-[#7D8590] text-xs mb-1">Monthly Recurring Revenue</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-muted-foreground text-xs mb-1">Monthly Recurring Revenue</p>
           <p className="text-2xl font-bold text-emerald-400">{formatCents(d.mrrCents)}</p>
-          <p className="text-[#7D8590] text-xs mt-1">from active subscriptions</p>
+          <p className="text-muted-foreground text-xs mt-1">from active subscriptions</p>
         </div>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4">
-          <p className="text-[#7D8590] text-xs mb-1">Total Active MSPs</p>
-          <p className="text-2xl font-bold text-[#E6EDF3]">{totalActiveMsps}</p>
-          <p className="text-[#7D8590] text-xs mt-1">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-muted-foreground text-xs mb-1">Total Active MSPs</p>
+          <p className="text-2xl font-bold text-foreground">{totalActiveMsps}</p>
+          <p className="text-muted-foreground text-xs mt-1">
             {d.mspsByStatus["trial"] ?? d.mspsByStatus["trialing"] ?? 0} on trial
           </p>
         </div>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4">
-          <p className="text-[#7D8590] text-xs mb-1">Churn (Last 30d)</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-muted-foreground text-xs mb-1">Churn (Last 30d)</p>
           <p className={`text-2xl font-bold ${d.churned30d > 0 ? "text-red-400" : "text-emerald-400"}`}>
             {d.churned30d}
           </p>
-          <p className="text-[#7D8590] text-xs mt-1">cancellations</p>
+          <p className="text-muted-foreground text-xs mt-1">cancellations</p>
         </div>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-4">
-          <p className="text-[#7D8590] text-xs mb-1">Past Due</p>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-muted-foreground text-xs mb-1">Past Due</p>
           <p className={`text-2xl font-bold ${
             (d.subscriptionsByStatus.find((s) => s.status === "past_due")?.count ?? 0) > 0
               ? "text-amber-400" : "text-emerald-400"
           }`}>
             {d.subscriptionsByStatus.find((s) => s.status === "past_due")?.count ?? 0}
           </p>
-          <p className="text-[#7D8590] text-xs mt-1">subscriptions</p>
+          <p className="text-muted-foreground text-xs mt-1">subscriptions</p>
         </div>
       </div>
 
       {/* Subscriptions by status */}
       {d.subscriptionsByStatus.length > 0 && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-5">
-          <h2 className="text-[#E6EDF3] text-sm font-semibold mb-4">Subscriptions by Status</h2>
+        <div className="bg-card border border-border rounded-lg p-5">
+          <h2 className="text-foreground text-sm font-semibold mb-4">Subscriptions by Status</h2>
           <div className="space-y-3">
             {d.subscriptionsByStatus.map((row) => (
               <div key={row.status} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className={`text-sm font-medium ${STATUS_COLORS[row.status] ?? "text-[#E6EDF3]"}`}>
+                  <span className={`text-sm font-medium ${STATUS_COLORS[row.status] ?? "text-foreground"}`}>
                     {STATUS_LABELS[row.status] ?? row.status}
                   </span>
-                  <span className="text-[#7D8590] text-xs">{row.count} MSP{row.count !== 1 ? "s" : ""}</span>
+                  <span className="text-muted-foreground text-xs">{row.count} MSP{row.count !== 1 ? "s" : ""}</span>
                 </div>
-                <span className="text-[#E6EDF3] text-sm font-mono">{formatCents(row.totalCents)}/mo</span>
+                <span className="text-foreground text-sm font-mono">{formatCents(row.totalCents)}/mo</span>
               </div>
             ))}
           </div>
@@ -145,13 +145,13 @@ export default function PlatformRevenueDashboard() {
       )}
 
       {/* MSP by status */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-5">
-        <h2 className="text-[#E6EDF3] text-sm font-semibold mb-4">MSP Organisations by Status</h2>
+      <div className="bg-card border border-border rounded-lg p-5">
+        <h2 className="text-foreground text-sm font-semibold mb-4">MSP Organisations by Status</h2>
         <div className="grid grid-cols-3 gap-4">
           {Object.entries(d.mspsByStatus).map(([status, count]) => (
             <div key={status} className="text-center">
-              <p className={`text-xl font-bold ${STATUS_COLORS[status] ?? "text-[#E6EDF3]"}`}>{count}</p>
-              <p className="text-[#7D8590] text-xs mt-0.5 capitalize">{status}</p>
+              <p className={`text-xl font-bold ${STATUS_COLORS[status] ?? "text-foreground"}`}>{count}</p>
+              <p className="text-muted-foreground text-xs mt-0.5 capitalize">{status}</p>
             </div>
           ))}
         </div>
@@ -159,27 +159,27 @@ export default function PlatformRevenueDashboard() {
 
       {/* Per-MSP breakdown */}
       {d.perMsp.length > 0 && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-[#21262D]">
-            <h2 className="text-[#E6EDF3] text-sm font-semibold">Per-MSP Revenue</h2>
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="p-4 border-b border-accent">
+            <h2 className="text-foreground text-sm font-semibold">Per-MSP Revenue</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#21262D]">
-                  <th className="text-left text-[#7D8590] text-xs font-medium px-4 py-2">MSP</th>
-                  <th className="text-left text-[#7D8590] text-xs font-medium px-4 py-2">Plan</th>
-                  <th className="text-left text-[#7D8590] text-xs font-medium px-4 py-2">Status</th>
-                  <th className="text-right text-[#7D8590] text-xs font-medium px-4 py-2">MRR</th>
+                <tr className="border-b border-accent">
+                  <th className="text-left text-muted-foreground text-xs font-medium px-4 py-2">MSP</th>
+                  <th className="text-left text-muted-foreground text-xs font-medium px-4 py-2">Plan</th>
+                  <th className="text-left text-muted-foreground text-xs font-medium px-4 py-2">Status</th>
+                  <th className="text-right text-muted-foreground text-xs font-medium px-4 py-2">MRR</th>
                 </tr>
               </thead>
               <tbody>
                 {d.perMsp.map((row, i) => (
-                  <tr key={i} className="border-b border-[#21262D] hover:bg-[#1C2128] transition-colors">
-                    <td className="px-4 py-2.5 text-[#E6EDF3] font-medium truncate max-w-[160px]">{row.mspName}</td>
-                    <td className="px-4 py-2.5 text-[#7D8590] truncate max-w-[160px]">{row.planName}</td>
+                  <tr key={i} className="border-b border-accent hover:bg-accent transition-colors">
+                    <td className="px-4 py-2.5 text-foreground font-medium truncate max-w-[160px]">{row.mspName}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground truncate max-w-[160px]">{row.planName}</td>
                     <td className="px-4 py-2.5">
-                      <span className={`text-xs ${STATUS_COLORS[row.status] ?? "text-[#E6EDF3]"}`}>
+                      <span className={`text-xs ${STATUS_COLORS[row.status] ?? "text-foreground"}`}>
                         {STATUS_LABELS[row.status] ?? row.status}
                       </span>
                     </td>

@@ -126,11 +126,11 @@ export default function ChecklistClosureDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base font-bold text-[#E6EDF3] leading-snug">
+          <DialogTitle className="text-base font-bold text-foreground leading-snug">
             Complete checklist item
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            <span className="font-semibold text-[#E6EDF3]">{itemLabel}</span>
+            <span className="font-semibold text-foreground">{itemLabel}</span>
             {taskTitle && (
               <span> · {taskTitle}</span>
             )}
@@ -141,13 +141,13 @@ export default function ChecklistClosureDialog({
           {phase === "loading" && (
             <div className="space-y-3 py-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div className="w-3.5 h-3.5 border-2 border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />
+                <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin flex-shrink-0" />
                 Claude is generating tailored questions…
               </div>
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-1.5 animate-pulse">
-                  <div className="h-2.5 w-24 rounded bg-[#30363D]" />
-                  <div className="h-9 w-full rounded-lg bg-[#30363D]" />
+                  <div className="h-2.5 w-24 rounded bg-border" />
+                  <div className="h-9 w-full rounded-lg bg-border" />
                 </div>
               ))}
             </div>
@@ -169,7 +169,7 @@ export default function ChecklistClosureDialog({
             type="button"
             onClick={onCancel}
             disabled={phase === "submitting"}
-            className="text-sm font-semibold text-muted-foreground hover:text-[#E6EDF3] px-3 py-2 transition-colors disabled:opacity-50"
+            className="text-sm font-semibold text-muted-foreground hover:text-foreground px-3 py-2 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

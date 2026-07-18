@@ -1,7 +1,7 @@
 // artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
 //
 // VS Code-style IDE shell for the Simulator Studio, on the app's GitHub-dark
-// token system (bg-background / bg-card / border-border / #0078D4 primary):
+// token system (bg-background / bg-card / border-border / #2F6FED primary):
 //   left    — Explorer tree (scenarios + saved SQL scripts)
 //   center  — working canvas (SQL / testbeds / overrides / engines)
 //   right   — collapsible tabbed panel: Portal Snapshot / DB Schema
@@ -224,7 +224,7 @@ function StudioShell() {
         <div className="flex items-center gap-2.5">
           <span className="relative flex h-2 w-2">
             {isReplaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-            <span className={`relative inline-flex h-2 w-2 rounded-full ${isReplaying ? "bg-emerald-400" : "bg-[#484F58]"}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${isReplaying ? "bg-emerald-400" : "bg-muted-foreground/60"}`} />
           </span>
           <span className="text-[11px] font-semibold tracking-wide text-foreground">Simulator Studio</span>
           <span className="rounded-sm border border-border bg-background px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -238,7 +238,7 @@ function StudioShell() {
           {/* Virtual clock + replay transport */}
           <div className="flex items-center gap-2 text-[11px]">
             <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="font-mono tabular-nums text-[#58A6FF]">{simDate}</span>
+            <span className="font-mono tabular-nums text-primary">{simDate}</span>
             <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
               Day {currentStep}/90
             </span>
@@ -293,7 +293,7 @@ function StudioShell() {
             <button
               onClick={toggleBottomPanel}
               className={`rounded p-1 transition-colors ${
-                !bottomCollapsed ? "text-[#58A6FF]" : "text-muted-foreground hover:text-foreground"
+                !bottomCollapsed ? "text-primary" : "text-muted-foreground hover:text-foreground"
               } hover:bg-accent`}
               title="Toggle bottom panel"
             >
@@ -302,7 +302,7 @@ function StudioShell() {
             <button
               onClick={() => setRightOpen(!rightOpen)}
               className={`rounded p-1 transition-colors ${
-                rightOpen ? "text-[#58A6FF]" : "text-muted-foreground hover:text-foreground"
+                rightOpen ? "text-primary" : "text-muted-foreground hover:text-foreground"
               } hover:bg-accent`}
               title="Toggle right panel (Portal Snapshot / DB Schema)"
             >

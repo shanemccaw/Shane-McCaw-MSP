@@ -98,13 +98,13 @@ function MfaChallengeScreen({
   return (
     <div className="space-y-5">
       <div className="text-center">
-        <div className="w-14 h-14 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-          <svg className="w-7 h-7 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="w-14 h-14 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <svg className="w-7 h-7 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-[#E6EDF3]">Two-Factor Verification</h2>
-        <p className="text-sm text-[#7D8590] mt-1">An extra step is required for admin access</p>
+        <h2 className="text-xl font-bold text-foreground">Two-Factor Verification</h2>
+        <p className="text-sm text-muted-foreground mt-1">An extra step is required for admin access</p>
       </div>
 
       {challenge.methods.length > 1 && (
@@ -115,8 +115,8 @@ function MfaChallengeScreen({
               onClick={() => { setActiveMethod(m); setCode(""); setError(""); setSmsSent(false); }}
               className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${
                 activeMethod === m
-                  ? "bg-[#0078D4] text-white border-[#0078D4]"
-                  : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4]/40"
+                  ? "bg-primary text-white border-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40"
               }`}
             >
               {methodLabel[m] ?? m}
@@ -133,13 +133,13 @@ function MfaChallengeScreen({
 
       {activeMethod === "passkey" ? (
         <div className="space-y-3">
-          <p className="text-sm text-[#7D8590] text-center">
+          <p className="text-sm text-muted-foreground text-center">
             Use your registered passkey (biometric or hardware key) to complete sign-in.
           </p>
           <button
             onClick={() => void verifyPasskey()}
             disabled={loading}
-            className="w-full bg-[#0078D4] text-white rounded-lg px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full bg-primary text-white rounded-lg px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -149,11 +149,11 @@ function MfaChallengeScreen({
         </div>
       ) : activeMethod === "sms" && !smsSent ? (
         <div className="space-y-3">
-          <p className="text-sm text-[#7D8590] text-center">Send a 6-digit code to your registered phone number to verify your identity.</p>
+          <p className="text-sm text-muted-foreground text-center">Send a 6-digit code to your registered phone number to verify your identity.</p>
           <button
             onClick={() => void sendSms()}
             disabled={loading}
-            className="w-full bg-[#0078D4] text-white rounded-lg px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full bg-primary text-white rounded-lg px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {loading ? "Sending…" : "Send SMS Code"}
           </button>
@@ -161,7 +161,7 @@ function MfaChallengeScreen({
       ) : (
         <form onSubmit={(e) => void verifyCode(e)} className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
               {activeMethod === "totp" ? "6-digit authenticator code" : "SMS verification code"}
             </label>
             <input
@@ -172,20 +172,20 @@ function MfaChallengeScreen({
               onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
               placeholder="000000"
               autoFocus
-              className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition font-mono text-center tracking-widest"
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition font-mono text-center tracking-widest"
             />
             {activeMethod === "sms" && (
               <div className="flex items-center justify-between mt-1">
-                <p className="text-xs text-[#7D8590]">Check your phone for the code</p>
+                <p className="text-xs text-muted-foreground">Check your phone for the code</p>
                 <button type="button" onClick={() => void sendSms()} disabled={loading}
-                  className="text-xs text-[#0078D4] hover:underline disabled:opacity-50">Resend</button>
+                  className="text-xs text-primary hover:underline disabled:opacity-50">Resend</button>
               </div>
             )}
           </div>
           <button
             type="submit"
             disabled={loading || code.length < 6}
-            className="w-full bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full bg-primary text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? "Verifying…" : "Verify"}
           </button>
@@ -194,7 +194,7 @@ function MfaChallengeScreen({
 
       <button
         onClick={onBack}
-        className="w-full text-xs text-[#7D8590] hover:text-[#7D8590] transition-colors text-center"
+        className="w-full text-xs text-muted-foreground hover:text-muted-foreground transition-colors text-center"
       >
         ← Back to login
       </button>
@@ -239,7 +239,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0A2540] flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-4">
-      <div className="bg-[#161B22] rounded-2xl shadow-2xl p-8 w-full">
+      <div className="bg-card rounded-2xl shadow-2xl p-8 w-full">
         {mfaChallenge ? (
           <MfaChallengeScreen
             challenge={mfaChallenge}
@@ -249,36 +249,36 @@ export default function LoginPage() {
         ) : (
           <>
             <div className="text-center mb-8">
-              <div className="w-14 h-14 bg-[#0078D4] rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h1 className="text-2xl font-bold text-[#E6EDF3]">Admin Panel</h1>
-              <p className="text-sm text-[#7D8590] mt-1">Shane McCaw Consulting</p>
+              <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+              <p className="text-sm text-muted-foreground mt-1">Shane McCaw Consulting</p>
             </div>
 
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Email</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
                   autoFocus
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition"
                   placeholder="admin@example.com"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Password</label>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition"
                   placeholder="••••••••"
                 />
               </div>
@@ -292,7 +292,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full bg-primary text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? "Signing in…" : "Sign in"}
               </button>

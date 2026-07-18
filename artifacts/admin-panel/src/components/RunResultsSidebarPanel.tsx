@@ -46,7 +46,7 @@ const STATUS_CFG: Record<string, { cls: string; label: string }> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status] ?? { cls: "bg-[#30363D] text-[#7D8590] border-[#30363D]", label: status };
+  const cfg = STATUS_CFG[status] ?? { cls: "bg-border text-muted-foreground border-border", label: status };
   return (
     <span className={`inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${cfg.cls}`}>
       {(status === "running" || status === "awaiting_upload") && <span className="w-1 h-1 rounded-full bg-current animate-pulse" />}
@@ -105,19 +105,19 @@ function AwaitingUploadPanel({ result, onUploaded }: { result: RunResult; onUplo
   };
 
   return (
-    <div className="px-3 pb-3 pt-2 bg-[#0D1117] border-t border-[#21262D] space-y-2">
+    <div className="px-3 pb-3 pt-2 bg-background border-t border-accent space-y-2">
       <div className="flex items-start gap-2 p-2 bg-amber-500/8 border border-amber-500/20 rounded-lg">
         <span className="text-amber-400 text-sm leading-none mt-0.5">📋</span>
         <div className="flex-1 min-w-0">
           <p className="text-[10px] font-semibold text-amber-300">Awaiting manual execution &amp; upload</p>
-          <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">Download the .ps1, run it in the customer's tenant, then upload the JSON output here.</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">Download the .ps1, run it in the customer's tenant, then upload the JSON output here.</p>
         </div>
       </div>
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => void handleDownload()}
           disabled={downloading}
-          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50"
+          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded-lg transition-colors disabled:opacity-50"
         >
           {downloading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
           {downloading ? "Downloading…" : "Download .ps1"}
@@ -133,8 +133,8 @@ function AwaitingUploadPanel({ result, onUploaded }: { result: RunResult; onUplo
       {showUploadForm && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Paste JSON output</p>
-            <button onClick={() => { setShowUploadForm(false); setJsonText(""); }} className="text-[#484F58] hover:text-[#7D8590]">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Paste JSON output</p>
+            <button onClick={() => { setShowUploadForm(false); setJsonText(""); }} className="text-muted-foreground/60 hover:text-muted-foreground">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -143,7 +143,7 @@ function AwaitingUploadPanel({ result, onUploaded }: { result: RunResult; onUplo
             onChange={e => setJsonText(e.target.value)}
             placeholder={'{\n  "data": {...}\n}'}
             rows={6}
-            className="w-full border border-[#30363D] rounded-lg px-2 py-1.5 text-[10px] text-[#E6EDF3] bg-[#161B22] font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-[#484F58] resize-y"
+            className="w-full border border-border rounded-lg px-2 py-1.5 text-[10px] text-foreground bg-card font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-muted-foreground/60 resize-y"
           />
           <div className="flex justify-end">
             <button
@@ -210,7 +210,7 @@ function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult
   }
 
   return (
-    <div className="px-3 pb-3 pt-2 bg-[#0D1117] border-t border-[#21262D] space-y-2">
+    <div className="px-3 pb-3 pt-2 bg-background border-t border-accent space-y-2">
       <div className="flex gap-1">
         {(["findings", "json"] as const).map(t => (
           <button
@@ -218,8 +218,8 @@ function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult
             onClick={() => setSubTab(t)}
             className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${
               subTab === t
-                ? "bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30"
-                : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"
+                ? "bg-primary/15 text-primary border border-primary/30"
+                : "text-muted-foreground hover:text-foreground border border-transparent"
             }`}
           >
             {t === "findings" ? "AI Findings" : "JSON"}
@@ -230,23 +230,23 @@ function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult
       {subTab === "findings" && (
         <div className="space-y-1.5">
           {result.parsedFindings.length === 0 ? (
-            <p className="text-[10px] text-[#484F58] italic">No findings</p>
+            <p className="text-[10px] text-muted-foreground/60 italic">No findings</p>
           ) : (
             result.parsedFindings.slice(0, 5).map((f, i) => (
-              <p key={i} className="text-[10px] text-[#C9D1D9] leading-relaxed flex gap-1.5">
-                <span className="mt-1 w-1 h-1 rounded-full bg-[#0078D4] flex-shrink-0" />
+              <p key={i} className="text-[10px] text-foreground/90 leading-relaxed flex gap-1.5">
+                <span className="mt-1 w-1 h-1 rounded-full bg-primary flex-shrink-0" />
                 {f}
               </p>
             ))
           )}
           {result.parsedFindings.length > 5 && (
-            <p className="text-[10px] text-[#484F58]">+{result.parsedFindings.length - 5} more</p>
+            <p className="text-[10px] text-muted-foreground/60">+{result.parsedFindings.length - 5} more</p>
           )}
         </div>
       )}
 
       {subTab === "json" && (
-        <pre className="text-[10px] text-[#7D8590] font-mono whitespace-pre-wrap bg-[#161B22] border border-[#30363D] rounded p-2 max-h-32 overflow-y-auto">
+        <pre className="text-[10px] text-muted-foreground font-mono whitespace-pre-wrap bg-card border border-border rounded p-2 max-h-32 overflow-y-auto">
           {JSON.stringify(result.rawOutput, null, 2) || "(no data)"}
         </pre>
       )}
@@ -256,7 +256,7 @@ function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult
           <button
             onClick={() => void handleApplyToClient()}
             disabled={applying}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
           >
             {applying ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
             Apply Scores
@@ -333,13 +333,13 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
   const filtered = statusFilter ? results.filter(r => r.status === statusFilter) : results;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
+    <div className="flex flex-col h-full overflow-hidden bg-background">
       {/* Toolbar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#21262D] flex-shrink-0">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-accent flex-shrink-0">
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="flex-1 bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50"
+          className="flex-1 bg-card border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary/50"
         >
           <option value="">All statuses</option>
           <option value="running">Running</option>
@@ -350,7 +350,7 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
         {hasRunning && !refreshing && (
           <span
             key={pollFlash ? "flash" : "idle"}
-            className={`text-[10px] flex-shrink-0 tabular-nums ${pollFlash ? "poll-flash" : "text-[#484F58]"}`}
+            className={`text-[10px] flex-shrink-0 tabular-nums ${pollFlash ? "poll-flash" : "text-muted-foreground/60"}`}
             onAnimationEnd={() => setPollFlash(false)}
           >
             auto in {countdown}s
@@ -360,7 +360,7 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
           onClick={() => void load(true)}
           disabled={refreshing}
           title="Refresh"
-          className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#21262D] rounded transition-colors flex-shrink-0 disabled:opacity-50"
+          className="p-1.5 text-muted-foreground/60 hover:text-foreground hover:bg-accent rounded transition-colors flex-shrink-0 disabled:opacity-50"
         >
           <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
         </button>
@@ -370,19 +370,19 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center py-8">
-            <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
         {!loading && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-            <ClipboardList className="w-8 h-8 text-[#21262D] mb-2" />
-            <p className="text-xs text-[#484F58]">{results.length === 0 ? "No run results yet" : "No results match filter"}</p>
+            <ClipboardList className="w-8 h-8 text-accent mb-2" />
+            <p className="text-xs text-muted-foreground/60">{results.length === 0 ? "No run results yet" : "No results match filter"}</p>
           </div>
         )}
 
         {!loading && filtered.length > 0 && (
-          <div className="divide-y divide-[#21262D]">
+          <div className="divide-y divide-accent">
             {filtered.map(r => {
               const isActive = selectedResultId === r.id;
               return (
@@ -391,25 +391,25 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
                   onClick={() => onSelectResult?.(r)}
                   className={`w-full flex items-start gap-2 px-3 py-2 transition-colors text-left group ${
                     isActive
-                      ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]"
-                      : "hover:bg-[#161B22] border-l-2 border-transparent"
+                      ? "bg-primary/10 border-l-2 border-primary"
+                      : "hover:bg-card border-l-2 border-transparent"
                   }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-xs truncate font-medium ${isActive ? "text-[#58A6FF]" : "text-[#E6EDF3]"}`}>
+                      <span className={`text-xs truncate font-medium ${isActive ? "text-primary" : "text-foreground"}`}>
                         {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : "No client")}
                       </span>
                       <StatusBadge status={r.status} />
                     </div>
-                    <p className="text-[10px] text-[#7D8590] truncate mt-0.5">
+                    <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                       {r.scriptName ?? `Script #${r.scriptId}`}
                       {r.executionSource === "manual" && <span className="ml-1 text-amber-500/70">📋 Manual</span>}
                     </p>
-                    <p className="text-[9px] text-[#484F58] mt-0.5">{formatRelative(r.createdAt)}</p>
+                    <p className="text-[9px] text-muted-foreground/60 mt-0.5">{formatRelative(r.createdAt)}</p>
                   </div>
                   <div className="flex-shrink-0 mt-0.5">
-                    <ChevronDown className={`w-3 h-3 transition-colors ${isActive ? "text-[#58A6FF]" : "text-[#484F58] group-hover:text-[#7D8590]"}`} />
+                    <ChevronDown className={`w-3 h-3 transition-colors ${isActive ? "text-primary" : "text-muted-foreground/60 group-hover:text-muted-foreground"}`} />
                   </div>
                 </button>
               );
@@ -418,7 +418,7 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
         )}
 
         {!loading && filtered.length > 0 && (
-          <p className="px-3 py-2 text-[9px] text-[#484F58] border-t border-[#21262D]">
+          <p className="px-3 py-2 text-[9px] text-muted-foreground/60 border-t border-accent">
             {filtered.length} result{filtered.length !== 1 ? "s" : ""}
           </p>
         )}

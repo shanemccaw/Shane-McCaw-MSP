@@ -75,12 +75,12 @@ export default function InboxFolderPane({ onCompose }: { onCompose: () => void }
   const { selectedFolder, activeFilters, toggleFilter, clearFilters, setSelectedFolder } = useInbox();
 
   return (
-    <div className="flex flex-col h-full bg-[#0D1117] border-r border-[#30363D] w-52 shrink-0 overflow-y-auto">
+    <div className="flex flex-col h-full bg-background border-r border-border w-52 shrink-0 overflow-y-auto">
       {/* Compose button */}
       <div className="p-3 shrink-0">
         <button
           onClick={onCompose}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-medium hover:bg-[#1A90E0] transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -91,15 +91,15 @@ export default function InboxFolderPane({ onCompose }: { onCompose: () => void }
 
       {/* System folders */}
       <div className="px-2 pb-1">
-        <p className="px-2 py-1 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Folders</p>
+        <p className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Folders</p>
         {SYSTEM_FOLDERS.map(f => (
           <button
             key={f.key}
             onClick={() => setSelectedFolder(f.key)}
             className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors ${
               selectedFolder === f.key
-                ? "bg-[#0078D4]/15 text-[#0078D4] font-medium"
-                : "text-[#C9D1D9] hover:bg-[#161B22]"
+                ? "bg-primary/15 text-primary font-medium"
+                : "text-foreground/90 hover:bg-card"
             }`}
           >
             {f.icon}
@@ -110,15 +110,15 @@ export default function InboxFolderPane({ onCompose }: { onCompose: () => void }
 
       {/* CRM Views */}
       <div className="px-2 pb-1 mt-2">
-        <p className="px-2 py-1 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">CRM Views</p>
+        <p className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">CRM Views</p>
         {CRM_FOLDERS.map(f => (
           <button
             key={f.key}
             onClick={() => setSelectedFolder(f.key)}
             className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-sm transition-colors ${
               selectedFolder === f.key
-                ? "bg-[#0078D4]/15 text-[#0078D4] font-medium"
-                : "text-[#C9D1D9] hover:bg-[#161B22]"
+                ? "bg-primary/15 text-primary font-medium"
+                : "text-foreground/90 hover:bg-card"
             }`}
           >
             {f.icon}
@@ -130,9 +130,9 @@ export default function InboxFolderPane({ onCompose }: { onCompose: () => void }
       {/* Filter chips */}
       <div className="px-3 pb-3 mt-2">
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Filters</p>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Filters</p>
           {activeFilters.size > 0 && (
-            <button onClick={clearFilters} className="text-[10px] text-[#7D8590] hover:text-[#C9D1D9]">Clear</button>
+            <button onClick={clearFilters} className="text-[10px] text-muted-foreground hover:text-foreground/90">Clear</button>
           )}
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -143,7 +143,7 @@ export default function InboxFolderPane({ onCompose }: { onCompose: () => void }
               className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${
                 activeFilters.has(f.key)
                   ? f.color + " ring-1 ring-current"
-                  : "bg-[#161B22] text-[#7D8590] hover:bg-[#1C2128] hover:text-[#C9D1D9]"
+                  : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground/90"
               }`}
             >
               {f.label}

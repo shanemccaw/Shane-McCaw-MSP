@@ -24,6 +24,10 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-live: hsl(var(--live));
+  --color-live-foreground: hsl(var(--live-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
@@ -38,60 +42,70 @@
 }
 
 :root {
-  /* ── Dark-mode-first token system ─────────────────────────────────────────
-     background:     #0D1117  (near-black canvas)
-     surface:        #161B22  (cards, sidebar — one step up)
-     surface-raised: #1C2128  (popovers, hover states — two steps up)
-     border:         #30363D
+  /* ── Telemetry / mission-control token system ─────────────────────────────
+     canvas:         #0A0D12  (deepest app background)
+     panel:          #11151C  (cards, panels, tree, tab bar)
+     elevated:       #171C26  (hover states, popovers, modals)
+     border:         #232A36  (hairline — 1px, never heavier)
      text-primary:   #E6EDF3
-     text-muted:     #7D8590
-     accent:         #0078D4
-     destructive:    #F85149
+     text-muted:     #8B94A3
+     primary:        #2F6FED  (Signal Blue — the one interactive color)
+     live:           #22D3C8  (Telemetry Cyan — live/status indicators ONLY)
+     warning:        #F0B429  (Signal Amber)
+     destructive:    #EF4444  (Signal Red)
   ──────────────────────────────────────────────────────────────────────── */
 
-  --background:      216 28% 7%;      /* #0D1117 */
-  --foreground:      213 29% 93%;     /* #E6EDF3 */
-  --border:          214 13% 21%;     /* #30363D */
-  --input:           214 13% 21%;     /* #30363D */
-  --ring:            210 100% 41%;    /* #0078D4 */
+  --background:      217.5 28.6% 5.5%;  /* #0A0D12 */
+  --foreground:      213 29% 93%;       /* #E6EDF3 */
+  --border:          217.9 21.4% 17.5%; /* #232A36 */
+  --input:           217.9 21.4% 17.5%; /* #232A36 */
+  --ring:            219.8 84.1% 55.7%; /* #2F6FED */
 
-  /* surface = cards */
-  --card:            215 21% 11%;     /* #161B22 */
-  --card-foreground: 213 29% 93%;     /* #E6EDF3 */
+  /* panel = cards, tree, tab bar */
+  --card:            218.2 24.4% 8.8%;  /* #11151C */
+  --card-foreground: 213 29% 93%;       /* #E6EDF3 */
 
-  /* surface-raised = popovers / dropdowns */
-  --popover:         214 17% 13%;     /* #1C2128 */
-  --popover-foreground: 213 29% 93%; /* #E6EDF3 */
+  /* elevated = popovers / dropdowns / modals */
+  --popover:         220 24.6% 12%;     /* #171C26 */
+  --popover-foreground: 213 29% 93%;    /* #E6EDF3 */
 
-  /* primary = accent blue */
-  --primary:         210 100% 41%;    /* #0078D4 */
+  /* primary = Signal Blue */
+  --primary:         219.8 84.1% 55.7%; /* #2F6FED */
   --primary-foreground: 0 0% 100%;
 
-  /* secondary = surface-raised */
-  --secondary:       214 17% 13%;     /* #1C2128 */
+  /* secondary = elevated surface */
+  --secondary:       220 24.6% 12%;     /* #171C26 */
   --secondary-foreground: 213 29% 93%;
 
-  /* muted = surface */
-  --muted:           215 21% 11%;     /* #161B22 */
-  --muted-foreground: 215 5% 53%;     /* #7D8590 */
+  /* muted = panel */
+  --muted:           218.2 24.4% 8.8%;  /* #11151C */
+  --muted-foreground: 217 10% 59%;      /* #8B94A3 */
 
-  /* accent = hover surface */
-  --accent:          214 17% 16%;
+  /* accent = hover / elevated surface */
+  --accent:          220 24.6% 12%;     /* #171C26 */
   --accent-foreground: 213 29% 93%;
 
-  /* destructive */
-  --destructive:     0 93% 63%;       /* #F85149 */
+  /* destructive = Signal Red */
+  --destructive:     0 84.2% 60.2%;     /* #EF4444 */
   --destructive-foreground: 0 0% 100%;
 
-  /* sidebar (same as surface) */
-  --sidebar:         215 21% 11%;     /* #161B22 */
+  /* live = Telemetry Cyan — live/status indicators ONLY, never buttons */
+  --live:            176.3 72.2% 48%;   /* #22D3C8 */
+  --live-foreground: 217.5 28.6% 5.5%;
+
+  /* warning = Signal Amber */
+  --warning:         41.9 86.9% 55.1%;  /* #F0B429 */
+  --warning-foreground: 217.5 28.6% 5.5%;
+
+  /* sidebar (same as panel) */
+  --sidebar:         218.2 24.4% 8.8%;  /* #11151C */
   --sidebar-foreground: 213 29% 93%;
-  --sidebar-border:  214 13% 21%;     /* #30363D */
-  --sidebar-accent:  214 17% 16%;
+  --sidebar-border:  217.9 21.4% 17.5%; /* #232A36 */
+  --sidebar-accent:  220 24.6% 12%;     /* #171C26 */
   --sidebar-accent-foreground: 213 29% 93%;
 
   --app-font-sans: 'Inter', sans-serif;
-  --app-font-mono: ui-monospace, 'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
+  --app-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
   --radius: 0.5rem;
 }
 
@@ -102,14 +116,14 @@
   /* Scrollbar styling for dark mode */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #30363D; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #484F58; }
+  ::-webkit-scrollbar-thumb { background: #232A36; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2E3644; }
 }
 
 @keyframes poll-flash {
-  0%   { color: #0078D4; }
-  60%  { color: #0078D4; }
-  100% { color: #484F58; }
+  0%   { color: #2F6FED; }
+  60%  { color: #2F6FED; }
+  100% { color: hsl(var(--muted-foreground)); }
 }
 
 .poll-flash {
@@ -144,4 +158,44 @@
 
 .sale-flash-exit {
   animation: sale-flash-out 0.3s ease-in forwards;
+}
+
+/* ── Status-bar LED signals ──────────────────────────────────────────────────
+   The status bar is the one place visual boldness is spent: segmented
+   LED-style dots per live signal, with a subtle cyan glow pulse when a
+   value changes. Everything else stays quiet around it. */
+
+@keyframes led-glow {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--live) / 0.55); }
+  70%  { box-shadow: 0 0 6px 3px hsl(var(--live) / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--live) / 0); }
+}
+
+.led-glow {
+  animation: led-glow 1.2s ease-out;
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.led-pulse {
+  animation: led-pulse 2s ease-in-out infinite;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .poll-flash,
+  .count-pop,
+  .sale-flash-enter,
+  .sale-flash-exit,
+  .led-glow,
+  .led-pulse,
+  .animate-pulse,
+  .animate-spin {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

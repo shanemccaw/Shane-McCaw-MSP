@@ -87,27 +87,27 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
   }
 
   return (
-    <div className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
+    <div className="rounded-lg border border-border bg-background overflow-hidden">
       {/* Header / toggle row */}
       <button
         type="button"
         onMouseDown={e => e.preventDefault()}
         onClick={toggle}
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#161B22] transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-card transition-colors"
       >
         <div className="flex items-center gap-2">
-          <svg className="w-3 h-3 text-[#484F58] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7D8590]">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Available Variables
           </span>
-          <span className="text-[9px] bg-[#1C2128] border border-[#30363D] text-[#484F58] rounded-full px-1.5 py-0.5 leading-none">
+          <span className="text-[9px] bg-accent border border-border text-muted-foreground/60 rounded-full px-1.5 py-0.5 leading-none">
             {totalChips}
           </span>
         </div>
         <svg
-          className={`w-3 h-3 text-[#484F58] transition-transform duration-150 flex-shrink-0 ${open ? "" : "-rotate-90"}`}
+          className={`w-3 h-3 text-muted-foreground/60 transition-transform duration-150 flex-shrink-0 ${open ? "" : "-rotate-90"}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -127,7 +127,7 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
       )}
 
       {open && (
-        <div className="max-h-64 overflow-y-auto border-t border-[#30363D] px-2.5 py-2.5 space-y-3">
+        <div className="max-h-64 overflow-y-auto border-t border-border px-2.5 py-2.5 space-y-3">
           {sorted.map(group => {
             const isForeach = isForeachGroup(group);
             return (
@@ -136,7 +136,7 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <span
                     className={`text-[9px] font-semibold uppercase tracking-wider truncate max-w-[160px] ${
-                      isForeach ? "text-teal-400" : "text-[#484F58]"
+                      isForeach ? "text-teal-400" : "text-muted-foreground/60"
                     }`}
                   >
                     {group.nodeName}
@@ -181,12 +181,12 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
                         className={`inline-flex flex-col items-start rounded px-1.5 py-1 text-left transition-colors border ${
                           isForeach
                             ? "bg-teal-950/40 border-teal-700/30 hover:bg-teal-900/50 hover:border-teal-600/50"
-                            : "bg-[#161B22] border-[#30363D] hover:bg-[#1C2128] hover:border-[#444C56]"
+                            : "bg-card border-border hover:bg-accent hover:border-[#444C56]"
                         }`}
                       >
                         <span
                           className={`text-[10px] font-medium leading-tight ${
-                            isForeach ? "text-teal-200" : "text-[#C9D1D9]"
+                            isForeach ? "text-teal-200" : "text-foreground/90"
                           }`}
                         >
                           {o.label.length > 30 ? o.label.slice(0, 28) + "…" : o.label}

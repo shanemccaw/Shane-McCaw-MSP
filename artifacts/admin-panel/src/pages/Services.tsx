@@ -147,11 +147,11 @@ export default function ServicesPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b border-[#21262D] bg-[#0D1117]">
+      <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b border-accent bg-background">
         <div className="relative" ref={templateDropdownRef}>
           <button
             onClick={() => setShowTemplateDropdown(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -162,21 +162,21 @@ export default function ServicesPage() {
             </svg>
           </button>
           {showTemplateDropdown && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl min-w-[180px] py-1">
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">All types</div>
+            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[180px] py-1">
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">All types</div>
               <button
                 onClick={() => void handleDownloadTemplate()}
-                className="w-full text-left px-3 py-2 text-xs text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 All 5 types (combined)
               </button>
-              <div className="border-t border-[#21262D] my-1" />
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">By type</div>
+              <div className="border-t border-accent my-1" />
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">By type</div>
               {PRODUCT_TYPE_LIST.map(cfg => (
                 <button
                   key={cfg.key}
                   onClick={() => void handleDownloadTemplate(cfg.key)}
-                  className="w-full text-left px-3 py-2 text-xs text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                  className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
                   {cfg.label}
                 </button>
@@ -186,7 +186,7 @@ export default function ServicesPage() {
         </div>
         <button
           onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -195,7 +195,7 @@ export default function ServicesPage() {
         </button>
         <button
           onClick={() => { setImportJson(""); setShowImportModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
@@ -260,24 +260,24 @@ export default function ServicesPage() {
       {/* Import modal */}
       {showImportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xl mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D]">
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Import Service Catalog</h2>
-              <button onClick={() => setShowImportModal(false)} className="text-[#484F58] hover:text-[#C9D1D9] transition-colors">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-xl mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-sm font-semibold text-foreground">Import Service Catalog</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-muted-foreground/60 hover:text-foreground/90 transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-xs text-[#7D8590]">
-                Paste a services export JSON or load a file. Each service is upserted by <code className="bg-[#21262D] px-1 rounded">slug</code> — existing services with the same slug are updated.
+              <p className="text-xs text-muted-foreground">
+                Paste a services export JSON or load a file. Each service is upserted by <code className="bg-accent px-1 rounded">slug</code> — existing services with the same slug are updated.
               </p>
               <div>
                 <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} className="hidden" />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                  className="text-xs px-3 py-1.5 rounded border border-border bg-accent text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
                 >
                   Load from file…
                 </button>
@@ -287,17 +287,17 @@ export default function ServicesPage() {
                 onChange={e => setImportJson(e.target.value)}
                 placeholder='{"version":1,"services":[...]}'
                 rows={10}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] font-mono focus:outline-none focus:border-[#0078D4] transition-colors resize-none"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground/90 placeholder-muted-foreground/60 font-mono focus:outline-none focus:border-primary transition-colors resize-none"
               />
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#30363D]">
-              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
                 Cancel
               </button>
               <button
                 onClick={() => void handleImport()}
                 disabled={!importJson.trim() || importing}
-                className="px-4 py-2 text-xs rounded-lg bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 text-xs rounded-lg bg-primary text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {importing ? "Importing…" : "Import"}
               </button>

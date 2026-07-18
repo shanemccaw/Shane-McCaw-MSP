@@ -341,7 +341,7 @@ function useResize(key: string, def: number, min: number, max: number) {
 function CategoryBadge({ category }: { category: string }) {
   const label = CATEGORY_MAP[category] ?? category;
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/25 uppercase tracking-wide">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary border border-primary/25 uppercase tracking-wide">
       {label}
     </span>
   );
@@ -360,7 +360,7 @@ function PackageBadge() {
 
 function PermissionBadge({ text }: { text: string }) {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-[#1C2128] border border-[#30363D] text-[#C9D1D9]">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-accent border border-border text-foreground/90">
       {text}
     </span>
   );
@@ -387,15 +387,15 @@ function ConfirmDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
-      <AlertDialogContent className="bg-[#0D1117] border border-[#30363D] text-[#E6EDF3] shadow-2xl max-w-sm">
+      <AlertDialogContent className="bg-background border border-border text-foreground shadow-2xl max-w-sm">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-[#E6EDF3] text-base font-semibold">{title}</AlertDialogTitle>
-          <AlertDialogDescription className="text-[#8B949E] text-sm leading-relaxed">{description}</AlertDialogDescription>
+          <AlertDialogTitle className="text-foreground text-base font-semibold">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-muted-foreground text-sm leading-relaxed">{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="gap-2 sm:gap-2">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm font-medium text-[#C9D1D9] bg-[#21262D] border border-[#30363D] rounded-lg hover:bg-[#30363D] transition-colors"
+            className="px-3 py-1.5 text-sm font-medium text-foreground/90 bg-accent border border-border rounded-lg hover:bg-border transition-colors"
           >
             Cancel
           </button>
@@ -404,7 +404,7 @@ function ConfirmDialog({
             className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
               destructive
                 ? "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25"
-                : "bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25"
+                : "bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25"
             }`}
           >
             {confirmLabel}
@@ -457,33 +457,33 @@ function SaveModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-[#E6EDF3]">Save to Library</h3>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded">
+          <h3 className="text-base font-semibold text-foreground">Save to Library</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Title <span className="text-red-400">*</span></label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. List Teams with 100+ Members" className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors" />
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Title <span className="text-red-400">*</span></label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. List Teams with 100+ Members" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Description</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Optional description…" className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none" />
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Optional description…" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors resize-none" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Tags (comma-separated)</label>
-            <input value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} placeholder="e.g. teams, reporting, csv" className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors" />
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Tags (comma-separated)</label>
+            <input value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} placeholder="e.g. teams, reporting, csv" className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors" />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={save} disabled={saving} className="flex-1 bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors">
+          <button onClick={save} disabled={saving} className="flex-1 bg-primary hover:bg-[#0086EF] disabled:opacity-50 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors">
             {saving ? "Saving…" : "Save"}
           </button>
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors">Cancel</button>
         </div>
       </div>
     </div>
@@ -533,9 +533,9 @@ function NewScriptSetDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3] shadow-2xl max-w-sm">
+      <DialogContent className="bg-card border border-border text-foreground shadow-2xl max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-base font-semibold text-[#E6EDF3] flex items-center gap-2">
+          <DialogTitle className="text-base font-semibold text-foreground flex items-center gap-2">
             <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
             New Script Set
           </DialogTitle>
@@ -543,22 +543,22 @@ function NewScriptSetDialog({
 
         <div className="space-y-3 py-2">
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Name <span className="text-red-400">*</span></label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Name <span className="text-red-400">*</span></label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
               placeholder="e.g. Monthly Audit, Onboarding Checklist"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Category</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors appearance-none"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60 transition-colors appearance-none"
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -566,12 +566,12 @@ function NewScriptSetDialog({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-[#8B949E] mb-1">Tags <span className="text-[#484F58]">(comma-separated, optional)</span></label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Tags <span className="text-muted-foreground/60">(comma-separated, optional)</span></label>
             <input
               value={tagsRaw}
               onChange={(e) => setTagsRaw(e.target.value)}
               placeholder="e.g. audit, monthly, security"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors"
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -580,7 +580,7 @@ function NewScriptSetDialog({
         <DialogFooter className="gap-2 sm:gap-2">
           <button
             onClick={() => { reset(); onClose(); }}
-            className="px-4 py-2 text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
           >
             Cancel
           </button>
@@ -664,69 +664,69 @@ function ScriptDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-[#161B22] border border-[#30363D] h-full sm:h-full w-full sm:max-w-2xl flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
+      <div className="bg-card border border-border h-full sm:h-full w-full sm:max-w-2xl flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           {script && <CategoryBadge category={script.category} />}
           <div className="flex items-center gap-2 ml-auto">
             {script && (
               <>
-                <button onClick={handleCopy} title="Copy script" className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+                <button onClick={handleCopy} title="Copy script" className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   {copied ? <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                   {copied ? "Copied" : "Copy"}
                 </button>
-                <button onClick={handleDownload} title="Download .ps1" className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+                <button onClick={handleDownload} title="Download .ps1" className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   .ps1
                 </button>
-                <button onClick={() => onLoadInEditor(script)} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
+                <button onClick={() => onLoadInEditor(script)} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 transition-colors">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   Open in Editor
                 </button>
-                <button onClick={handleDelete} disabled={deleting} title="Delete script" className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
+                <button onClick={handleDelete} disabled={deleting} title="Delete script" className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
               </>
             )}
-            <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors">
+            <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
-        {loading && <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>}
+        {loading && <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
         {script && !loading && (
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-[#E6EDF3]">{script.title}</h2>
-              {script.description && <p className="text-sm text-[#8B949E] mt-1">{script.description}</p>}
-              <p className="text-xs text-[#484F58] mt-1">Saved {formatDate(script.createdAt)}</p>
+              <h2 className="text-lg font-bold text-foreground">{script.title}</h2>
+              {script.description && <p className="text-sm text-muted-foreground mt-1">{script.description}</p>}
+              <p className="text-xs text-muted-foreground/60 mt-1">Saved {formatDate(script.createdAt)}</p>
             </div>
             {script.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {script.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#21262D] text-[#8B949E] border border-[#30363D]">{t}</span>)}
+                {script.tags.map((t) => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-muted-foreground border border-border">{t}</span>)}
               </div>
             )}
             {(script.permissions.appPermissions.length > 0 || script.permissions.delegatedPermissions.length > 0 || script.permissions.notes) && (
-              <div className="border border-[#30363D] rounded-lg overflow-hidden">
-                <div className="px-4 py-3 space-y-3 bg-[#0D1117]">
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 space-y-3 bg-background">
                   {script.permissions.appPermissions.length > 0 && (
                     <div>
-                      <p className="text-[11px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">Application Permissions</p>
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Application Permissions</p>
                       <div className="flex flex-wrap gap-1.5">{script.permissions.appPermissions.map((p) => <PermissionBadge key={p.scope} text={p.scope} />)}</div>
                     </div>
                   )}
                   {script.permissions.delegatedPermissions.length > 0 && (
                     <div>
-                      <p className="text-[11px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">Delegated Permissions</p>
+                      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Delegated Permissions</p>
                       <div className="flex flex-wrap gap-1.5">{script.permissions.delegatedPermissions.map((p) => <PermissionBadge key={p} text={p} />)}</div>
                     </div>
                   )}
-                  {script.permissions.notes && <p className="text-xs text-[#8B949E] leading-relaxed border-t border-[#30363D] pt-2">{script.permissions.notes}</p>}
+                  {script.permissions.notes && <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-2">{script.permissions.notes}</p>}
                 </div>
               </div>
             )}
             <div>
-              <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-2">Script</p>
-              <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-4 text-xs text-[#C9D1D9] font-mono overflow-x-auto whitespace-pre leading-relaxed">{script.scriptBody}</pre>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Script</p>
+              <pre className="bg-background border border-border rounded-lg p-4 text-xs text-foreground/90 font-mono overflow-x-auto whitespace-pre leading-relaxed">{script.scriptBody}</pre>
             </div>
           </div>
         )}
@@ -821,17 +821,17 @@ function PackagePushProgressDialog({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col">
+      <div className="w-full max-w-md mx-4 bg-card border border-border rounded-xl shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-[#21262D]">
-          <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-accent">
+          <div className="w-8 h-8 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Publishing to Azure</h2>
-            <p className="text-[10px] text-[#7D8590]">Each module becomes its own runbook</p>
+            <h2 className="text-sm font-semibold text-foreground">Publishing to Azure</h2>
+            <p className="text-[10px] text-muted-foreground">Each module becomes its own runbook</p>
           </div>
         </div>
 
@@ -840,20 +840,20 @@ function PackagePushProgressDialog({
           {modules.map((m) => {
             const s = statuses[m.filename] ?? "idle";
             return (
-              <div key={m.filename} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${s === "done" ? "border-[#3FB950]/30 bg-[#3FB950]/5" : s === "error" ? "border-red-500/30 bg-red-500/5" : s === "pushing" ? "border-[#0078D4]/40 bg-[#0078D4]/8" : "border-[#21262D] bg-[#0D1117]"}`}>
+              <div key={m.filename} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${s === "done" ? "border-[#3FB950]/30 bg-[#3FB950]/5" : s === "error" ? "border-red-500/30 bg-red-500/5" : s === "pushing" ? "border-primary/40 bg-primary/8" : "border-accent bg-background"}`}>
                 {/* Status icon */}
                 <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                  {s === "idle"    && <div className="w-3.5 h-3.5 rounded-full border border-[#484F58]" />}
-                  {s === "pushing" && <div className="w-4 h-4 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />}
+                  {s === "idle"    && <div className="w-3.5 h-3.5 rounded-full border border-muted-foreground/60" />}
+                  {s === "pushing" && <div className="w-4 h-4 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />}
                   {s === "done"    && <svg className="w-4 h-4 text-[#3FB950]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                   {s === "error"   && <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-[#E6EDF3] truncate">{m.filename}</p>
-                  {m.description && <p className="text-[10px] text-[#7D8590] truncate mt-0.5">{m.description}</p>}
+                  <p className="text-xs font-mono text-foreground truncate">{m.filename}</p>
+                  {m.description && <p className="text-[10px] text-muted-foreground truncate mt-0.5">{m.description}</p>}
                   {errors[m.filename] && <p className="text-[10px] text-red-400 mt-0.5 truncate">{errors[m.filename]}</p>}
                 </div>
-                <span className={`text-[10px] font-medium flex-shrink-0 ${s === "done" ? "text-[#3FB950]" : s === "error" ? "text-red-400" : s === "pushing" ? "text-[#58A6FF]" : "text-[#484F58]"}`}>
+                <span className={`text-[10px] font-medium flex-shrink-0 ${s === "done" ? "text-[#3FB950]" : s === "error" ? "text-red-400" : s === "pushing" ? "text-primary" : "text-muted-foreground/60"}`}>
                   {s === "idle" ? "Waiting" : s === "pushing" ? "Uploading…" : s === "done" ? "Published" : "Failed"}
                 </span>
               </div>
@@ -862,8 +862,8 @@ function PackagePushProgressDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#21262D]">
-          <p className="text-[11px] text-[#7D8590]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-accent">
+          <p className="text-[11px] text-muted-foreground">
             {running
               ? `Publishing ${modules.findIndex((m) => statuses[m.filename] === "pushing") + 1} of ${total}…`
               : finished
@@ -875,7 +875,7 @@ function PackagePushProgressDialog({
           <button
             onClick={onClose}
             disabled={running}
-            className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-[#30363D] text-[#E6EDF3] hover:bg-[#21262D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg border border-border text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {running ? "Publishing…" : "Done"}
           </button>
@@ -891,7 +891,7 @@ function PackageDrawerPushButton({ packageId, token, modules }: { packageId: str
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#0078D4]/35 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 transition-colors"
+        className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-primary/35 bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
         title="Push each module to Azure"
       >
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
@@ -1064,20 +1064,20 @@ function PackageDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/50 backdrop-blur-sm" onClick={editMode ? undefined : onClose}>
-      <div className="bg-[#161B22] border border-[#30363D] h-full w-full sm:max-w-2xl flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-border h-full w-full sm:max-w-2xl flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0 gap-3">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0 gap-3">
           {editMode ? (
             <div className="flex-1 flex flex-col gap-2 min-w-0">
               <input
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm font-semibold text-[#E6EDF3] focus:outline-none focus:border-purple-500/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm font-semibold text-foreground focus:outline-none focus:border-purple-500/60 placeholder-muted-foreground/60"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 placeholder="Package title"
               />
               <select
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:border-purple-500/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground/90 focus:outline-none focus:border-purple-500/60"
                 value={editCategory}
                 onChange={(e) => setEditCategory(e.target.value)}
               >
@@ -1110,7 +1110,7 @@ function PackageDrawer({
                 <button
                   onClick={cancelEdit}
                   disabled={saving}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors disabled:opacity-50"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -1119,7 +1119,7 @@ function PackageDrawer({
               <>
                 <button
                   onClick={enterEdit}
-                  className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   Edit
@@ -1129,10 +1129,10 @@ function PackageDrawer({
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   Download .zip
                 </button>
-                <button onClick={handleDelete} disabled={deleting} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
+                <button onClick={handleDelete} disabled={deleting} className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
-                <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors">
+                <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </>
@@ -1144,21 +1144,21 @@ function PackageDrawer({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {!editMode && (
             <div>
-              <h2 className="text-lg font-bold text-[#E6EDF3]">{pkg.title}</h2>
-              <p className="text-xs text-[#484F58] mt-1">{pkg.modules.length} modules · Saved {formatDate(pkg.createdAt)}</p>
+              <h2 className="text-lg font-bold text-foreground">{pkg.title}</h2>
+              <p className="text-xs text-muted-foreground/60 mt-1">{pkg.modules.length} modules · Saved {formatDate(pkg.createdAt)}</p>
             </div>
           )}
 
           {/* Module tabs */}
           {(editMode ? editModules.length > 0 : pkg.modules.length > 0) && (
-            <div className="bg-[#1C2128] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="bg-accent border border-border rounded-xl overflow-hidden">
               {/* Tab list */}
-              <div className="flex flex-wrap gap-1 p-1 border-b border-[#30363D]">
+              <div className="flex flex-wrap gap-1 p-1 border-b border-border">
                 {(editMode ? editModules : pkg.modules).map((m, i) => (
                   <button
                     key={editMode ? (m as EditableModule)._key : i}
                     onClick={() => setActiveModuleIdx(i)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[160px] ${activeModuleIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[160px] ${activeModuleIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-muted-foreground hover:text-foreground border border-transparent"}`}
                     title={m.filename}
                   >
                     {m.filename}
@@ -1167,7 +1167,7 @@ function PackageDrawer({
                 {editMode && (
                   <button
                     onClick={addModule}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-[#30363D] text-[#484F58] hover:text-[#7D8590] hover:border-[#484F58] transition-colors"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-border text-muted-foreground/60 hover:text-muted-foreground hover:border-muted-foreground/60 transition-colors"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                     Add module
@@ -1181,9 +1181,9 @@ function PackageDrawer({
                   {editMode ? (
                     <div className="flex flex-col gap-0">
                       {/* Filename + reorder/delete controls */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-[#161B22] border-b border-[#30363D]">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-card border-b border-border">
                         <input
-                          className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2.5 py-1 text-xs font-mono text-[#C9D1D9] focus:outline-none focus:border-purple-500/60"
+                          className="flex-1 bg-background border border-border rounded px-2.5 py-1 text-xs font-mono text-foreground/90 focus:outline-none focus:border-purple-500/60"
                           value={activeModule.filename}
                           onChange={(e) => updateEditModule((activeModule as EditableModule)._key, { filename: e.target.value })}
                           placeholder="module-name.ps1"
@@ -1193,7 +1193,7 @@ function PackageDrawer({
                             onClick={() => moveModule(activeModuleIdx, -1)}
                             disabled={activeModuleIdx === 0}
                             title="Move up"
-                            className="p-1 rounded text-[#484F58] hover:text-[#8B949E] hover:bg-[#21262D] disabled:opacity-25 transition-colors"
+                            className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent disabled:opacity-25 transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
                           </button>
@@ -1201,14 +1201,14 @@ function PackageDrawer({
                             onClick={() => moveModule(activeModuleIdx, 1)}
                             disabled={activeModuleIdx === editModules.length - 1}
                             title="Move down"
-                            className="p-1 rounded text-[#484F58] hover:text-[#8B949E] hover:bg-[#21262D] disabled:opacity-25 transition-colors"
+                            className="p-1 rounded text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent disabled:opacity-25 transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                           </button>
                           <button
                             onClick={() => removeModule(activeModuleIdx)}
                             title="Delete module"
-                            className="p-1 rounded text-[#484F58] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                            className="p-1 rounded text-muted-foreground/60 hover:text-red-400 hover:bg-red-400/10 transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
@@ -1230,14 +1230,14 @@ function PackageDrawer({
                     </div>
                   ) : (
                     <div>
-                      <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22]">
-                        <span className="text-xs font-mono text-[#7D8590]">{activeModule.filename}</span>
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-card">
+                        <span className="text-xs font-mono text-muted-foreground">{activeModule.filename}</span>
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => copyToClipboard(activeModule.content)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Copy</button>
-                          <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Download</button>
+                          <button onClick={() => copyToClipboard(activeModule.content)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Copy</button>
+                          <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Download</button>
                         </div>
                       </div>
-                      <pre className="bg-[#0D1117] text-[#C9D1D9] font-mono text-xs leading-relaxed p-4 overflow-x-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>{activeModule.content}</pre>
+                      <pre className="bg-background text-foreground/90 font-mono text-xs leading-relaxed p-4 overflow-x-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>{activeModule.content}</pre>
                     </div>
                   )}
                 </div>
@@ -1294,17 +1294,17 @@ function ModulePackageView({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card flex-shrink-0">
         <div className="flex items-center gap-2">
           <PackageBadge />
-          <span className="text-sm font-medium text-[#E6EDF3] truncate">{packageTitle}</span>
-          <span className="text-xs text-[#7D8590]">— {modules.length} modules</span>
+          <span className="text-sm font-medium text-foreground truncate">{packageTitle}</span>
+          <span className="text-xs text-muted-foreground">— {modules.length} modules</span>
         </div>
         <div className="flex items-center gap-2">
           {loadedPkg && onEdit && (
             <button
               onClick={onEdit}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               title="Edit this package"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -1324,7 +1324,7 @@ function ModulePackageView({
           {loadedPkg && (
             <button
               onClick={() => setPushDialogOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/35 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/35 text-primary hover:bg-primary/25 transition-colors"
               title="Push each module to Azure"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
@@ -1336,7 +1336,7 @@ function ModulePackageView({
             Download All (.zip)
           </button>
 
-          <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+          <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             Back to editor
           </button>
@@ -1351,29 +1351,29 @@ function ModulePackageView({
           onClose={() => setPushDialogOpen(false)}
         />
       )}
-      <div className="flex flex-wrap gap-1 px-4 py-2 bg-[#0D1117] border-b border-[#30363D] flex-shrink-0">
+      <div className="flex flex-wrap gap-1 px-4 py-2 bg-background border-b border-border flex-shrink-0">
         {modules.map((m, i) => (
-          <button key={i} onClick={() => setActiveIdx(i)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[180px] ${activeIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`} title={m.filename}>
+          <button key={i} onClick={() => setActiveIdx(i)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[180px] ${activeIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-muted-foreground hover:text-foreground border border-transparent"}`} title={m.filename}>
             {m.filename}
           </button>
         ))}
       </div>
       {activeModule && (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between px-4 py-2 bg-[#161B22] border-b border-[#30363D] flex-shrink-0">
-            <span className="text-xs font-mono text-[#7D8590]">{activeModule.filename}</span>
+          <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border flex-shrink-0">
+            <span className="text-xs font-mono text-muted-foreground">{activeModule.filename}</span>
             <div className="flex items-center gap-1.5">
-              <button onClick={() => handleCopy(activeIdx)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+              <button onClick={() => handleCopy(activeIdx)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                 {copiedIdx === activeIdx ? <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                 {copiedIdx === activeIdx ? "Copied!" : "Copy"}
               </button>
-              <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+              <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                 Download
               </button>
             </div>
           </div>
-          <pre className="flex-1 bg-[#0D1117] text-[#C9D1D9] font-mono text-xs leading-relaxed p-4 overflow-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>
+          <pre className="flex-1 bg-background text-foreground/90 font-mono text-xs leading-relaxed p-4 overflow-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>
             {activeModule.content}
           </pre>
         </div>
@@ -1545,12 +1545,12 @@ function LibrarySidebar({
   };
 
   return (
-    <div className="flex flex-col bg-[#0D1117] overflow-hidden" style={{ width: "100%", height: "100%" }}>
+    <div className="flex flex-col bg-background overflow-hidden" style={{ width: "100%", height: "100%" }}>
       {/* Search + New Set button */}
-      <div className="px-2 py-2 flex-shrink-0 border-b border-[#21262D] flex items-center gap-1.5">
+      <div className="px-2 py-2 flex-shrink-0 border-b border-accent flex items-center gap-1.5">
         <div className="relative flex-1">
-          <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter…" className="w-full bg-[#161B22] border border-[#30363D] rounded pl-6 pr-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/50 transition-colors" />
+          <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter…" className="w-full bg-card border border-border rounded pl-6 pr-2 py-1 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/50 transition-colors" />
         </div>
         {onNewSet && (
           <button
@@ -1568,17 +1568,17 @@ function LibrarySidebar({
       <div className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center py-8">
-            <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
         {!loading && catKeys.length === 0 && (
           <div className="px-3 py-6 text-center space-y-2">
-            <p className="text-xs text-[#484F58]">{(scripts.length === 0 && packages.length === 0) ? "No scripts saved yet" : "No results"}</p>
+            <p className="text-xs text-muted-foreground/60">{(scripts.length === 0 && packages.length === 0) ? "No scripts saved yet" : "No results"}</p>
             {scripts.length === 0 && packages.length === 0 && onReload && (
               <button
                 onClick={onReload}
-                className="text-xs text-[#0078D4] hover:text-[#106EBE] underline transition-colors"
+                className="text-xs text-primary hover:text-[#106EBE] underline transition-colors"
               >Reload</button>
             )}
           </div>
@@ -1591,11 +1591,11 @@ function LibrarySidebar({
             <div key={cat}>
               <button
                 onClick={() => toggleCat(cat)}
-                className="w-full flex items-center gap-1.5 px-3 py-1.5 hover:bg-[#161B22] transition-colors group"
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 hover:bg-card transition-colors group"
               >
-                <svg className={`w-3 h-3 text-[#484F58] flex-shrink-0 transition-transform ${isCatCollapsed ? "" : "rotate-90"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                <span className="flex-1 text-left text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide truncate">{CATEGORY_MAP[cat] ?? cat}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#21262D] text-[#484F58] border border-[#30363D] flex-shrink-0">{entries.length}</span>
+                <svg className={`w-3 h-3 text-muted-foreground/60 flex-shrink-0 transition-transform ${isCatCollapsed ? "" : "rotate-90"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                <span className="flex-1 text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate">{CATEGORY_MAP[cat] ?? cat}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent text-muted-foreground/60 border border-border flex-shrink-0">{entries.length}</span>
               </button>
               {!isCatCollapsed && entries.map((entry, i) => {
                 if (entry.type === "script") {
@@ -1604,7 +1604,7 @@ function LibrarySidebar({
                   return (
                     <div
                       key={`s-${s.id}`}
-                      className="flex items-center min-w-0 hover:bg-[#161B22] transition-colors group"
+                      className="flex items-center min-w-0 hover:bg-card transition-colors group"
                     >
                       <button
                         onClick={() => onOpenScript(s.id)}
@@ -1612,11 +1612,11 @@ function LibrarySidebar({
                         title={s.title}
                       >
                         {isLoading ? (
-                          <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
                         ) : (
-                          <svg className="w-3 h-3 text-[#484F58] group-hover:text-[#58A6FF] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          <svg className="w-3 h-3 text-muted-foreground/60 group-hover:text-primary flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         )}
-                        <span className="flex-1 text-xs text-[#C9D1D9] truncate min-w-0">{s.title}</span>
+                        <span className="flex-1 text-xs text-foreground/90 truncate min-w-0">{s.title}</span>
                         {!s.sourceTaskId && (
                           <span title="Not linked to a task" className="flex-shrink-0">
                             <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -1628,7 +1628,7 @@ function LibrarySidebar({
                       </button>
                       {deletingId === s.id ? (
                         <div className="flex-shrink-0 px-2 py-1">
-                          <div className="w-3 h-3 border border-[#484F58] border-t-transparent rounded-full animate-spin" />
+                          <div className="w-3 h-3 border border-muted-foreground/60 border-t-transparent rounded-full animate-spin" />
                         </div>
                       ) : (
                         <DropdownMenu>
@@ -1636,20 +1636,20 @@ function LibrarySidebar({
                             <button
                               onClick={(e) => e.stopPropagation()}
                               title="More actions"
-                              className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#C9D1D9] transition-all rounded hover:bg-[#21262D]"
+                              className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-muted-foreground/60 hover:text-foreground/90 transition-all rounded hover:bg-accent"
                             >
                               <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="2" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent
-                            className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] min-w-[180px]"
+                            className="bg-accent border-border text-foreground/90 min-w-[180px]"
                             side="right"
                             align="start"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {onRunScript && (
                               <DropdownMenuItem
-                                className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                                 onSelect={() => onRunScript(s)}
                               >
                                 <svg className="w-3 h-3 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
@@ -1659,16 +1659,16 @@ function LibrarySidebar({
                             <DropdownMenuSub>
                               <DropdownMenuSubTrigger
                                 disabled={packages.length === 0}
-                                className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] data-[state=open]:bg-[#21262D] data-[disabled]:opacity-40 gap-2"
+                                className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground data-[state=open]:bg-accent data-[disabled]:opacity-40 gap-2"
                               >
                                 <svg className="w-3 h-3 text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                                 Associate to Script Set
                               </DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] max-w-[220px]">
+                              <DropdownMenuSubContent className="bg-accent border-border text-foreground/90 max-w-[220px]">
                                 {packages.map(pkg => (
                                   <DropdownMenuItem
                                     key={pkg.id}
-                                    className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                    className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                                     onSelect={() => void handleAssociate(s, pkg)}
                                   >
                                     <span className="flex-1 truncate">{pkg.title}</span>
@@ -1678,10 +1678,10 @@ function LibrarySidebar({
                               </DropdownMenuSubContent>
                             </DropdownMenuSub>
                             <DropdownMenuItem
-                              className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                              className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                               onSelect={() => onOpenScript(s.id)}
                             >
-                              <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              <svg className="w-3 h-3 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                               Properties
                             </DropdownMenuItem>
                             {s.sourceTaskId && (
@@ -1693,7 +1693,7 @@ function LibrarySidebar({
                                 Assign to Task
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuSeparator className="bg-[#30363D]" />
+                            <DropdownMenuSeparator className="bg-border" />
                             <DropdownMenuItem
                               className="text-xs text-red-400 focus:bg-red-500/10 focus:text-red-400 gap-2 cursor-pointer"
                               onSelect={() => setConfirmDeleteScript(s)}
@@ -1711,11 +1711,11 @@ function LibrarySidebar({
                   const isExpanded = expandedPackages.has(p.id);
                   return (
                     <div key={`p-${p.id}-${i}`}>
-                      <div className="w-full flex items-center min-w-0 hover:bg-[#161B22] transition-colors group">
+                      <div className="w-full flex items-center min-w-0 hover:bg-card transition-colors group">
                         {/* Chevron toggle */}
                         <button
                           onClick={(e) => togglePackageExpand(p.id, e)}
-                          className="pl-7 pr-1 py-1 flex-shrink-0 text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+                          className="pl-7 pr-1 py-1 flex-shrink-0 text-muted-foreground/60 hover:text-foreground transition-colors"
                           title={isExpanded ? "Collapse modules" : "Expand modules"}
                         >
                           <svg
@@ -1732,7 +1732,7 @@ function LibrarySidebar({
                           title={p.title}
                         >
                           <svg className="w-3 h-3 text-purple-500/70 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                          <span className="flex-1 text-xs text-[#C9D1D9] truncate min-w-0">{p.title}</span>
+                          <span className="flex-1 text-xs text-foreground/90 truncate min-w-0">{p.title}</span>
                           <span className="text-[9px] text-purple-500/60 flex-shrink-0">{p.modules.length}m</span>
                         </button>
                       </div>
@@ -1742,7 +1742,7 @@ function LibrarySidebar({
                         return (
                           <div
                             key={`mod-${mod.id ?? mod.filename}`}
-                            className="flex items-center min-w-0 hover:bg-[#161B22] transition-colors group border-l border-purple-500/20"
+                            className="flex items-center min-w-0 hover:bg-card transition-colors group border-l border-purple-500/20"
                             style={{ marginLeft: 28 }}
                           >
                             <button
@@ -1750,10 +1750,10 @@ function LibrarySidebar({
                               className="flex-1 flex items-center gap-2 pl-12 pr-1 py-1 text-left min-w-0 overflow-hidden"
                               title={mod.filename}
                             >
-                              <svg className="w-3 h-3 text-[#484F58] group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <svg className="w-3 h-3 text-muted-foreground/60 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                               </svg>
-                              <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate min-w-0 font-mono">{mod.filename}</span>
+                              <span className="flex-1 text-xs text-muted-foreground group-hover:text-foreground/90 truncate min-w-0 font-mono">{mod.filename}</span>
                               {!mod.sourceTaskIds?.length && (
                                 <span title="Not linked to a task" className="flex-shrink-0">
                                   <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -1762,7 +1762,7 @@ function LibrarySidebar({
                             </button>
                             {isRemovingThisMod ? (
                               <div className="flex-shrink-0 px-2 py-1">
-                                <div className="w-3 h-3 border border-[#484F58] border-t-transparent rounded-full animate-spin" />
+                                <div className="w-3 h-3 border border-muted-foreground/60 border-t-transparent rounded-full animate-spin" />
                               </div>
                             ) : (
                               <DropdownMenu>
@@ -1770,20 +1770,20 @@ function LibrarySidebar({
                                   <button
                                     onClick={(e) => e.stopPropagation()}
                                     title="More actions"
-                                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#C9D1D9] transition-all rounded hover:bg-[#21262D]"
+                                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-muted-foreground/60 hover:text-foreground/90 transition-all rounded hover:bg-accent"
                                   >
                                     <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="2" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
                                   </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent
-                                  className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] min-w-[180px]"
+                                  className="bg-accent border-border text-foreground/90 min-w-[180px]"
                                   side="right"
                                   align="start"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   {onRunModule && mod.id && (
                                     <DropdownMenuItem
-                                      className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                      className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                                       onSelect={() => onRunModule(mod)}
                                     >
                                       <svg className="w-3 h-3 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
@@ -1791,22 +1791,22 @@ function LibrarySidebar({
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuItem
-                                    className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                    className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                                     onSelect={() => onOpenModule(mod, p)}
                                   >
-                                    <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                                    <svg className="w-3 h-3 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                                     Open in Editor
                                   </DropdownMenuItem>
                                   {mod.id && (
                                     <DropdownMenuItem
-                                      className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                      className="text-xs text-foreground/90 focus:bg-accent focus:text-foreground gap-2 cursor-pointer"
                                       onSelect={() => void handleAssignModuleToTask(mod)}
                                     >
                                       <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                                       Assign to Task
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuSeparator className="bg-[#30363D]" />
+                                  <DropdownMenuSeparator className="bg-border" />
                                   <DropdownMenuItem
                                     className="text-xs gap-2 cursor-pointer text-red-400 focus:bg-red-500/10 focus:text-red-400 data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
                                     onSelect={() => mod.id && setConfirmRemoveModule({ mod, pkg: p })}
@@ -1871,7 +1871,7 @@ const INLINE_JOB_COLORS: Record<string, string> = {
   "Running":   "text-yellow-400",
   "Completed": "text-green-400",
   "Failed":    "text-red-400",
-  "Stopped":   "text-[#7D8590]",
+  "Stopped":   "text-muted-foreground",
   "Suspended": "text-orange-400",
 };
 
@@ -2110,7 +2110,7 @@ function InlineScriptRunner({
   const isAdHocSelected = selectedRunbook === ADHOC_SENTINEL;
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const canRun = !!selectedClientId && !!selectedClient?.appRegistration && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
-  const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
+  const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-muted-foreground";
   const hasEditorContent = scriptBody.trim().length > 0;
 
   if (azureConfigured === false) {
@@ -2118,7 +2118,7 @@ function InlineScriptRunner({
       <div className="flex-1 flex flex-col items-center justify-center p-4 text-center gap-2">
         <svg className="w-8 h-8 text-amber-500/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
         <p className="text-[11px] text-amber-400 font-semibold">Azure not configured</p>
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">Add Azure secrets in Replit Secrets to enable script execution</p>
+        <p className="text-[10px] text-muted-foreground leading-relaxed">Add Azure secrets in Replit Secrets to enable script execution</p>
       </div>
     );
   }
@@ -2126,12 +2126,12 @@ function InlineScriptRunner({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Config section */}
-      <div className="flex-shrink-0 p-3 space-y-2 border-b border-[#21262D]">
+      <div className="flex-shrink-0 p-3 space-y-2 border-b border-accent">
         {/* Customer */}
         <div>
-          <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Customer</label>
+          <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">Customer</label>
           {loadingClients ? (
-            <div className="h-7 bg-[#161B22] rounded animate-pulse" />
+            <div className="h-7 bg-card rounded animate-pulse" />
           ) : (
             <select
               value={selectedClientId}
@@ -2140,7 +2140,7 @@ function InlineScriptRunner({
                 setSelectedClientId(clientId);
                 setSelectedRunbook("");
               }}
-              className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+              className="w-full bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/50 transition-colors"
             >
               <option value="">Select customer…</option>
               {clients.map(c => (
@@ -2155,11 +2155,11 @@ function InlineScriptRunner({
         {/* App Registration — read-only credential info sourced from the client's App Registration */}
         {selectedClientId !== "" && selectedClient && (
           <div>
-            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Credential</label>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">Credential</label>
             {selectedClient.appRegistration ? (
-              <p className="text-[10px] text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 truncate">
+              <p className="text-[10px] text-foreground bg-card border border-border rounded px-2 py-1.5 truncate">
                 {selectedClient.name} — App Registration
-                <span className="ml-1.5 text-[#0078D4]">({selectedClient.appRegistration.status})</span>
+                <span className="ml-1.5 text-primary">({selectedClient.appRegistration.status})</span>
               </p>
             ) : (
               <p className="text-[10px] text-amber-400">No App Registration — add one in the CRM first.</p>
@@ -2170,14 +2170,14 @@ function InlineScriptRunner({
         {/* Runbook — only shown when the client has an App Registration */}
         {selectedClientId !== "" && selectedClient?.appRegistration && (
           <div>
-            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Runbook</label>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-1">Runbook</label>
             {loadingRunbooks ? (
-              <div className="h-7 bg-[#161B22] rounded animate-pulse" />
+              <div className="h-7 bg-card rounded animate-pulse" />
             ) : (
               <select
                 value={selectedRunbook}
                 onChange={e => setSelectedRunbook(e.target.value)}
-                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+                className="w-full bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/50 transition-colors"
               >
                 <option value="">Select runbook…</option>
                 {hasEditorContent && (
@@ -2224,8 +2224,8 @@ function InlineScriptRunner({
       )}
 
       {/* Log console header */}
-      <div className="flex items-center justify-between px-3 py-1 border-t border-[#21262D] bg-[#0D1117]">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-[#484F58]">Output</span>
+      <div className="flex items-center justify-between px-3 py-1 border-t border-accent bg-background">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Output</span>
         {logLines.length > 0 && (
           <button
             onClick={() => {
@@ -2234,7 +2234,7 @@ function InlineScriptRunner({
                 setTimeout(() => setCopiedConsole(false), 2000);
               });
             }}
-            className="flex items-center gap-1 text-[10px] text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+            className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
             title="Copy console output"
           >
             {copiedConsole ? (
@@ -2255,7 +2255,7 @@ function InlineScriptRunner({
       {/* Log console */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 font-mono text-[10px] leading-relaxed bg-[#0A0E14]">
         {logLines.length === 0 ? (
-          <span className="text-[#30363D]">Output will appear here after running…</span>
+          <span className="text-border">Output will appear here after running…</span>
         ) : (
           logLines.map((line, i) => (
             <div
@@ -2263,8 +2263,8 @@ function InlineScriptRunner({
               className={
                 line.startsWith("[Error") || line.includes("[Job Failed") ? "text-red-400" :
                 line.includes("[Job Completed") ? "text-green-400" :
-                line.startsWith("[") ? "text-[#7D8590]" :
-                "text-[#C9D1D9]"
+                line.startsWith("[") ? "text-muted-foreground" :
+                "text-foreground/90"
               }
             >
               {line}
@@ -2276,11 +2276,11 @@ function InlineScriptRunner({
 
       {/* AI Analyze section — shown after terminal job */}
       {isTerminal && logLines.length > 1 && (
-        <div className="flex-shrink-0 border-t border-[#21262D] p-3 space-y-2">
+        <div className="flex-shrink-0 border-t border-accent p-3 space-y-2">
           {!aiAnalysis && !analyzingAI && !aiError && (
             <button
               onClick={() => void handleAnalyze()}
-              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 transition-colors"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
               Analyze with AI
@@ -2288,14 +2288,14 @@ function InlineScriptRunner({
           )}
           {analyzingAI && (
             <div className="flex items-center justify-center gap-2 py-1">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-              <span className="text-[11px] text-[#7D8590]">Analyzing…</span>
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-[11px] text-muted-foreground">Analyzing…</span>
             </div>
           )}
           {aiError && (
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] text-red-400">{aiError}</p>
-              <button onClick={() => void handleAnalyze()} className="text-[10px] text-[#58A6FF] underline">Retry</button>
+              <button onClick={() => void handleAnalyze()} className="text-[10px] text-primary underline">Retry</button>
             </div>
           )}
           {aiAnalysis && (
@@ -2305,27 +2305,27 @@ function InlineScriptRunner({
                   <button
                     key={t}
                     onClick={() => setAiTab(t)}
-                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${aiTab === t ? "bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`}
+                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${aiTab === t ? "bg-primary/15 text-primary border border-primary/25" : "text-muted-foreground hover:text-foreground border border-transparent"}`}
                   >
                     {t === "nextSteps" ? "Next Steps" : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
-              <div className="text-[11px] text-[#C9D1D9] leading-relaxed max-h-40 overflow-y-auto">
+              <div className="text-[11px] text-foreground/90 leading-relaxed max-h-40 overflow-y-auto">
                 {aiTab === "summary" ? (
                   <p>{aiAnalysis.summary}</p>
                 ) : (
                   <ul className="space-y-1">
                     {(aiAnalysis[aiTab] as string[]).map((item, i) => (
                       <li key={i} className="flex items-start gap-1.5">
-                        <span className="mt-1.5 w-1 h-1 rounded-full bg-[#0078D4] flex-shrink-0" />
+                        <span className="mt-1.5 w-1 h-1 rounded-full bg-primary flex-shrink-0" />
                         {item}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
-              <button onClick={() => { setAiAnalysis(null); setAiError(null); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors">Clear</button>
+              <button onClick={() => { setAiAnalysis(null); setAiError(null); }} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors">Clear</button>
             </div>
           )}
         </div>
@@ -2397,7 +2397,7 @@ function RightPanel({
     <Tabs
       value={activeTab}
       onValueChange={switchTab}
-      className="flex flex-col h-full border-l border-[#21262D] bg-[#0D1117] overflow-hidden"
+      className="flex flex-col h-full border-l border-accent bg-background overflow-hidden"
     >
       {/* Content fills the top — each TabsContent is flex-1 so it expands */}
       <TabsContent
@@ -2427,9 +2427,9 @@ function RightPanel({
       >
         <div className="p-3 space-y-3">
           {/* Header */}
-          <div className="flex items-center gap-2 pb-1 border-b border-[#21262D]">
+          <div className="flex items-center gap-2 pb-1 border-b border-accent">
             <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-            <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Fix Bug</span>
+            <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Fix Bug</span>
           </div>
 
           {/* Fix error banner */}
@@ -2456,16 +2456,16 @@ function RightPanel({
             </div>
           )}
 
-          <p className="text-[11px] text-[#7D8590] leading-relaxed">Describe what's wrong and Claude will return a corrected version.</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">Describe what's wrong and Claude will return a corrected version.</p>
 
           <div>
-            <label className="block text-[10px] font-medium text-[#7D8590] mb-1">Bug description</label>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1">Bug description</label>
             <textarea
               value={bugDescription}
               onChange={(e) => onBugDescriptionChange(e.target.value)}
               rows={7}
               placeholder="e.g. The filter for disabled accounts isn't working — it's returning all users instead of only disabled ones…"
-              className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-red-500/50 transition-colors resize-none"
+              className="w-full bg-card border border-border rounded px-2.5 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-red-500/50 transition-colors resize-none"
             />
           </div>
 
@@ -2481,7 +2481,7 @@ function RightPanel({
           </button>
 
           {!scriptLoaded && (
-            <p className="text-[10px] text-[#484F58] text-center">Generate or open a script first</p>
+            <p className="text-[10px] text-muted-foreground/60 text-center">Generate or open a script first</p>
           )}
         </div>
       </TabsContent>
@@ -2492,24 +2492,24 @@ function RightPanel({
       >
         <div className="p-3 space-y-3">
           {/* Header */}
-          <div className="flex items-center gap-2 pb-1 border-b border-[#21262D]">
+          <div className="flex items-center gap-2 pb-1 border-b border-accent">
             <svg className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-            <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Explain Script</span>
+            <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Explain Script</span>
           </div>
 
-          <p className="text-[11px] text-[#7D8590] leading-relaxed">Claude will analyse the current script and explain what it does, what it touches, and what to watch out for.</p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">Claude will analyse the current script and explain what it does, what it touches, and what to watch out for.</p>
 
           {/* Result */}
           {explainText && (
-            <div className="relative bg-[#161B22] border border-violet-500/25 rounded-xl p-3">
+            <div className="relative bg-card border border-violet-500/25 rounded-xl p-3">
               <button
                 onClick={onDismissExplain}
-                className="absolute top-2 right-2 text-[#484F58] hover:text-[#7D8590] rounded p-0.5 transition-colors"
+                className="absolute top-2 right-2 text-muted-foreground/60 hover:text-muted-foreground rounded p-0.5 transition-colors"
                 title="Dismiss"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
-              <p className="text-[11px] text-[#E6EDF3] leading-relaxed pr-5 whitespace-pre-wrap">{explainText}</p>
+              <p className="text-[11px] text-foreground leading-relaxed pr-5 whitespace-pre-wrap">{explainText}</p>
             </div>
           )}
 
@@ -2525,34 +2525,34 @@ function RightPanel({
           </button>
 
           {!scriptLoaded && (
-            <p className="text-[10px] text-[#484F58] text-center">Generate or open a script first</p>
+            <p className="text-[10px] text-muted-foreground/60 text-center">Generate or open a script first</p>
           )}
         </div>
       </TabsContent>
 
       {/* Tab strip pinned at the bottom */}
-      <TabsList className="flex-shrink-0 h-9 w-full rounded-none border-t border-[#21262D] bg-[#161B22] p-0 gap-0 justify-start">
+      <TabsList className="flex-shrink-0 h-9 w-full rounded-none border-t border-accent bg-card p-0 gap-0 justify-start">
         <TabsTrigger
           value="runner"
-          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-[#0078D4]/15 data-[state=active]:text-[#58A6FF] data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-primary/15 data-[state=active]:text-primary data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground/60"
         >
           Runner
         </TabsTrigger>
         <TabsTrigger
           value="permissions"
-          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-amber-500/15 data-[state=active]:text-amber-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-amber-500/15 data-[state=active]:text-amber-400 data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground/60"
         >
           Perms
         </TabsTrigger>
         <TabsTrigger
           value="bugfix"
-          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-red-500/15 data-[state=active]:text-red-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-red-500/15 data-[state=active]:text-red-400 data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground/60"
         >
           Fix Bug
         </TabsTrigger>
         <TabsTrigger
           value="explain"
-          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-violet-500/15 data-[state=active]:text-violet-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-violet-500/15 data-[state=active]:text-violet-400 data-[state=active]:shadow-none data-[state=inactive]:text-muted-foreground/60"
         >
           Explain
         </TabsTrigger>
@@ -2746,11 +2746,11 @@ function PermissionsSidebarPanel({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
-      <div className="px-4 py-2.5 border-b border-[#21262D] flex-shrink-0 flex items-center justify-between">
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      <div className="px-4 py-2.5 border-b border-accent flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-          <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Permissions</span>
+          <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Permissions</span>
           {(saving || analyzing) && <div className="w-3 h-3 border border-amber-400/50 border-t-amber-400 rounded-full animate-spin" />}
         </div>
         <div className="flex items-center gap-1.5">
@@ -2782,23 +2782,23 @@ function PermissionsSidebarPanel({
                 <span className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">AI Analysis</span>
                 <span className="text-[9px] text-violet-400/60">{analysisResult.app.length + analysisResult.delegated.length} permission{analysisResult.app.length + analysisResult.delegated.length !== 1 ? "s" : ""} found</span>
               </div>
-              <button onClick={() => setAnalysisResult(null)} className="text-[#484F58] hover:text-[#7D8590] transition-colors rounded p-0.5">
+              <button onClick={() => setAnalysisResult(null)} className="text-muted-foreground/60 hover:text-muted-foreground transition-colors rounded p-0.5">
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
             <div className="p-2 space-y-2">
               {analysisResult.app.length === 0 && analysisResult.delegated.length === 0 ? (
-                <p className="text-[10px] text-[#7D8590] italic">No Azure App Registration permissions detected in this script.</p>
+                <p className="text-[10px] text-muted-foreground italic">No Azure App Registration permissions detected in this script.</p>
               ) : (
                 <>
                   {analysisResult.app.length > 0 && (
                     <div>
-                      <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wide mb-1">Application</p>
+                      <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">Application</p>
                       <div className="flex flex-col gap-1.5">
                         {analysisResult.app.map(d => (
-                          <div key={d.name} className="bg-[#0D1117] border border-violet-500/15 rounded px-2 py-1.5">
+                          <div key={d.name} className="bg-background border border-violet-500/15 rounded px-2 py-1.5">
                             <code className="text-[11px] font-mono text-violet-300">{d.name}</code>
-                            <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{d.description}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{d.description}</p>
                           </div>
                         ))}
                       </div>
@@ -2806,12 +2806,12 @@ function PermissionsSidebarPanel({
                   )}
                   {analysisResult.delegated.length > 0 && (
                     <div>
-                      <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wide mb-1">Delegated</p>
+                      <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1">Delegated</p>
                       <div className="flex flex-col gap-1.5">
                         {analysisResult.delegated.map(d => (
-                          <div key={d.name} className="bg-[#0D1117] border border-violet-500/15 rounded px-2 py-1.5">
+                          <div key={d.name} className="bg-background border border-violet-500/15 rounded px-2 py-1.5">
                             <code className="text-[11px] font-mono text-violet-300">{d.name}</code>
-                            <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{d.description}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{d.description}</p>
                           </div>
                         ))}
                       </div>
@@ -2841,27 +2841,27 @@ function PermissionsSidebarPanel({
         )}
         {!permissions ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
-            <svg className="w-8 h-8 text-[#21262D] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
-            <p className="text-[11px] text-[#484F58] leading-relaxed">Generate or load a script to see required permissions</p>
+            <svg className="w-8 h-8 text-accent mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+            <p className="text-[11px] text-muted-foreground/60 leading-relaxed">Generate or load a script to see required permissions</p>
           </div>
         ) : (
           /* ── Script or Package mode: fully editable ── */
           <>
             {/* Inherited from associated scripts (read-only, package mode only) */}
             {isPackageMode && (inheritedLoading || inheritedPerms.length > 0) && (
-              <div className="border border-[#21262D] rounded">
-                <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#21262D] bg-[#161B22]">
-                  <svg className="w-3 h-3 text-[#484F58] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                  <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide">Inherited from linked scripts</span>
-                  {inheritedLoading && <div className="w-2.5 h-2.5 border border-[#484F58]/50 border-t-[#484F58] rounded-full animate-spin ml-auto" />}
+              <div className="border border-accent rounded">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-accent bg-card">
+                  <svg className="w-3 h-3 text-muted-foreground/60 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">Inherited from linked scripts</span>
+                  {inheritedLoading && <div className="w-2.5 h-2.5 border border-muted-foreground/30 border-t-muted-foreground/60 rounded-full animate-spin ml-auto" />}
                 </div>
                 {!inheritedLoading && inheritedPerms.length > 0 && (
-                  <div className="p-2 space-y-1.5 bg-[#0D1117]">
-                    <p className="text-[9px] text-[#484F58] leading-relaxed">Read-only — aggregated from standalone scripts associated to this package. Edit individual scripts to change their permissions.</p>
+                  <div className="p-2 space-y-1.5 bg-background">
+                    <p className="text-[9px] text-muted-foreground/60 leading-relaxed">Read-only — aggregated from standalone scripts associated to this package. Edit individual scripts to change their permissions.</p>
                     {inheritedPerms.map(p => (
-                      <div key={p.scope} className="bg-[#161B22] border border-[#21262D] rounded px-2 py-1.5">
+                      <div key={p.scope} className="bg-card border border-accent rounded px-2 py-1.5">
                         <code className="text-[11px] font-mono text-amber-400/80">{p.scope}</code>
-                        {p.reason && <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{p.reason}</p>}
+                        {p.reason && <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{p.reason}</p>}
                       </div>
                     ))}
                   </div>
@@ -2870,33 +2870,33 @@ function PermissionsSidebarPanel({
             )}
             {/* Module-level context banner */}
             {isModuleMode && (
-              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-[#161B22] border border-[#21262D] text-[10px] text-[#7D8590] leading-relaxed">
+              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-card border border-accent text-[10px] text-muted-foreground leading-relaxed">
                 <svg className="w-3 h-3 text-blue-400/70 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 <span>Module-level permissions — unique to this module. Other modules in the package have their own independent permissions.</span>
               </div>
             )}
             {/* Package-level context banner */}
             {isPackageMode && (
-              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-[#161B22] border border-[#21262D] text-[10px] text-[#7D8590] leading-relaxed">
+              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-card border border-accent text-[10px] text-muted-foreground leading-relaxed">
                 <svg className="w-3 h-3 text-amber-400/70 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 <span>Package-level permissions — editable. Add/remove entries to keep the package-wide App Registration requirement in sync across all module scripts.</span>
               </div>
             )}
             {/* App permissions with per-entry reason editing */}
             <div>
-              <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide mb-1.5">Application</p>
+              <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1.5">Application</p>
               {permissions.appPermissions.length === 0 ? (
-                <p className="text-[11px] text-[#484F58] italic">None</p>
+                <p className="text-[11px] text-muted-foreground/60 italic">None</p>
               ) : (
                 <div className="flex flex-col gap-2">
                   {permissions.appPermissions.map((p) => (
-                    <div key={p.scope} className="bg-[#161B22] border border-[#21262D] rounded p-2 group">
+                    <div key={p.scope} className="bg-card border border-accent rounded p-2 group">
                       <div className="flex items-center gap-1">
                         <PermissionBadge text={p.scope} />
                         {canEdit && (
                           <button
                             onClick={() => handleRemoveApp(p.scope)}
-                            className="ml-auto opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
+                            className="ml-auto opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
                             title="Remove"
                           >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -2911,10 +2911,10 @@ function PermissionsSidebarPanel({
                             onChange={e => setEditingReasonValue(e.target.value)}
                             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleSaveReason(p.scope); } if (e.key === "Escape") setEditingReasonScope(null); }}
                             placeholder="Why is this permission needed?"
-                            className="flex-1 min-w-0 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#C9D1D9] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                            className="flex-1 min-w-0 bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground/90 placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                           />
-                          <button onClick={() => handleSaveReason(p.scope)} className="text-[10px] px-1.5 py-1 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded text-[#58A6FF] hover:bg-[#0078D4]/30 flex-shrink-0">✓</button>
-                          <button onClick={() => setEditingReasonScope(null)} className="text-[10px] px-1.5 py-1 bg-[#21262D] border border-[#30363D] rounded text-[#484F58] hover:text-[#C9D1D9] flex-shrink-0">✕</button>
+                          <button onClick={() => handleSaveReason(p.scope)} className="text-[10px] px-1.5 py-1 bg-primary/20 border border-primary/30 rounded text-primary hover:bg-primary/30 flex-shrink-0">✓</button>
+                          <button onClick={() => setEditingReasonScope(null)} className="text-[10px] px-1.5 py-1 bg-accent border border-border rounded text-muted-foreground/60 hover:text-foreground/90 flex-shrink-0">✕</button>
                         </div>
                       ) : (
                         <button
@@ -2922,9 +2922,9 @@ function PermissionsSidebarPanel({
                           className="mt-1 text-[10px] leading-relaxed text-left w-full"
                         >
                           {p.reason ? (
-                            <span className="text-[#7D8590] hover:text-[#C9D1D9] transition-colors">{p.reason}</span>
+                            <span className="text-muted-foreground hover:text-foreground/90 transition-colors">{p.reason}</span>
                           ) : (
-                            <span className="text-[#484F58] hover:text-[#7D8590] italic transition-colors">+ add reason…</span>
+                            <span className="text-muted-foreground/60 hover:text-muted-foreground italic transition-colors">+ add reason…</span>
                           )}
                         </button>
                       )}
@@ -2937,18 +2937,18 @@ function PermissionsSidebarPanel({
             {/* Delegated permissions */}
             {permissions.delegatedPermissions.length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide mb-1.5">Delegated</p>
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1.5">Delegated</p>
                 <div className="flex flex-col gap-2">
                   {permissions.delegatedPermissions.map((p) => {
                     const detail = permissions.delegatedPermissionDetails?.find(d => d.name === p);
                     return (
-                      <div key={p} className="bg-[#161B22] border border-[#21262D] rounded p-2 group">
+                      <div key={p} className="bg-card border border-accent rounded p-2 group">
                         <div className="flex items-center gap-1">
                           <PermissionBadge text={p} />
                           {canEdit && (
                             <button
                               onClick={() => handleRemoveDelegated(p)}
-                              className="ml-auto opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
+                              className="ml-auto opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
                               title="Remove"
                             >
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -2956,7 +2956,7 @@ function PermissionsSidebarPanel({
                           )}
                         </div>
                         {detail?.description && (
-                          <p className="mt-1 text-[10px] text-[#7D8590] leading-relaxed">{detail.description}</p>
+                          <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">{detail.description}</p>
                         )}
                       </div>
                     );
@@ -2966,11 +2966,11 @@ function PermissionsSidebarPanel({
             )}
 
             {/* Notes */}
-            <div className="border-t border-[#21262D] pt-2">
+            <div className="border-t border-accent pt-2">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide">Notes</p>
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">Notes</p>
                 {canEdit && !editingNotes && (
-                  <button onClick={() => setEditingNotes(true)} className="text-[10px] text-[#484F58] hover:text-[#0078D4] transition-colors">Edit</button>
+                  <button onClick={() => setEditingNotes(true)} className="text-[10px] text-muted-foreground/60 hover:text-primary transition-colors">Edit</button>
                 )}
               </div>
               {editingNotes ? (
@@ -2979,43 +2979,43 @@ function PermissionsSidebarPanel({
                     value={notesValue}
                     onChange={e => setNotesValue(e.target.value)}
                     rows={3}
-                    className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-[11px] text-[#C9D1D9] resize-none outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-card border border-border rounded px-2 py-1.5 text-[11px] text-foreground/90 resize-none outline-none focus:border-primary/60"
                     placeholder="Permission notes…"
                   />
                   <div className="flex gap-1">
-                    <button onClick={handleSaveNotes} disabled={saving} className="text-[10px] px-2 py-1 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-50">Save</button>
-                    <button onClick={() => { setEditingNotes(false); setNotesValue(permissions.notes); }} className="text-[10px] px-2 py-1 bg-[#21262D] border border-[#30363D] rounded text-[#484F58] hover:text-[#C9D1D9]">Cancel</button>
+                    <button onClick={handleSaveNotes} disabled={saving} className="text-[10px] px-2 py-1 bg-primary/20 border border-primary/30 rounded text-primary hover:bg-primary/30 disabled:opacity-50">Save</button>
+                    <button onClick={() => { setEditingNotes(false); setNotesValue(permissions.notes); }} className="text-[10px] px-2 py-1 bg-accent border border-border rounded text-muted-foreground/60 hover:text-foreground/90">Cancel</button>
                   </div>
                 </div>
               ) : permissions.notes ? (
-                <p className="text-[11px] text-[#7D8590] leading-relaxed">{permissions.notes}</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{permissions.notes}</p>
               ) : (
-                <p className="text-[11px] text-[#484F58] italic">No notes</p>
+                <p className="text-[11px] text-muted-foreground/60 italic">No notes</p>
               )}
             </div>
 
             {/* Add scope input (Application only) */}
             {canEdit && (
-              <div className="border-t border-[#21262D] pt-2 space-y-1.5">
-                <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide">Add Application Scope</p>
+              <div className="border-t border-accent pt-2 space-y-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide">Add Application Scope</p>
                 <input
                   value={newScope}
                   onChange={e => setNewScope(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddScope(); } }}
                   placeholder="e.g. User.Read.All"
-                  className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[11px] text-[#C9D1D9] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-card border border-border rounded px-2 py-1 text-[11px] text-foreground/90 placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                 />
                 <input
                   value={newReason}
                   onChange={e => setNewReason(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddScope(); } }}
                   placeholder="Reason (why is this needed?)"
-                  className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[11px] text-[#C9D1D9] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-card border border-border rounded px-2 py-1 text-[11px] text-foreground/90 placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                 />
                 <button
                   onClick={handleAddScope}
                   disabled={!newScope.trim()}
-                  className="w-full py-1 bg-[#21262D] border border-[#30363D] rounded text-[10px] text-[#C9D1D9] hover:bg-[#30363D] disabled:opacity-40 transition-colors"
+                  className="w-full py-1 bg-accent border border-border rounded text-[10px] text-foreground/90 hover:bg-border disabled:opacity-40 transition-colors"
                 >
                   Add & Save
                 </button>
@@ -3047,28 +3047,28 @@ function GeneratingProgressDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75">
-      <div className="w-full max-w-sm mx-4 bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl p-6">
+      <div className="w-full max-w-sm mx-4 bg-card border border-border rounded-2xl shadow-2xl p-6">
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
-          <div className="w-9 h-9 rounded-xl bg-[#0078D4]/15 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
-            <div className="w-4 h-4 border-2 border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
+          <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
+            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Generating Script</h2>
-            <p className="text-[10px] text-[#7D8590]">Claude is writing your PowerShell automation</p>
+            <h2 className="text-sm font-semibold text-foreground">Generating Script</h2>
+            <p className="text-[10px] text-muted-foreground">Claude is writing your PowerShell automation</p>
           </div>
         </div>
 
         {/* Progress bar */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-[#E6EDF3] truncate mr-2">{phaseLabel}</span>
-            <span className="text-[10px] text-[#7D8590] tabular-nums flex-shrink-0">{Math.round(pct)}%</span>
+            <span className="text-xs font-medium text-foreground truncate mr-2">{phaseLabel}</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums flex-shrink-0">{Math.round(pct)}%</span>
           </div>
-          <div className="h-1.5 bg-[#21262D] rounded-full overflow-hidden">
+          <div className="h-1.5 bg-accent rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-300 ease-out"
-              style={{ width: `${pct}%`, background: "linear-gradient(90deg, #0078D4, #00B4D8)" }}
+              style={{ width: `${pct}%`, background: "linear-gradient(90deg, #2F6FED, #00B4D8)" }}
             />
           </div>
         </div>
@@ -3239,9 +3239,9 @@ function GenerateFromServiceDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="w-full max-w-2xl mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-2xl mx-4 bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#21262D] flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-accent flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-teal-500/15 border border-teal-500/30 flex items-center justify-center flex-shrink-0">
               <svg className="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -3249,11 +3249,11 @@ function GenerateFromServiceDialog({
               </svg>
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Generate from Service</h2>
-              <p className="text-[10px] text-[#7D8590]">AI classifies workflow tasks and generates PowerShell automation for M365/Azure steps</p>
+              <h2 className="text-sm font-semibold text-foreground">Generate from Service</h2>
+              <p className="text-[10px] text-muted-foreground">AI classifies workflow tasks and generates PowerShell automation for M365/Azure steps</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+          <button onClick={onClose} className="p-1.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -3262,14 +3262,14 @@ function GenerateFromServiceDialog({
         <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
           {/* Service picker */}
           <div>
-            <label className="block text-[10px] font-medium text-[#7D8590] mb-1.5 uppercase tracking-wide">Select Service</label>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">Select Service</label>
             {loadingServices ? (
-              <div className="flex items-center gap-2 text-xs text-[#7D8590] py-2">
-                <div className="w-3.5 h-3.5 border border-[#484F58] border-t-[#8B949E] rounded-full animate-spin" />
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <div className="w-3.5 h-3.5 border border-muted-foreground/60 border-t-muted-foreground rounded-full animate-spin" />
                 Loading services…
               </div>
             ) : services.length === 0 ? (
-              <p className="text-xs text-[#7D8590]">No services found. Create services in the Service Management page first.</p>
+              <p className="text-xs text-muted-foreground">No services found. Create services in the Service Management page first.</p>
             ) : (
               <div className="space-y-1.5">
                 {/* Search input */}
@@ -3278,10 +3278,10 @@ function GenerateFromServiceDialog({
                   placeholder="Search services…"
                   value={serviceSearch}
                   onChange={(e) => setServiceSearch(e.target.value)}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors"
                 />
                 {/* Scrollable list */}
-                <div className="max-h-44 overflow-y-auto border border-[#21262D] rounded-lg divide-y divide-[#21262D]">
+                <div className="max-h-44 overflow-y-auto border border-accent rounded-lg divide-y divide-accent">
                   {services
                     .filter((s) => {
                       const q = serviceSearch.toLowerCase();
@@ -3303,26 +3303,26 @@ function GenerateFromServiceDialog({
                         }}
                         className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors ${
                           selectedServiceId === s.id
-                            ? "bg-[#0078D4]/15 border-l-2 border-[#0078D4]"
-                            : "bg-[#0D1117] hover:bg-[#161B22] border-l-2 border-transparent"
+                            ? "bg-primary/15 border-l-2 border-primary"
+                            : "bg-background hover:bg-card border-l-2 border-transparent"
                         }`}
                       >
                         <div className="min-w-0">
-                          <p className="text-xs text-[#E6EDF3] truncate font-medium">{s.name}</p>
+                          <p className="text-xs text-foreground truncate font-medium">{s.name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             {s.category && (
-                              <span className="text-[10px] text-[#58A6FF] bg-[#1F6FEB]/15 border border-[#1F6FEB]/30 rounded px-1.5 py-0.5">{s.category}</span>
+                              <span className="text-[10px] text-primary bg-[#1F6FEB]/15 border border-[#1F6FEB]/30 rounded px-1.5 py-0.5">{s.category}</span>
                             )}
                             {s.tier && (
                               <span className="text-[10px] text-[#3FB950] bg-[#238636]/15 border border-[#238636]/30 rounded px-1.5 py-0.5">{s.tier}</span>
                             )}
                             {!s.workflowTemplateId && (
-                              <span className="text-[10px] text-[#7D8590]">no workflow</span>
+                              <span className="text-[10px] text-muted-foreground">no workflow</span>
                             )}
                           </div>
                         </div>
                         {selectedServiceId === s.id && (
-                          <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         )}
                       </button>
                     ))}
@@ -3330,7 +3330,7 @@ function GenerateFromServiceDialog({
                     const q = serviceSearch.toLowerCase();
                     return !q || s.name.toLowerCase().includes(q) || (s.category ?? "").toLowerCase().includes(q) || (s.tier ?? "").toLowerCase().includes(q);
                   }).length === 0 && (
-                    <p className="text-xs text-[#7D8590] px-3 py-2">No services match "{serviceSearch}"</p>
+                    <p className="text-xs text-muted-foreground px-3 py-2">No services match "{serviceSearch}"</p>
                   )}
                 </div>
               </div>
@@ -3341,7 +3341,7 @@ function GenerateFromServiceDialog({
           {selectedService && (
             <div className="space-y-3">
               {selectedService.description && (
-                <p className="text-[11px] text-[#8B949E] leading-relaxed bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2.5">
+                <p className="text-[11px] text-muted-foreground leading-relaxed bg-background border border-accent rounded-lg px-3 py-2.5">
                   {selectedService.description}
                 </p>
               )}
@@ -3354,27 +3354,27 @@ function GenerateFromServiceDialog({
               )}
 
               {loadingWorkflow && (
-                <div className="flex items-center gap-2 text-xs text-[#7D8590]">
-                  <div className="w-3.5 h-3.5 border border-[#484F58] border-t-[#8B949E] rounded-full animate-spin" />
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="w-3.5 h-3.5 border border-muted-foreground/60 border-t-muted-foreground rounded-full animate-spin" />
                   Loading workflow…
                 </div>
               )}
 
               {workflowTemplate && workflowTemplate.steps.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-medium text-[#7D8590] uppercase tracking-wide mb-1.5">
+                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
                     Workflow: {workflowTemplate.name}
                   </p>
                   <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                     {workflowTemplate.steps.map((step) => (
-                      <div key={step.id} className="bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2">
-                        <p className="text-xs font-medium text-[#E6EDF3] mb-1">{step.title}</p>
+                      <div key={step.id} className="bg-background border border-accent rounded-lg px-3 py-2">
+                        <p className="text-xs font-medium text-foreground mb-1">{step.title}</p>
                         {step.tasks.length > 0 && (
                           <div className="space-y-0.5">
                             {step.tasks.map((task) => (
                               <div key={task.id} className="flex items-start gap-1.5">
-                                <span className="text-[#484F58] text-xs mt-px">·</span>
-                                <span className="text-[11px] text-[#7D8590]">{task.title}</span>
+                                <span className="text-muted-foreground/60 text-xs mt-px">·</span>
+                                <span className="text-[11px] text-muted-foreground">{task.title}</span>
                               </div>
                             ))}
                           </div>
@@ -3389,8 +3389,8 @@ function GenerateFromServiceDialog({
 
           {/* Custom instructions */}
           <div>
-            <label className="block text-[10px] font-medium text-[#7D8590] mb-1.5 uppercase tracking-wide">
-              Custom Instructions <span className="normal-case text-[#484F58] font-normal">(optional)</span>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">
+              Custom Instructions <span className="normal-case text-muted-foreground/60 font-normal">(optional)</span>
             </label>
             <textarea
               value={customInstructions}
@@ -3400,31 +3400,31 @@ function GenerateFromServiceDialog({
               }}
               rows={2}
               placeholder="e.g. Use PnP PowerShell module. Client uses a hybrid setup. Always include verbose logging…"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors resize-none"
             />
           </div>
 
           {/* Human-only workflow result (shown when no tasks can be automated) */}
           {humanOnlyExplanation && (
-            <div className="bg-[#161B22] border border-amber-800/50 rounded-lg px-3 py-2.5">
+            <div className="bg-card border border-amber-800/50 rounded-lg px-3 py-2.5">
               <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-1">
                 No automation available for this service
               </p>
-              <p className="text-[11px] text-[#7D8590] leading-relaxed">{humanOnlyExplanation}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{humanOnlyExplanation}</p>
             </div>
           )}
 
           {/* Manual script result panel — shown when workflow has USER_ACCOUNT_REQUIRED tasks */}
           {manualResult && !packageResult && (
             <div className="space-y-3">
-              <div className="bg-[#0D1117] border border-amber-800/50 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-amber-900/15">
+              <div className="bg-background border border-amber-800/50 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-accent bg-amber-900/15">
                   <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                   <p className="text-[11px] font-semibold text-amber-400 flex-1">Manual script saved — requires interactive execution</p>
                 </div>
                 <div className="px-3 py-2.5 space-y-1.5">
-                  <p className="text-[11px] font-medium text-[#E6EDF3]">{manualResult.savedScript.title}</p>
-                  <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                  <p className="text-[11px] font-medium text-foreground">{manualResult.savedScript.title}</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
                     One or more workflow tasks require a licensed user account (interactive auth). A consolidated script was generated and saved to your{" "}
                     <span className="text-amber-400 font-medium">Scripts library</span> — look for the{" "}
                     <span className="font-mono text-amber-400 bg-amber-500/20 px-1 rounded text-[9px]">M</span>{" "}
@@ -3433,15 +3433,15 @@ function GenerateFromServiceDialog({
                 </div>
               </div>
               {manualResult.humanOnlyTasks.length > 0 && (
-                <div className="bg-[#0D1117] border border-[#21262D] rounded-lg overflow-hidden">
-                  <div className="px-3 py-2 border-b border-[#21262D]">
-                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Human-only tasks (not scripted)</p>
+                <div className="bg-background border border-accent rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-accent">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Human-only tasks (not scripted)</p>
                   </div>
-                  <div className="divide-y divide-[#21262D]">
+                  <div className="divide-y divide-accent">
                     {manualResult.humanOnlyTasks.map((task, i) => (
                       <div key={i} className="flex items-start gap-2 px-3 py-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#484F58] mt-1.5 flex-shrink-0" />
-                        <span className="text-[11px] text-[#7D8590]">{task}</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 mt-1.5 flex-shrink-0" />
+                        <span className="text-[11px] text-muted-foreground">{task}</span>
                       </div>
                     ))}
                   </div>
@@ -3454,18 +3454,18 @@ function GenerateFromServiceDialog({
           {packageResult && (
             <div className="space-y-3">
               {/* Module list */}
-              <div className="bg-[#0D1117] border border-[#0078D4]/40 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-[#0078D4]/10">
-                  <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12v4m4-4v4" /></svg>
-                  <p className="text-[11px] font-semibold text-[#58A6FF] flex-1">Package generated — {packageResult.modules.length} module{packageResult.modules.length !== 1 ? "s" : ""}</p>
-                  <span className="text-[10px] text-[#7D8590] truncate max-w-[180px]">{packageResult.title}</span>
+              <div className="bg-background border border-primary/40 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-accent bg-primary/10">
+                  <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12v4m4-4v4" /></svg>
+                  <p className="text-[11px] font-semibold text-primary flex-1">Package generated — {packageResult.modules.length} module{packageResult.modules.length !== 1 ? "s" : ""}</p>
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[180px]">{packageResult.title}</span>
                 </div>
-                <div className="divide-y divide-[#21262D]">
+                <div className="divide-y divide-accent">
                   {packageResult.modules.map((m) => (
                     <div key={m.filename} className="flex items-center gap-2.5 px-3 py-2">
-                      <div className="w-3.5 h-3.5 rounded-full border border-[#30363D] flex-shrink-0" />
-                      <span className="text-[11px] font-mono text-[#E6EDF3] flex-1">{m.filename}</span>
-                      {m.description && <span className="text-[10px] text-[#7D8590] truncate max-w-[200px]">{m.description}</span>}
+                      <div className="w-3.5 h-3.5 rounded-full border border-border flex-shrink-0" />
+                      <span className="text-[11px] font-mono text-foreground flex-1">{m.filename}</span>
+                      {m.description && <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{m.description}</span>}
                     </div>
                   ))}
                 </div>
@@ -3473,18 +3473,18 @@ function GenerateFromServiceDialog({
 
               {/* Task → module association summary */}
               {packageResult.taskAssociations.length > 0 && (
-                <div className="bg-[#0D1117] border border-[#21262D] rounded-lg overflow-hidden">
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D]">
+                <div className="bg-background border border-accent rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-accent">
                     <svg className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                     <p className="text-[11px] font-semibold text-teal-400">Kanban task associations</p>
                   </div>
-                  <div className="divide-y divide-[#21262D]">
+                  <div className="divide-y divide-accent">
                     {packageResult.taskAssociations.map((assoc, i) => (
                       <div key={i} className="px-3 py-2 flex items-start gap-2.5">
                         <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${assoc.associationStatus === "linked" ? "bg-teal-400" : "bg-amber-400"}`} />
                         <div className="flex-1 min-w-0 space-y-0.5">
-                          <p className="text-[11px] font-medium text-[#E6EDF3] truncate">{assoc.taskTitle}</p>
-                          <p className="text-[10px] font-mono text-[#7D8590] truncate">→ {assoc.moduleFilename}</p>
+                          <p className="text-[11px] font-medium text-foreground truncate">{assoc.taskTitle}</p>
+                          <p className="text-[10px] font-mono text-muted-foreground truncate">→ {assoc.moduleFilename}</p>
                         </div>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${
@@ -3500,7 +3500,7 @@ function GenerateFromServiceDialog({
                           {assoc.kanbanTasksUpdated > 0 ? (
                             <span className="text-[9px] text-teal-400">{assoc.kanbanTasksUpdated} card{assoc.kanbanTasksUpdated !== 1 ? "s" : ""} linked</span>
                           ) : (
-                            <span className="text-[9px] text-[#484F58]">no cards yet</span>
+                            <span className="text-[9px] text-muted-foreground/60">no cards yet</span>
                           )}
                         </div>
                       </div>
@@ -3513,15 +3513,15 @@ function GenerateFromServiceDialog({
 
           {/* Human-only tasks result (shown after generation attempt if any) */}
           {humanOnlyTasks.length > 0 && (
-            <div className="bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2.5">
-              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">
+            <div className="bg-background border border-accent rounded-lg px-3 py-2.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                 Human-only tasks (not automated)
               </p>
               <div className="space-y-0.5">
                 {humanOnlyTasks.map((t, i) => (
                   <div key={i} className="flex items-start gap-1.5">
-                    <svg className="w-3 h-3 text-[#484F58] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                    <span className="text-[11px] text-[#7D8590]">{t}</span>
+                    <svg className="w-3 h-3 text-muted-foreground/60 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span className="text-[11px] text-muted-foreground">{t}</span>
                   </div>
                 ))}
               </div>
@@ -3530,8 +3530,8 @@ function GenerateFromServiceDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#21262D] flex-shrink-0 gap-3">
-          <p className="text-[10px] text-[#484F58] leading-relaxed">
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-accent flex-shrink-0 gap-3">
+          <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
             {packageResult
               ? "Each module will be created/updated as its own runbook."
               : manualResult
@@ -3543,13 +3543,13 @@ function GenerateFromServiceDialog({
               <>
                 <button
                   onClick={handleDonePackage}
-                  className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors"
+                  className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded border border-border hover:bg-accent transition-colors"
                 >
                   Done
                 </button>
                 <button
                   onClick={() => setPushDialogOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-[#0078D4]/20 border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/30 rounded transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 rounded transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -3560,13 +3560,13 @@ function GenerateFromServiceDialog({
             ) : manualResult ? (
               <button
                 onClick={onClose}
-                className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors"
+                className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded border border-border hover:bg-accent transition-colors"
               >
                 Done
               </button>
             ) : (
               <>
-                <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
+                <button onClick={onClose} className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded border border-border hover:bg-accent transition-colors">
                   Cancel
                 </button>
                 <button
@@ -3699,14 +3699,14 @@ function BottomPanel({
   const setActiveTab = onActiveTabChange;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117] border-t border-[#21262D]">
+    <div className="flex flex-col h-full overflow-hidden bg-background border-t border-accent">
       {/* Tab strip */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[#21262D] flex-shrink-0 bg-[#161B22]">
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-accent flex-shrink-0 bg-card">
         {(["prompt", "instructions"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded transition-colors ${activeTab === t ? "bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`}
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded transition-colors ${activeTab === t ? "bg-primary/15 text-primary border border-primary/25" : "text-muted-foreground hover:text-foreground border border-transparent"}`}
           >
             {t === "prompt" ? "Prompt" : "Custom Instructions"}
           </button>
@@ -3728,23 +3728,23 @@ function BottomPanel({
         {activeTab === "prompt" && (
           <>
             <div>
-              <label className="block text-[10px] font-medium text-[#7D8590] mb-1">Category</label>
-              <select value={category} onChange={(e) => onCategoryChange(e.target.value)} className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Category</label>
+              <select value={category} onChange={(e) => onCategoryChange(e.target.value)} className="w-full bg-card border border-border rounded px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary/60 transition-colors">
                 {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-[#7D8590] mb-1">Describe what you need</label>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Describe what you need</label>
               <textarea
                 value={prompt}
                 onChange={(e) => onPromptChange(e.target.value)}
                 rows={3}
                 placeholder="e.g. List all Teams with more than 100 members and export to CSV with owner names, member count, and creation date…"
-                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+                className="w-full bg-card border border-border rounded px-2.5 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors resize-none"
               />
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={onGenerate} disabled={generating} className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 text-white text-xs font-semibold py-1.5 px-4 rounded transition-colors">
+              <button onClick={onGenerate} disabled={generating} className="flex items-center gap-2 bg-primary hover:bg-[#0086EF] disabled:opacity-50 text-white text-xs font-semibold py-1.5 px-4 rounded transition-colors">
                 {generating ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating…</> : <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Generate Script</>}
               </button>
               <button
@@ -3777,28 +3777,28 @@ function BottomPanel({
           <>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-medium text-[#7D8590]">Base Instructions</label>
-                <span className="text-[9px] text-[#484F58] bg-[#161B22] border border-[#21262D] rounded px-1.5 py-0.5">Applied to every generation</span>
+                <label className="text-[10px] font-medium text-muted-foreground">Base Instructions</label>
+                <span className="text-[9px] text-muted-foreground/60 bg-card border border-accent rounded px-1.5 py-0.5">Applied to every generation</span>
               </div>
               <textarea
                 value={baseInstructions}
                 onChange={(e) => onBaseInstructionsChange(e.target.value)}
                 rows={3}
                 placeholder="e.g. Always use the PnP PowerShell module. Follow Microsoft best practices. Include error handling and verbose logging…"
-                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+                className="w-full bg-card border border-border rounded px-2.5 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors resize-none"
               />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] font-medium text-[#7D8590]">Detailed Instructions</label>
-                <span className="text-[9px] text-[#484F58] bg-[#161B22] border border-[#21262D] rounded px-1.5 py-0.5">This generation only</span>
+                <label className="text-[10px] font-medium text-muted-foreground">Detailed Instructions</label>
+                <span className="text-[9px] text-muted-foreground/60 bg-card border border-accent rounded px-1.5 py-0.5">This generation only</span>
               </div>
               <textarea
                 value={detailedInstructions}
                 onChange={(e) => onDetailedInstructionsChange(e.target.value)}
                 rows={3}
                 placeholder="e.g. The tenant uses a hybrid setup — avoid any commands that require cloud-only connectivity…"
-                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+                className="w-full bg-card border border-border rounded px-2.5 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors resize-none"
               />
             </div>
           </>
@@ -3889,9 +3889,9 @@ function GenerateFromDocumentDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="w-full max-w-2xl mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-2xl mx-4 bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#21262D] flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-accent flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
               <svg className="w-3.5 h-3.5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -3899,11 +3899,11 @@ function GenerateFromDocumentDialog({
               </svg>
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-[#E6EDF3]">Generate from Document</h2>
-              <p className="text-[10px] text-[#7D8590]">Select an insights document — AI extracts actionable tasks and writes PowerShell scripts to automate them</p>
+              <h2 className="text-sm font-semibold text-foreground">Generate from Document</h2>
+              <p className="text-[10px] text-muted-foreground">Select an insights document — AI extracts actionable tasks and writes PowerShell scripts to automate them</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+          <button onClick={onClose} className="p-1.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -3911,12 +3911,12 @@ function GenerateFromDocumentDialog({
         {/* Search */}
         <div className="px-5 pt-3 pb-2 flex-shrink-0">
           <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search documents…"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded pl-8 pr-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full bg-background border border-border rounded pl-8 pr-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 transition-colors"
             />
           </div>
         </div>
@@ -3925,12 +3925,12 @@ function GenerateFromDocumentDialog({
         <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1.5 min-h-0">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="w-5 h-5 border-2 border-[#30363D] border-t-[#0078D4] rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-border border-t-primary rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <svg className="w-8 h-8 text-[#30363D]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              <p className="text-xs text-[#484F58]">{search ? "No documents match your search" : "No documents in the insights library yet"}</p>
+              <svg className="w-8 h-8 text-border" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              <p className="text-xs text-muted-foreground/60">{search ? "No documents match your search" : "No documents in the insights library yet"}</p>
             </div>
           ) : (
             filtered.map(doc => (
@@ -3940,27 +3940,27 @@ function GenerateFromDocumentDialog({
                 className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${
                   selectedId === doc.id
                     ? "bg-violet-500/10 border-violet-500/40 ring-1 ring-violet-500/30"
-                    : "bg-[#0D1117] border-[#21262D] hover:border-[#30363D] hover:bg-[#161B22]"
+                    : "bg-background border-accent hover:border-border hover:bg-card"
                 }`}
               >
                 <div className="flex items-start gap-2.5">
-                  <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${selectedId === doc.id ? "bg-violet-500/20 border border-violet-500/50" : "bg-[#21262D] border border-[#30363D]"}`}>
+                  <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${selectedId === doc.id ? "bg-violet-500/20 border border-violet-500/50" : "bg-accent border border-border"}`}>
                     {selectedId === doc.id ? (
                       <svg className="w-3 h-3 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                     ) : (
-                      <svg className="w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                      <svg className="w-3 h-3 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-[#E6EDF3] truncate">{doc.title ?? "Untitled Document"}</p>
+                    <p className="text-xs font-medium text-foreground truncate">{doc.title ?? "Untitled Document"}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-[#7D8590]">{DOC_TYPE_LABELS[doc.docType] ?? doc.docType}</span>
-                      <span className="text-[10px] text-[#484F58]">·</span>
-                      <span className="text-[10px] text-[#484F58]">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                      <span className="text-[10px] text-muted-foreground">{DOC_TYPE_LABELS[doc.docType] ?? doc.docType}</span>
+                      <span className="text-[10px] text-muted-foreground/60">·</span>
+                      <span className="text-[10px] text-muted-foreground/60">{new Date(doc.createdAt).toLocaleDateString()}</span>
                       {doc.status && doc.status !== "approved" && (
                         <>
-                          <span className="text-[10px] text-[#484F58]">·</span>
-                          <span className="text-[10px] text-[#484F58] capitalize">{doc.status}</span>
+                          <span className="text-[10px] text-muted-foreground/60">·</span>
+                          <span className="text-[10px] text-muted-foreground/60 capitalize">{doc.status}</span>
                         </>
                       )}
                     </div>
@@ -3972,12 +3972,12 @@ function GenerateFromDocumentDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-[#21262D] flex-shrink-0 bg-[#0D1117]/50">
-          <p className="text-[10px] text-[#484F58]">
+        <div className="flex items-center justify-between px-5 py-3 border-t border-accent flex-shrink-0 bg-background/50">
+          <p className="text-[10px] text-muted-foreground/60">
             {selectedDoc ? `Selected: ${selectedDoc.title ?? "Untitled"}` : `${filtered.length} document${filtered.length !== 1 ? "s" : ""} available`}
           </p>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded border border-border hover:bg-accent transition-colors">
               Cancel
             </button>
             <button
@@ -4671,21 +4671,21 @@ export default function ScriptGeneratorPage() {
   const scriptLoaded = scriptBody.length > 0 || modules.length > 0;
 
   return (
-    <div className={`flex flex-col overflow-hidden bg-[#0D1117] ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
+    <div className={`flex flex-col overflow-hidden bg-background ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
 
       {/* ── Top action bar ────────────────────────────────────────────────── */}
       {/* flex-shrink-0 keeps the bar fixed-height in the flex column so the IDE body
           below always fills the remaining space. overflow-x-auto prevents the bar from
           growing taller (and clipping the IDE) when many buttons are visible on a
           narrow viewport — buttons scroll horizontally instead of wrapping. */}
-      <div className="flex-shrink-0 flex flex-nowrap items-center gap-1.5 px-4 bg-[#161B22] border-b border-[#21262D] min-h-[42px] overflow-x-auto">
+      <div className="flex-shrink-0 flex flex-nowrap items-center gap-1.5 px-4 bg-card border-b border-accent min-h-[42px] overflow-x-auto">
         {scriptBody ? (
           <>
-            <button onClick={handleCopy} title="Copy to clipboard" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+            <button onClick={handleCopy} title="Copy to clipboard" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               {copied ? <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
               {copied ? "Copied" : "Copy"}
             </button>
-            <button onClick={handleDownload} title="Download .ps1 file" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+            <button onClick={handleDownload} title="Download .ps1 file" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
               .ps1
             </button>
@@ -4734,13 +4734,13 @@ export default function ScriptGeneratorPage() {
                 {publishingPkgToProd ? "Publishing…" : "Publish Pkg to Prod"}
               </button>
             )}
-            <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
+            <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-primary/15 border border-primary/30 text-primary hover:bg-primary/25 transition-colors">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
               Save
             </button>
           </>
         ) : (
-          <span className="text-[11px] text-[#484F58] select-none">Generate or open a script to see actions</span>
+          <span className="text-[11px] text-muted-foreground/60 select-none">Generate or open a script to see actions</span>
         )}
       </div>
 
@@ -4751,21 +4751,21 @@ export default function ScriptGeneratorPage() {
         <div className="flex flex-col overflow-hidden flex-shrink-0" style={{ width: effectiveLeftWidth }}>
           {leftCollapsed ? (
             /* Collapsed strip */
-            <div className="flex flex-col items-center py-3 gap-2 border-r border-[#21262D] bg-[#0D1117]" style={{ width: 40 }}>
-              <button onClick={toggleLeftCollapsed} title="Expand sidebar" className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+            <div className="flex flex-col items-center py-3 gap-2 border-r border-accent bg-background" style={{ width: 40 }}>
+              <button onClick={toggleLeftCollapsed} title="Expand sidebar" className="p-1.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
               </button>
-              <div className="w-px flex-1 bg-[#21262D]" />
-              <span className="text-[8px] text-[#484F58] font-bold tracking-widest uppercase" style={{ writingMode: "vertical-rl" }}>
+              <div className="w-px flex-1 bg-accent" />
+              <span className="text-[8px] text-muted-foreground/60 font-bold tracking-widest uppercase" style={{ writingMode: "vertical-rl" }}>
                 {leftMode === "library" ? "LIBRARY" : "RESULTS"}
               </span>
             </div>
           ) : (
             /* Expanded: mode toggle + panel body */
-            <div className="flex flex-col border-r border-[#21262D] bg-[#0D1117] overflow-hidden h-full">
+            <div className="flex flex-col border-r border-accent bg-background overflow-hidden h-full">
               {/* Mode toggle header */}
-              <div className="flex items-center flex-shrink-0 border-b border-[#21262D] bg-[#0D1117]">
-                <button onClick={toggleLeftCollapsed} title="Collapse sidebar" className="p-2 text-[#484F58] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+              <div className="flex items-center flex-shrink-0 border-b border-accent bg-background">
+                <button onClick={toggleLeftCollapsed} title="Collapse sidebar" className="p-2 text-muted-foreground/60 hover:text-foreground transition-colors flex-shrink-0">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 {(["library", "results"] as const).map(m => (
@@ -4774,8 +4774,8 @@ export default function ScriptGeneratorPage() {
                     onClick={() => { setLeftMode(m); lsSet(IDE_LEFT_MODE_KEY, m); }}
                     className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors text-center border-b-2 ${
                       leftMode === m
-                        ? "text-[#58A6FF] border-[#0078D4]"
-                        : "text-[#484F58] hover:text-[#E6EDF3] border-transparent"
+                        ? "text-primary border-primary"
+                        : "text-muted-foreground/60 hover:text-foreground border-transparent"
                     }`}
                   >
                     {m === "library" ? "Library" : "Results"}
@@ -4823,7 +4823,7 @@ export default function ScriptGeneratorPage() {
         {!leftCollapsed && (
           <div
             onMouseDown={startLeftResize}
-            className="w-1 cursor-col-resize bg-[#21262D] hover:bg-[#0078D4]/50 transition-colors flex-shrink-0"
+            className="w-1 cursor-col-resize bg-accent hover:bg-primary/50 transition-colors flex-shrink-0"
             title="Drag to resize"
           />
         )}
@@ -4834,20 +4834,20 @@ export default function ScriptGeneratorPage() {
           {/* Center editor pane */}
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Tab bar */}
-            <div className="flex items-center bg-[#161B22] border-b border-[#21262D] flex-shrink-0 px-3 gap-2" style={{ minHeight: 38 }}>
+            <div className="flex items-center bg-card border-b border-accent flex-shrink-0 px-3 gap-2" style={{ minHeight: 38 }}>
               {/* Tab / script name */}
               <div className="flex items-center gap-1.5 min-w-0 mr-auto">
-                <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                <span className="text-xs font-medium text-[#E6EDF3] truncate max-w-xs">{tabLabel}</span>
+                <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                <span className="text-xs font-medium text-foreground truncate max-w-xs">{tabLabel}</span>
                 {editorScript?.tags?.includes("manual") && (
                   <span className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide" title="Must be run locally under a licensed user account — cannot run as a service principal">Manual</span>
                 )}
-                {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-[#E6EDF3]/50 flex-shrink-0" title="Unsaved changes" />}
+                {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-foreground/50 flex-shrink-0" title="Unsaved changes" />}
                 {editorScript && (
                   <button
                     onClick={() => { setEditorScript(null); setEditingModuleId(null); setEditingPackageId(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
                     title="Clear — start a new script"
-                    className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors flex-shrink-0"
+                    className="p-0.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors flex-shrink-0"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
@@ -4858,7 +4858,7 @@ export default function ScriptGeneratorPage() {
               <button
                 onClick={toggleRightVisible}
                 title={rightVisible ? "Hide right panel" : "Show right panel"}
-                className={`ml-1 p-1.5 rounded transition-colors flex-shrink-0 ${rightVisible ? "text-[#58A6FF] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                className={`ml-1 p-1.5 rounded transition-colors flex-shrink-0 ${rightVisible ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:text-foreground hover:bg-accent"}`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4m6-4l3-3m0 0l-3-3m3 3H9" /></svg>
               </button>
@@ -4866,7 +4866,7 @@ export default function ScriptGeneratorPage() {
               <button
                 onClick={() => setIsFullscreen(f => !f)}
                 title={isFullscreen ? "Exit fullscreen (Esc)" : "Enter fullscreen"}
-                className={`p-1.5 rounded transition-colors flex-shrink-0 ${isFullscreen ? "text-[#58A6FF] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                className={`p-1.5 rounded transition-colors flex-shrink-0 ${isFullscreen ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:text-foreground hover:bg-accent"}`}
               >
                 {isFullscreen ? (
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -4878,7 +4878,7 @@ export default function ScriptGeneratorPage() {
 
             {/* Push-to-Azure syntax error alert */}
             {pushSyntaxErrors.length > 0 && (
-              <div className="px-3 py-2 border-b border-[#21262D]">
+              <div className="px-3 py-2 border-b border-accent">
                 <SyntaxErrorAlert errors={pushSyntaxErrors} onDismiss={() => setPushSyntaxErrors([])} />
               </div>
             )}
@@ -4908,9 +4908,9 @@ export default function ScriptGeneratorPage() {
             ) : (
               <div className="flex-1 min-h-0 relative">
                 {(generating || modularizing) && (
-                  <div className="absolute inset-0 bg-[#0D1117]/80 flex flex-col items-center justify-center z-10 gap-3">
-                    <div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-                    <p className="text-xs text-[#7D8590]">{generating ? "Generating script…" : "Modularizing…"}</p>
+                  <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center z-10 gap-3">
+                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-xs text-muted-foreground">{generating ? "Generating script…" : "Modularizing…"}</p>
                   </div>
                 )}
                 <CodeMirror
@@ -4941,7 +4941,7 @@ export default function ScriptGeneratorPage() {
           {!selectedResult && (
             <div
               onMouseDown={startBottomResize}
-              className="h-1 cursor-row-resize bg-[#21262D] hover:bg-[#0078D4]/50 transition-colors flex-shrink-0"
+              className="h-1 cursor-row-resize bg-accent hover:bg-primary/50 transition-colors flex-shrink-0"
               title="Drag to resize"
             />
           )}
@@ -4976,7 +4976,7 @@ export default function ScriptGeneratorPage() {
         {rightVisible && (
           <div
             onMouseDown={startRightResize}
-            className="w-1 cursor-col-resize bg-[#21262D] hover:bg-[#0078D4]/50 transition-colors flex-shrink-0"
+            className="w-1 cursor-col-resize bg-accent hover:bg-primary/50 transition-colors flex-shrink-0"
             title="Drag to resize"
           />
         )}

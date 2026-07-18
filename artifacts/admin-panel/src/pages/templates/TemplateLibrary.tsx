@@ -38,7 +38,7 @@ function fileTypeKey(item: DriveItem): string {
 function FileIcon({ item }: { item: DriveItem }) {
   const type = fileTypeKey(item);
   if (type === "folder") return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0078D4" strokeWidth={1.75} className="flex-shrink-0">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F6FED" strokeWidth={1.75} className="flex-shrink-0">
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
     </svg>
   );
@@ -110,7 +110,7 @@ function TreeNode({
   return (
     <>
       <div
-        className={`flex items-center gap-2 py-2 pr-4 rounded-lg transition-colors group ${item.folder ? "cursor-pointer hover:bg-[#1C2128]" : "hover:bg-[#1C2128]/60"}`}
+        className={`flex items-center gap-2 py-2 pr-4 rounded-lg transition-colors group ${item.folder ? "cursor-pointer hover:bg-accent" : "hover:bg-accent/60"}`}
         style={{ paddingLeft: `${indentPx + 12}px` }}
         onClick={item.folder ? () => onToggle(item, itemPath) : undefined}
       >
@@ -118,7 +118,7 @@ function TreeNode({
         <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
           {item.folder && (
             isLoading ? (
-              <div className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+              <div className="w-3 h-3 border-2 border-primary/40 border-t-primary rounded-full animate-spin" />
             ) : (
               <svg
                 className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
@@ -132,7 +132,7 @@ function TreeNode({
 
         <FileIcon item={item} />
 
-        <span className={`flex-1 min-w-0 text-sm truncate ${item.folder ? "font-medium text-[#E6EDF3]" : "text-[#E6EDF3]"}`}>
+        <span className={`flex-1 min-w-0 text-sm truncate ${item.folder ? "font-medium text-foreground" : "text-foreground"}`}>
           {item.name}
         </span>
 
@@ -148,7 +148,7 @@ function TreeNode({
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-1 text-xs text-[#0078D4] hover:underline font-medium flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="flex items-center gap-1 text-xs text-primary hover:underline font-medium flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
           >
             Open
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -302,7 +302,7 @@ export default function TemplateLibraryPage() {
   if (configLoading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -313,7 +313,7 @@ export default function TemplateLibraryPage() {
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#E6EDF3]">Template Library</h1>
+          <h1 className="text-2xl font-bold text-foreground">Template Library</h1>
           <p className="text-sm text-muted-foreground mt-1">Browse files from the Template Team SharePoint site</p>
         </div>
         {config?.templateSiteUrl && (
@@ -321,7 +321,7 @@ export default function TemplateLibraryPage() {
             href={config.templateSiteUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-sm text-[#0078D4] hover:underline flex-shrink-0"
+            className="flex items-center gap-1.5 text-sm text-primary hover:underline flex-shrink-0"
           >
             Open in SharePoint
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -332,7 +332,7 @@ export default function TemplateLibraryPage() {
       </div>
 
       {/* ── Site URL config card ─────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl p-5 mb-6">
+      <div className="bg-card border border-border rounded-xl p-5 mb-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Template Team Site URL</p>
         <div className="flex gap-2">
           <input
@@ -341,7 +341,7 @@ export default function TemplateLibraryPage() {
             onChange={e => setSiteInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") void handleSaveUrl(); }}
             placeholder="https://tenant.sharepoint.com/sites/TemplateTeam"
-            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+            className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
           <button
             onClick={() => void handleSaveUrl()}
@@ -365,13 +365,13 @@ export default function TemplateLibraryPage() {
 
       {/* ── Empty state ─────────────────────────────────────────────────────── */}
       {!configured && (
-        <div className="bg-[#161B22] border border-border rounded-xl p-12 flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#0078D4]/10 flex items-center justify-center mb-4">
-            <svg className="w-8 h-8 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <div className="bg-card border border-border rounded-xl p-12 flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+            <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-[#E6EDF3] mb-2">Template site not connected</h2>
+          <h2 className="text-lg font-bold text-foreground mb-2">Template site not connected</h2>
           <p className="text-sm text-muted-foreground max-w-sm">
             Paste the URL of your Template Team SharePoint site above and click Save. Once connected, all documents and folders will appear here with expand/collapse controls.
           </p>
@@ -385,18 +385,18 @@ export default function TemplateLibraryPage() {
 
       {/* ── Tree browser ────────────────────────────────────────────────────── */}
       {configured && (
-        <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#1C2128]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-accent">
             <div className="flex items-center gap-2">
-              <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
-              <span className="text-sm font-semibold text-[#E6EDF3]">Document Library</span>
+              <span className="text-sm font-semibold text-foreground">Document Library</span>
             </div>
             <button
               onClick={() => { setNodeStates({}); void loadRoot(); }}
-              className="text-xs text-muted-foreground hover:text-[#E6EDF3] flex items-center gap-1 transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -409,15 +409,15 @@ export default function TemplateLibraryPage() {
           <div className="p-2">
             {rootLoading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-7 h-7 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                <div className="w-7 h-7 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : rootError ? (
               <div className="flex flex-col items-center py-16 text-center px-6">
                 <svg className="w-10 h-10 text-red-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                 </svg>
-                <p className="text-sm font-semibold text-[#E6EDF3] mb-1">{rootError}</p>
-                <button onClick={() => void loadRoot()} className="text-sm text-[#0078D4] hover:underline">
+                <p className="text-sm font-semibold text-foreground mb-1">{rootError}</p>
+                <button onClick={() => void loadRoot()} className="text-sm text-primary hover:underline">
                   Try again
                 </button>
               </div>

@@ -93,7 +93,7 @@ interface NormalizedLine {
 
 const LEVEL_STYLES: Record<string, { tag: string; tagClass: string; msgClass: string; rowClass: string; bucket: LevelBucket }> = {
   debug: { tag: "DBG", tagClass: "text-muted-foreground", msgClass: "text-muted-foreground", rowClass: "", bucket: "info" },
-  info: { tag: "INF", tagClass: "text-[#58A6FF]", msgClass: "text-foreground/90", rowClass: "", bucket: "info" },
+  info: { tag: "INF", tagClass: "text-primary", msgClass: "text-foreground/90", rowClass: "", bucket: "info" },
   success: { tag: "OK", tagClass: "text-emerald-400", msgClass: "text-foreground/90", rowClass: "", bucket: "info" },
   warn: { tag: "WRN", tagClass: "text-amber-400", msgClass: "text-amber-200/90", rowClass: "", bucket: "warn" },
   error: { tag: "ERR", tagClass: "text-destructive", msgClass: "text-destructive", rowClass: "", bucket: "error" },
@@ -180,7 +180,7 @@ function frameToLine(frame: LiveStreamFrame): NormalizedLine {
       time: fmtTime(at),
       bucket: "info",
       tag: "EVT",
-      tagClass: "text-[#58A6FF]",
+      tagClass: "text-primary",
       msgClass: "text-foreground font-medium",
       rowClass: "",
       text: String(data.eventType ?? "unknown"),
@@ -323,14 +323,14 @@ function LogPane({
           onClick={line.detail ? () => setExpandedId(expandedId === line.id ? null : line.id) : undefined}
         >
           <div className="flex items-start gap-2">
-            {opts.pinned && <Pin className="mt-0.5 h-2.5 w-2.5 shrink-0 text-[#58A6FF]" aria-label="Pinned line" />}
-            <span className="shrink-0 select-none tabular-nums text-[#484F58]">{line.time}</span>
+            {opts.pinned && <Pin className="mt-0.5 h-2.5 w-2.5 shrink-0 text-primary" aria-label="Pinned line" />}
+            <span className="shrink-0 select-none tabular-nums text-muted-foreground/60">{line.time}</span>
             <span className={`w-7 shrink-0 select-none font-semibold ${line.tagClass}`}>{line.tag}</span>
             {isFirehose && line.channel && (
               <span className="shrink-0 select-none text-muted-foreground">[{line.channel}]</span>
             )}
             <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${line.msgClass}`}>{line.text}</span>
-            {line.scope && <span className="shrink-0 select-none text-[10px] text-[#484F58]">msp:{line.scope}</span>}
+            {line.scope && <span className="shrink-0 select-none text-[10px] text-muted-foreground/60">msp:{line.scope}</span>}
           </div>
           {expandedId === line.id && line.detail && (
             <pre className="my-1 ml-24 overflow-x-auto rounded border border-border bg-card p-2 text-[10px] leading-relaxed text-muted-foreground">
@@ -379,7 +379,7 @@ function LogPane({
     <div className="relative flex h-full min-w-0 flex-1 flex-col" style={{ minWidth: 300 }}>
       <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 select-none">
         <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "animate-pulse bg-emerald-400" : "bg-[#484F58]"}`}
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${connected ? "animate-pulse bg-emerald-400" : "bg-muted-foreground/60"}`}
           title={connected ? "Live — SSE connected" : "Disconnected — reconnecting with backoff"}
         />
         <span className="truncate font-mono text-[11px] text-foreground" title={title}>
@@ -439,7 +439,7 @@ function LogPane({
 }
 
 const BUCKET_TOGGLES: Array<{ key: LevelBucket; label: string; activeClass: string }> = [
-  { key: "info", label: "INFO", activeClass: "text-[#58A6FF]" },
+  { key: "info", label: "INFO", activeClass: "text-primary" },
   { key: "warn", label: "WARN", activeClass: "text-amber-400" },
   { key: "error", label: "ERROR", activeClass: "text-destructive" },
 ];

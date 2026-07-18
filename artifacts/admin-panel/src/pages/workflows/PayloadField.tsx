@@ -54,7 +54,7 @@ export function FieldHint({ text }: { text: string }) {
       onMouseEnter={() => { if (ref.current) setRect(ref.current.getBoundingClientRect()); }}
       onMouseLeave={() => setRect(null)}
     >
-      <svg className="w-3 h-3 text-[#484F58] hover:text-[#7D8590] transition-colors" viewBox="0 0 20 20" fill="currentColor">
+      <svg className="w-3 h-3 text-muted-foreground/60 hover:text-muted-foreground transition-colors" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
       </svg>
       {rect && createPortal(
@@ -62,7 +62,7 @@ export function FieldHint({ text }: { text: string }) {
           className="fixed z-[9999] pointer-events-none"
           style={{ left: rect.left + rect.width / 2, top: rect.top - 8, transform: "translate(-50%, -100%)" }}
         >
-          <div className="relative w-52 bg-[#1C2128] border border-[#444C56] rounded-lg px-2.5 py-2 shadow-xl">
+          <div className="relative w-52 bg-accent border border-[#444C56] rounded-lg px-2.5 py-2 shadow-xl">
             <p className="text-[11px] text-[#CDD9E5] leading-snug">{text}</p>
             <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-[5px] border-x-transparent border-t-[5px] border-t-[#444C56]" />
           </div>
@@ -201,7 +201,7 @@ export function PayloadField({
     <div className="space-y-1">
       <div className="flex items-center justify-between min-h-[18px]">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+          <label className="text-xs font-medium text-muted-foreground">{label}</label>
           {hint && <FieldHint text={hint} />}
         </div>
         {hasVars && (
@@ -217,7 +217,7 @@ export function PayloadField({
                 setPickerOpen(v => !v);
                 setPickerSearch("");
               }}
-              className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
+              className="text-[10px] text-primary hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -227,7 +227,7 @@ export function PayloadField({
               <>
                 <div className="fixed inset-0 z-40" onClick={() => { setPickerOpen(false); setPickerSearch(""); }} />
                 <div
-                  className="fixed z-50 w-64 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden"
+                  className="fixed z-50 w-64 bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
                   style={{ top: pickerPos.top, right: pickerPos.right }}
                 >
                   <div className="px-2 pt-2 pb-1">
@@ -237,7 +237,7 @@ export function PayloadField({
                       value={pickerSearch}
                       onChange={e => setPickerSearch(e.target.value)}
                       placeholder="Search variables…"
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      className="w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                     />
                   </div>
                   <div className="max-h-52 overflow-y-auto py-1">
@@ -252,19 +252,19 @@ export function PayloadField({
                           : group.outputs,
                       })).filter(g => g.outputs.length > 0);
                       if (filteredGroups.length === 0) {
-                        return <p className="px-3 py-2 text-[10px] text-[#484F58]">No variables match.</p>;
+                        return <p className="px-3 py-2 text-[10px] text-muted-foreground/60">No variables match.</p>;
                       }
                       return filteredGroups.map(group => (
                         <div key={group.nodeId}>
-                          <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
+                          <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{group.nodeName}</p>
                           {group.outputs.map(o => {
                             const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
                             return (
                               <div key={o.key}>
                                 <button type="button" onClick={() => insertToken(tokenPath)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                  className="w-full text-left px-3 py-1.5 hover:bg-background flex items-start justify-between gap-3">
                                   <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
-                                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                                  <span className="text-[10px] text-muted-foreground/60 text-right leading-tight">{o.label}</span>
                                 </button>
                                 {o.enumValues && o.enumValues.length > 0 && (
                                   <p className="px-3 pb-1.5 text-[9px] font-mono text-amber-500/60 leading-tight">
@@ -296,7 +296,7 @@ export function PayloadField({
             onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             rows={3}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none font-mono"
           />
         ) : (
           <input
@@ -308,33 +308,33 @@ export function PayloadField({
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
             onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
           />
         )}
         {suggest && filteredTokens.length > 0 && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden">
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-2xl overflow-hidden">
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredTokens.map((t, i) => (
                 <button
                   key={t.key}
                   type="button"
                   onMouseDown={e => { e.preventDefault(); pickSuggestion(t); }}
-                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-primary/20" : "hover:bg-background"}`}
                 >
                   <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0 truncate">{t.insertText}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {t.enumValue !== undefined && (
                       <span className="px-1 py-0.5 rounded text-[9px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/25">enum</span>
                     )}
-                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                    <span className="text-[10px] text-muted-foreground/60 text-right leading-tight">{t.label}</span>
                   </div>
                 </button>
               ))}
             </div>
-            <div className="px-3 py-1 border-t border-[#30363D] flex items-center gap-2">
-              <span className="text-[9px] text-[#484F58]">↑↓ navigate</span>
-              <span className="text-[9px] text-[#484F58]">↵ / Tab insert</span>
-              <span className="text-[9px] text-[#484F58]">Esc dismiss</span>
+            <div className="px-3 py-1 border-t border-border flex items-center gap-2">
+              <span className="text-[9px] text-muted-foreground/60">↑↓ navigate</span>
+              <span className="text-[9px] text-muted-foreground/60">↵ / Tab insert</span>
+              <span className="text-[9px] text-muted-foreground/60">Esc dismiss</span>
             </div>
           </div>
         )}

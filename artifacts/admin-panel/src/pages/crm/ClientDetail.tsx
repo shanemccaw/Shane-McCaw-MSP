@@ -192,12 +192,12 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
 
 const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 const inputCls =
-  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22]";
+  "w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 bg-card";
 
 function StatChip({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
   return (
-    <div className="flex flex-col items-center px-3 py-1.5 bg-[#1C2128] rounded-lg border border-border min-w-[60px]">
-      <span className={`text-base font-bold leading-none ${accent ?? "text-[#E6EDF3]"}`}>{value}</span>
+    <div className="flex flex-col items-center px-3 py-1.5 bg-accent rounded-lg border border-border min-w-[60px]">
+      <span className={`text-base font-bold leading-none ${accent ?? "text-foreground"}`}>{value}</span>
       <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">{label}</span>
     </div>
   );
@@ -207,11 +207,11 @@ function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
     active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
     on_hold: "bg-amber-500/15 text-amber-400 border-amber-500/20",
-    completed: "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+    completed: "bg-border text-muted-foreground border-border",
   };
   const label: Record<string, string> = { active: "Active", on_hold: "On Hold", completed: "Done" };
   return (
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cfg[status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]"}`}>
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cfg[status] ?? "bg-border text-muted-foreground border-border"}`}>
       {label[status] ?? status}
     </span>
   );
@@ -219,27 +219,27 @@ function StatusBadge({ status }: { status: string }) {
 
 function TaskColumnBadge({ column }: { column: string }) {
   const cfg: Record<string, string> = {
-    backlog: "text-[#7D8590]",
-    in_progress: "text-[#0078D4]",
+    backlog: "text-muted-foreground",
+    in_progress: "text-primary",
     waiting_on_customer: "text-amber-400",
     completed: "text-emerald-400",
   };
   const label: Record<string, string> = {
     backlog: "Backlog", in_progress: "In Progress", waiting_on_customer: "Waiting", completed: "Done",
   };
-  return <span className={`text-[10px] font-semibold ${cfg[column] ?? "text-[#7D8590]"}`}>{label[column] ?? column}</span>;
+  return <span className={`text-[10px] font-semibold ${cfg[column] ?? "text-muted-foreground"}`}>{label[column] ?? column}</span>;
 }
 
 function PriorityDot({ priority }: { priority: string }) {
   const color =
     priority === "high" || priority === "urgent" ? "bg-red-500" :
-    priority === "medium" ? "bg-amber-500" : "bg-[#484F58]";
+    priority === "medium" ? "bg-amber-500" : "bg-muted-foreground/60";
   return <span className={`w-1.5 h-1.5 rounded-full inline-block flex-shrink-0 ${color}`} />;
 }
 
 function MaturityGauge({ label, score }: { label: string; score: number | null }) {
   const pct = score !== null ? Math.min(100, Math.max(0, score)) : null;
-  const barColor = pct === null ? "bg-[#30363D]" : pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+  const barColor = pct === null ? "bg-border" : pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
   const textColor = pct === null ? "text-muted-foreground" : pct >= 70 ? "text-emerald-400" : pct >= 40 ? "text-amber-400" : "text-red-400";
   return (
     <div>
@@ -247,7 +247,7 @@ function MaturityGauge({ label, score }: { label: string; score: number | null }
         <span className="text-[10px] text-muted-foreground">{label}</span>
         <span className={`text-[10px] font-bold tabular-nums ${textColor}`}>{pct !== null ? pct : "—"}</span>
       </div>
-      <div className="h-1.5 bg-[#30363D] rounded-full overflow-hidden">
+      <div className="h-1.5 bg-border rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: pct !== null ? `${pct}%` : "0%" }} />
       </div>
     </div>
@@ -690,7 +690,7 @@ export default function ClientDetailPage() {
   if (ccLoading) {
     return (
       <div className="p-6 flex items-center justify-center py-24">
-        <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -698,7 +698,7 @@ export default function ClientDetailPage() {
   if (ccError || !ccData) {
     return (
       <div className="p-6">
-        <button onClick={() => navigate("/crm/clients")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[#0078D4] mb-4 transition-colors">
+        <button onClick={() => navigate("/crm/clients")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary mb-4 transition-colors">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           All Clients
         </button>
@@ -825,11 +825,11 @@ export default function ClientDetailPage() {
     <div className="p-4 sm:p-6 max-w-[1440px] space-y-5">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 pt-5 pb-4">
           <button
             onClick={() => navigate("/crm/clients")}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[#0078D4] mb-3 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary mb-3 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             All Clients
@@ -837,7 +837,7 @@ export default function ClientDetailPage() {
 
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-[#E6EDF3]">{client.name ?? client.email}</h1>
+              <h1 className="text-xl font-bold text-foreground">{client.name ?? client.email}</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {client.email}{client.company ? ` · ${client.company}` : ""}
               </p>
@@ -846,42 +846,42 @@ export default function ClientDetailPage() {
               {(mpIndustry || mpEmployees || mpDomain || mpITContact || mpLicenses) && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {mpIndustry && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                       {mpIndustry}
                     </span>
                   )}
                   {mpEmployees && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                       {mpEmployees} employees
                     </span>
                   )}
                   {mpDomain && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
                       {mpDomain}
                     </span>
                   )}
                   {mpITContact && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       IT: {mpITContact}
                     </span>
                   )}
                   {mpLicenses && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#0078D4]/10 border border-[#0078D4]/20 rounded px-2 py-0.5 text-[#0078D4]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-primary/10 border border-primary/20 rounded px-2 py-0.5 text-primary">
                       {mpLicenses}
                     </span>
                   )}
                   {mpTenantAge !== null && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       {mpTenantAge}yr tenant
                     </span>
                   )}
                   {mpItTeamSize !== null && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-accent border border-border rounded px-2 py-0.5 text-foreground">
                       <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                       IT: {mpItTeamSize} staff
                     </span>
@@ -907,13 +907,13 @@ export default function ClientDetailPage() {
                   <span className="text-[10px] text-amber-400/70 mt-0.5 whitespace-nowrap">Pending</span>
                 </div>
               )}
-              <StatChip label="Active" value={activeProjects.length} accent={activeProjects.length > 0 ? "text-[#0078D4]" : undefined} />
+              <StatChip label="Active" value={activeProjects.length} accent={activeProjects.length > 0 ? "text-primary" : undefined} />
               <StatChip label="Open Tasks" value={openTaskCount} accent={openTaskCount > 5 ? "text-amber-400" : undefined} />
               {healthScore !== null && (
                 <StatChip label="Health" value={healthScore} accent={healthScore >= 70 ? "text-emerald-400" : healthScore >= 40 ? "text-amber-400" : "text-red-400"} />
               )}
               {overallRisk && (
-                <div className="flex flex-col items-center px-3 py-1.5 bg-[#1C2128] rounded-lg border border-border min-w-[60px]">
+                <div className="flex flex-col items-center px-3 py-1.5 bg-accent rounded-lg border border-border min-w-[60px]">
                   <span className={`text-sm font-bold leading-none ${overallRisk === "high" ? "text-red-400" : overallRisk === "medium" ? "text-amber-400" : "text-emerald-400"}`}>
                     {overallRisk.charAt(0).toUpperCase() + overallRisk.slice(1)}
                   </span>
@@ -921,8 +921,8 @@ export default function ClientDetailPage() {
                 </div>
               )}
               {overallOpp && (
-                <div className="flex flex-col items-center px-3 py-1.5 bg-[#1C2128] rounded-lg border border-border min-w-[60px]">
-                  <span className={`text-sm font-bold leading-none ${overallOpp === "high" ? "text-emerald-400" : overallOpp === "medium" ? "text-[#0078D4]" : "text-muted-foreground"}`}>
+                <div className="flex flex-col items-center px-3 py-1.5 bg-accent rounded-lg border border-border min-w-[60px]">
+                  <span className={`text-sm font-bold leading-none ${overallOpp === "high" ? "text-emerald-400" : overallOpp === "medium" ? "text-primary" : "text-muted-foreground"}`}>
                     {overallOpp.charAt(0).toUpperCase() + overallOpp.slice(1)}
                   </span>
                   <span className="text-[10px] text-muted-foreground mt-0.5">Opportunity</span>
@@ -939,49 +939,49 @@ export default function ClientDetailPage() {
         <div className="px-6 pb-4 flex items-center gap-2 flex-wrap border-t border-border pt-3">
           <button
             onClick={() => navigate("/crm/projects")}
-            className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
             New Project
           </button>
           <button
             onClick={() => navigate("/crm/projects")}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-accent transition-colors text-foreground"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
             New Task
           </button>
           <button
             onClick={() => navigate("/email-activity")}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-accent transition-colors text-foreground"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
             Email Client
           </button>
           <button
             onClick={() => navigate(`/crm/reports`)}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-accent transition-colors text-foreground"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             Generate Report
           </button>
           <button
             onClick={() => navigate("/email-activity")}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-accent transition-colors text-foreground"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" /></svg>
             Open Inbox
           </button>
           <button
             onClick={() => void openM365Dialog()}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4]/40 text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             M365 Intelligence
           </button>
           <button
             onClick={() => setShowAppRegDialog(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4]/40 text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-primary/40 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/10 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
             App Registration
@@ -989,9 +989,9 @@ export default function ClientDetailPage() {
           <button
             onClick={() => void handleViewAs()}
             disabled={viewAsLoading}
-            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors text-muted-foreground ml-auto"
+            className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-accent disabled:opacity-50 transition-colors text-muted-foreground ml-auto"
           >
-            {viewAsLoading ? <span className="w-3 h-3 border-2 border-[#484F58] border-t-transparent rounded-full animate-spin" /> : (
+            {viewAsLoading ? <span className="w-3 h-3 border-2 border-muted-foreground/60 border-t-transparent rounded-full animate-spin" /> : (
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             )}
             View as Client
@@ -1000,28 +1000,28 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── M365 Health — front and center ──────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-[#0078D4]/40 rounded-xl overflow-hidden shadow-[0_0_0_1px_rgba(0,120,212,0.12)]">
+      <div className="bg-card border border-primary/40 rounded-xl overflow-hidden shadow-[0_0_0_1px_rgba(0,120,212,0.12)]">
         <button
           onClick={() => setShowM365Health(o => !o)}
-          className="w-full flex items-center justify-between px-5 py-3.5 bg-[#0078D4]/8 hover:bg-[#0078D4]/12 transition-colors"
+          className="w-full flex items-center justify-between px-5 py-3.5 bg-primary/8 hover:bg-primary/12 transition-colors"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
             <div className="text-left">
-              <p className="text-sm font-bold text-[#E6EDF3]">M365 Environment Health</p>
-              <p className="text-[11px] text-[#7D8590]">Score ring · category breakdown · 30-day alerts · trend chart</p>
+              <p className="text-sm font-bold text-foreground">M365 Environment Health</p>
+              <p className="text-[11px] text-muted-foreground">Score ring · category breakdown · 30-day alerts · trend chart</p>
             </div>
           </div>
-          <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showM365Health ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showM365Health ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
         {showM365Health && (
-          <div className="border-t border-[#0078D4]/20 bg-[#0D1117]">
+          <div className="border-t border-primary/20 bg-background">
             <ClientM365HealthTab clientId={clientId} fetchWithAuth={fetchWithAuth} onOpenWizard={() => void openM365Dialog()} />
           </div>
         )}
@@ -1034,8 +1034,8 @@ export default function ClientDetailPage() {
         <div className="space-y-4">
 
           {/* Profile card */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Profile</p>
               {!editingInfo && (
                 <button
@@ -1043,7 +1043,7 @@ export default function ClientDetailPage() {
                     setInfoForm({ name: client.name ?? "", email: client.email, company: client.company ?? "", phone: client.phone ?? "" });
                     setEditingInfo(true);
                   }}
-                  className="text-xs font-semibold text-[#0078D4] hover:underline"
+                  className="text-xs font-semibold text-primary hover:underline"
                 >
                   Edit
                 </button>
@@ -1069,10 +1069,10 @@ export default function ClientDetailPage() {
                   </div>
                 ))}
                 <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={savingInfo} className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
+                  <button type="submit" disabled={savingInfo} className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
                     {savingInfo ? "Saving…" : "Save"}
                   </button>
-                  <button type="button" onClick={() => setEditingInfo(false)} className="border border-border text-xs px-3 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors">Cancel</button>
+                  <button type="button" onClick={() => setEditingInfo(false)} className="border border-border text-xs px-3 py-1.5 rounded-lg hover:bg-accent transition-colors">Cancel</button>
                 </div>
               </form>
             ) : (
@@ -1085,7 +1085,7 @@ export default function ClientDetailPage() {
                 ].map(({ label, value }) => value ? (
                   <div key={label}>
                     <p className={labelCls}>{label}</p>
-                    <p className="text-sm text-[#E6EDF3] break-all">{value}</p>
+                    <p className="text-sm text-foreground break-all">{value}</p>
                   </div>
                 ) : null)}
                 {/* Setup status */}
@@ -1111,7 +1111,7 @@ export default function ClientDetailPage() {
                 {client.sharepointSiteUrl && (
                   <div>
                     <p className={labelCls}>SharePoint Site</p>
-                    <a href={client.sharepointSiteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[#0078D4] hover:underline truncate block">{client.sharepointSiteUrl}</a>
+                    <a href={client.sharepointSiteUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate block">{client.sharepointSiteUrl}</a>
                   </div>
                 )}
               </div>
@@ -1119,8 +1119,8 @@ export default function ClientDetailPage() {
           </div>
 
           {/* 7 M365 Maturity Gauges */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">M365 Maturity Scores</p>
               {quiz && (
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -1152,29 +1152,29 @@ export default function ClientDetailPage() {
           </div>
 
           {/* AI Pain Points callouts */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">AI Pain Point Analysis</p>
             </div>
             <div className="p-4 space-y-3">
               {mostCritical && (
                 <div className="rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2">
                   <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide mb-0.5">⚠ Most Critical</p>
-                  <p className="text-xs font-semibold text-[#E6EDF3]">{catLabels[mostCritical[0]] ?? mostCritical[0]}</p>
+                  <p className="text-xs font-semibold text-foreground">{catLabels[mostCritical[0]] ?? mostCritical[0]}</p>
                   <p className="text-[10px] text-muted-foreground">Score: {mostCritical[1]} — requires immediate attention</p>
                 </div>
               )}
               {fastestWin && (
-                <div className="rounded-lg border border-[#0078D4]/20 bg-[#0078D4]/8 px-3 py-2">
-                  <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wide mb-0.5">⚡ Fastest Win</p>
-                  <p className="text-xs font-semibold text-[#E6EDF3]">{fastestWin.label}</p>
+                <div className="rounded-lg border border-primary/20 bg-primary/8 px-3 py-2">
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wide mb-0.5">⚡ Fastest Win</p>
+                  <p className="text-xs font-semibold text-foreground">{fastestWin.label}</p>
                   <p className="text-[10px] text-muted-foreground">Score: {fastestWin.score} — close to next tier threshold</p>
                 </div>
               )}
               {highestRisk && (
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-2">
                   <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wide mb-0.5">🔴 Highest Risk</p>
-                  <p className="text-xs font-semibold text-[#E6EDF3]">{catLabels[highestRisk[0]] ?? highestRisk[0]}</p>
+                  <p className="text-xs font-semibold text-foreground">{catLabels[highestRisk[0]] ?? highestRisk[0]}</p>
                   <p className="text-[10px] text-muted-foreground">Score: {highestRisk[1]} — below acceptable threshold</p>
                 </div>
               )}
@@ -1199,15 +1199,15 @@ export default function ClientDetailPage() {
         <div className="space-y-4">
 
           {/* Active Projects */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-3.5 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-3.5 bg-accent border-b border-border">
               <div className="flex items-center gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Projects</p>
                 {activeProjects.length > 0 && (
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4]">{activeProjects.length}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary">{activeProjects.length}</span>
                 )}
               </div>
-              <button onClick={() => navigate("/crm/projects")} className="text-xs font-semibold text-muted-foreground hover:text-[#0078D4] transition-colors">
+              <button onClick={() => navigate("/crm/projects")} className="text-xs font-semibold text-muted-foreground hover:text-primary transition-colors">
                 All Projects →
               </button>
             </div>
@@ -1215,16 +1215,16 @@ export default function ClientDetailPage() {
             {activeProjects.length === 0 ? (
               <div className="p-5 text-center">
                 <p className="text-sm text-muted-foreground">No active projects.</p>
-                <button onClick={() => navigate("/crm/projects")} className="mt-2 text-xs font-semibold text-[#0078D4] hover:underline">Create a project →</button>
+                <button onClick={() => navigate("/crm/projects")} className="mt-2 text-xs font-semibold text-primary hover:underline">Create a project →</button>
               </div>
             ) : (
               <div className="divide-y divide-border">
                 {activeProjects.map(p => (
-                  <div key={p.id} className="px-5 py-3.5 hover:bg-[#1C2128] transition-colors group">
+                  <div key={p.id} className="px-5 py-3.5 hover:bg-accent transition-colors group">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="font-semibold text-[#E6EDF3] text-sm group-hover:text-[#0078D4] transition-colors leading-tight text-left">
+                          <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="font-semibold text-foreground text-sm group-hover:text-primary transition-colors leading-tight text-left">
                             {p.title}
                           </button>
                           <StatusBadge status={p.status} />
@@ -1235,19 +1235,19 @@ export default function ClientDetailPage() {
                         {p.phase && <p className="text-xs text-muted-foreground mb-1.5">{p.phase}</p>}
                         {p.progress > 0 && (
                           <div className="flex items-center gap-2 mb-1.5">
-                            <div className="flex-1 h-1.5 bg-[#30363D] rounded-full overflow-hidden max-w-[160px]">
-                              <div className={`h-full rounded-full ${p.progress >= 100 ? "bg-emerald-500" : "bg-[#0078D4]"}`} style={{ width: `${Math.min(100, p.progress)}%` }} />
+                            <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden max-w-[160px]">
+                              <div className={`h-full rounded-full ${p.progress >= 100 ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${Math.min(100, p.progress)}%` }} />
                             </div>
                             <span className="text-[10px] text-muted-foreground">{p.progress}%</span>
                           </div>
                         )}
                         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                          {p.taskCounts.open > 0 && <span><span className="font-semibold text-[#E6EDF3]">{p.taskCounts.open}</span> open task{p.taskCounts.open !== 1 ? "s" : ""}</span>}
+                          {p.taskCounts.open > 0 && <span><span className="font-semibold text-foreground">{p.taskCounts.open}</span> open task{p.taskCounts.open !== 1 ? "s" : ""}</span>}
                           {p.endDate && <span>Due {new Date(p.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
                           <span>Updated {timeAgo(p.updatedAt)}</span>
                         </div>
                       </div>
-                      <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="opacity-0 group-hover:opacity-100 text-[10px] font-semibold text-[#0078D4] hover:underline flex-shrink-0 transition-opacity">
+                      <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="opacity-0 group-hover:opacity-100 text-[10px] font-semibold text-primary hover:underline flex-shrink-0 transition-opacity">
                         Open →
                       </button>
                     </div>
@@ -1259,21 +1259,21 @@ export default function ClientDetailPage() {
 
           {/* Past Projects */}
           {pastProjects.length > 0 && (
-            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-3.5 bg-[#1C2128] border-b border-border">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 bg-accent border-b border-border">
                 <div className="flex items-center gap-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Past Projects</p>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590]">{pastProjects.length}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-border text-muted-foreground">{pastProjects.length}</span>
                 </div>
               </div>
               <div className="divide-y divide-border">
                 {pastProjects.slice(0, 5).map(p => (
-                  <div key={p.id} className="px-5 py-3 hover:bg-[#1C2128] transition-colors group flex items-center justify-between gap-3">
+                  <div key={p.id} className="px-5 py-3 hover:bg-accent transition-colors group flex items-center justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-muted-foreground truncate">{p.title}</p>
                       <p className="text-[10px] text-muted-foreground">Completed · {p.progress}%</p>
                     </div>
-                    <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="opacity-0 group-hover:opacity-100 text-[10px] text-[#0078D4] hover:underline flex-shrink-0 transition-opacity">
+                    <button onClick={() => navigate(`/crm/projects/${p.id}`)} className="opacity-0 group-hover:opacity-100 text-[10px] text-primary hover:underline flex-shrink-0 transition-opacity">
                       View →
                     </button>
                   </div>
@@ -1284,25 +1284,25 @@ export default function ClientDetailPage() {
 
           {/* AI Recommended Projects */}
           {aiRecommended.length > 0 && (
-            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-              <div className="px-5 py-3.5 bg-[#1C2128] border-b border-border flex items-center gap-2">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3.5 bg-accent border-b border-border flex items-center gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">AI Recommended Projects</p>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">Preview</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">Preview</span>
               </div>
               <div className="divide-y divide-border">
                 {aiRecommended.map((rec, i) => (
-                  <div key={i} className="px-5 py-3.5 hover:bg-[#1C2128] transition-colors">
+                  <div key={i} className="px-5 py-3.5 hover:bg-accent transition-colors">
                     <div className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                        <span className="material-symbols-outlined text-sm text-[#0078D4]" style={{ fontVariationSettings: "'FILL' 0" }}>{rec.icon}</span>
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 0" }}>{rec.icon}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#E6EDF3]">{rec.title}</p>
+                        <p className="text-sm font-semibold text-foreground">{rec.title}</p>
                         <p className="text-xs text-muted-foreground mt-0.5">{rec.reason}</p>
                       </div>
                       <button
                         onClick={() => toast({ title: "AI Recommendation", description: `Create a project: ${rec.title}` })}
-                        className="text-[10px] font-semibold text-[#0078D4] hover:underline flex-shrink-0"
+                        className="text-[10px] font-semibold text-primary hover:underline flex-shrink-0"
                       >
                         Create →
                       </button>
@@ -1318,10 +1318,10 @@ export default function ClientDetailPage() {
         <div className="space-y-4">
 
           {/* Kanban Bucket Preview */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Kanban Preview</p>
-              <button onClick={() => navigate("/crm/projects")} className="text-[10px] text-muted-foreground hover:text-[#0078D4] transition-colors">View Board →</button>
+              <button onClick={() => navigate("/crm/projects")} className="text-[10px] text-muted-foreground hover:text-primary transition-colors">View Board →</button>
             </div>
             <div className="divide-y divide-border">
               {/* Overdue */}
@@ -1336,7 +1336,7 @@ export default function ClientDetailPage() {
                       <div key={t.id} className="flex items-start gap-2">
                         <PriorityDot priority={t.priority} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium text-[#E6EDF3] truncate">{t.title}</p>
+                          <p className="text-[10px] font-medium text-foreground truncate">{t.title}</p>
                           <p className="text-[10px] text-red-400">Due {t.dueDate ? new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—"}</p>
                         </div>
                       </div>
@@ -1356,7 +1356,7 @@ export default function ClientDetailPage() {
                     {kbDueToday.slice(0, 3).map(t => (
                       <div key={t.id} className="flex items-start gap-2">
                         <PriorityDot priority={t.priority} />
-                        <p className="text-[10px] font-medium text-[#E6EDF3] truncate flex-1">{t.title}</p>
+                        <p className="text-[10px] font-medium text-foreground truncate flex-1">{t.title}</p>
                       </div>
                     ))}
                   </div>
@@ -1366,8 +1366,8 @@ export default function ClientDetailPage() {
               {/* Upcoming */}
               <div className="px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2 h-2 rounded-full bg-[#0078D4] flex-shrink-0" />
-                  <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wide">Upcoming · {kbUpcoming.length}</p>
+                  <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
+                  <p className="text-[10px] font-bold text-primary uppercase tracking-wide">Upcoming · {kbUpcoming.length}</p>
                 </div>
                 {kbUpcoming.length === 0 ? (
                   <p className="text-[10px] text-muted-foreground">No upcoming tasks.</p>
@@ -1377,7 +1377,7 @@ export default function ClientDetailPage() {
                       <div key={t.id} className="flex items-start gap-2">
                         <PriorityDot priority={t.priority} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium text-[#E6EDF3] truncate">{t.title}</p>
+                          <p className="text-[10px] font-medium text-foreground truncate">{t.title}</p>
                           <TaskColumnBadge column={t.column} />
                         </div>
                       </div>
@@ -1413,18 +1413,18 @@ export default function ClientDetailPage() {
                 </div>
               )}
             </div>
-            <div className="px-4 py-2.5 border-t border-border bg-[#1C2128]/50">
-              <button onClick={() => navigate("/crm/projects")} className="text-[10px] font-semibold text-[#0078D4] hover:underline">
+            <div className="px-4 py-2.5 border-t border-border bg-accent/50">
+              <button onClick={() => navigate("/crm/projects")} className="text-[10px] font-semibold text-primary hover:underline">
                 + Add Task
               </button>
             </div>
           </div>
 
           {/* Inbox Pane */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Inbox</p>
-              <button onClick={() => navigate("/email-activity")} className="text-[10px] text-muted-foreground hover:text-[#0078D4] transition-colors">All →</button>
+              <button onClick={() => navigate("/email-activity")} className="text-[10px] text-muted-foreground hover:text-primary transition-colors">All →</button>
             </div>
             {recentEmails.length === 0 ? (
               <div className="p-4 text-center">
@@ -1433,8 +1433,8 @@ export default function ClientDetailPage() {
             ) : (
               <div className="divide-y divide-border">
                 {recentEmails.slice(0, 4).map(e => (
-                  <div key={e.id} className="px-4 py-3 hover:bg-[#1C2128] transition-colors">
-                    <p className="text-xs font-medium text-[#E6EDF3] truncate leading-tight">{e.subject ?? "(no subject)"}</p>
+                  <div key={e.id} className="px-4 py-3 hover:bg-accent transition-colors">
+                    <p className="text-xs font-medium text-foreground truncate leading-tight">{e.subject ?? "(no subject)"}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">{timeAgo(e.receivedAt)}</p>
                     {e.bodyPreview && <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{e.bodyPreview}</p>}
                     {/* Quick actions */}
@@ -1445,7 +1445,7 @@ export default function ClientDetailPage() {
                         { label: "Extract", action: () => toast({ title: "Extract Tasks (Preview)", description: "AI extraction coming soon." }) },
                         { label: "Opportunity", action: () => toast({ title: "Create Opportunity (Preview)", description: "Opportunity tracking coming soon." }) },
                       ].map(({ label, action }) => (
-                        <button key={label} onClick={action} className="text-[10px] font-semibold text-muted-foreground hover:text-[#0078D4] transition-colors">
+                        <button key={label} onClick={action} className="text-[10px] font-semibold text-muted-foreground hover:text-primary transition-colors">
                           {label}
                         </button>
                       ))}
@@ -1457,8 +1457,8 @@ export default function ClientDetailPage() {
           </div>
 
           {/* Activity Feed */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-4 py-3 bg-[#1C2128] border-b border-border">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Activity Feed</p>
             </div>
             {activityFeed.length === 0 ? (
@@ -1467,7 +1467,7 @@ export default function ClientDetailPage() {
               <div className="divide-y divide-border max-h-[280px] overflow-y-auto">
                 {activityFeed.map((item, i) => {
                   const iconEl = item.type === "email"
-                    ? <svg className="w-3 h-3 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    ? <svg className="w-3 h-3 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                     : item.type === "task"
                       ? <svg className="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                       : <svg className="w-3 h-3 text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>;
@@ -1475,7 +1475,7 @@ export default function ClientDetailPage() {
                     <div key={`${item.type}-${item.id}-${i}`} className="px-4 py-2.5 flex items-start gap-2">
                       <div className="mt-0.5">{iconEl}</div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-medium text-[#E6EDF3] truncate">{item.title}</p>
+                        <p className="text-[10px] font-medium text-foreground truncate">{item.title}</p>
                         <p className="text-[10px] text-muted-foreground">{item.sub} · {timeAgo(item.ts)}</p>
                       </div>
                     </div>
@@ -1486,10 +1486,10 @@ export default function ClientDetailPage() {
           </div>
 
           {/* ── Script Callback Tokens ─────────────────────────────────────────── */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => { setShowCallbackTokens(s => { if (!s) void loadCallbackTokens(); return !s; }); }}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent transition-colors text-left"
             >
               <div className="flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1508,7 +1508,7 @@ export default function ClientDetailPage() {
             {showCallbackTokens && (
               <div className="border-t border-border px-4 py-3 space-y-2.5">
                 <p className="text-[10px] text-muted-foreground">
-                  Embedded in downloaded <code className="font-mono bg-[#1C2128] px-1 py-0.5 rounded">.ps1</code> scripts so results auto-POST back to the portal. One active token per task — re-downloading rotates it.
+                  Embedded in downloaded <code className="font-mono bg-accent px-1 py-0.5 rounded">.ps1</code> scripts so results auto-POST back to the portal. One active token per task — re-downloading rotates it.
                 </p>
 
                 {tokensLoading ? (
@@ -1524,22 +1524,22 @@ export default function ClientDetailPage() {
                   <div className="space-y-1.5">
                     {callbackTokens.map(token => (
                       <div key={token.id} className={`flex items-start justify-between gap-2 rounded-lg px-3 py-2 border ${
-                        token.status === "active" ? "bg-[#1C2128] border-teal-500/20" : "bg-[#161B22] border-[#21262D] opacity-60"
+                        token.status === "active" ? "bg-accent border-teal-500/20" : "bg-card border-accent opacity-60"
                       }`}>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[10px] font-semibold text-[#E6EDF3] truncate">{token.label || "Script"}</span>
+                            <span className="text-[10px] font-semibold text-foreground truncate">{token.label || "Script"}</span>
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
                               token.status === "active"
                                 ? "bg-teal-500/10 text-teal-400 border-teal-500/20"
-                                : "bg-[#30363D] text-[#484F58] border-[#30363D]"
+                                : "bg-border text-muted-foreground/60 border-border"
                             }`}>
                               {token.status === "active" ? "Active" : "Revoked"}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {token.projectTitle && (
-                              <span className="text-[9px] text-[#0078D4]">📁 {token.projectTitle}</span>
+                              <span className="text-[9px] text-primary">📁 {token.projectTitle}</span>
                             )}
                             <span className="text-[9px] text-muted-foreground">
                               {new Date(token.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -1547,7 +1547,7 @@ export default function ClientDetailPage() {
                             {token.lastUsedAt ? (
                               <span className="text-[9px] text-green-400">✓ Used {new Date(token.lastUsedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
                             ) : (
-                              <span className="text-[9px] text-[#484F58]">Never used</span>
+                              <span className="text-[9px] text-muted-foreground/60">Never used</span>
                             )}
                           </div>
                         </div>
@@ -1568,7 +1568,7 @@ export default function ClientDetailPage() {
                 {callbackTokens.length > 0 && (
                   <button
                     onClick={() => void loadCallbackTokens()}
-                    className="text-[9px] text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                    className="text-[9px] text-muted-foreground hover:text-foreground transition-colors"
                   >
                     ↻ Refresh
                   </button>
@@ -1580,15 +1580,15 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Document Hub Section ─────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => { setShowDocuments(s => { if (!s) void loadDocuments(); return !s; }); }}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-[#E6EDF3]">Document Hub</p>
+            <p className="text-sm font-bold text-foreground">Document Hub</p>
             {clientDocuments.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">
                 {clientDocuments.length} doc{clientDocuments.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -1608,8 +1608,8 @@ export default function ClientDetailPage() {
                     onClick={() => setDocsCategory(cat)}
                     className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
                       docsCategory === cat
-                        ? "bg-[#0078D4]/20 text-[#0078D4]"
-                        : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#30363D]"
+                        ? "bg-primary/20 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-border"
                     }`}
                   >
                     {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -1629,7 +1629,7 @@ export default function ClientDetailPage() {
                 <button
                   key={action.label}
                   onClick={() => toast({ title: action.label, description: "AI document actions coming soon." })}
-                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-[#0078D4]/20 bg-[#0078D4]/10 text-[#0078D4] hover:bg-[#0078D4]/20 px-2.5 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-primary/20 bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors"
                 >
                   <span>{action.icon}</span>
                   {action.label}
@@ -1647,16 +1647,16 @@ export default function ClientDetailPage() {
                 clientDocuments
                   .filter(d => docsCategory === "all" || d.category === docsCategory)
                   .map(doc => (
-                    <div key={doc.id} className="flex items-start justify-between gap-3 bg-[#1C2128] rounded-lg px-3 py-2.5">
+                    <div key={doc.id} className="flex items-start justify-between gap-3 bg-accent rounded-lg px-3 py-2.5">
                       <div className="flex items-start gap-2 min-w-0">
-                        <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <svg className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-[#E6EDF3] truncate">{doc.name}</p>
+                          <p className="text-xs font-semibold text-foreground truncate">{doc.name}</p>
                           {doc.description && <p className="text-[10px] text-muted-foreground">{doc.description}</p>}
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[9px] font-bold uppercase text-[#0078D4]">{doc.category}</span>
+                            <span className="text-[9px] font-bold uppercase text-primary">{doc.category}</span>
                             <span className="text-[9px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString()}</span>
                           </div>
                         </div>
@@ -1664,20 +1664,20 @@ export default function ClientDetailPage() {
                       <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
                         <button
                           onClick={() => toast({ title: "Summarize", description: "AI document summary coming soon." })}
-                          className="text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-1.5 py-0.5 rounded transition-colors"
+                          className="text-[9px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-1.5 py-0.5 rounded transition-colors"
                           title="Summarize document"
                         >
                           Summarize
                         </button>
                         <button
                           onClick={() => toast({ title: "Extract Risks", description: "AI risk extraction coming soon." })}
-                          className="text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-1.5 py-0.5 rounded transition-colors"
+                          className="text-[9px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-1.5 py-0.5 rounded transition-colors"
                           title="Extract risks from document"
                         >
                           Risks
                         </button>
                         {doc.fileUrl && (
-                          <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0078D4] hover:underline">View</a>
+                          <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-primary hover:underline">View</a>
                         )}
                         <button
                           onClick={async () => {
@@ -1697,7 +1697,7 @@ export default function ClientDetailPage() {
             {/* Add Document */}
             {docFormOpen ? (
               <div className="border-t border-border px-4 py-4">
-                <p className="text-xs font-bold text-[#E6EDF3] mb-3">Add Document</p>
+                <p className="text-xs font-bold text-foreground mb-3">Add Document</p>
                 <form
                   onSubmit={async e => {
                     e.preventDefault();
@@ -1725,13 +1725,13 @@ export default function ClientDetailPage() {
                     placeholder="Document name"
                     value={docForm.name}
                     onChange={e => setDocForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <select
                       value={docForm.category}
                       onChange={e => setDocForm(f => ({ ...f, category: e.target.value }))}
-                      className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     >
                       {["contracts", "reports", "proposals", "deliverables", "assessments", "misc"].map(c => (
                         <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
@@ -1741,18 +1741,18 @@ export default function ClientDetailPage() {
                       placeholder="URL (optional)"
                       value={docForm.fileUrl}
                       onChange={e => setDocForm(f => ({ ...f, fileUrl: e.target.value }))}
-                      className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
                   <input
                     placeholder="Description (optional)"
                     value={docForm.description}
                     onChange={e => setDocForm(f => ({ ...f, description: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <div className="flex gap-2 justify-end">
-                    <button type="button" onClick={() => setDocFormOpen(false)} className="text-xs text-muted-foreground hover:text-[#E6EDF3] px-3 py-1.5">Cancel</button>
-                    <button type="submit" disabled={savingDoc} className="text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors">
+                    <button type="button" onClick={() => setDocFormOpen(false)} className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5">Cancel</button>
+                    <button type="submit" disabled={savingDoc} className="text-xs font-semibold text-white bg-primary hover:bg-primary/90 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors">
                       {savingDoc ? "Saving…" : "Save Document"}
                     </button>
                   </div>
@@ -1762,7 +1762,7 @@ export default function ClientDetailPage() {
               <div className="border-t border-border px-4 py-3">
                 <button
                   onClick={() => setDocFormOpen(true)}
-                  className="flex items-center gap-2 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+                  className="flex items-center gap-2 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -1776,15 +1776,15 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Status Reports Section ───────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => { setShowReports(s => { if (!s) void loadStatusReports(); return !s; }); }}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-[#E6EDF3]">Status Reports</p>
+            <p className="text-sm font-bold text-foreground">Status Reports</p>
             {statusReports.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">
                 {statusReports.length} report{statusReports.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -1808,7 +1808,7 @@ export default function ClientDetailPage() {
                 <button
                   key={action.label}
                   onClick={() => toast({ title: action.label, description: "AI report actions coming soon." })}
-                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-[#0078D4]/20 bg-[#0078D4]/10 text-[#0078D4] hover:bg-[#0078D4]/20 px-2.5 py-1 rounded-lg transition-colors"
+                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-primary/20 bg-primary/10 text-primary hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors"
                 >
                   <span>{action.icon}</span>
                   {action.label}
@@ -1816,7 +1816,7 @@ export default function ClientDetailPage() {
               ))}
               <button
                 onClick={() => navigate(`/crm/status-reports?client=${clientId}`)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors ml-auto"
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors ml-auto"
               >
                 View all in Reports →
               </button>
@@ -1830,7 +1830,7 @@ export default function ClientDetailPage() {
                 <p className="text-xs text-muted-foreground">No status reports yet for this client.</p>
                 <button
                   onClick={() => navigate("/crm/status-reports")}
-                  className="mt-2 text-xs font-semibold text-[#0078D4] hover:underline"
+                  className="mt-2 text-xs font-semibold text-primary hover:underline"
                 >
                   Create first report →
                 </button>
@@ -1839,7 +1839,7 @@ export default function ClientDetailPage() {
               <div className="px-4 pb-4 space-y-2">
                 {statusReports.map(report => {
                   const clientStatusCls: Record<string, string> = {
-                    pending: "text-[#7D8590] bg-[#30363D] border-[#30363D]",
+                    pending: "text-muted-foreground bg-border border-border",
                     accepted: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
                     has_questions: "text-amber-400 bg-amber-500/10 border-amber-500/20",
                   };
@@ -1857,17 +1857,17 @@ export default function ClientDetailPage() {
                     ? new Date(report.sentAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                     : new Date(report.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
                   return (
-                    <div key={report.id} className="bg-[#1C2128] rounded-lg overflow-hidden border border-border">
+                    <div key={report.id} className="bg-accent rounded-lg overflow-hidden border border-border">
                       <button
                         onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#30363D]/40 transition-colors"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-border/40 transition-colors"
                       >
-                        <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs font-semibold text-[#E6EDF3] truncate">{report.title}</p>
+                            <p className="text-xs font-semibold text-foreground truncate">{report.title}</p>
                             <span className="text-[9px] font-bold uppercase text-muted-foreground">{periodLabel[report.period] ?? report.period}</span>
                           </div>
                           <p className="text-[10px] text-muted-foreground">{dateStr}</p>
@@ -1879,7 +1879,7 @@ export default function ClientDetailPage() {
                             </span>
                           )}
                           {report.reportStatus === "draft" && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-[#30363D] text-[#7D8590]">Draft</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-border text-muted-foreground">Draft</span>
                           )}
                           <svg className={`w-3 h-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -1891,31 +1891,31 @@ export default function ClientDetailPage() {
                           {report.executiveSummary && (
                             <div>
                               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Executive Summary</p>
-                              <p className="text-xs text-[#E6EDF3]/80 leading-relaxed line-clamp-4">{report.executiveSummary}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed line-clamp-4">{report.executiveSummary}</p>
                             </div>
                           )}
                           {report.keyOutcomes && (
                             <div>
                               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Key Outcomes</p>
-                              <p className="text-xs text-[#E6EDF3]/80 leading-relaxed line-clamp-3">{report.keyOutcomes}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">{report.keyOutcomes}</p>
                             </div>
                           )}
                           <div className="flex gap-2 pt-1 flex-wrap">
                             <button
                               onClick={() => toast({ title: "AI Summary", description: "AI report summary coming soon." })}
-                              className="text-[10px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-2 py-1 rounded-lg transition-colors"
+                              className="text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-2 py-1 rounded-lg transition-colors"
                             >
                               AI Summary
                             </button>
                             <button
                               onClick={() => toast({ title: "Extract Action Items", description: "Action item extraction coming soon." })}
-                              className="text-[10px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-2 py-1 rounded-lg transition-colors"
+                              className="text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 px-2 py-1 rounded-lg transition-colors"
                             >
                               Extract Action Items
                             </button>
                             <button
                               onClick={() => navigate(`/crm/status-reports?id=${report.id}`)}
-                              className="text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                              className="text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
                             >
                               Open Full Report →
                             </button>
@@ -1932,15 +1932,15 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Invoices Section ─────────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => { setShowInvoices(s => { if (!s) void loadClientInvoices(); return !s; }); }}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-[#E6EDF3]">Invoices</p>
+            <p className="text-sm font-bold text-foreground">Invoices</p>
             {clientInvoices.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">
                 {clientInvoices.length}
               </span>
             )}
@@ -1958,7 +1958,7 @@ export default function ClientDetailPage() {
             <div className="px-4 pt-3 pb-2 flex gap-2 flex-wrap">
               <button
                 onClick={() => navigate(`/crm/invoices?client=${clientId}`)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors ml-auto"
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-foreground transition-colors ml-auto"
               >
                 View all invoices →
               </button>
@@ -1970,7 +1970,7 @@ export default function ClientDetailPage() {
                 <p className="text-xs text-muted-foreground">No invoices for this client yet.</p>
                 <button
                   onClick={() => navigate("/crm/invoices")}
-                  className="mt-2 text-xs font-semibold text-[#0078D4] hover:underline"
+                  className="mt-2 text-xs font-semibold text-primary hover:underline"
                 >
                   Create invoice →
                 </button>
@@ -1982,19 +1982,19 @@ export default function ClientDetailPage() {
                     paid: "bg-emerald-500/15 text-emerald-400",
                     due: "bg-amber-500/15 text-amber-400",
                     overdue: "bg-red-500/15 text-red-400",
-                    draft: "bg-[#30363D]/50 text-[#7D8590]",
+                    draft: "bg-border/50 text-muted-foreground",
                   };
-                  const typeCls = inv.invoiceType === "retainer" ? "text-purple-400" : "text-[#0078D4]";
+                  const typeCls = inv.invoiceType === "retainer" ? "text-purple-400" : "text-primary";
                   const fmtAmt = (a: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: (inv.currency ?? "usd").toUpperCase() }).format(parseFloat(a));
                   return (
                     <div
                       key={inv.id}
                       onClick={() => navigate(`/crm/invoices/${inv.id}`)}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer"
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-accent transition-colors cursor-pointer"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-[#E6EDF3]">{inv.invoiceNumber}</p>
+                          <p className="text-sm font-semibold text-foreground">{inv.invoiceNumber}</p>
                           <span className={`text-[10px] font-bold ${typeCls}`}>{inv.invoiceType === "retainer" ? "Retainer" : "Instant"}</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -2002,8 +2002,8 @@ export default function ClientDetailPage() {
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-sm font-bold text-[#E6EDF3]">{fmtAmt(inv.amount)}</p>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusCls[inv.status] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                        <p className="text-sm font-bold text-foreground">{fmtAmt(inv.amount)}</p>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusCls[inv.status] ?? "bg-border/50 text-muted-foreground"}`}>
                           {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                         </span>
                       </div>
@@ -2018,13 +2018,13 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Assessments Section ──────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => setShowAssessments(s => !s)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-[#E6EDF3]">Assessments</p>
+            <p className="text-sm font-bold text-foreground">Assessments</p>
             {quizzes.length > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{quizzes.length} completed</span>}
           </div>
           <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showAssessments ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -2048,10 +2048,10 @@ export default function ClientDetailPage() {
                   return (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       {/* Score card */}
-                      <div className="bg-[#1C2128] border border-border rounded-xl p-5">
+                      <div className="bg-accent border border-border rounded-xl p-5">
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            <p className="text-sm font-bold text-[#E6EDF3]">{quizLabel}</p>
+                            <p className="text-sm font-bold text-foreground">{quizLabel}</p>
                             <p className="text-[10px] text-muted-foreground mt-0.5">Completed {new Date(q.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
                           </div>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -2062,7 +2062,7 @@ export default function ClientDetailPage() {
                         </div>
 
                         <div className="flex items-center gap-3 mb-4">
-                          <div className="text-3xl font-black text-[#E6EDF3]">{q.totalScore}</div>
+                          <div className="text-3xl font-black text-foreground">{q.totalScore}</div>
                           <div>
                             <p className="text-xs text-muted-foreground">Overall Score</p>
                             <p className="text-xs text-muted-foreground">out of 100</p>
@@ -2079,9 +2079,9 @@ export default function ClientDetailPage() {
                                 <div key={key}>
                                   <div className="flex justify-between text-[10px] mb-0.5">
                                     <span className="text-muted-foreground">{catLabels[key] ?? key}</span>
-                                    <span className="font-bold text-[#E6EDF3]">{pct}</span>
+                                    <span className="font-bold text-foreground">{pct}</span>
                                   </div>
-                                  <div className="h-1 bg-[#30363D] rounded-full overflow-hidden">
+                                  <div className="h-1 bg-border rounded-full overflow-hidden">
                                     <div className={`h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
                                   </div>
                                 </div>
@@ -2093,16 +2093,16 @@ export default function ClientDetailPage() {
                         <div className="mb-4">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommended Actions</p>
                           <ul className="space-y-1">
-                            {q.totalScore < 40 && <li className="text-xs text-[#E6EDF3]">• Establish baseline M365 governance policies</li>}
-                            {q.totalScore < 60 && <li className="text-xs text-[#E6EDF3]">• Enroll users in Copilot readiness training</li>}
-                            {q.totalScore < 80 && <li className="text-xs text-[#E6EDF3]">• Conduct a data classification review</li>}
-                            <li className="text-xs text-[#E6EDF3]">• Schedule a quarterly maturity review</li>
+                            {q.totalScore < 40 && <li className="text-xs text-foreground">• Establish baseline M365 governance policies</li>}
+                            {q.totalScore < 60 && <li className="text-xs text-foreground">• Enroll users in Copilot readiness training</li>}
+                            {q.totalScore < 80 && <li className="text-xs text-foreground">• Conduct a data classification review</li>}
+                            <li className="text-xs text-foreground">• Schedule a quarterly maturity review</li>
                           </ul>
                         </div>
 
                         <button
                           onClick={() => navigate("/m365-scripts")}
-                          className="flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+                          className="flex items-center gap-2 text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                           Trigger Workflow
@@ -2110,9 +2110,9 @@ export default function ClientDetailPage() {
                       </div>
 
                       {/* Summary + profile card */}
-                      <div className="bg-[#1C2128] border border-border rounded-xl p-5 space-y-4">
-                        <p className="text-sm font-bold text-[#E6EDF3]">Assessment Summary</p>
-                        <div className="text-xs text-[#E6EDF3]/80 leading-relaxed space-y-2">
+                      <div className="bg-accent border border-border rounded-xl p-5 space-y-4">
+                        <p className="text-sm font-bold text-foreground">Assessment Summary</p>
+                        <div className="text-xs text-foreground/80 leading-relaxed space-y-2">
                           <p>
                             {q.tier === "Expert"
                               ? "This client has excellent M365 maturity across key pillars. Focus on advanced Copilot scenarios and expanding AI governance practices."
@@ -2138,7 +2138,7 @@ export default function ClientDetailPage() {
                           ].filter(({ value }) => value).map(({ label, value }) => (
                             <div key={label} className="flex justify-between text-[10px]">
                               <span className="text-muted-foreground">{label}</span>
-                              <span className="text-[#E6EDF3] font-medium max-w-[140px] text-right truncate">{value}</span>
+                              <span className="text-foreground font-medium max-w-[140px] text-right truncate">{value}</span>
                             </div>
                           ))}
                         </div>
@@ -2149,7 +2149,7 @@ export default function ClientDetailPage() {
 
                 {/* Score History chart — one line per category, ≥2 assessments */}
                 {quizzes.length >= 2 && (() => {
-                  const CHART_COLORS = ["#0078D4", "#00B4D8", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+                  const CHART_COLORS = ["#2F6FED", "#00B4D8", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
                   const chronoQuizzes = [...quizzes].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
                   const allCatKeys = Array.from(new Set(chronoQuizzes.flatMap(q => Object.keys((q.categoryScores ?? {}) as Record<string, number>))));
                   const chartData = chronoQuizzes.map(q => {
@@ -2161,16 +2161,16 @@ export default function ClientDetailPage() {
                     return entry;
                   });
                   return (
-                    <div className="bg-[#1C2128] border border-border rounded-xl p-5">
+                    <div className="bg-accent border border-border rounded-xl p-5">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">Score History</p>
                       <ResponsiveContainer width="100%" height={200}>
                         <LineChart data={chartData} margin={{ top: 4, right: 16, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
-                          <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
-                          <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#232A36" />
+                          <XAxis dataKey="date" tick={{ fill: "#8B94A3", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[0, 100]} tick={{ fill: "#8B94A3", fontSize: 10 }} axisLine={false} tickLine={false} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#1C2128", border: "1px solid #30363D", borderRadius: "8px", fontSize: 12, color: "#E6EDF3" }}
-                            cursor={{ stroke: "#30363D" }}
+                            contentStyle={{ backgroundColor: "#171C26", border: "1px solid #232A36", borderRadius: "8px", fontSize: 12, color: "#E6EDF3" }}
+                            cursor={{ stroke: "#232A36" }}
                             formatter={(value, name) => [value, catLabels[name as string] ?? name]}
                           />
                           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} formatter={(value) => catLabels[value] ?? value} />
@@ -2194,36 +2194,36 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── AI Insights (preview) ────────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => setShowAiInsights(s => !s)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div className="flex items-center gap-3">
-            <p className="text-sm font-bold text-[#E6EDF3]">AI Insights</p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">Preview</span>
+            <p className="text-sm font-bold text-foreground">AI Insights</p>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/15 text-primary border border-primary/20">Preview</span>
           </div>
           <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showAiInsights ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
         </button>
 
         {showAiInsights && (
           <div className="border-t border-border">
-            <div className="px-5 py-3 bg-[#0078D4]/5 border-b border-border">
-              <p className="text-xs text-[#7D8590]">
+            <div className="px-5 py-3 bg-primary/5 border-b border-border">
+              <p className="text-xs text-muted-foreground">
                 AI Insights are computed from assessment scores, project data, and email activity. Connect a live AI backend to replace stubs with real-time analysis.
               </p>
             </div>
             <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Client Health Summary */}
-              <div className="bg-[#1C2128] border border-border rounded-xl p-4">
+              <div className="bg-accent border border-border rounded-xl p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Client Health Summary</p>
                 {aiInsights.map((insight, i) => (
                   <div key={i} className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 mb-2 last:mb-0 ${
                     insight.type === "opportunity" ? "bg-emerald-500/8 border-emerald-500/20" :
-                    insight.type === "risk" ? "bg-red-500/8 border-red-500/20" : "bg-[#0078D4]/8 border-[#0078D4]/20"
+                    insight.type === "risk" ? "bg-red-500/8 border-red-500/20" : "bg-primary/8 border-primary/20"
                   }`}>
                     <div>
-                      <p className={`text-[10px] font-bold ${insight.type === "opportunity" ? "text-emerald-400" : insight.type === "risk" ? "text-red-400" : "text-[#0078D4]"}`}>{insight.title}</p>
+                      <p className={`text-[10px] font-bold ${insight.type === "opportunity" ? "text-emerald-400" : insight.type === "risk" ? "text-red-400" : "text-primary"}`}>{insight.title}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{insight.body}</p>
                     </div>
                   </div>
@@ -2231,19 +2231,19 @@ export default function ClientDetailPage() {
               </div>
 
               {/* Top Risks */}
-              <div className="bg-[#1C2128] border border-border rounded-xl p-4">
+              <div className="bg-accent border border-border rounded-xl p-4">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Top Risks</p>
                 <div className="space-y-2">
                   {quiz && sortedCats.slice(0, 3).map(([key, val]) => (
                     <div key={key} className="flex items-center justify-between text-xs">
-                      <span className="text-[#E6EDF3]">{catLabels[key] ?? key}</span>
+                      <span className="text-foreground">{catLabels[key] ?? key}</span>
                       <span className={`font-bold tabular-nums ${val < 40 ? "text-red-400" : val < 70 ? "text-amber-400" : "text-emerald-400"}`}>{val}</span>
                     </div>
                   ))}
                   {!quiz && <p className="text-xs text-muted-foreground">Run an assessment to see risks.</p>}
                   {kbOverdue.length > 0 && (
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-border">
-                      <span className="text-[#E6EDF3]">Overdue tasks</span>
+                      <span className="text-foreground">Overdue tasks</span>
                       <span className="font-bold text-red-400">{kbOverdue.length}</span>
                     </div>
                   )}
@@ -2251,12 +2251,12 @@ export default function ClientDetailPage() {
               </div>
 
               {/* Top Opportunities + Next Best Actions + Email Intelligence */}
-              <div className="bg-[#1C2128] border border-border rounded-xl p-4 space-y-3">
+              <div className="bg-accent border border-border rounded-xl p-4 space-y-3">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Top Opportunities</p>
                   <div className="space-y-1.5">
                     {aiRecommended.map((r, i) => (
-                      <div key={i} className="text-xs text-[#E6EDF3] flex items-start gap-1.5">
+                      <div key={i} className="text-xs text-foreground flex items-start gap-1.5">
                         <span className="text-emerald-400 flex-shrink-0">↑</span>
                         {r.title}
                       </div>
@@ -2279,13 +2279,13 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Workspace & Credentials (expandable) ────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <button
           onClick={() => setShowSettings(s => !s)}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-accent transition-colors text-left"
         >
           <div>
-            <p className="text-sm font-bold text-[#E6EDF3]">Workspace & Credentials</p>
+            <p className="text-sm font-bold text-foreground">Workspace & Credentials</p>
             <p className="text-xs text-muted-foreground mt-0.5">MFA, Azure credentials, app registrations</p>
           </div>
           <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showSettings ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
@@ -2296,7 +2296,7 @@ export default function ClientDetailPage() {
 
             {/* MFA */}
             <div>
-              <div className="flex items-center justify-between px-5 py-3.5 bg-[#1C2128]">
+              <div className="flex items-center justify-between px-5 py-3.5 bg-accent">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Two-Factor Authentication</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">MFA methods enrolled for this client</p>
@@ -2308,7 +2308,7 @@ export default function ClientDetailPage() {
                 )}
               </div>
               {mfaLoading ? (
-                <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
+                <div className="p-5 flex items-center gap-2 text-sm text-muted-foreground"><div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : showMfaConfirm ? (
                 <div className="p-5 space-y-4">
                   <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3">
@@ -2320,7 +2320,7 @@ export default function ClientDetailPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => void handleMfaReset()} disabled={resettingMfa} className="flex items-center gap-1.5 text-xs font-semibold bg-red-600 text-white px-4 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors">{resettingMfa ? "Resetting…" : "Yes, reset MFA"}</button>
-                    <button onClick={() => setShowMfaConfirm(false)} disabled={resettingMfa} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors">Cancel</button>
+                    <button onClick={() => setShowMfaConfirm(false)} disabled={resettingMfa} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-accent disabled:opacity-50 transition-colors">Cancel</button>
                   </div>
                 </div>
               ) : mfaMethods.length > 0 ? (
@@ -2340,7 +2340,7 @@ export default function ClientDetailPage() {
             {/* Azure App Registration / Script Runner Credentials — unified panel */}
             <div>
               {/* Panel header */}
-              <div className="flex items-center justify-between px-5 py-3.5 bg-[#1C2128]">
+              <div className="flex items-center justify-between px-5 py-3.5 bg-accent">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Azure App Registration / Script Runner Credentials</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">Admin credential for runbooks · client-submitted app registration</p>
@@ -2348,11 +2348,11 @@ export default function ClientDetailPage() {
                 {!editingCred && !credLoading && (
                   azureCred ? (
                     <div className="flex items-center gap-3">
-                      <button onClick={() => { setCredForm({ displayName: azureCred.displayName, tenantId: azureCred.tenantId, appClientId: azureCred.clientId, credentialType: azureCred.credentialType, clientSecretValue: "", keyVaultSecretName: azureCred.keyVaultSecretName, showAdvanced: azureCred.credentialType === "certificate" }); setEditingCred(true); }} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                      <button onClick={() => { setCredForm({ displayName: azureCred.displayName, tenantId: azureCred.tenantId, appClientId: azureCred.clientId, credentialType: azureCred.credentialType, clientSecretValue: "", keyVaultSecretName: azureCred.keyVaultSecretName, showAdvanced: azureCred.credentialType === "certificate" }); setEditingCred(true); }} className="text-xs font-semibold text-primary hover:underline">Edit</button>
                       <button onClick={() => void handleDeleteCred()} disabled={deletingCred} className="text-xs font-semibold text-red-500 hover:text-red-400 disabled:opacity-50">{deletingCred ? "Removing…" : "Remove"}</button>
                     </div>
                   ) : (
-                    <button onClick={() => { setCredForm({ displayName: client.company ?? client.name ?? "", tenantId: "", appClientId: "", credentialType: "secret", clientSecretValue: "", keyVaultSecretName: "", showAdvanced: false }); setEditingCred(true); }} className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors">
+                    <button onClick={() => { setCredForm({ displayName: client.company ?? client.name ?? "", tenantId: "", appClientId: "", credentialType: "secret", clientSecretValue: "", keyVaultSecretName: "", showAdvanced: false }); setEditingCred(true); }} className="flex items-center gap-1.5 text-xs font-semibold bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 transition-colors">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                       Add Credential
                     </button>
@@ -2361,7 +2361,7 @@ export default function ClientDetailPage() {
               </div>
 
               {credLoading || appRegLoading ? (
-                <div className="px-5 py-4 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
+                <div className="px-5 py-4 flex items-center gap-2 text-sm text-muted-foreground"><div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : editingCred ? (
                 <form onSubmit={handleSaveCred} className="px-5 pb-5 pt-4 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2373,7 +2373,7 @@ export default function ClientDetailPage() {
                       <div className="sm:col-span-2"><label className={labelCls}>Client Secret</label><input type="password" autoComplete="new-password" className={inputCls} placeholder={azureCred ? "Leave blank to keep existing" : "Paste the client secret"} value={credForm.clientSecretValue} onChange={e => setCredForm(f => ({ ...f, clientSecretValue: e.target.value }))} /></div>
                     )}
                     <div className="sm:col-span-2">
-                      <button type="button" onClick={() => setCredForm(f => ({ ...f, showAdvanced: !f.showAdvanced }))} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-[#0078D4] transition-colors">
+                      <button type="button" onClick={() => setCredForm(f => ({ ...f, showAdvanced: !f.showAdvanced }))} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors">
                         <svg className={`w-3 h-3 transition-transform ${credForm.showAdvanced ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                         Advanced — use existing Key Vault secret name
                       </button>
@@ -2383,8 +2383,8 @@ export default function ClientDetailPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="submit" disabled={savingCred} className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">{savingCred ? "Saving…" : azureCred ? "Save Changes" : "Add Credential"}</button>
-                    <button type="button" onClick={() => setEditingCred(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors">Cancel</button>
+                    <button type="submit" disabled={savingCred} className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">{savingCred ? "Saving…" : azureCred ? "Save Changes" : "Add Credential"}</button>
+                    <button type="button" onClick={() => setEditingCred(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-accent transition-colors">Cancel</button>
                   </div>
                 </form>
               ) : azureCred ? (
@@ -2396,12 +2396,12 @@ export default function ClientDetailPage() {
                     </div>
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div><p className={labelCls}>Display Name</p><div className="flex items-center gap-2"><p className="text-sm text-[#E6EDF3]">{azureCred.displayName}</p><ExpiryBadge expiresOn={azureCred.expiresOn} /></div></div>
-                    <div><p className={labelCls}>Type</p><p className="text-sm text-[#E6EDF3]">{azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}</p></div>
-                    <div><p className={labelCls}>Updated</p><p className="text-sm text-[#E6EDF3]">{new Date(azureCred.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>
-                    <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.tenantId}</p></div>
-                    <div><p className={labelCls}>Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.clientId}</p></div>
-                    <div><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{azureCred.keyVaultSecretName}</p></div>
+                    <div><p className={labelCls}>Display Name</p><div className="flex items-center gap-2"><p className="text-sm text-foreground">{azureCred.displayName}</p><ExpiryBadge expiresOn={azureCred.expiresOn} /></div></div>
+                    <div><p className={labelCls}>Type</p><p className="text-sm text-foreground">{azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}</p></div>
+                    <div><p className={labelCls}>Updated</p><p className="text-sm text-foreground">{new Date(azureCred.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>
+                    <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-foreground font-mono break-all">{azureCred.tenantId}</p></div>
+                    <div><p className={labelCls}>Client ID</p><p className="text-xs text-foreground font-mono break-all">{azureCred.clientId}</p></div>
+                    <div><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-foreground font-mono">{azureCred.keyVaultSecretName}</p></div>
                   </div>
                   {/* appReg verification status — inline when a portal submission also exists */}
                   {appReg && (
@@ -2436,7 +2436,7 @@ export default function ClientDetailPage() {
                       </div>
                       {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
                         <div className="pt-3 border-t border-border">
-                          <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-2">Missing Permissions</p>
                           <div className="space-y-2">
                             {appReg.permissionCheck.missing.map(perm => (
                               <div key={perm} className="flex items-start gap-2">
@@ -2481,7 +2481,7 @@ export default function ClientDetailPage() {
                     </div>
                     {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
                       <div className="pt-3 border-t border-border">
-                        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-2">Missing Permissions</p>
                         <div className="space-y-2">
                           {appReg.permissionCheck.missing.map(perm => (
                             <div key={perm} className="flex items-start gap-2">
@@ -2500,9 +2500,9 @@ export default function ClientDetailPage() {
                     )}
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.tenantId}</p></div>
-                    <div><p className={labelCls}>Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.azureClientId}</p></div>
-                    <div><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{appReg.keyVaultSecretName}</p></div>
+                    <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-foreground font-mono break-all">{appReg.tenantId}</p></div>
+                    <div><p className={labelCls}>Client ID</p><p className="text-xs text-foreground font-mono break-all">{appReg.azureClientId}</p></div>
+                    <div><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-foreground font-mono">{appReg.keyVaultSecretName}</p></div>
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {appReg.status !== "verified" && (
@@ -2524,57 +2524,57 @@ export default function ClientDetailPage() {
         )}
 
         {/* ── AI Recommendations ── */}
-        <div className="border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="border border-border rounded-xl overflow-hidden">
           <button
             onClick={() => setShowAiRecs(o => !o)}
-            className="w-full flex items-center justify-between px-5 py-4 bg-[#161B22] hover:bg-[#1C2128] transition-colors"
+            className="w-full flex items-center justify-between px-5 py-4 bg-card hover:bg-accent transition-colors"
           >
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0">
-                <svg className="w-3.5 h-3.5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-[#E6EDF3]">AI Recommendations</p>
-                <p className="text-[10px] text-[#7D8590]">Next best actions + health trend for this client</p>
+                <p className="text-sm font-bold text-foreground">AI Recommendations</p>
+                <p className="text-[10px] text-muted-foreground">Next best actions + health trend for this client</p>
               </div>
               {clientNba && clientNba.length > 0 && (
-                <span className="text-xs font-bold bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full">{clientNba.length}</span>
+                <span className="text-xs font-bold bg-primary/15 text-primary border border-primary/20 px-2 py-0.5 rounded-full">{clientNba.length}</span>
               )}
             </div>
-            <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showAiRecs ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showAiRecs ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
           {showAiRecs && (
-            <div className="border-t border-[#30363D] bg-[#0D1117] p-5 space-y-5">
+            <div className="border-t border-border bg-background p-5 space-y-5">
               {/* Next Best Actions */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest">Next Best Actions</h4>
-                  <button onClick={() => void generateClientNba()} disabled={clientNbaGenerating} className="flex items-center gap-1.5 text-xs font-semibold text-[#58A6FF] hover:text-[#0078D4] disabled:opacity-50 transition-colors">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Next Best Actions</h4>
+                  <button onClick={() => void generateClientNba()} disabled={clientNbaGenerating} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary disabled:opacity-50 transition-colors">
                     {clientNbaGenerating ? <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : null}
                     {clientNbaGenerating ? "Generating…" : clientNba ? "Refresh" : "Generate"}
                   </button>
                 </div>
                 {clientNbaLoading ? (
-                  <div className="space-y-2">{[0,1,2].map(i => <div key={i} className="h-14 bg-[#161B22] rounded-xl animate-pulse" />)}</div>
+                  <div className="space-y-2">{[0,1,2].map(i => <div key={i} className="h-14 bg-card rounded-xl animate-pulse" />)}</div>
                 ) : !clientNba || clientNba.length === 0 ? (
-                  <p className="text-xs text-[#7D8590] py-3">No actions yet — click Generate to have Claude analyse this client's activity and surface the most impactful next steps.</p>
+                  <p className="text-xs text-muted-foreground py-3">No actions yet — click Generate to have Claude analyse this client's activity and surface the most impactful next steps.</p>
                 ) : (
                   <div className="space-y-2">
                     {clientNba.map(action => (
-                      <div key={action.id} className="bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+                      <div key={action.id} className="bg-card border border-border rounded-xl px-4 py-3 flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[9px] font-bold text-[#0078D4] bg-[#0078D4]/10 px-1.5 py-0.5 rounded">{action.confidence}% confidence</span>
+                            <span className="text-[9px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded">{action.confidence}% confidence</span>
                           </div>
-                          <p className="text-xs text-[#E6EDF3] leading-relaxed">{action.action}</p>
-                          {action.rationale && <p className="text-[10px] text-[#7D8590] mt-0.5">{action.rationale}</p>}
+                          <p className="text-xs text-foreground leading-relaxed">{action.action}</p>
+                          {action.rationale && <p className="text-[10px] text-muted-foreground mt-0.5">{action.rationale}</p>}
                         </div>
-                        <button onClick={() => void resolveClientNba(action.id)} className="text-[10px] font-semibold text-[#484F58] hover:text-emerald-400 border border-[#30363D] hover:border-emerald-500/30 px-2 py-0.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0">✓ Done</button>
+                        <button onClick={() => void resolveClientNba(action.id)} className="text-[10px] font-semibold text-muted-foreground/60 hover:text-emerald-400 border border-border hover:border-emerald-500/30 px-2 py-0.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0">✓ Done</button>
                       </div>
                     ))}
                   </div>
@@ -2584,9 +2584,9 @@ export default function ClientDetailPage() {
               {/* Health Trends — always render all 8 categories */}
               {healthTrends !== null && (
                 <div>
-                  <h4 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest mb-1">M365 Health Trends — Last 90 Days</h4>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">M365 Health Trends — Last 90 Days</h4>
                   {healthTrends.insight && (
-                    <p className="text-[10px] text-[#7D8590] italic mb-3 leading-relaxed">{healthTrends.insight}</p>
+                    <p className="text-[10px] text-muted-foreground italic mb-3 leading-relaxed">{healthTrends.insight}</p>
                   )}
                   <div className="grid grid-cols-2 gap-3">
                     {(["governance", "security", "compliance", "copilot", "identity", "collaboration", "productivity", "data"] as const).map(cat => {
@@ -2598,9 +2598,9 @@ export default function ClientDetailPage() {
                       const color = !hasData ? "#484F58" : (latest ?? 0) >= 70 ? "#10B981" : (latest ?? 0) >= 40 ? "#F59E0B" : "#EF4444";
                       const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
                       return (
-                        <div key={cat} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5">
+                        <div key={cat} className="bg-background border border-border rounded-lg p-2.5">
                           <div className="flex items-center justify-between mb-1">
-                            <p className="text-[10px] font-semibold text-[#7D8590]">{catLabel}</p>
+                            <p className="text-[10px] font-semibold text-muted-foreground">{catLabel}</p>
                             <div className="flex items-center gap-1">
                               {hasData ? (
                                 <>
@@ -2612,7 +2612,7 @@ export default function ClientDetailPage() {
                                   )}
                                 </>
                               ) : (
-                                <span className="text-[9px] text-[#484F58]">No data</span>
+                                <span className="text-[9px] text-muted-foreground/60">No data</span>
                               )}
                             </div>
                           </div>
@@ -2622,7 +2622,7 @@ export default function ClientDetailPage() {
                               <XAxis dataKey="date" hide />
                               <YAxis domain={[0, 100]} hide />
                               <Tooltip
-                                contentStyle={{ fontSize: 10, borderRadius: 6, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3", padding: "4px 8px" }}
+                                contentStyle={{ fontSize: 10, borderRadius: 6, border: "1px solid #232A36", background: "#171C26", color: "#E6EDF3", padding: "4px 8px" }}
                                 content={({ active, payload, label }) => {
                                   if (!active || !payload?.length) return null;
                                   const score = payload[0].value as number;
@@ -2630,11 +2630,11 @@ export default function ClientDetailPage() {
                                   const prev = idx > 0 ? points[idx - 1].score : null;
                                   const ptDelta = prev !== null ? score - prev : null;
                                   return (
-                                    <div style={{ fontSize: 10, borderRadius: 6, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3", padding: "4px 8px" }}>
+                                    <div style={{ fontSize: 10, borderRadius: 6, border: "1px solid #232A36", background: "#171C26", color: "#E6EDF3", padding: "4px 8px" }}>
                                       <div className="font-semibold">{label}</div>
                                       <div>{catLabel}: <span className="font-bold">{score}</span></div>
                                       {ptDelta !== null && (
-                                        <div style={{ color: ptDelta > 0 ? "#10B981" : ptDelta < 0 ? "#EF4444" : "#7D8590" }}>
+                                        <div style={{ color: ptDelta > 0 ? "#10B981" : ptDelta < 0 ? "#EF4444" : "#8B94A3" }}>
                                           {ptDelta > 0 ? "↑" : ptDelta < 0 ? "↓" : "→"} {Math.abs(ptDelta)} vs prev
                                         </div>
                                       )}
@@ -2645,7 +2645,7 @@ export default function ClientDetailPage() {
                             </LineChart>
                           ) : (
                             <div className="h-[44px] flex items-center justify-center">
-                              <p className="text-[9px] text-[#484F58] text-center">Snapshot data will appear here once recorded</p>
+                              <p className="text-[9px] text-muted-foreground/60 text-center">Snapshot data will appear here once recorded</p>
                             </div>
                           )}
                         </div>
@@ -2654,7 +2654,7 @@ export default function ClientDetailPage() {
                   </div>
                 </div>
               )}
-              {healthTrendsLoading && <div className="h-40 bg-[#161B22] rounded-xl animate-pulse" />}
+              {healthTrendsLoading && <div className="h-40 bg-card rounded-xl animate-pulse" />}
             </div>
           )}
         </div>
@@ -2665,23 +2665,23 @@ export default function ClientDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowM365Dialog(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
+            className="relative bg-card border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-[#161B22] z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
               <div>
-                <p className="text-sm font-bold text-[#E6EDF3]">M365 Intelligence Profile</p>
+                <p className="text-sm font-bold text-foreground">M365 Intelligence Profile</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{client.company ?? client.name}</p>
               </div>
-              <button onClick={() => setShowM365Dialog(false)} className="text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+              <button onClick={() => setShowM365Dialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
             {m365FormLoading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
               <div className="p-6 space-y-6">
@@ -2719,8 +2719,8 @@ export default function ClientDetailPage() {
                       <input type="email" className={inputCls} value={String(m365FormData.itContactEmail ?? "")} onChange={e => setM365FormData(f => ({ ...f, itContactEmail: e.target.value }))} />
                     </div>
                     <div className="flex items-center gap-2 pt-5">
-                      <input type="checkbox" checked={Boolean(m365FormData.isMicrosoftPartner)} onChange={e => setM365FormData(f => ({ ...f, isMicrosoftPartner: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
-                      <span className="text-xs text-[#E6EDF3]">Microsoft Partner</span>
+                      <input type="checkbox" checked={Boolean(m365FormData.isMicrosoftPartner)} onChange={e => setM365FormData(f => ({ ...f, isMicrosoftPartner: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <span className="text-xs text-foreground">Microsoft Partner</span>
                     </div>
                   </div>
                 </div>
@@ -2749,8 +2749,8 @@ export default function ClientDetailPage() {
                       { key: "usesYammer", label: "Viva Engage / Yammer" },
                     ] as { key: string; label: string }[]).map(({ key, label }) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
-                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                        <span className="text-xs text-foreground">{label}</span>
                       </label>
                     ))}
                   </div>
@@ -2786,8 +2786,8 @@ export default function ClientDetailPage() {
                       { key: "usesAADConnect", label: "Entra Connect / AADC" },
                     ] as { key: string; label: string }[]).map(({ key, label }) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
-                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                        <span className="text-xs text-foreground">{label}</span>
                       </label>
                     ))}
                   </div>
@@ -2810,8 +2810,8 @@ export default function ClientDetailPage() {
                       { key: "hasInsiderRisk", label: "Insider Risk Mgmt" },
                     ] as { key: string; label: string }[]).map(({ key, label }) => (
                       <label key={key} className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
-                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                        <span className="text-xs text-foreground">{label}</span>
                       </label>
                     ))}
                   </div>
@@ -2833,8 +2833,8 @@ export default function ClientDetailPage() {
                       </select>
                     </div>
                     <div className="flex items-center gap-2 pt-5">
-                      <input type="checkbox" checked={Boolean(m365FormData.hasCopilotLicenses)} onChange={e => setM365FormData(f => ({ ...f, hasCopilotLicenses: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
-                      <span className="text-xs text-[#E6EDF3]">Has Copilot Licenses</span>
+                      <input type="checkbox" checked={Boolean(m365FormData.hasCopilotLicenses)} onChange={e => setM365FormData(f => ({ ...f, hasCopilotLicenses: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <span className="text-xs text-foreground">Has Copilot Licenses</span>
                     </div>
                     {Boolean(m365FormData.hasCopilotLicenses) && (
                       <div>
@@ -2909,16 +2909,16 @@ export default function ClientDetailPage() {
 
             {/* Footer */}
             {!m365FormLoading && (
-              <div className="flex items-center gap-3 px-6 py-4 border-t border-border sticky bottom-0 bg-[#161B22]">
-                <button onClick={() => void saveM365Profile()} disabled={m365FormSaving} className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
+              <div className="flex items-center gap-3 px-6 py-4 border-t border-border sticky bottom-0 bg-card">
+                <button onClick={() => void saveM365Profile()} disabled={m365FormSaving} className="bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   {m365FormSaving ? "Saving…" : "Save Profile"}
                 </button>
-                <button onClick={() => setShowM365Dialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] text-[#E6EDF3] transition-colors">Cancel</button>
+                <button onClick={() => setShowM365Dialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-accent text-foreground transition-colors">Cancel</button>
                 <a
                   href={`/api/admin/clients/${clientId}/m365-profile/pdf`}
                   target="_blank"
                   rel="noreferrer"
-                  className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[#0078D4] transition-colors"
+                  className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   Export PDF
@@ -2934,23 +2934,23 @@ export default function ClientDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAppRegDialog(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl"
+            className="relative bg-card border border-border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-[#161B22] z-10">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-card z-10">
               <div>
-                <p className="text-sm font-bold text-[#E6EDF3]">App Registration</p>
+                <p className="text-sm font-bold text-foreground">App Registration</p>
                 <p className="text-xs text-muted-foreground mt-0.5">Azure credentials &amp; portal submission</p>
               </div>
-              <button onClick={() => setShowAppRegDialog(false)} className="text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+              <button onClick={() => setShowAppRegDialog(false)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
             {(credLoading || appRegLoading) ? (
               <div className="flex items-center justify-center py-16">
-                <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
               <div className="p-6 space-y-6">
@@ -2966,11 +2966,11 @@ export default function ClientDetailPage() {
                         </div>
                       )}
                       <div className="grid grid-cols-2 gap-4">
-                        <div><p className={labelCls}>Display Name</p><div className="flex items-center gap-2"><p className="text-sm text-[#E6EDF3]">{azureCred.displayName}</p><ExpiryBadge expiresOn={azureCred.expiresOn} /></div></div>
-                        <div><p className={labelCls}>Type</p><p className="text-sm text-[#E6EDF3]">{azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}</p></div>
-                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.tenantId}</p></div>
-                        <div><p className={labelCls}>Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.clientId}</p></div>
-                        {azureCred.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{azureCred.keyVaultSecretName}</p></div>}
+                        <div><p className={labelCls}>Display Name</p><div className="flex items-center gap-2"><p className="text-sm text-foreground">{azureCred.displayName}</p><ExpiryBadge expiresOn={azureCred.expiresOn} /></div></div>
+                        <div><p className={labelCls}>Type</p><p className="text-sm text-foreground">{azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}</p></div>
+                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-foreground font-mono break-all">{azureCred.tenantId}</p></div>
+                        <div><p className={labelCls}>Client ID</p><p className="text-xs text-foreground font-mono break-all">{azureCred.clientId}</p></div>
+                        {azureCred.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-foreground font-mono">{azureCred.keyVaultSecretName}</p></div>}
                       </div>
                     </div>
                   ) : (
@@ -2994,11 +2994,11 @@ export default function ClientDetailPage() {
                         <ExpiryBadge expiresOn={appReg.expiresOn} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.tenantId}</p></div>
-                        <div><p className={labelCls}>Azure Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.azureClientId}</p></div>
-                        {appReg.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{appReg.keyVaultSecretName}</p></div>}
-                        {appReg.submittedAt && <div><p className={labelCls}>Submitted</p><p className="text-xs text-[#E6EDF3]">{new Date(appReg.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
-                        {appReg.verifiedAt && <div><p className={labelCls}>Verified</p><p className="text-xs text-[#E6EDF3]">{new Date(appReg.verifiedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
+                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-foreground font-mono break-all">{appReg.tenantId}</p></div>
+                        <div><p className={labelCls}>Azure Client ID</p><p className="text-xs text-foreground font-mono break-all">{appReg.azureClientId}</p></div>
+                        {appReg.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-foreground font-mono">{appReg.keyVaultSecretName}</p></div>}
+                        {appReg.submittedAt && <div><p className={labelCls}>Submitted</p><p className="text-xs text-foreground">{new Date(appReg.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
+                        {appReg.verifiedAt && <div><p className={labelCls}>Verified</p><p className="text-xs text-foreground">{new Date(appReg.verifiedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
                       </div>
                       <div className="flex gap-2 flex-wrap">
                         {appReg.status !== "verified" && (
@@ -3025,8 +3025,8 @@ export default function ClientDetailPage() {
               </div>
             )}
 
-            <div className="flex justify-end px-6 py-4 border-t border-border sticky bottom-0 bg-[#161B22]">
-              <button onClick={() => setShowAppRegDialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] text-[#E6EDF3] transition-colors">Close</button>
+            <div className="flex justify-end px-6 py-4 border-t border-border sticky bottom-0 bg-card">
+              <button onClick={() => setShowAppRegDialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-accent text-foreground transition-colors">Close</button>
             </div>
           </div>
         </div>

@@ -28,7 +28,7 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"           },
   delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"               },
   error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"               },
-  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"              },
+  action:    { bg: "#0D1A2E", border: "#2F6FED",  icon: "⚡", label: "Action"              },
   http_request:           { bg: "#0A1220", border: "#3B82F6",  icon: "🌐", label: "HTTP Request"           },
   sql_query:              { bg: "#0A1A12", border: "#10B981",  icon: "🗄️", label: "SQL Query"              },
   send_email:             { bg: "#0D1A2A", border: "#60A5FA",  icon: "📧", label: "Send Email"             },
@@ -85,7 +85,7 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   graph_write_operation:     { bg: "#0B1E1B", border: "#14B8A6", icon: "🖋️", label: "Graph Write Operation" },
   execute_baseline_template: { bg: "#0D1527", border: "#3B82F6", icon: "📑", label: "Execute Baseline Template" },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
-  check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
+  check_exchange_calendar_availability: { bg: "#041620", border: "#2F6FED", icon: "📅", label: "Check Calendar"           },
   create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
   save_to_sharepoint: { bg: "#0A1A10", border: "#34D399", icon: "💾", label: "Save to SharePoint"  },
   get_from_sharepoint:{ bg: "#0A1A10", border: "#6EE7B7", icon: "📥", label: "Get from SharePoint" },
@@ -138,7 +138,7 @@ export function HtmlContentPreview({ html }: { html: string }) {
         <iframe
           srcDoc={html}
           sandbox="allow-same-origin"
-          className="w-full rounded-lg border border-[#30363D] bg-white"
+          className="w-full rounded-lg border border-border bg-white"
           style={{ height: 320 }}
           title="HTML preview"
         />
@@ -181,14 +181,14 @@ export function ExpandableJson({ value, className = "" }: { value: string; class
     <span className={className}>
       <button
         onClick={toggle}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#2E9EFF] hover:bg-[#0078D4]/25 transition-colors font-mono text-[10px]"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 border border-primary/30 text-[#2E9EFF] hover:bg-primary/25 transition-colors font-mono text-[10px]"
         title={expanded ? "Collapse" : "Expand object"}
       >
         <span>{expanded ? "▾" : "▸"}</span>
         <span>{preview}</span>
       </button>
       {expanded && (
-        <pre className="mt-1 block bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-64 whitespace-pre-wrap">
+        <pre className="mt-1 block bg-background border border-border rounded-lg p-2.5 text-[10px] font-mono text-foreground overflow-auto max-h-64 whitespace-pre-wrap">
           {JSON.stringify(parsed, null, 2)}
         </pre>
       )}
@@ -226,7 +226,7 @@ export const STATUS_STYLES: Record<string, string> = {
   running:            "bg-blue-500/20 text-blue-300 border-blue-500/30",
   failed:             "bg-red-500/20 text-red-400 border-red-500/30",
   pending:            "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  cancelled:          "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  cancelled:          "bg-border text-muted-foreground border-border",
   awaiting_approval:  "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
 };
 
@@ -235,7 +235,7 @@ export const STATUS_STYLES: Record<string, string> = {
 const NODE_BORDER: Record<string, string> = {
   start:     "#22C55E",
   end:       "#6366F1",
-  action:    "#0078D4",
+  action:    "#2F6FED",
   condition: "#F59E0B",
   delay:     "#A855F7",
   error:     "#EF4444",
@@ -248,18 +248,18 @@ export function ReplayNode({ data }: NodeProps) {
   const isSkipped = data.isSkipped as boolean;
   const hasError  = data.hasError as boolean;
   const isMutated = data.isMutated as boolean;
-  const border    = hasError ? "#EF4444" : NODE_BORDER[nodeType] ?? "#0078D4";
+  const border    = hasError ? "#EF4444" : NODE_BORDER[nodeType] ?? "#2F6FED";
 
-  const bgColor = isSkipped    ? "#0D1117"
+  const bgColor = isSkipped    ? "#0A0D12"
                 : hasError     ? "#1A0808"
                 : isCurrent    ? `${border}22`
-                : inPath       ? "#161B22"
-                                : "#0D1117";
+                : inPath       ? "#11151C"
+                                : "#0A0D12";
 
   const borderColor = isCurrent ? border
                     : hasError  ? "#EF4444"
                     : inPath    ? border + "80"
-                                : "#30363D";
+                                : "#232A36";
 
   return (
     <div
@@ -279,9 +279,9 @@ export function ReplayNode({ data }: NodeProps) {
         <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: border }}>{nodeType}</div>
         {hasError  && <span className="text-[9px] text-red-400 font-semibold">⚠ error</span>}
         {isMutated && !hasError && <span className="text-[9px] text-amber-400">✎</span>}
-        {isSkipped && <span className="text-[9px] text-[#484F58]">skipped</span>}
+        {isSkipped && <span className="text-[9px] text-muted-foreground/60">skipped</span>}
       </div>
-      <div className="text-xs font-medium text-[#E6EDF3] truncate leading-snug">
+      <div className="text-xs font-medium text-foreground truncate leading-snug">
         {(data.label as string) || nodeType}
       </div>
       {isCurrent && !hasError && <div className="text-[9px] text-blue-300 mt-0.5">▶ Current step</div>}
@@ -340,7 +340,7 @@ function ReplayStepCard({
   onClick: () => void;
 }) {
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? {
-    bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType,
+    bg: "#171C26", border: "#232A36", icon: "⚡", label: nodeType,
   };
 
   const borderColor = isCurrent
@@ -349,7 +349,7 @@ function ReplayStepCard({
     ? "#EF444466"
     : inPath
     ? style.border + "80"
-    : "#30363D";
+    : "#232A36";
 
   const bgColor = hasError && isCurrent
     ? "#1A0808"
@@ -357,7 +357,7 @@ function ReplayStepCard({
     ? style.bg
     : inPath
     ? style.bg
-    : "#0D1117";
+    : "#0A0D12";
 
   return (
     <div
@@ -383,18 +383,18 @@ function ReplayStepCard({
 
         {/* Label + type badge */}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-[#E6EDF3] truncate leading-snug">{label || style.label}</p>
+          <p className="text-xs font-semibold text-foreground truncate leading-snug">{label || style.label}</p>
           <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: style.border }}>
             {nodeType.replace(/_/g, " ")}
           </p>
-          <p className="text-[9px] text-[#484F58] font-mono truncate mt-0.5">{nodeId}</p>
+          <p className="text-[9px] text-muted-foreground/60 font-mono truncate mt-0.5">{nodeId}</p>
           {pricingTotal != null && (
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#00B4D8]/15 border border-[#00B4D8]/35 text-[#00B4D8]">
                 💲 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pricingTotal)}
               </span>
               {pricingLines != null && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-accent border border-border text-muted-foreground">
                   {pricingLines} line{pricingLines !== 1 ? "s" : ""}
                 </span>
               )}
@@ -410,7 +410,7 @@ function ReplayStepCard({
                 📡 {signalCount} signal{signalCount !== 1 ? "s" : ""}
               </span>
               {!hasSignals && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-accent border border-border text-muted-foreground">
                   alwaysInclude only
                 </span>
               )}
@@ -426,7 +426,7 @@ function ReplayStepCard({
                 🔬 {scriptCheckPassed ? "passed" : "failed"}
               </span>
               {scriptCheckSensitivity && (
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-accent border border-border text-muted-foreground">
                   {SENSITIVITY_LABELS[scriptCheckSensitivity] ?? scriptCheckSensitivity}
                 </span>
               )}
@@ -446,9 +446,9 @@ function ReplayStepCard({
           )}
           {isSkipped && (
             <div className="flex flex-col items-end gap-0.5">
-              <span className="text-[9px] text-[#484F58] bg-[#1C2128] border border-[#30363D] px-1.5 py-0.5 rounded-full">skipped</span>
+              <span className="text-[9px] text-muted-foreground/60 bg-accent border border-border px-1.5 py-0.5 rounded-full">skipped</span>
               {skipReason && (
-                <span className="text-[8px] text-[#484F58] font-mono max-w-[120px] text-right leading-snug truncate" title={skipReason}>
+                <span className="text-[8px] text-muted-foreground/60 font-mono max-w-[120px] text-right leading-snug truncate" title={skipReason}>
                   {skipReason}
                 </span>
               )}
@@ -481,7 +481,7 @@ function DiffValue({ raw }: { raw: string | undefined }) {
 export function DiffViewer({ before, after }: { before: Record<string, unknown>; after: Record<string, unknown> }) {
   const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
   if (allKeys.length === 0) {
-    return <p className="text-[10px] text-[#484F58] font-mono italic">empty</p>;
+    return <p className="text-[10px] text-muted-foreground/60 font-mono italic">empty</p>;
   }
 
   // Split htmlContent out of the diff so it renders as a preview, not raw text
@@ -492,7 +492,7 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
 
   return (
     <div className="space-y-2">
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-72 space-y-0.5">
+      <div className="bg-background border border-border rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-72 space-y-0.5">
         {regularKeys.map(key => {
           const bVal = JSON.stringify(before[key] ?? undefined);
           const aVal = JSON.stringify(after[key] ?? undefined);
@@ -500,12 +500,12 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
           const removed = !(key in after);
           const changed = !added && !removed && bVal !== aVal;
           const rowCls  = added ? "bg-emerald-500/10" : removed ? "bg-red-500/10" : changed ? "bg-amber-500/8" : "";
-          const keyCls  = added ? "text-emerald-400" : removed ? "text-red-400" : changed ? "text-amber-300" : "text-[#7D8590]";
-          const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-[#E6EDF3]" : "text-[#E6EDF3]";
+          const keyCls  = added ? "text-emerald-400" : removed ? "text-red-400" : changed ? "text-amber-300" : "text-muted-foreground";
+          const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-foreground" : "text-foreground";
           const prefix  = added ? "+ " : removed ? "- " : changed ? "~ " : "  ";
           return (
             <div key={key} className={`flex flex-wrap gap-1 px-1 py-0.5 rounded ${rowCls}`}>
-              <span className="text-[#484F58] w-4 shrink-0">{prefix}</span>
+              <span className="text-muted-foreground/60 w-4 shrink-0">{prefix}</span>
               <span className={`${keyCls} shrink-0`}>{key}:</span>
               {changed ? (
                 <span className={`${valCls} flex flex-wrap items-start gap-1`}>
@@ -519,13 +519,13 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
           );
         })}
         {regularKeys.length === 0 && !htmlContentKey && (
-          <p className="text-[#484F58] italic">empty</p>
+          <p className="text-muted-foreground/60 italic">empty</p>
         )}
         {htmlContentKey && (
           <div className="flex flex-wrap gap-1 px-1 py-0.5 rounded">
-            <span className="text-[#484F58] w-4 shrink-0">{htmlAfter && !htmlBefore ? "+ " : !htmlAfter && htmlBefore ? "- " : htmlAfter !== htmlBefore ? "~ " : "  "}</span>
+            <span className="text-muted-foreground/60 w-4 shrink-0">{htmlAfter && !htmlBefore ? "+ " : !htmlAfter && htmlBefore ? "- " : htmlAfter !== htmlBefore ? "~ " : "  "}</span>
             <span className="text-purple-300 shrink-0">htmlContent:</span>
-            <span className="text-[#484F58] italic text-[9px] self-center">see preview below</span>
+            <span className="text-muted-foreground/60 italic text-[9px] self-center">see preview below</span>
           </div>
         )}
       </div>
@@ -547,13 +547,13 @@ export function JsonBlock({ data, label, onOpenInViewer }: { data: Record<string
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
+        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{label}</p>
         <div className="flex items-center gap-1">
           {onOpenInViewer && (
             <button
               onClick={(e) => { e.stopPropagation(); onOpenInViewer(data); }}
               title="Open in JSON Viewer"
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-muted-foreground/60 hover:text-primary hover:bg-accent transition-colors"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
@@ -564,7 +564,7 @@ export function JsonBlock({ data, label, onOpenInViewer }: { data: Record<string
           <button
             onClick={(e) => { e.stopPropagation(); handleCopy(JSON.stringify(data, null, 2)); }}
             title={copied ? "Copied!" : "Copy JSON"}
-            className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
+            className="flex items-center justify-center w-5 h-5 rounded hover:bg-border transition-colors text-muted-foreground/60 hover:text-foreground"
           >
             {copied
               ? <Check className="w-3 h-3 text-emerald-400" />
@@ -572,7 +572,7 @@ export function JsonBlock({ data, label, onOpenInViewer }: { data: Record<string
           </button>
         </div>
       </div>
-      <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-40 whitespace-pre-wrap">
+      <pre className="bg-background border border-border rounded-lg p-3 text-[10px] font-mono text-foreground overflow-auto max-h-40 whitespace-pre-wrap">
         {JSON.stringify(displayData, null, 2)}
       </pre>
       {htmlContent !== null && <HtmlContentPreview html={htmlContent} />}
@@ -599,11 +599,11 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
     <div className="space-y-2">
       {/* Header + hasSignals badge */}
       <div className="flex items-center gap-2">
-        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider flex-1">Signals Output</p>
+        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider flex-1">Signals Output</p>
         <button
           onClick={() => handleCopy(JSON.stringify(output, null, 2))}
           title={copied ? "Copied!" : "Copy JSON"}
-          className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
+          className="flex items-center justify-center w-5 h-5 rounded hover:bg-border transition-colors text-muted-foreground/60 hover:text-foreground"
         >
           {copied
             ? <Check className="w-3 h-3 text-emerald-400" />
@@ -618,13 +618,13 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
         </span>
       </div>
 
-      <p className="text-[10px] text-[#484F58] font-mono">
+      <p className="text-[10px] text-muted-foreground/60 font-mono">
         {signalCount} signal{signalCount !== 1 ? "s" : ""} fired
       </p>
 
       {/* Signal pill list */}
       {signals.length === 0 ? (
-        <p className="text-[10px] text-[#484F58] italic">No signals in output</p>
+        <p className="text-[10px] text-muted-foreground/60 italic">No signals in output</p>
       ) : (
         <div className="space-y-1">
           {signals.map(key => {
@@ -636,7 +636,7 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
                 key={key}
                 onClick={() => navigate("/system/signal-mappings")}
                 title="View signal derivation rules"
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-[#1C2128] group"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-accent group"
               >
                 <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border flex-shrink-0 ${
                   isAlways
@@ -647,9 +647,9 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
                 }`}>
                   {isAlways ? "∞" : isAdj ? "±" : "⚡"}
                 </span>
-                <span className="flex-1 text-[10px] text-[#C9D1D9] font-medium leading-snug truncate">{label}</span>
-                <span className="text-[8px] text-[#484F58] font-mono truncate max-w-[70px] group-hover:text-[#7D8590]">{key}</span>
-                <svg className="w-2.5 h-2.5 text-[#484F58] flex-shrink-0 group-hover:text-[#7D8590] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="flex-1 text-[10px] text-foreground/90 font-medium leading-snug truncate">{label}</span>
+                <span className="text-[8px] text-muted-foreground/60 font-mono truncate max-w-[70px] group-hover:text-muted-foreground">{key}</span>
+                <svg className="w-2.5 h-2.5 text-muted-foreground/60 flex-shrink-0 group-hover:text-muted-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -682,13 +682,13 @@ function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> })
     <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">
+        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
           Script Output Check{sensitivityLabel ? ` (${sensitivityLabel})` : ""}
         </p>
         <button
           onClick={() => handleCopy(JSON.stringify(output, null, 2))}
           title={copied ? "Copied!" : "Copy JSON"}
-          className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
+          className="flex items-center justify-center w-5 h-5 rounded hover:bg-border transition-colors text-muted-foreground/60 hover:text-foreground"
         >
           {copied
             ? <Check className="w-3 h-3 text-emerald-400" />
@@ -708,7 +708,7 @@ function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> })
           </span>
         )}
         {sensitivityLabel && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-accent border border-border text-muted-foreground">
             {sensitivityLabel} sensitivity
           </span>
         )}
@@ -716,8 +716,8 @@ function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> })
 
       {/* AI outcome sentence */}
       {outcome && (
-        <div className="px-3 py-2 rounded-lg bg-[#1C2128] border border-[#30363D]">
-          <p className="text-[10px] text-[#C9D1D9] leading-relaxed">{outcome}</p>
+        <div className="px-3 py-2 rounded-lg bg-accent border border-border">
+          <p className="text-[10px] text-foreground/90 leading-relaxed">{outcome}</p>
         </div>
       )}
 
@@ -760,7 +760,7 @@ function ParallelBranchCard({ branch }: { branch: BranchInfo }) {
         style={{ cursor: canExpand ? "pointer" : "default" }}
       >
         <span className="text-[11px] font-bold flex-shrink-0" style={{ color: borderColor }}>⇉</span>
-        <span className="flex-1 text-[10px] font-semibold text-[#E6EDF3] truncate">{branch.label}</span>
+        <span className="flex-1 text-[10px] font-semibold text-foreground truncate">{branch.label}</span>
         <span
           className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border"
           style={{ color: borderColor, borderColor: `${borderColor}50`, background: `${borderColor}15` }}
@@ -834,14 +834,14 @@ function ParallelBranchPanel({
 
   if (branches.length === 0) {
     return (
-      <p className="text-[10px] text-[#484F58] font-mono italic">No branch configuration found.</p>
+      <p className="text-[10px] text-muted-foreground/60 font-mono italic">No branch configuration found.</p>
     );
   }
 
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 flex-wrap">
-        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Parallel Branches</p>
+        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Parallel Branches</p>
         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
           {awaitedCount} awaited
         </span>
@@ -981,7 +981,7 @@ export function ChildRunInline({
   });
 
   const statusStyle = child
-    ? (STATUS_STYLES[child.status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]")
+    ? (STATUS_STYLES[child.status] ?? "bg-border text-muted-foreground border-border")
     : "";
 
   return (
@@ -1014,9 +1014,9 @@ export function ChildRunInline({
           </span>
         )}
         <span className="text-sm flex-shrink-0" style={{ color: palette.accent }}>⚡</span>
-        <span className="text-xs font-semibold text-[#E6EDF3] flex-1">
+        <span className="text-xs font-semibold text-foreground flex-1">
           {depth === 0 ? "Child" : "Grandchild"} Run #{childRunId}
-          {depth > 1 && <span className="text-[#7D8590]"> (depth {depth})</span>}
+          {depth > 1 && <span className="text-muted-foreground"> (depth {depth})</span>}
         </span>
 
         {/* Depth badge — reflects this run's own depth value, passed from the parent node output */}
@@ -1039,7 +1039,7 @@ export function ChildRunInline({
               {child.status}
             </span>
             {child.durationMs != null && (
-              <span className="text-[10px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(child.durationMs)}</span>
+              <span className="text-[10px] text-muted-foreground/60 font-mono flex-shrink-0">{fmtDuration(child.durationMs)}</span>
             )}
           </>
         )}
@@ -1050,7 +1050,7 @@ export function ChildRunInline({
           />
         )}
         <svg
-          className={`w-3.5 h-3.5 text-[#484F58] flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1064,7 +1064,7 @@ export function ChildRunInline({
           style={{ borderTop: `1px solid ${palette.border}25` }}
         >
           {isLoading && !child && (
-            <p className="text-[10px] text-[#7D8590]">Loading…</p>
+            <p className="text-[10px] text-muted-foreground">Loading…</p>
           )}
 
           {child && (
@@ -1072,15 +1072,15 @@ export function ChildRunInline({
               {/* Summary row */}
               <div className="flex flex-wrap gap-2 text-[10px]">
                 {child.definitionName && (
-                  <span className="text-[#7D8590] font-medium">{child.definitionName}</span>
+                  <span className="text-muted-foreground font-medium">{child.definitionName}</span>
                 )}
                 {child.startedAt && (
-                  <span className="text-[#484F58]">
+                  <span className="text-muted-foreground/60">
                     Started {format(new Date(child.startedAt), "HH:mm:ss")}
                   </span>
                 )}
                 {child.finishedAt && (
-                  <span className="text-[#484F58]">
+                  <span className="text-muted-foreground/60">
                     · Finished {format(new Date(child.finishedAt), "HH:mm:ss")}
                   </span>
                 )}
@@ -1096,14 +1096,14 @@ export function ChildRunInline({
               {/* Node step list */}
               {child.branchPath.length > 0 && (
                 <div className="space-y-0.5">
-                  <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wider mb-1">Node steps</p>
+                  <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-1">Node steps</p>
                   {child.branchPath.map((nodeId, idx) => {
                     const graphNode = (child.graph?.nodes ?? []).find(n => n.id === nodeId);
                     const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                     const label = (graphNode?.data?.label as string) ?? nodeType;
                     const nodeOutput = child.nodeOutputs.find(o => o.nodeId === nodeId);
                     const hasError = nodeOutput?.status === "error";
-                    const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType };
+                    const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#171C26", border: "#232A36", icon: "⚡", label: nodeType };
 
                     return (
                       <div key={`${nodeId}-${idx}`}>
@@ -1112,7 +1112,7 @@ export function ChildRunInline({
                           style={{ background: hasError ? "#1A0808" : style.bg + "80" }}
                         >
                           <span className="text-[11px] flex-shrink-0">{style.icon}</span>
-                          <span className="flex-1 text-[10px] font-medium text-[#E6EDF3] truncate">{label || style.label}</span>
+                          <span className="flex-1 text-[10px] font-medium text-foreground truncate">{label || style.label}</span>
                           {nodeOutput && (
                             <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold flex-shrink-0 ${
                               hasError
@@ -1123,7 +1123,7 @@ export function ChildRunInline({
                             </span>
                           )}
                           {nodeOutput?.durationMs != null && (
-                            <span className="text-[9px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(nodeOutput.durationMs)}</span>
+                            <span className="text-[9px] text-muted-foreground/60 font-mono flex-shrink-0">{fmtDuration(nodeOutput.durationMs)}</span>
                           )}
                         </div>
 
@@ -1141,8 +1141,8 @@ export function ChildRunInline({
 
                         {/* Depth cap reached */}
                         {nodeOutput && typeof nodeOutput.output.childRunId === "number" && depth >= MAX_RENDER_DEPTH && (
-                          <div className="mt-1 pl-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#30363D]/40 border border-[#30363D]">
-                            <span className="text-[10px] text-[#7D8590]">
+                          <div className="mt-1 pl-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-border/40 border border-border">
+                            <span className="text-[10px] text-muted-foreground">
                               ⛔ Chain continues — max display depth ({MAX_RENDER_DEPTH}) reached.{" "}
                               <button
                                 className="underline text-[#2E9EFF] hover:text-[#60C0FF] transition-colors"
@@ -1160,7 +1160,7 @@ export function ChildRunInline({
               )}
 
               {child.branchPath.length === 0 && (
-                <p className="text-[10px] text-[#484F58] italic">No steps executed yet.</p>
+                <p className="text-[10px] text-muted-foreground/60 italic">No steps executed yet.</p>
               )}
 
               {/* Navigate to full run */}
@@ -1367,7 +1367,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -1375,7 +1375,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   if (!run) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-[#7D8590] text-sm">Run not found</p>
+        <p className="text-muted-foreground text-sm">Run not found</p>
       </div>
     );
   }
@@ -1414,15 +1414,15 @@ export default function RunDetailContent({ runId }: { runId: number }) {
     <>
     <div className="h-full flex flex-col overflow-hidden">
       {/* Tabs */}
-      <div className="flex-shrink-0 flex border-b border-[#30363D] px-4">
+      <div className="flex-shrink-0 flex border-b border-border px-4">
         {(["replay", "timeline", "payload"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-3 text-sm font-medium capitalize border-b-2 transition-colors ${
               activeTab === tab
-                ? "border-[#0078D4] text-[#E6EDF3]"
-                : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {tab}
@@ -1449,13 +1449,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
           <div className="h-full flex flex-col">
             {branchPath.length === 0 ? (
               <div className="flex-1 flex items-center justify-center">
-                <p className="text-[#7D8590] text-sm">No execution steps recorded yet.</p>
+                <p className="text-muted-foreground text-sm">No execution steps recorded yet.</p>
               </div>
             ) : (
               <>
                 <div className="flex-1 flex overflow-hidden">
                   {/* Vertical card list */}
-                  <div className="flex-1 overflow-y-auto bg-[#0D1117] p-4">
+                  <div className="flex-1 overflow-y-auto bg-background p-4">
                     <div className="max-w-lg mx-auto space-y-1">
                       {replayEntries.map((entry, entryIdx) => {
                         const isLastEntry = entryIdx === replayEntries.length - 1;
@@ -1470,7 +1470,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                 <div className="w-px h-3 bg-amber-500/40" />
                               </div>
                               <div className="rounded-xl border border-amber-500/40 overflow-hidden"
-                                style={{ background: anyInPath ? "#1A1200" : "#0D1117" }}>
+                                style={{ background: anyInPath ? "#1A1200" : "#0A0D12" }}>
                                 {/* Header */}
                                 <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-500/25">
                                   <span className="text-amber-400 text-sm">🔁</span>
@@ -1546,7 +1546,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               {/* Connector to next entry */}
                               {!isLastEntry && (
                                 <div className="flex justify-center">
-                                  <div className="w-px h-3 bg-[#30363D]" />
+                                  <div className="w-px h-3 bg-border" />
                                 </div>
                               )}
                             </div>
@@ -1608,7 +1608,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                 (it renders its own incoming connector) */}
                             {!isLastEntry && replayEntries[entryIdx + 1]?.kind !== "exhausted_group" && (
                               <div className="flex justify-center">
-                                <div className="w-px h-3 bg-[#30363D]" />
+                                <div className="w-px h-3 bg-border" />
                               </div>
                             )}
                           </div>
@@ -1623,12 +1623,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         const graphNode = graphNodeMap.get(execId);
                         const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                         const label = (graphNode?.data?.label as string) ?? nodeType;
-                        const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType };
+                        const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#171C26", border: "#232A36", icon: "⚡", label: nodeType };
                         return (
                           <>
                             {/* connector from last completed node */}
                             <div className="flex justify-center">
-                              <div className="w-px h-3 bg-[#30363D]" />
+                              <div className="w-px h-3 bg-border" />
                             </div>
                             <div
                               className="relative rounded-xl border-2"
@@ -1643,11 +1643,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               >
                                 <span className="text-base flex-shrink-0 w-6 text-center animate-pulse">{style.icon}</span>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-[#E6EDF3] truncate leading-snug">{label}</p>
+                                  <p className="text-xs font-semibold text-foreground truncate leading-snug">{label}</p>
                                   <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: style.border }}>
                                     {nodeType.replace(/_/g, " ")}
                                   </p>
-                                  <p className="text-[9px] text-[#484F58] font-mono truncate mt-0.5">{execId}</p>
+                                  <p className="text-[9px] text-muted-foreground/60 font-mono truncate mt-0.5">{execId}</p>
                                 </div>
                                 <span className="flex-shrink-0 flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full border"
                                   style={{ color: style.border, borderColor: style.border + "50", background: style.bg }}>
@@ -1664,9 +1664,9 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       {skippedNodeIds.length > 0 && (
                         <>
                           <div className="flex items-center gap-2 py-3">
-                            <div className="flex-1 h-px bg-[#30363D]" />
-                            <span className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Not executed</span>
-                            <div className="flex-1 h-px bg-[#30363D]" />
+                            <div className="flex-1 h-px bg-border" />
+                            <span className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Not executed</span>
+                            <div className="flex-1 h-px bg-border" />
                           </div>
                           <div className="space-y-1">
                             {skippedNodeIds.map(nodeId => {
@@ -1707,11 +1707,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                     const isJoinNode       = currentNodeType === "join";
                     if (!currentOutput && !isParallelNode && !isJoinNode) return null;
                     return (
-                    <div className="w-64 flex-shrink-0 bg-[#161B22] border-l border-[#30363D] overflow-y-auto p-3 space-y-3">
-                      <p className="text-xs font-semibold text-[#E6EDF3]">
+                    <div className="w-64 flex-shrink-0 bg-card border-l border-border overflow-y-auto p-3 space-y-3">
+                      <p className="text-xs font-semibold text-foreground">
                         Step {replayStep + 1} / {branchPath.length}
                       </p>
-                      <p className="text-[10px] text-[#484F58] font-mono break-all">{currentNodeId}</p>
+                      <p className="text-[10px] text-muted-foreground/60 font-mono break-all">{currentNodeId}</p>
 
                       {/* ── Parallel node: show branch output panel ── */}
                       {isParallelNode && (
@@ -1732,12 +1732,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         currentOutput.status === "ok" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         : currentOutput.status === "error" ? "bg-red-500/10 text-red-400 border-red-500/20"
-                        : "bg-[#30363D] text-[#7D8590] border-[#30363D]"
+                        : "bg-border text-muted-foreground border-border"
                       }`}>
                         {currentOutput.status}
                       </div>
                       {currentOutput.durationMs !== null && (
-                        <p className="text-xs text-[#484F58]">{fmtDuration(currentOutput.durationMs)}</p>
+                        <p className="text-xs text-muted-foreground/60">{fmtDuration(currentOutput.durationMs)}</p>
                       )}
                       {typeof currentOutput.output.imageUploadWarning === "string" && (
                         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30">
@@ -1795,7 +1795,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                   ? "bg-red-500/15 text-red-400 border-red-500/30"
                                   : (currentOutput.output.depth as number) >= (currentOutput.output.maxDepth as number) - 1
                                   ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                                  : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+                                  : "bg-accent text-muted-foreground border-border"
                               }`}>
                                 Depth: {currentOutput.output.depth as number} / {currentOutput.output.maxDepth as number}
                               </span>
@@ -1826,11 +1826,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                 </div>
 
                 {/* Step controls */}
-                <div className="flex-shrink-0 flex items-center justify-center gap-3 py-2.5 border-t border-[#30363D] bg-[#161B22]">
+                <div className="flex-shrink-0 flex items-center justify-center gap-3 py-2.5 border-t border-border bg-card">
                   <button
                     onClick={() => setReplayStep(0)}
                     disabled={replayStep === 0}
-                    className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors"
+                    className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
@@ -1839,18 +1839,18 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                   <button
                     onClick={() => setReplayStep(s => Math.max(0, s - 1))}
                     disabled={replayStep === 0}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] border border-[#30363D] rounded-lg text-xs text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-accent border border-border rounded-lg text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                     Prev
                   </button>
-                  <span className="text-xs text-[#7D8590] tabular-nums">{replayStep + 1} / {branchPath.length}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{replayStep + 1} / {branchPath.length}</span>
                   <button
                     onClick={() => setReplayStep(s => Math.min(maxStep, s + 1))}
                     disabled={replayStep >= maxStep}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] border border-[#30363D] rounded-lg text-xs text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-accent border border-border rounded-lg text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                   >
                     Next
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1860,7 +1860,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                   <button
                     onClick={() => setReplayStep(maxStep)}
                     disabled={replayStep >= maxStep}
-                    className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors"
+                    className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
@@ -1877,9 +1877,9 @@ export default function RunDetailContent({ runId }: { runId: number }) {
           <div className="h-full overflow-y-auto p-4">
             <div className="max-w-2xl mx-auto">
               {run.logs.length === 0 ? (
-                <p className="text-[#7D8590] text-sm">No log entries.</p>
+                <p className="text-muted-foreground text-sm">No log entries.</p>
               ) : (
-                <div className="relative border-l-2 border-[#30363D] pl-6 space-y-4">
+                <div className="relative border-l-2 border-border pl-6 space-y-4">
                   {run.logs.map(log => {
                     const isProgress = log.level === "progress";
                     const step  = isProgress ? (log.metadata?.step  as number | undefined) : undefined;
@@ -1891,11 +1891,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                    : log.level === "warn"  ? "#F59E0B"
                                    : isProgress            ? "#00B4D8"
                                    : hasPricing            ? "#00B4D8"
-                                   :                         "#0078D4";
+                                   :                         "#2F6FED";
                     return (
                       <div key={log.id} className="relative">
-                        <div className="absolute -left-[25px] top-1 w-3 h-3 rounded-full border-2 border-[#0D1117]" style={{ background: dotColor }} />
-                        <div className="text-[10px] text-[#484F58] font-mono mb-0.5 flex items-center gap-2">
+                        <div className="absolute -left-[25px] top-1 w-3 h-3 rounded-full border-2 border-background" style={{ background: dotColor }} />
+                        <div className="text-[10px] text-muted-foreground/60 font-mono mb-0.5 flex items-center gap-2">
                           <span>{format(new Date(log.timestamp), "HH:mm:ss.SSS")} · {log.nodeId}</span>
                           {isProgress && (
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
@@ -1907,7 +1907,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           log.level === "error" ? "text-red-400"
                           : log.level === "warn" ? "text-amber-400"
                           : isProgress ? "text-cyan-300"
-                          : "text-[#E6EDF3]"
+                          : "text-foreground"
                         }`}>
                           <ExpandableJson value={log.message} />
                           {isProgress && step != null && total != null && (
@@ -1920,7 +1920,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               💲 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pricingTotal!)}
                             </span>
                             {pricingLines != null && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-accent border border-border text-muted-foreground">
                                 {pricingLines} line{pricingLines !== 1 ? "s" : ""}
                               </span>
                             )}
@@ -1940,17 +1940,17 @@ export default function RunDetailContent({ runId }: { runId: number }) {
           <div className="h-full overflow-y-auto p-4">
             <div className="max-w-3xl mx-auto space-y-4">
               {run.nodeOutputs.length === 0 ? (
-                <p className="text-[#7D8590] text-sm">No node outputs recorded.</p>
+                <p className="text-muted-foreground text-sm">No node outputs recorded.</p>
               ) : (
                 run.nodeOutputs.map(output => {
                   const payloadGraphNode = graphNodeMap.get(output.nodeId);
                   const payloadNodeType  = (payloadGraphNode?.data?.nodeType as string) ?? payloadGraphNode?.type ?? "";
                   const isJoinPayload    = payloadNodeType === "join" || output.output.joined === true;
                   return (
-                  <div key={output.id} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+                  <div key={output.id} className="bg-card border border-border rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-[#E6EDF3] font-mono">{output.nodeId}</span>
+                        <span className="text-xs font-semibold text-foreground font-mono">{output.nodeId}</span>
                         {isJoinPayload && (
                           <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
                             join
@@ -1959,12 +1959,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
                           output.status === "ok" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           : output.status === "error" ? "bg-red-500/10 text-red-400 border-red-500/20"
-                          : "bg-[#30363D] text-[#7D8590] border-[#30363D]"
+                          : "bg-border text-muted-foreground border-border"
                         }`}>
                           {output.status}
                         </span>
                       </div>
-                      <span className="text-[10px] text-[#484F58] font-mono">{fmtDuration(output.durationMs)}</span>
+                      <span className="text-[10px] text-muted-foreground/60 font-mono">{fmtDuration(output.durationMs)}</span>
                     </div>
 
                     {/* Join node: show merge summary instead of diff */}
@@ -1973,11 +1973,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                     ) : (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Payload diff (input → output)</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">Payload diff (input → output)</p>
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => openJsonViewer(output.input, `${output.nodeId} — Input`)}
-                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-muted-foreground/60 hover:text-primary hover:bg-accent transition-colors"
                           >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
@@ -1986,7 +1986,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           </button>
                           <button
                             onClick={() => openJsonViewer(output.output, `${output.nodeId} — Output`)}
-                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-muted-foreground/60 hover:text-primary hover:bg-accent transition-colors"
                           >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
@@ -2047,7 +2047,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                   ? "bg-red-500/15 text-red-400 border-red-500/30"
                                   : (output.output.depth as number) >= (output.output.maxDepth as number) - 1
                                   ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                                  : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+                                  : "bg-accent text-muted-foreground border-border"
                               }`}>
                                 Depth: {output.output.depth as number} / {output.output.maxDepth as number}
                               </span>

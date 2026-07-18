@@ -28,10 +28,10 @@ function priceLabel(s: ServiceRow): string {
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-[#21262D]">
+    <tr className="border-b border-accent">
       {[...Array(8)].map((_, i) => (
         <td key={i} className="px-3 py-3">
-          <div className="h-3.5 rounded bg-[#21262D] animate-pulse" style={{ width: `${40 + (i * 13) % 50}%` }} />
+          <div className="h-3.5 rounded bg-accent animate-pulse" style={{ width: `${40 + (i * 13) % 50}%` }} />
         </td>
       ))}
     </tr>
@@ -117,8 +117,8 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
   }
 
   function SortIcon({ col }: { col: typeof sortCol }) {
-    if (sortCol !== col) return <span className="text-[#30363D] ml-1">↕</span>;
-    return <span className="text-[#0078D4] ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
+    if (sortCol !== col) return <span className="text-border ml-1">↕</span>;
+    return <span className="text-primary ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>;
   }
 
   async function handleDuplicate(s: ServiceRow) {
@@ -194,7 +194,7 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
   const ThBtn = ({ col, label }: { col: typeof sortCol; label: string }) => (
     <th className="px-3 py-2.5 text-left">
       <button type="button" onClick={() => toggleSort(col)}
-        className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider hover:text-[#E6EDF3] transition-colors whitespace-nowrap">
+        className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors whitespace-nowrap">
         {label}<SortIcon col={col} />
       </button>
     </th>
@@ -206,26 +206,26 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card flex-shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-[#E6EDF3]">Service Offerings</h2>
-            <p className="text-xs text-[#7D8590]">
+            <h2 className="text-sm font-bold text-foreground">Service Offerings</h2>
+            <p className="text-xs text-muted-foreground">
               {isLoading ? "Loading…" : `${filtered.length} of ${services.length} service${services.length !== 1 ? "s" : ""}`}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={exportCsv}
-              className="flex items-center gap-1.5 border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+              className="flex items-center gap-1.5 border border-border text-muted-foreground hover:text-foreground hover:bg-accent px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
               <Download className="w-3.5 h-3.5" />
               {selected.size > 0 ? `Export ${selected.size}` : "Export CSV"}
             </button>
             <button type="button" onClick={() => { void handlePublishToProd(); }} disabled={publishingToProd}
-              className="flex items-center gap-1.5 border border-[#30363D] text-[#C9D1D9] hover:border-emerald-500/40 hover:text-emerald-400 bg-[#1C2128] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors">
+              className="flex items-center gap-1.5 border border-border text-foreground/90 hover:border-emerald-500/40 hover:text-emerald-400 bg-accent px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors">
               {publishingToProd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               Publish to Prod
             </button>
             <button type="button" onClick={onCreate}
-              className="flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#006CBE] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+              className="flex items-center gap-1.5 bg-primary hover:bg-[#006CBE] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
               <Plus className="w-3.5 h-3.5" />
               New Service
             </button>
@@ -234,15 +234,15 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
         {/* Bulk action toolbar */}
         {selected.size > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 bg-[#0078D4]/10 border-b border-[#0078D4]/20 flex-shrink-0">
-            <span className="text-xs font-semibold text-[#0078D4]">{selected.size} selected</span>
+          <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border-b border-primary/20 flex-shrink-0">
+            <span className="text-xs font-semibold text-primary">{selected.size} selected</span>
             <div className="flex items-center gap-1.5 ml-2">
               <button type="button" onClick={() => void handleBulkVisibility("public")}
                 className="flex items-center gap-1 text-xs border border-emerald-500/30 text-emerald-400 px-2.5 py-1 rounded-lg hover:bg-emerald-500/10 transition-colors">
                 <Eye className="w-3 h-3" /> Set Public
               </button>
               <button type="button" onClick={() => void handleBulkVisibility("private")}
-                className="flex items-center gap-1 text-xs border border-[#30363D] text-[#7D8590] px-2.5 py-1 rounded-lg hover:bg-[#1C2128] transition-colors">
+                className="flex items-center gap-1 text-xs border border-border text-muted-foreground px-2.5 py-1 rounded-lg hover:bg-accent transition-colors">
                 <EyeOff className="w-3 h-3" /> Set Private
               </button>
               <button type="button" onClick={() => void handleBulkVisibility("landing_page_only")}
@@ -254,12 +254,12 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
                 <Trash2 className="w-3 h-3" /> Archive
               </button>
               <button type="button" onClick={exportCsv}
-                className="flex items-center gap-1 text-xs border border-[#30363D] text-[#7D8590] px-2.5 py-1 rounded-lg hover:bg-[#1C2128] transition-colors">
+                className="flex items-center gap-1 text-xs border border-border text-muted-foreground px-2.5 py-1 rounded-lg hover:bg-accent transition-colors">
                 <Download className="w-3 h-3" /> CSV
               </button>
             </div>
             <button type="button" onClick={() => setSelected(new Set())}
-              className="ml-auto text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
               Deselect all
             </button>
           </div>
@@ -268,33 +268,33 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
         {/* Table */}
         <div className="flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[#161B22] sticky top-0 z-10">
-              <tr className="border-b border-[#21262D]">
+            <thead className="bg-card sticky top-0 z-10">
+              <tr className="border-b border-accent">
                 <th className="px-3 py-2.5 w-8">
                   <input type="checkbox"
                     checked={pageRows.length > 0 && selected.size === pageRows.length}
                     onChange={selectAll}
-                    className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4]" />
+                    className="rounded border-border bg-background text-primary" />
                 </th>
                 <ThBtn col="name" label="Name" />
                 <ThBtn col="category" label="Category" />
                 <ThBtn col="price" label="Price" />
                 <ThBtn col="visibility" label="Visibility" />
                 <th className="px-3 py-2.5 text-left">
-                  <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider">Badge</span>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Badge</span>
                 </th>
                 <ThBtn col="updatedAt" label="Updated" />
                 <th className="px-3 py-2.5 w-24">
-                  <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider">Actions</span>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Actions</span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#21262D]">
+            <tbody className="divide-y divide-accent">
               {isLoading ? (
                 [...Array(8)].map((_, i) => <SkeletonRow key={i} />)
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16 text-[#7D8590]">
+                  <td colSpan={8} className="text-center py-16 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <svg className="w-10 h-10 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -306,49 +306,49 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
               ) : (
                 pageRows.map(s => (
                   <tr key={s.id}
-                    className={`group hover:bg-[#161B22] transition-colors cursor-pointer ${selected.has(s.id) ? "bg-[#0078D4]/5" : ""}`}
+                    className={`group hover:bg-card transition-colors cursor-pointer ${selected.has(s.id) ? "bg-primary/5" : ""}`}
                     onClick={() => onEdit(s.id)}>
                     <td className="px-3 py-3" onClick={e => { e.stopPropagation(); toggleSelect(s.id); }}>
                       <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)}
-                        className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4]" />
+                        className="rounded border-border bg-background text-primary" />
                     </td>
                     <td className="px-3 py-3">
                       <div>
-                        <p className="text-sm font-medium text-[#E6EDF3] leading-snug">{s.name}</p>
-                        {s.slug && <p className="text-xs font-mono text-[#484F58] truncate max-w-[200px]">{s.slug}</p>}
+                        <p className="text-sm font-medium text-foreground leading-snug">{s.name}</p>
+                        {s.slug && <p className="text-xs font-mono text-muted-foreground/60 truncate max-w-[200px]">{s.slug}</p>}
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs text-[#7D8590]">{s.category ?? "—"}</span>
+                      <span className="text-xs text-muted-foreground">{s.category ?? "—"}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs font-semibold text-[#0078D4]">{priceLabel(s)}</span>
+                      <span className="text-xs font-semibold text-primary">{priceLabel(s)}</span>
                     </td>
                     <td className="px-3 py-3">
                       <VisibilityBadge visibility={s.visibility} size="xs" />
                     </td>
                     <td className="px-3 py-3">
                       {s.badge
-                        ? <span className="text-xs bg-[#0078D4]/10 text-[#0078D4] px-1.5 py-0.5 rounded font-medium">{s.badge}</span>
-                        : <span className="text-xs text-[#30363D]">—</span>}
+                        ? <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">{s.badge}</span>
+                        : <span className="text-xs text-border">—</span>}
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs text-[#7D8590]">{new Date(s.updatedAt ?? s.createdAt).toLocaleDateString()}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(s.updatedAt ?? s.createdAt).toLocaleDateString()}</span>
                     </td>
                     <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button type="button" onClick={() => onEdit(s.id)} title="Edit"
-                          className="p-1.5 rounded text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors">
+                          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button type="button" onClick={() => void handleDuplicate(s)} title="Duplicate"
-                          className="p-1.5 rounded text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                         <button type="button" onClick={() => setArchiveTarget(s)} title="Archive"
-                          className="p-1.5 rounded text-[#7D8590] hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                          className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors">
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -362,20 +362,20 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] bg-[#161B22] flex-shrink-0">
-            <p className="text-xs text-[#7D8590]">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-card flex-shrink-0">
+            <p className="text-xs text-muted-foreground">
               Page {page} of {totalPages} · {filtered.length} results
             </p>
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => setPage(1)} disabled={page === 1}
-                className="px-2 py-1 text-xs rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] disabled:opacity-30 transition-colors">«</button>
+                className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 transition-colors">«</button>
               <button type="button" onClick={() => setPage(p => p - 1)} disabled={page === 1}
-                className="px-2 py-1 text-xs rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] disabled:opacity-30 transition-colors">‹</button>
-              <span className="px-3 py-1 text-xs text-[#E6EDF3] bg-[#0078D4] rounded border border-[#0078D4]">{page}</span>
+                className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 transition-colors">‹</button>
+              <span className="px-3 py-1 text-xs text-foreground bg-primary rounded border border-primary">{page}</span>
               <button type="button" onClick={() => setPage(p => p + 1)} disabled={page === totalPages}
-                className="px-2 py-1 text-xs rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] disabled:opacity-30 transition-colors">›</button>
+                className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 transition-colors">›</button>
               <button type="button" onClick={() => setPage(totalPages)} disabled={page === totalPages}
-                className="px-2 py-1 text-xs rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] disabled:opacity-30 transition-colors">»</button>
+                className="px-2 py-1 text-xs rounded border border-border text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 transition-colors">»</button>
             </div>
           </div>
         )}
@@ -383,16 +383,16 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
       {/* Archive single confirmation */}
       <AlertDialog open={!!archiveTarget} onOpenChange={o => { if (!o) setArchiveTarget(null); }}>
-        <AlertDialogContent className="bg-[#161B22] border-[#30363D]">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#E6EDF3]">Archive service?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#7D8590]">
-              <strong className="text-[#E6EDF3]">{archiveTarget?.name}</strong> will be permanently deleted.
+            <AlertDialogTitle className="text-foreground">Archive service?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              <strong className="text-foreground">{archiveTarget?.name}</strong> will be permanently deleted.
               This cannot be undone. Services referenced by active clients, contracts, or workflow templates cannot be removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#30363D] text-[#7D8590] hover:bg-[#1C2128]">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => archiveTarget && void handleArchive(archiveTarget)}
               className="bg-red-600 hover:bg-red-700 text-white border-0">
@@ -404,16 +404,16 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
       {/* Bulk archive confirmation */}
       <AlertDialog open={bulkArchiveOpen} onOpenChange={setBulkArchiveOpen}>
-        <AlertDialogContent className="bg-[#161B22] border-[#30363D]">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#E6EDF3]">Archive {selected.size} services?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#7D8590]">
+            <AlertDialogTitle className="text-foreground">Archive {selected.size} services?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
               Services referenced by active clients, contracts, or workflow templates will be skipped.
               All others will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#30363D] text-[#7D8590] hover:bg-[#1C2128]">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleBulkArchive()} className="bg-red-600 hover:bg-red-700 text-white border-0">
               Archive {selected.size} services
             </AlertDialogAction>

@@ -58,10 +58,11 @@ describe("GET /api/admin/live-stream/channels", () => {
       .set("Authorization", `Bearer ${adminToken()}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.channels).toHaveLength(30);
+    expect(res.body.channels).toHaveLength(31);
     expect(res.body.channels).not.toContain("inbox");
     expect(res.body.channels).toContain("engine.sla");
     expect(res.body.channels).toContain("growth.booking");
+    expect(res.body.channels).toContain("admin.shell");
     // Sorted, no duplicates — a real static taxonomy, not accidental noise.
     expect(new Set(res.body.channels).size).toBe(res.body.channels.length);
   });

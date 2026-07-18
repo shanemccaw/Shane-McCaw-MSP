@@ -61,7 +61,7 @@ export function ImportJsonDialog({ open, onClose, onConfirm }: ImportJsonDialogP
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-xl">
+      <DialogContent className="bg-card border-border text-white max-w-xl">
         <DialogHeader>
           <DialogTitle>Import JSON</DialogTitle>
         </DialogHeader>
@@ -74,7 +74,7 @@ export function ImportJsonDialog({ open, onClose, onConfirm }: ImportJsonDialogP
             onChange={(e) => setRaw(e.target.value)}
             placeholder="Paste JSON array here…"
             rows={12}
-            className="bg-[#0D1117] border-[#30363D] text-white font-mono text-xs resize-none"
+            className="bg-background border-border text-white font-mono text-xs resize-none"
             spellCheck={false}
           />
           {raw.trim() && (
@@ -90,7 +90,7 @@ export function ImportJsonDialog({ open, onClose, onConfirm }: ImportJsonDialogP
           <Button
             onClick={handleConfirm}
             disabled={!validation.ok}
-            className="bg-[#0078D4] hover:bg-[#006cbf] text-white disabled:opacity-50"
+            className="bg-primary hover:bg-[#006cbf] text-white disabled:opacity-50"
           >
             Import
           </Button>

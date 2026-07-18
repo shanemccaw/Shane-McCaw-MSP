@@ -295,7 +295,7 @@ export function SimulatorCenterCanvas({
                             <Badge
                               className={`rounded px-1.5 py-0.5 text-[9px] font-bold font-mono ${
                                 msp.isTestbed
-                                  ? "text-[#58A6FF] border border-primary/25 bg-primary/10"
+                                  ? "text-primary border border-primary/25 bg-primary/10"
                                   : "text-muted-foreground/70 border border-border bg-card"
                               }`}
                             >

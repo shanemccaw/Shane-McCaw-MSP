@@ -37,8 +37,8 @@ function serviceTypeColor(type: string | null): string {
     case "micro_offer": return "bg-emerald-500/10 text-emerald-400";
     case "retainer": return "bg-purple-500/10 text-purple-400";
     case "optional": return "bg-amber-500/10 text-amber-400";
-    case "service_area": return "bg-[#0078D4]/10 text-[#0078D4]";
-    default: return "bg-[#21262D] text-[#7D8590]";
+    case "service_area": return "bg-primary/10 text-primary";
+    default: return "bg-accent text-muted-foreground";
   }
 }
 
@@ -60,14 +60,14 @@ function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onD
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer border-b border-[#21262D] transition-colors ${isSelected ? "bg-[#0078D4]/8" : isChecked ? "bg-[#0078D4]/5" : "hover:bg-[#1C2128]"}`}
+      className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer border-b border-accent transition-colors ${isSelected ? "bg-primary/8" : isChecked ? "bg-primary/5" : "hover:bg-accent"}`}
       onClick={() => onSelect(s.id)}
     >
       {/* Drag handle */}
       <div
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 text-[#30363D] opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing"
+        className="flex-shrink-0 text-border opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing"
         onClick={e => e.stopPropagation()}
       >
         <GripVertical className="w-3.5 h-3.5" />
@@ -79,14 +79,14 @@ function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onD
           type="checkbox"
           checked={isChecked}
           onChange={() => onCheck(s.id)}
-          className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4]"
+          className="rounded border-border bg-background text-primary"
         />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className={`text-xs font-medium truncate ${isSelected ? "text-[#0078D4]" : "text-[#E6EDF3]"}`}>{s.name}</p>
+          <p className={`text-xs font-medium truncate ${isSelected ? "text-primary" : "text-foreground"}`}>{s.name}</p>
           {s.serviceType && (
             <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${serviceTypeColor(s.serviceType)}`}>
               {s.serviceType.replace(/_/g, " ")}
@@ -99,13 +99,13 @@ function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onD
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] font-semibold text-[#0078D4]">{priceLabel(s)}</span>
-          <span className="text-[10px] text-[#484F58]">·</span>
+          <span className="text-[10px] font-semibold text-primary">{priceLabel(s)}</span>
+          <span className="text-[10px] text-muted-foreground/60">·</span>
           <VisibilityBadge visibility={s.visibility} size="xs" />
           {(s.categoryPath ?? s.category) && (
             <>
-              <span className="text-[10px] text-[#484F58]">·</span>
-              <span className="text-[10px] text-[#484F58] truncate">{s.categoryPath ?? s.category}</span>
+              <span className="text-[10px] text-muted-foreground/60">·</span>
+              <span className="text-[10px] text-muted-foreground/60 truncate">{s.categoryPath ?? s.category}</span>
             </>
           )}
         </div>
@@ -113,10 +113,10 @@ function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onD
 
       {/* Row actions */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
-        <button type="button" onClick={() => onDuplicate(s)} title="Duplicate" className="p-1 rounded text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D]">
+        <button type="button" onClick={() => onDuplicate(s)} title="Duplicate" className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent">
           <Copy className="w-3 h-3" />
         </button>
-        <button type="button" onClick={() => onArchive(s)} title="Archive" className="p-1 rounded text-[#7D8590] hover:text-red-400 hover:bg-red-500/10">
+        <button type="button" onClick={() => onArchive(s)} title="Archive" className="p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10">
           <Trash2 className="w-3 h-3" />
         </button>
       </div>
@@ -300,53 +300,53 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
   );
 
   return (
-    <div className="flex flex-col border-r border-[#21262D] bg-[#0D1117] overflow-hidden" style={{ width: 380, flexShrink: 0 }}>
+    <div className="flex flex-col border-r border-accent bg-background overflow-hidden" style={{ width: 380, flexShrink: 0 }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-[#21262D] flex-shrink-0">
-        <span className="text-xs font-bold text-[#E6EDF3]">
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-accent flex-shrink-0">
+        <span className="text-xs font-bold text-foreground">
           {categoryPath === null ? "All Products" : categoryPath === "__uncategorized__" ? "Uncategorized" : categoryPath}
         </span>
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={exportCsv} title="Export CSV"
-            className="p-1.5 rounded text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+            className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
             <Download className="w-3.5 h-3.5" />
           </button>
           <button type="button" onClick={() => void handlePublishToProd()} disabled={publishingToProd} title="Publish to Prod"
-            className="p-1.5 rounded text-[#7D8590] hover:text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-colors">
+            className="p-1.5 rounded text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-colors">
             {publishingToProd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
           </button>
           <button type="button" onClick={onCreateNew}
-            className="flex items-center gap-1 text-xs font-semibold bg-[#0078D4] text-white px-2.5 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors">
+            className="flex items-center gap-1 text-xs font-semibold bg-primary text-white px-2.5 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors">
             <Plus className="w-3 h-3" /> New
           </button>
         </div>
       </div>
 
       {/* Search bar */}
-      <div className="px-3 py-2 border-b border-[#21262D] flex-shrink-0">
+      <div className="px-3 py-2 border-b border-accent flex-shrink-0">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#484F58]" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter…"
-            className="w-full bg-[#1C2128] border border-[#30363D] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="w-full bg-accent border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>
 
       {/* Bulk toolbar */}
       {selected.size > 0 && (
-        <div className="px-3 py-2 border-b border-[#0078D4]/20 bg-[#0078D4]/5 flex-shrink-0">
+        <div className="px-3 py-2 border-b border-primary/20 bg-primary/5 flex-shrink-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] font-bold text-[#0078D4]">{selected.size} selected</span>
+            <span className="text-[10px] font-bold text-primary">{selected.size} selected</span>
             <button type="button" onClick={() => void handleBulkVisibility("public")}
               className="flex items-center gap-1 text-[10px] border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded hover:bg-emerald-500/10">
               <Eye className="w-3 h-3" /> Public
             </button>
             <button type="button" onClick={() => void handleBulkVisibility("private")}
-              className="flex items-center gap-1 text-[10px] border border-[#30363D] text-[#7D8590] px-2 py-0.5 rounded hover:bg-[#1C2128]">
+              className="flex items-center gap-1 text-[10px] border border-border text-muted-foreground px-2 py-0.5 rounded hover:bg-accent">
               <EyeOff className="w-3 h-3" /> Private
             </button>
             <button type="button" onClick={() => void handleBulkVisibility("landing_page_only")}
@@ -354,14 +354,14 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
               <Lock className="w-3 h-3" /> LP Only
             </button>
             <button type="button" onClick={() => setShowBulkCategoryInput(p => !p)}
-              className="flex items-center gap-1 text-[10px] border border-[#30363D] text-[#7D8590] px-2 py-0.5 rounded hover:bg-[#1C2128]">
+              className="flex items-center gap-1 text-[10px] border border-border text-muted-foreground px-2 py-0.5 rounded hover:bg-accent">
               Move to…
             </button>
             <button type="button" onClick={() => setBulkArchiveOpen(true)}
               className="flex items-center gap-1 text-[10px] border border-red-500/30 text-red-400 px-2 py-0.5 rounded hover:bg-red-500/10">
               <Trash2 className="w-3 h-3" />
             </button>
-            <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-[10px] text-[#484F58] hover:text-[#7D8590]">
+            <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-[10px] text-muted-foreground/60 hover:text-muted-foreground">
               Clear
             </button>
           </div>
@@ -372,11 +372,11 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
                 value={bulkCategoryTarget}
                 onChange={e => setBulkCategoryTarget(e.target.value)}
                 placeholder="New category path (empty = uncategorized)"
-                className="flex-1 text-xs bg-[#1C2128] border border-[#30363D] rounded px-2 py-1 text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="flex-1 text-xs bg-accent border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               />
               <datalist id="bulk-cat-list">{allCategories.map(c => <option key={c} value={c} />)}</datalist>
               <button type="button" onClick={() => void handleBulkCategoryMove()} disabled={bulkCategoryMove.isPending}
-                className="text-xs bg-[#0078D4] text-white px-2.5 py-1 rounded hover:bg-[#006CBE] disabled:opacity-50">
+                className="text-xs bg-primary text-white px-2.5 py-1 rounded hover:bg-[#006CBE] disabled:opacity-50">
                 Move
               </button>
             </div>
@@ -385,36 +385,36 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
       )}
 
       {/* Header row */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#21262D] bg-[#161B22] flex-shrink-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-accent bg-card flex-shrink-0">
         <div className="w-3.5 flex-shrink-0" />
         <div className="flex-shrink-0" onClick={selectAll}>
           <input
             type="checkbox"
             checked={sortedFiltered.length > 0 && selected.size === sortedFiltered.length}
             onChange={selectAll}
-            className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4] w-3.5 h-3.5"
+            className="rounded border-border bg-background text-primary w-3.5 h-3.5"
           />
         </div>
-        <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider flex-1">Name</span>
-        <span className="text-[10px] text-[#484F58]">{sortedFiltered.length}</span>
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex-1">Name</span>
+        <span className="text-[10px] text-muted-foreground/60">{sortedFiltered.length}</span>
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           [...Array(6)].map((_, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-3 border-b border-[#21262D]">
-              <div className="w-3.5 h-3.5 rounded bg-[#21262D] animate-pulse" />
+            <div key={i} className="flex items-center gap-2 px-3 py-3 border-b border-accent">
+              <div className="w-3.5 h-3.5 rounded bg-accent animate-pulse" />
               <div className="flex-1 space-y-1">
-                <div className="h-3 rounded bg-[#21262D] animate-pulse" style={{ width: `${50 + (i * 17) % 40}%` }} />
-                <div className="h-2.5 rounded bg-[#21262D] animate-pulse" style={{ width: `${30 + (i * 13) % 30}%` }} />
+                <div className="h-3 rounded bg-accent animate-pulse" style={{ width: `${50 + (i * 17) % 40}%` }} />
+                <div className="h-2.5 rounded bg-accent animate-pulse" style={{ width: `${30 + (i * 13) % 30}%` }} />
               </div>
             </div>
           ))
         ) : sortedFiltered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-[#484F58]">
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/60">
             <p className="text-sm">No services here</p>
-            <button type="button" onClick={onCreateNew} className="mt-3 text-xs text-[#0078D4] hover:underline">+ New service</button>
+            <button type="button" onClick={onCreateNew} className="mt-3 text-xs text-primary hover:underline">+ New service</button>
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -438,15 +438,15 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
 
       {/* Archive single */}
       <AlertDialog open={!!archiveTarget} onOpenChange={o => { if (!o) setArchiveTarget(null); }}>
-        <AlertDialogContent className="bg-[#161B22] border-[#30363D]">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#E6EDF3]">Archive service?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#7D8590]">
-              <strong className="text-[#E6EDF3]">{archiveTarget?.name}</strong> will be permanently deleted.
+            <AlertDialogTitle className="text-foreground">Archive service?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">
+              <strong className="text-foreground">{archiveTarget?.name}</strong> will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#30363D] text-[#7D8590] hover:bg-[#1C2128]">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => archiveTarget && void handleArchive(archiveTarget)} className="bg-red-600 hover:bg-red-700 text-white border-0">Archive</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -454,13 +454,13 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
 
       {/* Bulk archive */}
       <AlertDialog open={bulkArchiveOpen} onOpenChange={setBulkArchiveOpen}>
-        <AlertDialogContent className="bg-[#161B22] border-[#30363D]">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#E6EDF3]">Archive {selected.size} services?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#7D8590]">Services referenced by active clients or contracts will be skipped.</AlertDialogDescription>
+            <AlertDialogTitle className="text-foreground">Archive {selected.size} services?</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground">Services referenced by active clients or contracts will be skipped.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#30363D] text-[#7D8590] hover:bg-[#1C2128]">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-border text-muted-foreground hover:bg-accent">Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleBulkArchive()} className="bg-red-600 hover:bg-red-700 text-white border-0">Archive {selected.size}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -43,20 +43,20 @@ function TagEditor({
         {tags.map((tag, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1 bg-[#0078D4]/10 text-[#E6EDF3] text-sm font-medium px-3 py-1 rounded-full border border-[#0078D4]/20"
+            className="inline-flex items-center gap-1 bg-primary/10 text-foreground text-sm font-medium px-3 py-1 rounded-full border border-primary/20"
           >
             {tag}
             <button
               type="button"
               onClick={() => remove(i)}
-              className="text-[#7D8590] hover:text-red-500 ml-0.5"
+              className="text-muted-foreground hover:text-red-500 ml-0.5"
             >
               <X className="w-3 h-3" />
             </button>
           </span>
         ))}
         {tags.length === 0 && (
-          <span className="text-sm text-[#7D8590] italic">No trigger keys — this page won't show any engagement projects</span>
+          <span className="text-sm text-muted-foreground italic">No trigger keys — this page won't show any engagement projects</span>
         )}
       </div>
       <div className="flex gap-2">
@@ -68,13 +68,13 @@ function TagEditor({
             if (e.key === "Enter") { e.preventDefault(); add(); }
           }}
           placeholder="Add a trigger key…"
-          className="flex-1 border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+          className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         <button
           type="button"
           onClick={add}
           disabled={!draft.trim()}
-          className="flex items-center gap-1 px-3 py-2 bg-[#0078D4] text-white rounded-lg text-sm font-medium hover:bg-[#0069BD] disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1 px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-[#0069BD] disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" /> Add
         </button>
@@ -146,8 +146,8 @@ export default function ServicePageTriggersPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#E6EDF3] mb-2">Service Triggers</h1>
-        <p className="text-[#7D8590] text-sm leading-relaxed">
+        <h1 className="text-2xl font-bold text-foreground mb-2">Service Triggers</h1>
+        <p className="text-muted-foreground text-sm leading-relaxed">
           Control which engagement projects appear in the "Common Project Engagements" section on each service page.
           Trigger keys are matched against the <strong>Triggered By</strong> field on each engagement project — any project
           whose trigger keys overlap with this list will be shown on that service page.
@@ -156,31 +156,31 @@ export default function ServicePageTriggersPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-6 h-6 animate-spin text-[#0078D4]" />
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
         </div>
       ) : (
         <div className="space-y-4">
           {orderedMappings.length === 0 ? (
-            <p className="text-[#7D8590] text-sm text-center py-10">
+            <p className="text-muted-foreground text-sm text-center py-10">
               No mappings found. They will appear here after the server seeds the defaults on next restart.
             </p>
           ) : (
             orderedMappings.map((mapping) => (
               <div
                 key={mapping.pageSlug}
-                className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm"
+                className="bg-card border border-border rounded-xl p-5 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div>
-                    <h2 className="font-semibold text-[#E6EDF3] text-base">
+                    <h2 className="font-semibold text-foreground text-base">
                       {PAGE_LABELS[mapping.pageSlug] ?? mapping.pageSlug}
                     </h2>
-                    <p className="text-xs text-[#7D8590] font-mono mt-0.5">/services/{mapping.pageSlug}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">/services/{mapping.pageSlug}</p>
                   </div>
                   <button
                     onClick={() => handleSave(mapping.pageSlug)}
                     disabled={!isDirty(mapping.pageSlug) || saving[mapping.pageSlug]}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white rounded-lg text-sm font-medium hover:bg-[#0069BD] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-[#0069BD] disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
                   >
                     {saving[mapping.pageSlug] ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

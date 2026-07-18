@@ -104,10 +104,10 @@ export default function InboxComposeForm({ onSent, onSaveDraft }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-3 border border-[#30363D] rounded-xl bg-[#161B22] p-4">
+    <div className="flex flex-col gap-3 border border-border rounded-xl bg-card p-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-[#E6EDF3]">{title}</span>
-        <button onClick={closeCompose} className="text-[#7D8590] hover:text-[#C9D1D9]">
+        <span className="text-sm font-semibold text-foreground">{title}</span>
+        <button onClick={closeCompose} className="text-muted-foreground hover:text-foreground/90">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -116,13 +116,13 @@ export default function InboxComposeForm({ onSent, onSaveDraft }: Props) {
 
       {(mode === "new" || mode === "forward") && (
         <div>
-          <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">To</label>
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">To</label>
           <input
             type="text"
             value={composeDraft.to}
             onChange={e => setComposeDraft({ to: e.target.value })}
             placeholder="email@example.com, ..."
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4]"
+            className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
           />
         </div>
       )}
@@ -130,23 +130,23 @@ export default function InboxComposeForm({ onSent, onSaveDraft }: Props) {
       {mode === "new" && (
         <>
           <div>
-            <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">CC</label>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">CC</label>
             <input
               type="text"
               value={composeDraft.cc}
               onChange={e => setComposeDraft({ cc: e.target.value })}
               placeholder="Optional"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4]"
+              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">BCC</label>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">BCC</label>
             <input
               type="text"
               value={composeDraft.bcc}
               onChange={e => setComposeDraft({ bcc: e.target.value })}
               placeholder="Optional"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4]"
+              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
             />
           </div>
         </>
@@ -154,25 +154,25 @@ export default function InboxComposeForm({ onSent, onSaveDraft }: Props) {
 
       {mode !== "reply" && mode !== "replyAll" && (
         <div>
-          <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Subject</label>
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Subject</label>
           <input
             type="text"
             value={composeDraft.subject}
             onChange={e => setComposeDraft({ subject: e.target.value })}
             placeholder="Subject"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4]"
+            className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
           />
         </div>
       )}
 
       <div>
-        <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Message</label>
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Message</label>
         <textarea
           value={composeDraft.body}
           onChange={e => setComposeDraft({ body: e.target.value })}
           rows={8}
           placeholder="Write your message..."
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4] resize-y font-sans"
+          className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary resize-y font-sans"
         />
       </div>
 
@@ -182,14 +182,14 @@ export default function InboxComposeForm({ onSent, onSaveDraft }: Props) {
         <button
           onClick={handleSaveDraft}
           disabled={savingDraft}
-          className="px-3 py-1.5 text-xs text-[#7D8590] border border-[#30363D] rounded-md hover:bg-[#1C2128] transition-colors disabled:opacity-50"
+          className="px-3 py-1.5 text-xs text-muted-foreground border border-border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
         >
           {savingDraft ? "Saving…" : "Save Draft"}
         </button>
         <button
           onClick={handleSend}
           disabled={sending}
-          className="px-4 py-1.5 text-xs font-medium bg-[#0078D4] text-white rounded-md hover:bg-[#1A90E0] transition-colors disabled:opacity-50"
+          className="px-4 py-1.5 text-xs font-medium bg-primary text-white rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>

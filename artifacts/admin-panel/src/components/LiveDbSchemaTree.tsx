@@ -56,7 +56,7 @@ export function LiveDbSchemaTree() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
         <div className="flex items-center space-x-2">
-          <Database className="w-3.5 h-3.5 text-[#58A6FF]" />
+          <Database className="w-3.5 h-3.5 text-primary" />
           <span className="font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Live DB Schema</span>
           <Badge variant="outline" className="text-[10px] text-muted-foreground">
             {tables.length} Tables
@@ -91,7 +91,7 @@ export function LiveDbSchemaTree() {
                   ) : (
                     <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   )}
-                  <Table className="w-3.5 h-3.5 text-[#58A6FF] shrink-0" />
+                  <Table className="w-3.5 h-3.5 text-primary shrink-0" />
                   <span className="font-semibold text-foreground truncate">{tbl.name}</span>
                 </div>
                 <span className="text-[10px] text-muted-foreground/70 ml-2">{tbl.columns.length} cols</span>
@@ -99,14 +99,14 @@ export function LiveDbSchemaTree() {
 
               {/* Column Children Nodes */}
               {isExpanded && (
-                <div className="ml-5 pl-2 border-l border-[#21262D] my-0.5">
+                <div className="ml-5 pl-2 border-l border-accent my-0.5">
                   {tbl.columns.map((col) => (
                     <div key={col.name} className="flex items-start justify-between py-0.5 px-1.5 rounded hover:bg-accent/60">
                       <div className="flex items-center space-x-1.5 min-w-0">
                         {col.isPk ? (
                           <span title="Primary Key"><Key className="w-3 h-3 text-amber-400 shrink-0" /></span>
                         ) : col.foreignKey ? (
-                          <span title={col.foreignKey}><LinkIcon className="w-3 h-3 text-[#58A6FF] shrink-0" /></span>
+                          <span title={col.foreignKey}><LinkIcon className="w-3 h-3 text-primary shrink-0" /></span>
                         ) : (
                           <div className="w-3 h-3 shrink-0" />
                         )}

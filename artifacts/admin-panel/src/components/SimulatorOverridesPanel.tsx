@@ -237,7 +237,7 @@ export function SimulatorOverridesPanel() {
                         ) : (
                           <div className="space-y-1 font-mono text-[11px]">
                             <div className="flex items-center justify-between">
-                              <span className="font-semibold text-[#58A6FF]">Status: {checkResult.status}</span>
+                              <span className="font-semibold text-primary">Status: {checkResult.status}</span>
                               <span className="text-muted-foreground">Items: {checkResult.itemCount}</span>
                             </div>
                             {checkResult.severityMatched && (
@@ -332,7 +332,7 @@ export function SimulatorOverridesPanel() {
                         <TableRow key={ov.id} className="hover:bg-accent/30">
                           <TableCell className="py-2.5 font-mono text-xs text-foreground/90">
                             <div className="flex flex-col">
-                              <span className="text-[#58A6FF]">{ov.monitorCheckKey}</span>
+                              <span className="text-primary">{ov.monitorCheckKey}</span>
                               <span className="text-[10px] text-muted-foreground">{ov.graphEndpoint}</span>
                             </div>
                           </TableCell>

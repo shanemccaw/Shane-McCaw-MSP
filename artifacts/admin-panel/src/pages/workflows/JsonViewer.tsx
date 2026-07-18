@@ -203,7 +203,7 @@ function ValueChip({ value, search, onCopy, path }: { value: JsonValue; search: 
     colorClass = "text-orange-400";
     displayText = String(value);
   } else if (type === "null") {
-    colorClass = "text-[#7D8590]";
+    colorClass = "text-muted-foreground";
     displayText = "null";
   }
 
@@ -264,9 +264,9 @@ function JsonNode({ keyName, value, path, depth, search, expandAll, onCopy }: Js
 
   if (!isExpandable) {
     return (
-      <div className="flex items-center gap-1 py-0.5 hover:bg-[#1C2128] rounded group" style={{ paddingLeft: indent + 4 }}>
+      <div className="flex items-center gap-1 py-0.5 hover:bg-accent rounded group" style={{ paddingLeft: indent + 4 }}>
         {keyEl}
-        {keyName !== undefined && <span className="text-[#7D8590] font-mono text-xs">:</span>}
+        {keyName !== undefined && <span className="text-muted-foreground font-mono text-xs">:</span>}
         <ValueChip value={value} search={search} onCopy={onCopy} path={path} />
       </div>
     );
@@ -282,25 +282,25 @@ function JsonNode({ keyName, value, path, depth, search, expandAll, onCopy }: Js
   return (
     <div>
       <div
-        className="flex items-center gap-1 py-0.5 hover:bg-[#1C2128] rounded cursor-pointer select-none"
+        className="flex items-center gap-1 py-0.5 hover:bg-accent rounded cursor-pointer select-none"
         style={{ paddingLeft: indent + 4 }}
         onClick={() => setExpanded(e => !e)}
       >
         <svg
-          className={`w-3 h-3 text-[#7D8590] shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
         {keyEl}
-        {keyName !== undefined && <span className="text-[#7D8590] font-mono text-xs">:</span>}
-        <span className="font-mono text-xs text-[#E6EDF3]">{openBracket}</span>
+        {keyName !== undefined && <span className="text-muted-foreground font-mono text-xs">:</span>}
+        <span className="font-mono text-xs text-foreground">{openBracket}</span>
         {!expanded && (
-          <span className="font-mono text-xs text-[#7D8590]">
+          <span className="font-mono text-xs text-muted-foreground">
             {isArray ? `${childCount} item${childCount !== 1 ? "s" : ""}` : `${childCount} key${childCount !== 1 ? "s" : ""}`}
           </span>
         )}
-        {!expanded && <span className="font-mono text-xs text-[#E6EDF3]">{closeBracket}</span>}
+        {!expanded && <span className="font-mono text-xs text-foreground">{closeBracket}</span>}
       </div>
 
       {expanded && (
@@ -318,7 +318,7 @@ function JsonNode({ keyName, value, path, depth, search, expandAll, onCopy }: Js
             />
           ))}
           <div style={{ paddingLeft: indent + 4 }}>
-            <span className="font-mono text-xs text-[#E6EDF3]">{closeBracket}</span>
+            <span className="font-mono text-xs text-foreground">{closeBracket}</span>
           </div>
         </>
       )}
@@ -338,7 +338,7 @@ const STATUS_STYLES: Record<DiffStatus, { bg: string; text: string; badge: strin
   added:     { bg: "bg-emerald-500/10", text: "text-emerald-400", badge: "bg-emerald-500/20 text-emerald-300" },
   removed:   { bg: "bg-red-500/10",     text: "text-red-400",     badge: "bg-red-500/20 text-red-300" },
   changed:   { bg: "bg-amber-500/10",   text: "text-amber-400",   badge: "bg-amber-500/20 text-amber-300" },
-  unchanged: { bg: "",                  text: "text-[#7D8590]",   badge: "" },
+  unchanged: { bg: "",                  text: "text-muted-foreground",   badge: "" },
 };
 
 function renderSimpleValue(value: JsonValue | undefined, statusText: string): string {
@@ -372,9 +372,9 @@ function DiffNodeView({ keyName, node, depth }: DiffNodeViewProps) {
         <div className={`rounded mb-0.5 px-2 py-1 ${styles.bg}`} style={{ marginLeft: indent }}>
           <div className="flex items-center gap-1 flex-wrap">
             {keyEl}
-            {keyName !== undefined && <span className="text-[#484F58] font-mono text-xs">:</span>}
+            {keyName !== undefined && <span className="text-muted-foreground/60 font-mono text-xs">:</span>}
             <span className="font-mono text-xs text-red-400 line-through">{renderSimpleValue(node.leftValue, "")}</span>
-            <svg className="w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-3 h-3 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
             <span className="font-mono text-xs text-emerald-400">{renderSimpleValue(node.rightValue, "")}</span>
@@ -391,7 +391,7 @@ function DiffNodeView({ keyName, node, depth }: DiffNodeViewProps) {
         {node.status === "removed" && <span className="font-mono text-xs text-red-400 select-none">−</span>}
         {node.status === "unchanged" && <span className="w-3" />}
         {keyEl}
-        {keyName !== undefined && <span className="text-[#484F58] font-mono text-xs">:</span>}
+        {keyName !== undefined && <span className="text-muted-foreground/60 font-mono text-xs">:</span>}
         <span className={`font-mono text-xs ${styles.text}`}>{renderSimpleValue(displayValue, "")}</span>
         {statusBadge}
       </div>
@@ -412,16 +412,16 @@ function DiffNodeView({ keyName, node, depth }: DiffNodeViewProps) {
         onClick={() => setExpanded(e => !e)}
       >
         <svg
-          className={`w-3 h-3 text-[#7D8590] shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          className={`w-3 h-3 text-muted-foreground shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
         {keyEl}
-        {keyName !== undefined && <span className="text-[#484F58] font-mono text-xs">:</span>}
-        <span className="font-mono text-xs text-[#E6EDF3]">{openBracket}</span>
-        {!expanded && <span className="font-mono text-xs text-[#7D8590]">…</span>}
-        {!expanded && <span className="font-mono text-xs text-[#E6EDF3]">{closeBracket}</span>}
+        {keyName !== undefined && <span className="text-muted-foreground/60 font-mono text-xs">:</span>}
+        <span className="font-mono text-xs text-foreground">{openBracket}</span>
+        {!expanded && <span className="font-mono text-xs text-muted-foreground">…</span>}
+        {!expanded && <span className="font-mono text-xs text-foreground">{closeBracket}</span>}
         {statusBadge}
       </div>
       {expanded && (
@@ -430,7 +430,7 @@ function DiffNodeView({ keyName, node, depth }: DiffNodeViewProps) {
             <DiffNodeView key={k} keyName={k} node={n as DiffNode} depth={depth + 1} />
           ))}
           <div className="px-2">
-            <span className="font-mono text-xs text-[#E6EDF3]">{closeBracket}</span>
+            <span className="font-mono text-xs text-foreground">{closeBracket}</span>
           </div>
         </>
       )}
@@ -502,12 +502,12 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-shrink-0 p-4 border-b border-[#21262D] space-y-3">
+      <div className="flex-shrink-0 p-4 border-b border-accent space-y-3">
         <textarea
           value={raw}
           onChange={e => handleInput(e.target.value)}
           placeholder='Paste JSON here… e.g. {"name": "Shane", "role": "architect"}'
-          className="w-full h-36 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 font-mono text-xs text-[#E6EDF3] placeholder-[#484F58] resize-y focus:outline-none focus:border-[#0078D4]/60 transition-colors"
+          className="w-full h-36 bg-background border border-border rounded-lg px-3 py-2.5 font-mono text-xs text-foreground placeholder-muted-foreground/60 resize-y focus:outline-none focus:border-primary/60 transition-colors"
           spellCheck={false}
         />
 
@@ -524,21 +524,21 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
           <button
             onClick={handlePrettyPrint}
             disabled={!parsed}
-            className="px-3 py-1.5 text-xs font-medium bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] rounded-lg hover:bg-[#21262D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs font-medium bg-accent border border-border text-foreground rounded-lg hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Pretty Print
           </button>
           <button
             onClick={handleMinify}
             disabled={!parsed}
-            className="px-3 py-1.5 text-xs font-medium bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] rounded-lg hover:bg-[#21262D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs font-medium bg-accent border border-border text-foreground rounded-lg hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Minify
           </button>
           <button
             onClick={handleDownload}
             disabled={!raw.trim()}
-            className="px-3 py-1.5 text-xs font-medium bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] rounded-lg hover:bg-[#21262D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-xs font-medium bg-accent border border-border text-foreground rounded-lg hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Download .json
           </button>
@@ -549,13 +549,13 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setExpandSignal(true)}
-                className="px-2.5 py-1.5 text-xs font-medium text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded-lg transition-colors"
+                className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
               >
                 Expand All
               </button>
               <button
                 onClick={() => setExpandSignal(false)}
-                className="px-2.5 py-1.5 text-xs font-medium text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded-lg transition-colors"
+                className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
               >
                 Collapse All
               </button>
@@ -565,7 +565,7 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
 
         {parsed !== null && (
           <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -573,12 +573,12 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Filter keys or values…"
-              className="w-full pl-8 pr-3 py-1.5 bg-[#0D1117] border border-[#30363D] rounded-lg text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full pl-8 pr-3 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/60 transition-colors"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#7D8590] hover:text-[#E6EDF3]"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -592,18 +592,18 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {parsed === null && !error && (
           <div className="flex flex-col items-center justify-center h-full text-center py-16">
-            <div className="w-12 h-12 bg-[#1C2128] rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-[#7D8590]">Paste JSON above to explore</p>
-            <p className="text-xs text-[#484F58] mt-1">Objects, arrays, strings, numbers and booleans are all supported</p>
+            <p className="text-sm font-medium text-muted-foreground">Paste JSON above to explore</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Objects, arrays, strings, numbers and booleans are all supported</p>
           </div>
         )}
 
         {parsed !== null && (
-          <div className="bg-[#0D1117] border border-[#21262D] rounded-lg p-3 font-mono">
+          <div className="bg-background border border-accent rounded-lg p-3 font-mono">
             <JsonNode
               value={parsed}
               path={[]}
@@ -668,14 +668,14 @@ function DiffTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 p-4 border-b border-[#21262D]">
+      <div className="flex-shrink-0 p-4 border-b border-accent">
         <div className="flex items-center gap-3 mb-3">
-          <p className="text-xs font-semibold text-[#E6EDF3]">Compare two JSON payloads</p>
+          <p className="text-xs font-semibold text-foreground">Compare two JSON payloads</p>
           <div className="flex-1" />
           <button
             onClick={handleSwap}
             disabled={!leftRaw && !rightRaw}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] rounded-lg hover:bg-[#21262D] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent border border-border text-foreground rounded-lg hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -686,12 +686,12 @@ function DiffTab() {
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-1.5">Left (Original)</label>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Left (Original)</label>
             <textarea
               value={leftRaw}
               onChange={e => handleLeftChange(e.target.value)}
               placeholder='{"before": "value"}'
-              className="w-full h-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 font-mono text-xs text-[#E6EDF3] placeholder-[#484F58] resize-none focus:outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full h-32 bg-background border border-border rounded-lg px-3 py-2 font-mono text-xs text-foreground placeholder-muted-foreground/60 resize-none focus:outline-none focus:border-primary/60 transition-colors"
               spellCheck={false}
             />
             {leftError && (
@@ -701,12 +701,12 @@ function DiffTab() {
             )}
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-1.5">Right (Modified)</label>
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Right (Modified)</label>
             <textarea
               value={rightRaw}
               onChange={e => handleRightChange(e.target.value)}
               placeholder='{"after": "value"}'
-              className="w-full h-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 font-mono text-xs text-[#E6EDF3] placeholder-[#484F58] resize-none focus:outline-none focus:border-[#0078D4]/60 transition-colors"
+              className="w-full h-32 bg-background border border-border rounded-lg px-3 py-2 font-mono text-xs text-foreground placeholder-muted-foreground/60 resize-none focus:outline-none focus:border-primary/60 transition-colors"
               spellCheck={false}
             />
             {rightError && (
@@ -721,13 +721,13 @@ function DiffTab() {
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {!diffResult && (
           <div className="flex flex-col items-center justify-center h-full text-center py-16">
-            <div className="w-12 h-12 bg-[#1C2128] rounded-xl flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-[#7D8590]">Paste JSON in both panels to compare</p>
-            <p className="text-xs text-[#484F58] mt-1">Differences are highlighted automatically</p>
+            <p className="text-sm font-medium text-muted-foreground">Paste JSON in both panels to compare</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Differences are highlighted automatically</p>
           </div>
         )}
 
@@ -750,13 +750,13 @@ function DiffTab() {
                 </span>
               )}
               {summary.added === 0 && summary.removed === 0 && summary.changed === 0 && (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#1C2128] text-[#7D8590] border border-[#30363D]">
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-accent text-muted-foreground border border-border">
                   Identical — no differences
                 </span>
               )}
             </div>
 
-            <div className="bg-[#0D1117] border border-[#21262D] rounded-lg p-3 font-mono">
+            <div className="bg-background border border-accent rounded-lg p-3 font-mono">
               <DiffNodeView node={diffResult} depth={0} />
             </div>
           </div>
@@ -772,8 +772,8 @@ export function JsonViewerContent({ initialJson }: { initialJson?: unknown } = {
   const [activeTab, setActiveTab] = useState<"viewer" | "diff">("viewer");
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 bg-[#0D1117]">
-      <div className="flex-shrink-0 border-b border-[#21262D] px-4 pt-3">
+    <div className="flex flex-col flex-1 min-h-0 bg-background">
+      <div className="flex-shrink-0 border-b border-accent px-4 pt-3">
         <div className="flex items-center gap-1">
           {(["viewer", "diff"] as const).map(tab => (
             <button
@@ -781,8 +781,8 @@ export function JsonViewerContent({ initialJson }: { initialJson?: unknown } = {
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-xs font-semibold rounded-t-lg border-b-2 transition-colors capitalize ${
                 activeTab === tab
-                  ? "text-[#58A6FF] border-[#0078D4]"
-                  : "text-[#7D8590] border-transparent hover:text-[#E6EDF3]"
+                  ? "text-primary border-primary"
+                  : "text-muted-foreground border-transparent hover:text-foreground"
               }`}
             >
               {tab === "viewer" ? "Viewer" : "Diff"}

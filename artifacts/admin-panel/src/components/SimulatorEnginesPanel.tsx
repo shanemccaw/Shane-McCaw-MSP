@@ -94,7 +94,7 @@ export function SimulatorEnginesPanel() {
         <div>
           <h2 className="text-sm font-semibold text-foreground">Run Engines</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Every run below calls the real production path — <code className="text-[#58A6FF]">runForTenant()</code> against
+            Every run below calls the real production path — <code className="text-primary">runForTenant()</code> against
             the testbed customer selected here. There is no sample-payload mode.
           </p>
         </div>

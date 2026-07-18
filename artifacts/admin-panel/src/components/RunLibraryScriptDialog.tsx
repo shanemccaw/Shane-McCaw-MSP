@@ -285,17 +285,17 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-2xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
+      <div className="bg-card border border-border rounded-2xl w-full max-w-2xl mx-4 overflow-hidden shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#21262D]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-accent">
           <div className="min-w-0">
-            <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-0.5">Run Script</p>
-            <p className="text-sm font-semibold text-[#E6EDF3] truncate">{scriptTitle}</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-0.5">Run Script</p>
+            <p className="text-sm font-semibold text-foreground truncate">{scriptTitle}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             {autoRun && loadingClients && !running && !jobRef && (
-              <span className="text-xs text-[#7D8590] font-medium flex items-center gap-1.5">
-                <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
                 Starting…
               </span>
             )}
@@ -305,7 +305,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
                 Running in background if closed
               </span>
             )}
-            <button onClick={handleClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+            <button onClick={handleClose} className="p-1.5 text-muted-foreground/60 hover:text-foreground rounded transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -321,10 +321,10 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
           {/* Client selector */}
           <div>
-            <label className="block text-xs font-semibold text-[#7D8590] uppercase tracking-wider mb-2">Client (optional)</label>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Client (optional)</label>
             {loadingClients ? (
-              <div className="flex items-center gap-2 text-xs text-[#484F58]">
-                <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="flex items-center gap-2 text-xs text-muted-foreground/60">
+                <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
                 Loading clients…
               </div>
             ) : (
@@ -332,7 +332,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
                 value={selectedClientId ?? ""}
                 onChange={e => setSelectedClientId(e.target.value ? parseInt(e.target.value) : null)}
                 disabled={running}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors disabled:opacity-50"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/50 transition-colors disabled:opacity-50"
               >
                 <option value="">— No client / run standalone —</option>
                 {clients.map(c => (
@@ -355,7 +355,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
           <button
             onClick={() => void handleRun()}
             disabled={running || (!scriptId && !moduleId) || !appRegistrationId}
-            className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-primary text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {running ? (
               <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Running…</>
@@ -372,28 +372,28 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <span className={`text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
-                {jobRef && <span className="text-xs text-[#484F58]">Job: {jobRef.slice(0, 8)}…</span>}
+                {jobRef && <span className="text-xs text-muted-foreground/60">Job: {jobRef.slice(0, 8)}…</span>}
               </div>
 
               <div
                 ref={terminalRef}
-                className="bg-[#0D1117] border border-[#21262D] rounded-lg p-3 font-mono text-xs overflow-y-auto"
+                className="bg-background border border-accent rounded-lg p-3 font-mono text-xs overflow-y-auto"
                 style={{ height: 200 }}
               >
                 {runStatus.outputLines.length === 0 ? (
-                  <span className="text-[#484F58]">Waiting for output…</span>
+                  <span className="text-muted-foreground/60">Waiting for output…</span>
                 ) : (
                   runStatus.outputLines.map((line, i) => (
-                    <div key={i} className="text-[#E6EDF3] leading-relaxed whitespace-pre-wrap break-all">{line}</div>
+                    <div key={i} className="text-foreground leading-relaxed whitespace-pre-wrap break-all">{line}</div>
                   ))
                 )}
               </div>
 
               {runStatus.status !== "running" && runStatus.findings.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider">AI Findings</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">AI Findings</p>
                   {runStatus.findings.map((f, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <div key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                       <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
                       <span>{f}</span>
                     </div>
@@ -403,9 +403,9 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
               {runStatus.status !== "running" && runStatus.recommendations.length > 0 && (
                 <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider">Recommendations</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recommendations</p>
                   {runStatus.recommendations.map((r, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <div key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                       <span className="text-green-400 mt-0.5 flex-shrink-0">→</span>
                       <span>{r}</span>
                     </div>
@@ -414,7 +414,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
               )}
 
               {runStatus.status !== "running" && !aiDone && (
-                <p className="text-xs text-[#484F58] italic">No AI findings generated for this run.</p>
+                <p className="text-xs text-muted-foreground/60 italic">No AI findings generated for this run.</p>
               )}
             </div>
           )}
@@ -422,8 +422,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
         {/* Footer — Save to Card */}
         {showSaveButton && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-[#21262D] bg-[#0D1117]/60">
-            <p className="text-xs text-[#484F58]">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-accent bg-background/60">
+            <p className="text-xs text-muted-foreground/60">
               {saved ? (
                 <span className="text-green-400 font-medium">✓ Saved to card</span>
               ) : (
@@ -434,10 +434,10 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
               onClick={() => void handleSaveToCard()}
               disabled={!saveEnabled}
               title={!aiDone && !saved ? "Waiting for AI analysis before saving" : undefined}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-[#0078D4]/40 text-[#0078D4] hover:bg-[#0078D4]/10 hover:border-[#0078D4]"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-primary/40 text-primary hover:bg-primary/10 hover:border-primary"
             >
               {saving ? (
-                <><div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" /> Saving…</>
+                <><div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" /> Saving…</>
               ) : saved ? (
                 <>
                   <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

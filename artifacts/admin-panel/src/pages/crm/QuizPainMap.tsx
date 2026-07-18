@@ -32,7 +32,7 @@ const QUIZ_TYPE_LABELS: Record<string, string> = {
 
 function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20">
+    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
       {label}
       <button
         type="button"
@@ -68,12 +68,12 @@ function AddInput({
         onChange={e => setVal(e.target.value)}
         onKeyDown={e => e.key === "Enter" && (e.preventDefault(), commit())}
         placeholder={placeholder}
-        className="flex-1 bg-[#161B22] border border-border rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+        className="flex-1 bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
       />
       <button
         type="button"
         onClick={commit}
-        className="text-xs px-2.5 py-1.5 rounded-lg bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 hover:bg-[#0078D4]/20 transition-colors"
+        className="text-xs px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
       >
         Add
       </button>
@@ -206,7 +206,7 @@ export default function QuizPainMapPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -218,7 +218,7 @@ export default function QuizPainMapPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-[#E6EDF3]">Quiz Signal Mappings</h1>
+          <h1 className="text-xl font-bold text-foreground">Quiz Signal Mappings</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Configure which quiz types and category scores map to pain signals on lead profiles.
             Changes take effect immediately for new quiz-to-lead imports.
@@ -239,7 +239,7 @@ export default function QuizPainMapPage() {
             type="button"
             onClick={resetToDefaults}
             disabled={saving}
-            className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-[#E6EDF3] hover:border-[#E6EDF3]/30 transition-colors disabled:opacity-40"
+            className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40"
           >
             Reset to defaults
           </button>
@@ -247,7 +247,7 @@ export default function QuizPainMapPage() {
             type="button"
             onClick={save}
             disabled={saving}
-            className="text-xs px-4 py-1.5 rounded-lg bg-[#0078D4] text-white font-semibold hover:bg-[#0078D4]/90 transition-colors disabled:opacity-40"
+            className="text-xs px-4 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors disabled:opacity-40"
           >
             {saving ? "Saving…" : saved ? "✓ Saved" : "Save changes"}
           </button>
@@ -261,9 +261,9 @@ export default function QuizPainMapPage() {
       )}
 
       {/* Section 1: Quiz Type → Pain Signals */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Quiz Type → Pain Signals</h2>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent">
+          <h2 className="text-sm font-bold text-foreground">Quiz Type → Pain Signals</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             When a lead completes a quiz of this type, these pain signals are automatically added to their profile.
           </p>
@@ -273,7 +273,7 @@ export default function QuizPainMapPage() {
             <div key={qt} className="px-5 py-4">
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div>
-                  <span className="text-xs font-semibold text-[#E6EDF3]">
+                  <span className="text-xs font-semibold text-foreground">
                     {QUIZ_TYPE_LABELS[qt] ?? qt}
                   </span>
                   <span className="ml-2 text-[10px] text-muted-foreground font-mono">{qt}</span>
@@ -300,7 +300,7 @@ export default function QuizPainMapPage() {
             </div>
           ))}
         </div>
-        <div className="px-5 py-4 border-t border-border bg-[#1C2128]/40">
+        <div className="px-5 py-4 border-t border-border bg-accent/40">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Add a new quiz type</p>
           <div className="flex gap-1.5">
             <input
@@ -308,12 +308,12 @@ export default function QuizPainMapPage() {
               onChange={e => setNewQuizType(e.target.value)}
               onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addNewQuizTypeRow())}
               placeholder='e.g. "viva-engage"'
-              className="flex-1 bg-[#161B22] border border-border rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <button
               type="button"
               onClick={addNewQuizTypeRow}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 hover:bg-[#0078D4]/20 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
             >
               Add type
             </button>
@@ -322,9 +322,9 @@ export default function QuizPainMapPage() {
       </div>
 
       {/* Section 2: Category Keyword → Pain Signal */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-          <h2 className="text-sm font-bold text-[#E6EDF3]">Category Keyword → Pain Signal</h2>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-accent">
+          <h2 className="text-sm font-bold text-foreground">Category Keyword → Pain Signal</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             When a quiz category name contains the keyword AND its score is ≤ 5/10,
             the pain signal is added to the lead. Keyword matching is case-insensitive.
@@ -333,7 +333,7 @@ export default function QuizPainMapPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border bg-[#1C2128]/60">
+              <tr className="border-b border-border bg-accent/60">
                 <th className="px-4 py-2.5 text-left font-semibold text-muted-foreground uppercase tracking-wider w-1/2">
                   Category keyword
                 </th>
@@ -345,19 +345,19 @@ export default function QuizPainMapPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {categoryPainMap.map(([kw, sig], idx) => (
-                <tr key={idx} className="hover:bg-[#1C2128]/30 transition-colors">
+                <tr key={idx} className="hover:bg-accent/30 transition-colors">
                   <td className="px-4 py-2.5">
                     <input
                       value={kw}
                       onChange={e => updateCategoryRow(idx, 0, e.target.value)}
-                      className="w-full bg-[#161B22] border border-border rounded-md px-2 py-1 text-xs text-[#E6EDF3] font-mono focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                      className="w-full bg-card border border-border rounded-md px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </td>
                   <td className="px-4 py-2.5">
                     <input
                       value={sig}
                       onChange={e => updateCategoryRow(idx, 1, e.target.value)}
-                      className="w-full bg-[#161B22] border border-border rounded-md px-2 py-1 text-xs text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                      className="w-full bg-card border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </td>
                   <td className="px-4 py-2.5 text-center">
@@ -375,26 +375,26 @@ export default function QuizPainMapPage() {
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-4 border-t border-border bg-[#1C2128]/40">
+        <div className="px-5 py-4 border-t border-border bg-accent/40">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Add a new mapping</p>
           <div className="flex gap-2 flex-wrap">
             <input
               value={newCatKeyword}
               onChange={e => setNewCatKeyword(e.target.value)}
               placeholder="Keyword (e.g. viva)"
-              className="flex-1 min-w-[140px] bg-[#161B22] border border-border rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] font-mono placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 min-w-[140px] bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground font-mono placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <input
               value={newCatSignal}
               onChange={e => setNewCatSignal(e.target.value)}
               onKeyDown={e => e.key === "Enter" && (e.preventDefault(), commitNewCategory())}
               placeholder="Pain signal (e.g. Viva Engage)"
-              className="flex-1 min-w-[140px] bg-[#161B22] border border-border rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 min-w-[140px] bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <button
               type="button"
               onClick={commitNewCategory}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 hover:bg-[#0078D4]/20 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
             >
               Add row
             </button>
@@ -403,11 +403,11 @@ export default function QuizPainMapPage() {
       </div>
 
       {/* How it works */}
-      <div className="bg-[#1C2128] border border-border rounded-xl p-4 text-xs text-muted-foreground space-y-1.5">
-        <p className="font-semibold text-[#E6EDF3] text-[11px] uppercase tracking-wider mb-2">How signal derivation works</p>
-        <p><span className="text-[#0078D4]">1. Quiz type pains</span> — all signals listed for that quiz type are added unconditionally.</p>
-        <p><span className="text-[#0078D4]">2. Category keyword pains</span> — for each quiz category with a score ≤ 5/10, the category name is matched against the keyword list; on match, the corresponding pain signal is added.</p>
-        <p><span className="text-[#0078D4]">3. Transcript keywords</span> — maturity and urgency signals are derived from the raw conversation text (not configurable here).</p>
+      <div className="bg-accent border border-border rounded-xl p-4 text-xs text-muted-foreground space-y-1.5">
+        <p className="font-semibold text-foreground text-[11px] uppercase tracking-wider mb-2">How signal derivation works</p>
+        <p><span className="text-primary">1. Quiz type pains</span> — all signals listed for that quiz type are added unconditionally.</p>
+        <p><span className="text-primary">2. Category keyword pains</span> — for each quiz category with a score ≤ 5/10, the category name is matched against the keyword list; on match, the corresponding pain signal is added.</p>
+        <p><span className="text-primary">3. Transcript keywords</span> — maturity and urgency signals are derived from the raw conversation text (not configurable here).</p>
         <p className="text-amber-400/80">Changes only affect leads imported after saving — existing lead profiles are not retroactively updated until an admin clicks "Re-import from quiz" on the Lead Detail page.</p>
       </div>
     </div>

@@ -59,10 +59,10 @@ function ScoreBar({ score }: { score: number }) {
   const color = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-yellow-400" : "bg-red-400";
   return (
     <div className="flex items-center gap-1.5">
-      <div className="w-16 bg-[#30363D] rounded-full h-1.5">
+      <div className="w-16 bg-border rounded-full h-1.5">
         <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-[#7D8590]">{score}</span>
+      <span className="text-xs text-muted-foreground">{score}</span>
     </div>
   );
 }
@@ -70,7 +70,7 @@ function ScoreBar({ score }: { score: number }) {
 function ViewsBadge({ count }: { count: number }) {
   if (count === 0) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#30363D]/50 text-[#484F58]">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-border/50 text-muted-foreground/60">
         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -79,7 +79,7 @@ function ViewsBadge({ count }: { count: number }) {
       </span>
     );
   }
-  const color = count >= 10 ? "bg-green-500/15 text-green-400" : count >= 3 ? "bg-[#0078D4]/15 text-blue-400" : "bg-[#30363D]/50 text-[#7D8590]";
+  const color = count >= 10 ? "bg-green-500/15 text-green-400" : count >= 3 ? "bg-primary/15 text-blue-400" : "bg-border/50 text-muted-foreground";
   return (
     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${color}`}>
       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -94,17 +94,17 @@ function ViewsBadge({ count }: { count: number }) {
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
   if (field !== sortField) {
     return (
-      <svg className="w-3 h-3 text-[#484F58] ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-3 h-3 text-muted-foreground/60 ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
       </svg>
     );
   }
   return sortDir === "asc" ? (
-    <svg className="w-3 h-3 text-[#0078D4] ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-3 h-3 text-primary ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
     </svg>
   ) : (
-    <svg className="w-3 h-3 text-[#0078D4] ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-3 h-3 text-primary ml-1 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
@@ -190,7 +190,7 @@ export default function DiagnosticSharesPage() {
     return (
       <div className="p-6 space-y-3">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-14 bg-[#161B22] border border-[#30363D] rounded-xl animate-pulse" />
+          <div key={i} className="h-14 bg-card border border-border rounded-xl animate-pulse" />
         ))}
       </div>
     );
@@ -214,7 +214,7 @@ export default function DiagnosticSharesPage() {
       {/* Header */}
       <div>
         <h2 className="text-lg font-semibold text-white">Diagnostic Result Shares</h2>
-        <p className="text-sm text-[#7D8590] mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
           Clients who shared their M365 diagnostic results — a high view count signals internal buy-in worth following up.
         </p>
       </div>
@@ -224,13 +224,13 @@ export default function DiagnosticSharesPage() {
         {[
           { label: "Total Shares", value: shares.length, sub: "all time" },
           { label: "Active", value: activeCount, sub: "not yet expired", highlight: "text-green-400" },
-          { label: "Total Views", value: totalViews, sub: "across all links", highlight: totalViews > 0 ? "text-[#0078D4]" : undefined },
+          { label: "Total Views", value: totalViews, sub: "across all links", highlight: totalViews > 0 ? "text-primary" : undefined },
           { label: "High Engagement", value: highEngagement, sub: "active, 3+ views", highlight: highEngagement > 0 ? "text-yellow-400" : undefined },
         ].map(stat => (
-          <div key={stat.label} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+          <div key={stat.label} className="bg-card border border-border rounded-xl p-4">
             <div className={`text-2xl font-bold ${stat.highlight ?? "text-white"}`}>{stat.value}</div>
-            <div className="text-xs font-medium text-[#7D8590] mt-0.5">{stat.label}</div>
-            <div className="text-xs text-[#484F58] mt-0.5">{stat.sub}</div>
+            <div className="text-xs font-medium text-muted-foreground mt-0.5">{stat.label}</div>
+            <div className="text-xs text-muted-foreground/60 mt-0.5">{stat.sub}</div>
           </div>
         ))}
       </div>
@@ -238,7 +238,7 @@ export default function DiagnosticSharesPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z" />
           </svg>
           <input
@@ -246,18 +246,18 @@ export default function DiagnosticSharesPage() {
             placeholder="Search by client name, email, or company…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg py-2 pl-9 pr-3 text-sm text-white placeholder:text-[#484F58] focus:outline-none focus:border-[#0078D4]"
+            className="w-full bg-background border border-border rounded-lg py-2 pl-9 pr-3 text-sm text-white placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary"
           />
         </div>
-        <div className="flex rounded-lg overflow-hidden border border-[#30363D] shrink-0">
+        <div className="flex rounded-lg overflow-hidden border border-border shrink-0">
           {(["all", "active", "expired"] as StatusFilter[]).map(f => (
             <button
               key={f}
               onClick={() => setStatusFilter(f)}
               className={`px-3 py-2 text-xs font-medium capitalize transition-colors ${
                 statusFilter === f
-                  ? "bg-[#0078D4] text-white"
-                  : "bg-[#0D1117] text-[#7D8590] hover:text-white hover:bg-[#161B22]"
+                  ? "bg-primary text-white"
+                  : "bg-background text-muted-foreground hover:text-white hover:bg-card"
               }`}
             >
               {f === "all" ? `All (${shares.length})` : f === "active" ? `Active (${activeCount})` : `Expired (${expiredCount})`}
@@ -268,75 +268,75 @@ export default function DiagnosticSharesPage() {
 
       {/* Table */}
       {filtered.length === 0 ? (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-10 text-center">
-          <svg className="w-8 h-8 text-[#30363D] mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="bg-card border border-border rounded-xl p-10 text-center">
+          <svg className="w-8 h-8 text-border mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
-          <p className="text-sm text-[#484F58]">
+          <p className="text-sm text-muted-foreground/60">
             {shares.length === 0 ? "No clients have shared diagnostic results yet." : "No results match your filters."}
           </p>
         </div>
       ) : (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#30363D]">
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                <tr className="border-b border-border">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     <button
                       onClick={() => toggleSort("client")}
-                      className="inline-flex items-center gap-0.5 hover:text-[#7D8590] transition-colors"
+                      className="inline-flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
                     >
                       Client
                       <SortIcon field="client" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     Scores
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     <button
                       onClick={() => toggleSort("views")}
-                      className="inline-flex items-center gap-0.5 hover:text-[#7D8590] transition-colors"
+                      className="inline-flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
                     >
                       Views
                       <SortIcon field="views" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     <button
                       onClick={() => toggleSort("shared")}
-                      className="inline-flex items-center gap-0.5 hover:text-[#7D8590] transition-colors"
+                      className="inline-flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
                     >
                       Shared
                       <SortIcon field="shared" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     <button
                       onClick={() => toggleSort("expires")}
-                      className="inline-flex items-center gap-0.5 hover:text-[#7D8590] transition-colors"
+                      className="inline-flex items-center gap-0.5 hover:text-muted-foreground transition-colors"
                     >
                       Expires
                       <SortIcon field="expires" sortField={sortField} sortDir={sortDir} />
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-xs font-medium text-[#484F58] uppercase tracking-wider text-right">
+                  <th className="px-4 py-3 text-xs font-medium text-muted-foreground/60 uppercase tracking-wider text-right">
                     Link
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#30363D]">
+              <tbody className="divide-y divide-border">
                 {filtered.map(share => {
                   const expired = isExpired(share.expiresAt);
                   const scores = Object.entries(share.scoresSnapshot ?? {});
                   return (
                     <tr
                       key={share.id}
-                      className={`transition-colors ${expired ? "opacity-50" : "hover:bg-[#1C2128]"}`}
+                      className={`transition-colors ${expired ? "opacity-50" : "hover:bg-accent"}`}
                     >
                       {/* Client */}
                       <td className="px-4 py-3">
@@ -348,10 +348,10 @@ export default function DiagnosticSharesPage() {
                             {share.client.name ?? share.client.email}
                           </div>
                           {share.client.name && (
-                            <div className="text-xs text-[#7D8590]">{share.client.email}</div>
+                            <div className="text-xs text-muted-foreground">{share.client.email}</div>
                           )}
                           {share.client.company && (
-                            <div className="text-xs text-[#484F58]">{share.client.company}</div>
+                            <div className="text-xs text-muted-foreground/60">{share.client.company}</div>
                           )}
                         </Link>
                       </td>
@@ -360,11 +360,11 @@ export default function DiagnosticSharesPage() {
                       <td className="px-4 py-3">
                         <div className="space-y-1">
                           {scores.length === 0 ? (
-                            <span className="text-xs text-[#484F58]">—</span>
+                            <span className="text-xs text-muted-foreground/60">—</span>
                           ) : (
                             scores.map(([cat, score]) => (
                               <div key={cat} className="flex items-center gap-2">
-                                <span className="text-xs text-[#7D8590] w-20 shrink-0">{categoryLabel(cat)}</span>
+                                <span className="text-xs text-muted-foreground w-20 shrink-0">{categoryLabel(cat)}</span>
                                 <ScoreBar score={score ?? 0} />
                               </div>
                             ))
@@ -378,18 +378,18 @@ export default function DiagnosticSharesPage() {
                       </td>
 
                       {/* Shared date */}
-                      <td className="px-4 py-3 text-[#7D8590] text-xs whitespace-nowrap">
+                      <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
                         {fmtDate(share.createdAt)}
                       </td>
 
                       {/* Expires */}
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         {expired ? (
-                          <span className="text-[#484F58]">{fmtDate(share.expiresAt)}</span>
+                          <span className="text-muted-foreground/60">{fmtDate(share.expiresAt)}</span>
                         ) : (
-                          <span className="text-[#7D8590]">
+                          <span className="text-muted-foreground">
                             {fmtDate(share.expiresAt)}
-                            <span className="ml-1 text-[#484F58]">({fmtRelative(share.expiresAt)})</span>
+                            <span className="ml-1 text-muted-foreground/60">({fmtRelative(share.expiresAt)})</span>
                           </span>
                         )}
                       </td>
@@ -397,7 +397,7 @@ export default function DiagnosticSharesPage() {
                       {/* Status */}
                       <td className="px-4 py-3">
                         {expired ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#30363D]/50 text-[#484F58]">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-border/50 text-muted-foreground/60">
                             Expired
                           </span>
                         ) : share.viewCount >= 3 ? (
@@ -418,7 +418,7 @@ export default function DiagnosticSharesPage() {
                           <button
                             onClick={() => copyLink(share)}
                             title="Copy share link"
-                            className="p-1.5 rounded-lg text-[#484F58] hover:text-white hover:bg-[#30363D] transition-colors"
+                            className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-white hover:bg-border transition-colors"
                           >
                             {copiedId === share.id ? (
                               <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -437,7 +437,7 @@ export default function DiagnosticSharesPage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Open share link"
-                            className="p-1.5 rounded-lg text-[#484F58] hover:text-white hover:bg-[#30363D] transition-colors"
+                            className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-white hover:bg-border transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -451,7 +451,7 @@ export default function DiagnosticSharesPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-[#30363D] text-xs text-[#484F58]">
+          <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground/60">
             {filtered.length} {filtered.length === 1 ? "share" : "shares"}{filtered.length !== shares.length ? ` of ${shares.length} total` : ""}
           </div>
         </div>

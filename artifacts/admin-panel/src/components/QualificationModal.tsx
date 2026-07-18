@@ -38,10 +38,10 @@ function SubScoreBar({ label, score, max, color }: SubScoreBarProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-medium text-[#C9D1D9]">{label}</span>
-        <span className="text-xs font-bold text-[#E6EDF3]">{score}<span className="text-[#7D8590] font-normal">/{max}</span></span>
+        <span className="text-xs font-medium text-foreground/90">{label}</span>
+        <span className="text-xs font-bold text-foreground">{score}<span className="text-muted-foreground font-normal">/{max}</span></span>
       </div>
-      <div className="h-2 bg-[#30363D] rounded-full overflow-hidden">
+      <div className="h-2 bg-border rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -133,26 +133,26 @@ export default function QualificationModal() {
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
       {/* Modal */}
-      <div className="relative w-full max-w-xl bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-6 pt-5 pb-4 border-b border-[#30363D] bg-[#0D1117]">
+        <div className="px-6 pt-5 pb-4 border-b border-border bg-background">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${stageColor}`}>
                   {current.stage}
                 </span>
-                <span className="text-xs text-[#7D8590]">Lead Qualification</span>
+                <span className="text-xs text-muted-foreground">Lead Qualification</span>
               </div>
-              <h2 className="text-lg font-bold text-[#E6EDF3]">
+              <h2 className="text-lg font-bold text-foreground">
                 {current.lead?.name ?? `Lead #${current.leadId}`}
               </h2>
               {current.lead?.company && (
-                <p className="text-sm text-[#7D8590] mt-0.5">{current.lead.company}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">{current.lead.company}</p>
               )}
             </div>
             {pending.length > 1 && (
-              <span className="flex-shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-[#21262D] text-[#7D8590]">
+              <span className="flex-shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-accent text-muted-foreground">
                 {pending.length} pending
               </span>
             )}
@@ -161,13 +161,13 @@ export default function QualificationModal() {
 
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
           {/* Score summary */}
-          <div className="bg-[#0D1117] rounded-xl p-4">
+          <div className="bg-background rounded-xl p-4">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Qualification Score</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Qualification Score</p>
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl font-black text-[#E6EDF3]">{current.newScore}</span>
-                  <span className="text-sm text-[#7D8590]">/ 100</span>
+                  <span className="text-3xl font-black text-foreground">{current.newScore}</span>
+                  <span className="text-sm text-muted-foreground">/ 100</span>
                   {current.previousScore > 0 && (
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${delta >= 0 ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
                       {delta >= 0 ? "+" : ""}{delta} from {current.previousScore}
@@ -177,16 +177,16 @@ export default function QualificationModal() {
               </div>
               <div className="w-16 h-16 relative">
                 <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                  <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#30363D" strokeWidth="3" />
+                  <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#232A36" strokeWidth="3" />
                   <circle
                     cx="18" cy="18" r="15.9155" fill="none"
-                    stroke={current.newScore >= 75 ? "#7C3AED" : "#0078D4"}
+                    stroke={current.newScore >= 75 ? "#7C3AED" : "#2F6FED"}
                     strokeWidth="3"
                     strokeDasharray={`${current.newScore} ${100 - current.newScore}`}
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-xs font-black text-[#E6EDF3]">
+                <span className="absolute inset-0 flex items-center justify-center text-xs font-black text-foreground">
                   {current.newScore}%
                 </span>
               </div>
@@ -204,12 +204,12 @@ export default function QualificationModal() {
           {/* Evidence */}
           {current.evidence.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-2">Evidence</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Evidence</p>
               <ul className="space-y-1.5">
                 {current.evidence.map((item, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] mt-1.5 flex-shrink-0" />
-                    <span className="text-sm text-[#C9D1D9]">{item}</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                    <span className="text-sm text-foreground/90">{item}</span>
                   </li>
                 ))}
               </ul>
@@ -218,28 +218,28 @@ export default function QualificationModal() {
 
           {/* Recommended next step */}
           {current.recommendedNextStep && (
-            <div className="flex items-center gap-3 bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl px-4 py-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#0078D4] flex-shrink-0">
+            <div className="flex items-center gap-3 bg-primary/10 border border-primary/30 rounded-xl px-4 py-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-primary flex-shrink-0">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4] mb-0.5">Recommended Next Step</p>
-                <p className="text-sm font-semibold text-[#E6EDF3]">{current.recommendedNextStep}</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-0.5">Recommended Next Step</p>
+                <p className="text-sm font-semibold text-foreground">{current.recommendedNextStep}</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="px-6 pb-5 pt-4 border-t border-[#30363D] space-y-3">
-          <p className="text-[10px] text-[#7D8590] uppercase tracking-wider font-semibold text-center">
+        <div className="px-6 pb-5 pt-4 border-t border-border space-y-3">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold text-center">
             Action required — this modal cannot be dismissed without a decision
           </p>
           <div className="flex gap-3">
             <button
               onClick={() => void handleApprove()}
               disabled={acting}
-              className="flex-1 bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
+              className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
             >
               {acting ? "Processing…" : "✓ Approve & Create Opportunity"}
             </button>
@@ -255,7 +255,7 @@ export default function QualificationModal() {
             <button
               onClick={() => void handleSnooze()}
               disabled={acting}
-              className="flex-1 bg-[#21262D] hover:bg-[#30363D] disabled:opacity-50 text-[#7D8590] font-semibold py-2 rounded-xl text-sm transition-colors"
+              className="flex-1 bg-accent hover:bg-border disabled:opacity-50 text-muted-foreground font-semibold py-2 rounded-xl text-sm transition-colors"
             >
               ⏸ Decide Later (24h)
             </button>

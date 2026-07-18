@@ -45,11 +45,11 @@ export default function ArrayEditor({ value, onChange, placeholder = "Add itemâ€
         <div key={i} className="flex items-center gap-1.5 group">
           <div className="flex flex-col gap-0.5 flex-shrink-0">
             <button type="button" onClick={() => move(i, -1)} disabled={disabled || i === 0}
-              className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+              className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
               <ChevronUp className="w-3 h-3" />
             </button>
             <button type="button" onClick={() => move(i, 1)} disabled={disabled || i === value.length - 1}
-              className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+              className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30 transition-colors">
               <ChevronDown className="w-3 h-3" />
             </button>
           </div>
@@ -62,10 +62,10 @@ export default function ArrayEditor({ value, onChange, placeholder = "Add itemâ€
               arr[i] = e.target.value;
               onChange(arr);
             }}
-            className="flex-1 border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50"
+            className="flex-1 border border-border rounded-lg px-2.5 py-1.5 text-xs bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
           />
           <button type="button" onClick={() => remove(i)} disabled={disabled}
-            className="flex-shrink-0 text-[#484F58] hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-30">
+            className="flex-shrink-0 text-muted-foreground/60 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-30">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -80,14 +80,14 @@ export default function ArrayEditor({ value, onChange, placeholder = "Add itemâ€
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={placeholder}
-          className="flex-1 border border-dashed border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs bg-transparent text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-1 focus:ring-[#0078D4] focus:border-[#0078D4] disabled:opacity-50"
+          className="flex-1 border border-dashed border-border rounded-lg px-2.5 py-1.5 text-xs bg-transparent text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary disabled:opacity-50"
         />
         <button type="button" onClick={add} disabled={disabled || !draft.trim()}
-          className="flex-shrink-0 text-[#0078D4] hover:text-[#58A6FF] disabled:opacity-30 transition-colors">
+          className="flex-shrink-0 text-primary hover:text-primary disabled:opacity-30 transition-colors">
           <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
-      <p className="text-[10px] text-[#484F58] pl-6">Press Enter to add Â· Drag arrows to reorder</p>
+      <p className="text-[10px] text-muted-foreground/60 pl-6">Press Enter to add Â· Drag arrows to reorder</p>
     </div>
   );
 }

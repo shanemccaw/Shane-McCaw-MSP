@@ -50,7 +50,7 @@ const STATUS_CFG: Record<string, { cls: string; label: string }> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CFG[status] ?? { cls: "bg-[#30363D] text-[#7D8590] border-[#30363D]", label: status };
+  const cfg = STATUS_CFG[status] ?? { cls: "bg-border text-muted-foreground border-border", label: status };
   return (
     <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${cfg.cls}`}>
       {status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />}
@@ -208,20 +208,20 @@ function DetailSheet({
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
       <SheetContent
-        className="bg-[#0D1117] border-l border-[#30363D] text-[#E6EDF3] w-full sm:max-w-2xl flex flex-col p-0"
+        className="bg-background border-l border-border text-foreground w-full sm:max-w-2xl flex flex-col p-0"
         side="right"
       >
         {/* Header */}
-        <SheetHeader className="px-5 py-4 border-b border-[#21262D] flex-shrink-0">
-          <SheetTitle className="text-sm font-semibold text-[#E6EDF3] text-left">Script Run Detail</SheetTitle>
+        <SheetHeader className="px-5 py-4 border-b border-accent flex-shrink-0">
+          <SheetTitle className="text-sm font-semibold text-foreground text-left">Script Run Detail</SheetTitle>
           {detail && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <StatusBadge status={detail.status} />
-              <span className="text-xs text-[#7D8590]">
+              <span className="text-xs text-muted-foreground">
                 {detail.executionSource === "manual" ? "Manual run" : detail.executionSource === "customer_upload" ? "Customer upload" : "Automated run"}
               </span>
               {detail.jobId && (
-                <span className="text-xs text-[#484F58] font-mono">
+                <span className="text-xs text-muted-foreground/60 font-mono">
                   {detail.jobId.slice(0, 8)}…
                 </span>
               )}
@@ -233,7 +233,7 @@ function DetailSheet({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {loading && (
             <div className="flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
@@ -247,27 +247,27 @@ function DetailSheet({
             <>
               {/* Metadata grid */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#161B22] border border-[#21262D] rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Script</p>
-                  <p className="text-sm text-[#E6EDF3] font-medium">{detail.scriptTitle ?? "Unknown Script"}</p>
+                <div className="bg-card border border-accent rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Script</p>
+                  <p className="text-sm text-foreground font-medium">{detail.scriptTitle ?? "Unknown Script"}</p>
                 </div>
-                <div className="bg-[#161B22] border border-[#21262D] rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Customer</p>
-                  <p className="text-sm text-[#E6EDF3] font-medium">{detail.customerName ?? "No customer"}</p>
+                <div className="bg-card border border-accent rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Customer</p>
+                  <p className="text-sm text-foreground font-medium">{detail.customerName ?? "No customer"}</p>
                 </div>
-                <div className="bg-[#161B22] border border-[#21262D] rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Started</p>
-                  <p className="text-xs text-[#C9D1D9]">{formatDateTime(detail.createdAt)}</p>
+                <div className="bg-card border border-accent rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Started</p>
+                  <p className="text-xs text-foreground/90">{formatDateTime(detail.createdAt)}</p>
                 </div>
-                <div className="bg-[#161B22] border border-[#21262D] rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Duration</p>
-                  <p className="text-xs text-[#C9D1D9]">{formatDuration(detail.createdAt, detail.completedAt)}</p>
+                <div className="bg-card border border-accent rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Duration</p>
+                  <p className="text-xs text-foreground/90">{formatDuration(detail.createdAt, detail.completedAt)}</p>
                 </div>
               </div>
 
               {/* Terminal output */}
               <div>
-                <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider mb-2 flex items-center gap-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-2">
                   Terminal Output
                   {detail.status === "running" && (
                     <span className="text-[10px] text-yellow-400 font-normal normal-case tracking-normal flex items-center gap-1">
@@ -278,16 +278,16 @@ function DetailSheet({
                 </p>
                 <div
                   ref={terminalRef}
-                  className="bg-[#0D1117] border border-[#21262D] rounded-lg p-4 font-mono text-xs overflow-y-auto"
+                  className="bg-background border border-accent rounded-lg p-4 font-mono text-xs overflow-y-auto"
                   style={{ height: 220, maxHeight: 220 }}
                 >
                   {outputLines.length === 0 ? (
-                    <span className="text-[#484F58]">
+                    <span className="text-muted-foreground/60">
                       {detail.status === "running" ? "Waiting for output…" : "No output recorded."}
                     </span>
                   ) : (
                     outputLines.map((line, i) => (
-                      <div key={i} className="text-[#E6EDF3] leading-relaxed whitespace-pre-wrap break-all">{line}</div>
+                      <div key={i} className="text-foreground leading-relaxed whitespace-pre-wrap break-all">{line}</div>
                     ))
                   )}
                 </div>
@@ -298,13 +298,13 @@ function DetailSheet({
                detail.executionSource === "customer_upload" &&
                !hasFindings && !hasRecs && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/25">
-                    <span className="flex h-2 w-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
-                    <p className="text-xs font-medium text-[#58A6FF]">AI analyzing results…</p>
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/25">
+                    <span className="flex h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+                    <p className="text-xs font-medium text-primary">AI analyzing results…</p>
                   </div>
                   <div className="space-y-2 animate-pulse">
                     {[75, 60, 85, 50].map((w, i) => (
-                      <div key={i} className="h-9 bg-[#161B22] border border-[#21262D] rounded-lg" style={{ width: `${w}%` }} />
+                      <div key={i} className="h-9 bg-card border border-accent rounded-lg" style={{ width: `${w}%` }} />
                     ))}
                   </div>
                 </div>
@@ -313,12 +313,12 @@ function DetailSheet({
               {/* AI Findings */}
               {hasFindings && (
                 <div>
-                  <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider mb-2">AI Findings</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">AI Findings</p>
                   <div className="space-y-2">
                     {detail.parsedFindings.map((f, i) => (
-                      <div key={i} className="flex items-start gap-2.5 bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-2.5">
+                      <div key={i} className="flex items-start gap-2.5 bg-card border border-accent rounded-lg px-3 py-2.5">
                         <span className="text-blue-400 flex-shrink-0 mt-0.5">•</span>
-                        <span className="text-xs text-[#C9D1D9] leading-relaxed">{f}</span>
+                        <span className="text-xs text-foreground/90 leading-relaxed">{f}</span>
                       </div>
                     ))}
                   </div>
@@ -328,12 +328,12 @@ function DetailSheet({
               {/* Recommendations */}
               {hasRecs && (
                 <div>
-                  <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider mb-2">Recommendations</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recommendations</p>
                   <div className="space-y-2">
                     {detail.recommendations.map((r, i) => (
-                      <div key={i} className="flex items-start gap-2.5 bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-2.5">
+                      <div key={i} className="flex items-start gap-2.5 bg-card border border-accent rounded-lg px-3 py-2.5">
                         <span className="text-green-400 flex-shrink-0 mt-0.5">→</span>
-                        <span className="text-xs text-[#C9D1D9] leading-relaxed">{r}</span>
+                        <span className="text-xs text-foreground/90 leading-relaxed">{r}</span>
                       </div>
                     ))}
                   </div>
@@ -343,12 +343,12 @@ function DetailSheet({
               {/* Score Impact */}
               {hasScoreImpact && (
                 <div>
-                  <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wider mb-2">Score Impact</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Score Impact</p>
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(detail.scoreImpact).map(([key, val]) => (
-                      <div key={key} className="bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-2 flex items-center justify-between">
-                        <span className="text-xs text-[#8B949E] capitalize">{key.replace(/_/g, " ")}</span>
-                        <span className={`text-xs font-bold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-[#7D8590]"}`}>
+                      <div key={key} className="bg-card border border-accent rounded-lg px-3 py-2 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground capitalize">{key.replace(/_/g, " ")}</span>
+                        <span className={`text-xs font-bold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-muted-foreground"}`}>
                           {val > 0 ? "+" : ""}{val}
                         </span>
                       </div>
@@ -359,7 +359,7 @@ function DetailSheet({
 
               {!hasFindings && !hasRecs && detail.status !== "running" &&
                !(detail.status === "completed" && detail.executionSource === "customer_upload") && (
-                <p className="text-xs text-[#484F58] italic">No AI findings were generated for this run.</p>
+                <p className="text-xs text-muted-foreground/60 italic">No AI findings were generated for this run.</p>
               )}
             </>
           )}
@@ -500,17 +500,17 @@ export default function RunningScriptsPage() {
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col) {
       return (
-        <svg className="w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="w-3 h-3 text-muted-foreground/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
         </svg>
       );
     }
     return sortDir === "asc" ? (
-      <svg className="w-3 h-3 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <svg className="w-3 h-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
       </svg>
     ) : (
-      <svg className="w-3 h-3 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <svg className="w-3 h-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
       </svg>
     );
@@ -523,8 +523,8 @@ export default function RunningScriptsPage() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h3 className="text-base font-semibold text-[#E6EDF3]">Script Run History</h3>
-          <p className="text-xs text-[#7D8590] mt-0.5">All PowerShell executions — click any row to view full output and AI analysis</p>
+          <h3 className="text-base font-semibold text-foreground">Script Run History</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">All PowerShell executions — click any row to view full output and AI analysis</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {hasRunning && (
@@ -535,7 +535,7 @@ export default function RunningScriptsPage() {
           )}
           <button
             onClick={() => { setLoading(true); void fetchRuns(); }}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 border border-[#30363D] rounded-lg hover:bg-[#1C2128] transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground px-3 py-1.5 border border-border rounded-lg hover:bg-accent transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -555,7 +555,7 @@ export default function RunningScriptsPage() {
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+          className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary/50 transition-colors"
         >
           <option value="">All statuses</option>
           <option value="running">Running</option>
@@ -567,7 +567,7 @@ export default function RunningScriptsPage() {
         <select
           value={filterCustomerId}
           onChange={e => setFilterCustomerId(e.target.value)}
-          className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+          className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary/50 transition-colors"
         >
           <option value="">All customers</option>
           {customers.map(c => (
@@ -578,13 +578,13 @@ export default function RunningScriptsPage() {
         {(filterStatus || filterCustomerId) && (
           <button
             onClick={() => { setFilterStatus(""); setFilterCustomerId(""); }}
-            className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Clear filters
           </button>
         )}
 
-        <span className="ml-auto text-xs text-[#484F58]">
+        <span className="ml-auto text-xs text-muted-foreground/60">
           {loading ? "Loading…" : `${sorted.length} run${sorted.length === 1 ? "" : "s"}`}
         </span>
       </div>
@@ -592,66 +592,66 @@ export default function RunningScriptsPage() {
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <svg className="w-10 h-10 text-[#30363D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg className="w-10 h-10 text-border mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
           </svg>
-          <p className="text-sm font-medium text-[#7D8590]">No script runs found</p>
-          <p className="text-xs text-[#484F58] mt-1">Run a script from M365 Scripts to see history here.</p>
+          <p className="text-sm font-medium text-muted-foreground">No script runs found</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">Run a script from M365 Scripts to see history here.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-[#21262D] overflow-hidden">
+        <div className="rounded-xl border border-accent overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-[#161B22] border-b border-[#21262D]">
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+              <tr className="bg-card border-b border-accent">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Script Name
                 </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <button
                     onClick={() => toggleSort("customerName")}
-                    className="flex items-center gap-1.5 hover:text-[#E6EDF3] transition-colors"
+                    className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                   >
                     Customer <SortIcon col="customerName" />
                   </button>
                 </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Source
                 </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <button
                     onClick={() => toggleSort("createdAt")}
-                    className="flex items-center gap-1.5 hover:text-[#E6EDF3] transition-colors"
+                    className="flex items-center gap-1.5 hover:text-foreground transition-colors"
                   >
                     Started At <SortIcon col="createdAt" />
                   </button>
                 </th>
-                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
+                <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Duration
                 </th>
                 <th className="px-4 py-2.5 w-10" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#21262D]">
+            <tbody className="divide-y divide-accent">
               {sorted.map(run => (
                 <tr
                   key={run.id}
                   onClick={() => setSelectedRunId(run.id)}
-                  className="bg-[#0D1117] hover:bg-[#161B22] cursor-pointer transition-colors"
+                  className="bg-background hover:bg-card cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <span className="font-medium text-[#E6EDF3]">
-                      {run.scriptTitle ?? <span className="text-[#484F58] italic">Unknown script</span>}
+                    <span className="font-medium text-foreground">
+                      {run.scriptTitle ?? <span className="text-muted-foreground/60 italic">Unknown script</span>}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-[#8B949E]">
-                    {run.customerName ?? <span className="text-[#484F58]">—</span>}
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {run.customerName ?? <span className="text-muted-foreground/60">—</span>}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={run.status} />
@@ -666,15 +666,15 @@ export default function RunningScriptsPage() {
                         Customer Script
                       </span>
                     ) : (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-[#1C2128] text-[#7D8590] border-[#30363D]">
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-accent text-muted-foreground border-border">
                         Manual
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-[#8B949E] whitespace-nowrap">
+                  <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                     {formatDateTime(run.createdAt)}
                   </td>
-                  <td className="px-4 py-3 text-[#8B949E]">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {formatDuration(run.createdAt, run.completedAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -682,7 +682,7 @@ export default function RunningScriptsPage() {
                       onClick={e => void handleDelete(e, run.id)}
                       disabled={deletingIds.has(run.id)}
                       title="Delete this result"
-                      className="p-1.5 rounded text-[#484F58] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="p-1.5 rounded text-muted-foreground/60 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

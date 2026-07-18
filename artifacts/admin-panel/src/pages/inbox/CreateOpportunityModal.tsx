@@ -80,11 +80,11 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
   if (created) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div className="w-full max-w-sm bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
+        <div className="w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-emerald-900/30 border border-emerald-800/40 flex items-center justify-center text-2xl">🎯</div>
           <div className="text-center">
-            <p className="text-sm font-semibold text-[#E6EDF3]">Opportunity Created!</p>
-            <p className="text-xs text-[#7D8590] mt-1">Lead upgraded to Warm · Workflow tasks generated · Email linked</p>
+            <p className="text-sm font-semibold text-foreground">Opportunity Created!</p>
+            <p className="text-xs text-muted-foreground mt-1">Lead upgraded to Warm · Workflow tasks generated · Email linked</p>
           </div>
         </div>
       </div>
@@ -93,10 +93,10 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] sticky top-0 bg-[#161B22] z-10">
-          <h2 className="text-sm font-semibold text-[#E6EDF3]">Create Opportunity from Email</h2>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#C9D1D9]">
+      <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
+          <h2 className="text-sm font-semibold text-foreground">Create Opportunity from Email</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground/90">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -118,16 +118,16 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
               ))}
             </ul>
             {opportunitySignals.recommendedNextStep && (
-              <p className="text-[11px] text-[#7D8590] pt-1 border-t border-emerald-800/20">
-                <span className="text-[#C9D1D9] font-medium">Next step: </span>
+              <p className="text-[11px] text-muted-foreground pt-1 border-t border-emerald-800/20">
+                <span className="text-foreground/90 font-medium">Next step: </span>
                 {opportunitySignals.recommendedNextStep}
               </p>
             )}
           </div>
 
           {/* What this does */}
-          <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-3">
-            <p className="text-[10px] font-semibold text-[#7D8590] uppercase mb-2">What this will do</p>
+          <div className="bg-background border border-border rounded-xl p-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-2">What this will do</p>
             <ul className="space-y-1">
               {[
                 "Upgrade lead score +15 and stage → Warm",
@@ -135,7 +135,7 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
                 "Generate workflow tasks based on workflow type",
                 "Link this email to the opportunity",
               ].map((item, i) => (
-                <li key={i} className="flex items-center gap-2 text-[11px] text-[#C9D1D9]">
+                <li key={i} className="flex items-center gap-2 text-[11px] text-foreground/90">
                   <svg className="w-3 h-3 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
@@ -146,25 +146,25 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
           </div>
 
           <div>
-            <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Opportunity Name</label>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Opportunity Name</label>
             <input
               type="text"
               value={opportunityName}
               onChange={e => setOpportunityName(e.target.value)}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Link to Lead *</label>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Link to Lead *</label>
             {loadingLeads ? (
-              <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             ) : (
               <select
                 value={selectedLeadId}
                 onChange={e => setSelectedLeadId(e.target.value)}
                 required
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
               >
                 <option value="">Select lead…</option>
                 {leads.map(l => (
@@ -177,11 +177,11 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
           </div>
 
           <div>
-            <label className="block text-[10px] font-semibold text-[#7D8590] uppercase mb-1">Workflow Type</label>
+            <label className="block text-[10px] font-semibold text-muted-foreground uppercase mb-1">Workflow Type</label>
             <select
               value={workflowType}
               onChange={e => setWorkflowType(e.target.value)}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+              className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
             >
               <option value="discovery">Discovery Call</option>
               <option value="proposal">Proposal</option>
@@ -193,7 +193,7 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
           {error && <p className="text-xs text-red-400">{error}</p>}
 
           <div className="flex gap-2 justify-end pt-1">
-            <button type="button" onClick={onClose} className="px-4 py-1.5 text-xs text-[#7D8590] border border-[#30363D] rounded-md hover:bg-[#1C2128]">
+            <button type="button" onClick={onClose} className="px-4 py-1.5 text-xs text-muted-foreground border border-border rounded-md hover:bg-accent">
               Cancel
             </button>
             <button

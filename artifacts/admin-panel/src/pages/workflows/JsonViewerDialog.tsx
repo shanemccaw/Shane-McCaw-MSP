@@ -12,11 +12,11 @@ export function JsonViewerDialog({ open, onOpenChange, initialJson, title }: Jso
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-4xl w-[90vw] p-0 flex flex-col gap-0 bg-[#0D1117] border-[#30363D]"
+        className="max-w-4xl w-[90vw] p-0 flex flex-col gap-0 bg-background border-border"
         style={{ height: "82vh", maxHeight: "82vh" }}
       >
-        <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-[#21262D]">
-          <DialogTitle className="text-sm font-semibold text-[#E6EDF3] font-mono">
+        <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-accent">
+          <DialogTitle className="text-sm font-semibold text-foreground font-mono">
             {title ?? "JSON Viewer"}
           </DialogTitle>
         </DialogHeader>

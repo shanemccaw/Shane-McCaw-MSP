@@ -87,25 +87,25 @@ function ArrayEditor({
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-2">{label}</label>
+      <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-2">{label}</label>
       <div className="space-y-2 mb-2">
         {items.map((item, i) => (
           <div key={i} className="flex items-start gap-2">
             <div className="flex flex-col gap-0.5 pt-1.5">
-              <button type="button" onClick={() => moveUp(i)} className="text-[#7D8590]" disabled={i === 0}>
+              <button type="button" onClick={() => moveUp(i)} className="text-muted-foreground" disabled={i === 0}>
                 <ChevronUp className="w-3 h-3" />
               </button>
-              <button type="button" onClick={() => moveDown(i)} className="text-[#7D8590]" disabled={i === items.length - 1}>
+              <button type="button" onClick={() => moveDown(i)} className="text-muted-foreground" disabled={i === items.length - 1}>
                 <ChevronDown className="w-3 h-3" />
               </button>
             </div>
-            <GripVertical className="w-4 h-4 text-[#484F58] mt-2 flex-shrink-0" />
+            <GripVertical className="w-4 h-4 text-muted-foreground/60 mt-2 flex-shrink-0" />
             <input
               value={item}
               onChange={e => update(i, e.target.value)}
-              className="flex-1 border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              className="flex-1 border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
-            <button type="button" onClick={() => remove(i)} className="text-[#7D8590] hover:text-red-500 transition-colors mt-1.5">
+            <button type="button" onClick={() => remove(i)} className="text-muted-foreground hover:text-red-500 transition-colors mt-1.5">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -117,12 +117,12 @@ function ArrayEditor({
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
           placeholder={placeholder ?? "Add item…"}
-          className="flex-1 border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+          className="flex-1 border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         <button
           type="button"
           onClick={add}
-          className="px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-sm font-medium rounded hover:bg-[#0078D4]/20 transition-colors"
+          className="px-3 py-1.5 bg-primary/10 text-primary text-sm font-medium rounded hover:bg-primary/20 transition-colors"
         >
           Add
         </button>
@@ -150,11 +150,11 @@ function SignalChecklist({
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-2">
+      <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-2">
         Trigger Conditions
       </label>
-      <p className="text-xs text-[#7D8590] mb-3">
-        Select which tenant signals must fire for this project to appear in a SOW. <strong className="text-[#C9D1D9]">No signals selected = always include in every SOW.</strong>
+      <p className="text-xs text-muted-foreground mb-3">
+        Select which tenant signals must fire for this project to appear in a SOW. <strong className="text-foreground/90">No signals selected = always include in every SOW.</strong>
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {signals.filter(s => s.key !== "alwaysInclude").map(({ key, label, description }) => (
@@ -163,19 +163,19 @@ function SignalChecklist({
             title={description}
             className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
               selected.includes(key)
-                ? "border-[#0078D4] bg-[#0078D4]/5 text-[#0078D4]"
-                : "border-[#30363D] bg-[#161B22] text-[#C9D1D9] hover:border-[#30363D]"
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border bg-card text-foreground/90 hover:border-border"
             }`}
           >
             <input
               type="checkbox"
               checked={selected.includes(key)}
               onChange={() => toggle(key)}
-              className="w-3.5 h-3.5 accent-[#0078D4] flex-shrink-0 mt-0.5"
+              className="w-3.5 h-3.5 accent-primary flex-shrink-0 mt-0.5"
             />
             <div>
               <span className="text-sm font-medium">{label}</span>
-              <p className="text-xs text-[#7D8590] mt-0.5 leading-relaxed">{description}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
             </div>
           </label>
         ))}
@@ -201,10 +201,10 @@ function PageTagsChecklist({
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-2">
+      <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-2">
         Service Pages
       </label>
-      <p className="text-xs text-[#7D8590] mb-3">
+      <p className="text-xs text-muted-foreground mb-3">
         Choose which service pages show this project in their "Project Engagements" section.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -213,15 +213,15 @@ function PageTagsChecklist({
             key={slug}
             className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors select-none ${
               selected.includes(slug)
-                ? "border-[#0078D4] bg-[#0078D4]/5 text-[#0078D4]"
-                : "border-[#30363D] bg-[#161B22] text-[#C9D1D9] hover:border-[#30363D]"
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border bg-card text-foreground/90 hover:border-border"
             }`}
           >
             <input
               type="checkbox"
               checked={selected.includes(slug)}
               onChange={() => toggle(slug)}
-              className="w-3.5 h-3.5 accent-[#0078D4] flex-shrink-0"
+              className="w-3.5 h-3.5 accent-primary flex-shrink-0"
             />
             <span className="text-sm font-medium">{label}</span>
           </label>
@@ -418,8 +418,8 @@ export default function EngagementProjectsPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
-          <h1 className="text-xl font-extrabold text-[#E6EDF3]">Engagement Projects</h1>
-          <p className="text-sm text-[#7D8590] mt-0.5">
+          <h1 className="text-xl font-extrabold text-foreground">Engagement Projects</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Project types shown on the Pricing page (Track 02). Each record drives SOW generation.
           </p>
         </div>
@@ -427,14 +427,14 @@ export default function EngagementProjectsPage() {
           <button
             onClick={handleExport}
             disabled={projects.length === 0}
-            className="inline-flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+            className="inline-flex items-center gap-2 bg-accent text-foreground/90 text-sm font-semibold px-4 py-2 rounded-lg border border-border hover:border-primary/40 hover:text-foreground disabled:opacity-40 transition-colors"
           >
             <Download className="w-4 h-4" /> Export JSON
           </button>
           <button
             onClick={() => { void handlePreviewPublish(); }}
             disabled={publishDiffLoading || publishingToProd || projects.length === 0}
-            className="inline-flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+            className="inline-flex items-center gap-2 bg-accent text-foreground/90 text-sm font-semibold px-4 py-2 rounded-lg border border-border hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
           >
             {publishDiffLoading
               ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -443,7 +443,7 @@ export default function EngagementProjectsPage() {
           </button>
           <button
             onClick={openCreate}
-            className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+            className="inline-flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-4 h-4" /> New Project Type
           </button>
@@ -453,9 +453,9 @@ export default function EngagementProjectsPage() {
       {/* Publish-to-prod diff modal */}
       {publishDiff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-base font-bold text-[#E6EDF3] mb-1">Review Changes</h2>
-            <p className="text-xs text-[#7D8590] mb-4">These changes will be applied to the production database.</p>
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-base font-bold text-foreground mb-1">Review Changes</h2>
+            <p className="text-xs text-muted-foreground mb-4">These changes will be applied to the production database.</p>
             <div className="space-y-2 mb-5">
               {publishDiff.added.length > 0 && (
                 <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
@@ -464,9 +464,9 @@ export default function EngagementProjectsPage() {
                 </div>
               )}
               {publishDiff.updated.length > 0 && (
-                <div className="rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/20 px-3 py-2">
-                  <p className="text-xs font-semibold text-[#58A6FF] mb-1">↻ {publishDiff.updated.length} existing project{publishDiff.updated.length !== 1 ? "s" : ""} will be updated</p>
-                  <p className="text-[11px] text-[#58A6FF]/60">{publishDiff.updated.map(p => p.title).join(", ")}</p>
+                <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-primary mb-1">↻ {publishDiff.updated.length} existing project{publishDiff.updated.length !== 1 ? "s" : ""} will be updated</p>
+                  <p className="text-[11px] text-primary/60">{publishDiff.updated.map(p => p.title).join(", ")}</p>
                 </div>
               )}
               {publishDiff.removed.length > 0 && (
@@ -476,8 +476,8 @@ export default function EngagementProjectsPage() {
                 </div>
               )}
               {publishDiff.added.length === 0 && publishDiff.updated.length === 0 && publishDiff.removed.length === 0 && (
-                <div className="rounded-lg bg-[#1C2128] border border-[#30363D] px-3 py-2">
-                  <p className="text-xs text-[#7D8590]">No changes detected — prod is already in sync.</p>
+                <div className="rounded-lg bg-accent border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">No changes detected — prod is already in sync.</p>
                 </div>
               )}
             </div>
@@ -485,7 +485,7 @@ export default function EngagementProjectsPage() {
               <button
                 onClick={() => setPublishDiff(null)}
                 disabled={publishingToProd}
-                className="text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+                className="text-sm font-semibold px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground/90 hover:border-muted-foreground/60 disabled:opacity-40 transition-colors"
               >
                 Cancel
               </button>
@@ -504,30 +504,30 @@ export default function EngagementProjectsPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-40">
-          <Loader2 className="w-6 h-6 text-[#0078D4] animate-spin" />
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
       ) : projects.length === 0 ? (
-        <div className="text-center py-16 text-[#7D8590] text-sm border border-dashed border-[#30363D] rounded-xl">
+        <div className="text-center py-16 text-muted-foreground text-sm border border-dashed border-border rounded-xl">
           No engagement projects yet. Click "New Project Type" to add one.
         </div>
       ) : (
         <div className="space-y-3">
           {projects.map(p => (
-            <div key={p.id} className={`bg-[#161B22] rounded-xl border transition-all ${expandedId === p.id ? "border-[#0078D4]/40 shadow-sm" : "border-[#30363D]"}`}>
+            <div key={p.id} className={`bg-card rounded-xl border transition-all ${expandedId === p.id ? "border-primary/40 shadow-sm" : "border-border"}`}>
               <div className="flex items-center gap-3 px-5 py-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <p className="font-semibold text-[#E6EDF3] text-sm">{p.title}</p>
-                    <span className="text-[#0078D4] font-bold text-sm">{p.priceRange}</span>
+                    <p className="font-semibold text-foreground text-sm">{p.title}</p>
+                    <span className="text-primary font-bold text-sm">{p.priceRange}</span>
                     {!p.isVisible && (
-                      <span className="text-xs bg-[#30363D]/50 text-[#7D8590] px-2 py-0.5 rounded-full font-medium">Hidden</span>
+                      <span className="text-xs bg-border/50 text-muted-foreground px-2 py-0.5 rounded-full font-medium">Hidden</span>
                     )}
                     {(p.pages ?? []).length > 0 && (
                       <div className="flex items-center gap-1 flex-wrap">
                         {(p.pages ?? []).map((slug) => {
                           const page = SERVICE_PAGES.find((pg) => pg.slug === slug);
                           return page ? (
-                            <span key={slug} className="text-xs bg-[#0078D4]/8 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full font-medium">
+                            <span key={slug} className="text-xs bg-primary/8 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-medium">
                               {page.label}
                             </span>
                           ) : null;
@@ -536,41 +536,41 @@ export default function EngagementProjectsPage() {
                     )}
                   </div>
                   {p.meaning && (
-                    <p className="text-xs text-[#C9D1D9] mt-0.5 line-clamp-1 italic">{p.meaning}</p>
+                    <p className="text-xs text-foreground/90 mt-0.5 line-clamp-1 italic">{p.meaning}</p>
                   )}
                   {p.description && (
-                    <p className="text-xs text-[#7D8590] mt-0.5 line-clamp-1">{p.description}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{p.description}</p>
                   )}
                   <div className="flex items-center gap-3 mt-1">
                     {p.triggeredBy.length === 0 ? (
                       <span className="text-xs text-green-400 font-medium">Always included</span>
                     ) : (
-                      <span className="text-xs text-[#7D8590]">{p.triggeredBy.length} signal trigger{p.triggeredBy.length !== 1 ? "s" : ""}</span>
+                      <span className="text-xs text-muted-foreground">{p.triggeredBy.length} signal trigger{p.triggeredBy.length !== 1 ? "s" : ""}</span>
                     )}
                     <span className="text-gray-200">·</span>
-                    <span className="text-xs text-[#7D8590]">{p.sowItems.length} SOW item{p.sowItems.length !== 1 ? "s" : ""}</span>
+                    <span className="text-xs text-muted-foreground">{p.sowItems.length} SOW item{p.sowItems.length !== 1 ? "s" : ""}</span>
                     <span className="text-gray-200">·</span>
-                    <span className="text-xs text-[#7D8590]">sort: {p.sortOrder}</span>
+                    <span className="text-xs text-muted-foreground">sort: {p.sortOrder}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    className="text-[#7D8590] hover:text-[#7D8590] p-1.5 rounded-lg hover:bg-[#1C2128] transition-colors"
+                    className="text-muted-foreground hover:text-muted-foreground p-1.5 rounded-lg hover:bg-accent transition-colors"
                     title="Expand"
                   >
                     {expandedId === p.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
                   <button
                     onClick={() => openEdit(p)}
-                    className="text-[#7D8590] hover:text-[#0078D4] p-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors"
+                    className="text-muted-foreground hover:text-primary p-1.5 rounded-lg hover:bg-primary/5 transition-colors"
                     title="Edit"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setConfirmDeleteId(p.id)}
-                    className="text-[#7D8590] hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                    className="text-muted-foreground hover:text-red-500 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
                     title="Delete"
                     disabled={deleting === p.id}
                   >
@@ -580,17 +580,17 @@ export default function EngagementProjectsPage() {
               </div>
 
               {expandedId === p.id && (
-                <div className="border-t border-[#30363D] px-5 py-4 space-y-5">
+                <div className="border-t border-border px-5 py-4 space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Trigger Conditions</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Trigger Conditions</p>
                       {p.triggeredBy.length === 0 ? (
                         <p className="text-xs text-green-400 font-medium">Always included in every SOW</p>
                       ) : (
                         <ul className="space-y-1">
                           {p.triggeredBy.map((t, i) => (
-                            <li key={i} className="text-xs text-[#C9D1D9] flex items-start gap-1.5">
-                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                            <li key={i} className="text-xs text-foreground/90 flex items-start gap-1.5">
+                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                               {getSignalLabel(t)}
                             </li>
                           ))}
@@ -598,13 +598,13 @@ export default function EngagementProjectsPage() {
                       )}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Typical SOW Items</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Typical SOW Items</p>
                       {p.sowItems.length === 0 ? (
-                        <p className="text-xs text-[#7D8590] italic">None defined</p>
+                        <p className="text-xs text-muted-foreground italic">None defined</p>
                       ) : (
                         <ul className="space-y-1">
                           {p.sowItems.map((s, i) => (
-                            <li key={i} className="text-xs text-[#C9D1D9] flex items-start gap-1.5">
+                            <li key={i} className="text-xs text-foreground/90 flex items-start gap-1.5">
                               <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#00B4D8] flex-shrink-0" />
                               {s}
                             </li>
@@ -614,15 +614,15 @@ export default function EngagementProjectsPage() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Shown on Service Pages</p>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Shown on Service Pages</p>
                     {(p.pages ?? []).length === 0 ? (
-                      <p className="text-xs text-[#7D8590] italic">Not tagged to any service page</p>
+                      <p className="text-xs text-muted-foreground italic">Not tagged to any service page</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {(p.pages ?? []).map((slug) => {
                           const page = SERVICE_PAGES.find((pg) => pg.slug === slug);
                           return page ? (
-                            <span key={slug} className="text-xs bg-[#0078D4]/8 text-[#0078D4] border border-[#0078D4]/20 px-2.5 py-1 rounded-full font-medium">
+                            <span key={slug} className="text-xs bg-primary/8 text-primary border border-primary/20 px-2.5 py-1 rounded-full font-medium">
                               {page.label}
                             </span>
                           ) : null;
@@ -640,12 +640,12 @@ export default function EngagementProjectsPage() {
       {/* Create / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto py-8 px-4">
-          <div className="bg-[#161B22] rounded-2xl shadow-xl w-full max-w-2xl">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#30363D]">
-              <h2 className="text-lg font-extrabold text-[#E6EDF3]">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-2xl">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+              <h2 className="text-lg font-extrabold text-foreground">
                 {mode === "edit" ? "Edit Project Type" : "New Project Type"}
               </h2>
-              <button onClick={closeForm} className="text-[#7D8590] hover:text-[#7D8590] transition-colors">
+              <button onClick={closeForm} className="text-muted-foreground hover:text-muted-foreground transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -653,7 +653,7 @@ export default function EngagementProjectsPage() {
             <form onSubmit={e => void handleSave(e)} className="px-6 py-5 space-y-5">
               {/* Title */}
               <div>
-                <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-1.5">
                   Title <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -661,13 +661,13 @@ export default function EngagementProjectsPage() {
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   required
                   placeholder="e.g. M365 Tenant Migration"
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
 
               {/* Price Range */}
               <div>
-                <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-1.5">
                   Price Range <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -675,25 +675,25 @@ export default function EngagementProjectsPage() {
                   onChange={e => setForm(f => ({ ...f, priceRange: e.target.value }))}
                   required
                   placeholder="e.g. $5,000 – $15,000"
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">Description</label>
+                <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-1.5">Description</label>
                 <textarea
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={3}
                   placeholder="Short description shown on the Pricing page…"
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                 />
               </div>
 
               {/* Meaning */}
               <div>
-                <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-1.5">
                   Project Meaning
                 </label>
                 <textarea
@@ -701,9 +701,9 @@ export default function EngagementProjectsPage() {
                   onChange={e => setForm(f => ({ ...f, meaning: e.target.value }))}
                   rows={2}
                   placeholder="One sentence describing what this project is and what problem it solves…"
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                 />
-                <p className="text-xs text-[#7D8590] mt-1">Injected into the AI prompt as context for why this project is included.</p>
+                <p className="text-xs text-muted-foreground mt-1">Injected into the AI prompt as context for why this project is included.</p>
               </div>
 
               {/* Service Pages */}
@@ -740,14 +740,14 @@ export default function EngagementProjectsPage() {
               {/* Sort Order + Visibility */}
               <div className="flex gap-4">
                 <div className="flex-1">
-                  <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">Sort Order</label>
+                  <label className="block text-xs font-semibold text-foreground/90 uppercase tracking-wide mb-1.5">Sort Order</label>
                   <input
                     type="number"
                     value={form.sortOrder}
                     onChange={e => setForm(f => ({ ...f, sortOrder: Number(e.target.value) }))}
-                    className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                    className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
-                  <p className="text-xs text-[#7D8590] mt-1">Lower numbers appear first.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Lower numbers appear first.</p>
                 </div>
                 <div className="flex items-end pb-1 gap-2">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -755,25 +755,25 @@ export default function EngagementProjectsPage() {
                       type="checkbox"
                       checked={form.isVisible}
                       onChange={e => setForm(f => ({ ...f, isVisible: e.target.checked }))}
-                      className="w-4 h-4 accent-[#0078D4]"
+                      className="w-4 h-4 accent-primary"
                     />
-                    <span className="text-sm font-medium text-[#C9D1D9]">Visible on Pricing page</span>
+                    <span className="text-sm font-medium text-foreground/90">Visible on Pricing page</span>
                   </label>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2 border-t border-[#30363D]">
+              <div className="flex justify-end gap-3 pt-2 border-t border-border">
                 <button
                   type="button"
                   onClick={closeForm}
-                  className="px-4 py-2 text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-60 transition-colors"
+                  className="inline-flex items-center gap-2 bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {mode === "edit" ? "Save Changes" : "Create Project Type"}

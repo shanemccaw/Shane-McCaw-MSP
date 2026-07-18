@@ -43,19 +43,19 @@ export function TagInput({ value, onChange, placeholder = "Type and press Enter 
 
   return (
     <div
-      className="min-h-[42px] flex flex-wrap gap-1.5 items-center border border-gray-300 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#0078D4] focus-within:border-[#0078D4] cursor-text transition-all"
+      className="min-h-[42px] flex flex-wrap gap-1.5 items-center border border-gray-300 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-primary focus-within:border-primary cursor-text transition-all"
       onClick={() => inputRef.current?.focus()}
     >
       {tags.map((tag, i) => (
         <span
           key={i}
-          className="inline-flex items-center gap-1 bg-[#0078D4]/10 text-[#0078D4] text-xs font-medium px-2 py-1 rounded-md"
+          className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-medium px-2 py-1 rounded-md"
         >
           {tag}
           <button
             type="button"
             onClick={e => { e.stopPropagation(); removeTag(i); }}
-            className="hover:text-[#E6EDF3] transition-colors ml-0.5"
+            className="hover:text-foreground transition-colors ml-0.5"
             aria-label={`Remove ${tag}`}
           >
             <X className="w-3 h-3" />

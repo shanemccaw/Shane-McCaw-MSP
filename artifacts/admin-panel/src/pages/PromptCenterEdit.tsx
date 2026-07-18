@@ -288,7 +288,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-7 h-7 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -297,7 +297,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
     return (
       <div className="p-6 max-w-3xl mx-auto space-y-4">
         <Link href="/prompt-center">
-          <span className="inline-flex items-center gap-1.5 text-sm text-[#7D8590] hover:text-[#C9D1D9] cursor-pointer">
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground/90 cursor-pointer">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
@@ -313,25 +313,25 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
     <div className="p-6 max-w-4xl mx-auto space-y-5" onKeyDown={handleKeyDown}>
       <div className="flex items-center gap-3">
         <Link href="/prompt-center" onClick={handleBackClick}>
-          <span className="inline-flex items-center gap-1.5 text-sm text-[#7D8590] hover:text-[#C9D1D9] cursor-pointer">
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground/90 cursor-pointer">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Prompt Center
           </span>
         </Link>
-        <svg className="w-3 h-3 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 text-muted-foreground/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span className="text-sm text-[#E6EDF3] font-medium">{prompt.name}</span>
+        <span className="text-sm text-foreground font-medium">{prompt.name}</span>
       </div>
 
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4">
+      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-base font-bold text-[#E6EDF3]">{prompt.name}</h1>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border capitalize ${CATEGORY_COLORS[prompt.category] ?? "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
+              <h1 className="text-base font-bold text-foreground">{prompt.name}</h1>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border capitalize ${CATEGORY_COLORS[prompt.category] ?? "bg-accent text-muted-foreground border-border"}`}>
                 {prompt.category}
               </span>
               {isModifiedFromDefault && (
@@ -347,16 +347,16 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
                 </span>
               )}
             </div>
-            <p className="text-sm text-[#7D8590] mt-1">{prompt.description}</p>
+            <p className="text-sm text-muted-foreground mt-1">{prompt.description}</p>
           </div>
-          <div className="flex flex-col items-end gap-1 text-xs text-[#484F58] shrink-0">
-            <span>Key: <code className="text-[#7D8590] font-mono">{prompt.key}</code></span>
-            {prompt.model && <span>Model: <code className="text-[#7D8590] font-mono">{prompt.model}</code></span>}
+          <div className="flex flex-col items-end gap-1 text-xs text-muted-foreground/60 shrink-0">
+            <span>Key: <code className="text-muted-foreground font-mono">{prompt.key}</code></span>
+            {prompt.model && <span>Model: <code className="text-muted-foreground font-mono">{prompt.model}</code></span>}
             {prompt.featureArea && (
               <div className="flex items-center gap-1">
                 <span>Feature: {prompt.featureArea}</span>
                 {prompt.featureRoute && (
-                  <a href={`/admin-panel${prompt.featureRoute}`} className="text-[#0078D4] hover:text-[#006CBE]" title="Go to feature">
+                  <a href={`/admin-panel${prompt.featureRoute}`} className="text-primary hover:text-[#006CBE]" title="Go to feature">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
@@ -369,8 +369,8 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
         </div>
 
         {prompt.category !== "scripting" && prompt.promptBody.includes("{{") && (
-          <div className="bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#7D8590]">
-            <span className="font-semibold text-[#C9D1D9]">Note:</span> This prompt uses <code className="font-mono text-[#00B4D8]">{"{{placeholders}}"}</code> to document where dynamic content (lead names, email bodies, etc.) is injected at call time. Keep the same placeholders in any edits.
+          <div className="bg-accent border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground/90">Note:</span> This prompt uses <code className="font-mono text-[#00B4D8]">{"{{placeholders}}"}</code> to document where dynamic content (lead names, email bodies, etc.) is injected at call time. Keep the same placeholders in any edits.
           </div>
         )}
 
@@ -382,19 +382,19 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-[#E6EDF3]">
+        <label className="block text-sm font-semibold text-foreground">
           {hasDraft ? "Draft Body" : "Prompt Body"}
         </label>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={24}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-4 py-3 text-sm text-[#E6EDF3] font-mono leading-relaxed resize-y focus:outline-none focus:border-[#0078D4] placeholder:text-[#484F58]"
+          className="w-full bg-background border border-border rounded-lg px-4 py-3 text-sm text-foreground font-mono leading-relaxed resize-y focus:outline-none focus:border-primary placeholder:text-muted-foreground/60"
           spellCheck={false}
           placeholder="Enter the prompt body…"
         />
-        <p className="text-xs text-[#484F58]">
-          {body.length.toLocaleString()} characters · Save Draft stages changes without affecting live traffic · Publish makes it live · <kbd className="px-1 py-0.5 bg-[#1C2128] rounded text-[10px]">Ctrl+S</kbd> to save draft
+        <p className="text-xs text-muted-foreground/60">
+          {body.length.toLocaleString()} characters · Save Draft stages changes without affecting live traffic · Publish makes it live · <kbd className="px-1 py-0.5 bg-accent rounded text-[10px]">Ctrl+S</kbd> to save draft
         </p>
       </div>
 
@@ -411,19 +411,19 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-[#21262D]">
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-accent">
         <div className="flex items-center gap-3 flex-wrap">
           {isModifiedFromDefault && !showResetConfirm && (
             <button
               onClick={() => setShowResetConfirm(true)}
-              className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128] transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground/90 px-3 py-1.5 rounded hover:bg-accent transition-colors"
             >
               Reset to default
             </button>
           )}
           {showResetConfirm && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#7D8590]">This will overwrite the published body and any draft with the original. Continue?</span>
+              <span className="text-xs text-muted-foreground">This will overwrite the published body and any draft with the original. Continue?</span>
               <button
                 onClick={() => void handleReset()}
                 disabled={resetting}
@@ -433,7 +433,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
               </button>
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-2 py-1 rounded hover:bg-[#1C2128] transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground/90 px-2 py-1 rounded hover:bg-accent transition-colors"
               >
                 Cancel
               </button>
@@ -441,7 +441,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           )}
           <button
             onClick={() => setShowHistory((v) => !v)}
-            className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128] transition-colors inline-flex items-center gap-1.5"
+            className="text-xs text-muted-foreground hover:text-foreground/90 px-3 py-1.5 rounded hover:bg-accent transition-colors inline-flex items-center gap-1.5"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -463,14 +463,14 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
         </div>
         <div className="flex items-center gap-2">
           <Link href="/prompt-center">
-            <span className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128] transition-colors cursor-pointer">
+            <span className="text-xs text-muted-foreground hover:text-foreground/90 px-3 py-1.5 rounded hover:bg-accent transition-colors cursor-pointer">
               {isDirty ? "Discard changes" : "Back"}
             </span>
           </Link>
           <button
             onClick={() => void handleSaveDraft()}
             disabled={!isDirty || saving}
-            className="flex items-center gap-1.5 bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] text-xs font-semibold px-4 py-1.5 rounded-lg hover:border-[#484F58] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-accent border border-border text-foreground text-xs font-semibold px-4 py-1.5 rounded-lg hover:border-muted-foreground/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
@@ -484,7 +484,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           <button
             onClick={() => void handlePublish()}
             disabled={publishing || (!isDirty && !hasDraft)}
-            className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-primary text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {publishing ? (
               <>
@@ -504,28 +504,28 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       </div>
 
       {showHistory && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-2">
-          <h2 className="text-sm font-semibold text-[#E6EDF3] mb-1">Version history</h2>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-2">
+          <h2 className="text-sm font-semibold text-foreground mb-1">Version history</h2>
           {versions.length === 0 ? (
-            <p className="text-xs text-[#7D8590]">No saved versions yet — save a draft or publish to create the first one.</p>
+            <p className="text-xs text-muted-foreground">No saved versions yet — save a draft or publish to create the first one.</p>
           ) : (
-            <div className="divide-y divide-[#21262D]">
+            <div className="divide-y divide-accent">
               {versions.map((v) => (
                 <div key={v.id} className="py-2.5 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-[#E6EDF3]">v{v.versionNumber}</span>
+                      <span className="text-xs font-semibold text-foreground">v{v.versionNumber}</span>
                       <span className={`text-[10px] font-medium ${ACTION_COLORS[v.action]}`}>{ACTION_LABELS[v.action]}</span>
-                      <span className="text-[10px] text-[#484F58]">{new Date(v.createdAt).toLocaleString()}</span>
+                      <span className="text-[10px] text-muted-foreground/60">{new Date(v.createdAt).toLocaleString()}</span>
                     </div>
-                    <p className="text-xs text-[#7D8590] mt-0.5 truncate font-mono">
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate font-mono">
                       {v.body.slice(0, 140)}{v.body.length > 140 ? "…" : ""}
                     </p>
                   </div>
                   <button
                     onClick={() => void handleRevert(v.id)}
                     disabled={revertingId === v.id}
-                    className="shrink-0 text-xs text-[#0078D4] hover:text-[#006CBE] px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors disabled:opacity-50"
+                    className="shrink-0 text-xs text-primary hover:text-[#006CBE] px-2 py-1 rounded hover:bg-primary/10 transition-colors disabled:opacity-50"
                   >
                     {revertingId === v.id ? "Reverting…" : "Revert to this"}
                   </button>
@@ -537,32 +537,32 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       )}
 
       {showTestPanel && canTestDraft && (
-        <div className="bg-[#161B22] border border-[#00B4D8]/25 rounded-xl p-4 space-y-3">
+        <div className="bg-card border border-[#00B4D8]/25 rounded-xl p-4 space-y-3">
           <div>
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Test Draft</h2>
-            <p className="text-xs text-[#7D8590] mt-1">
+            <h2 className="text-sm font-semibold text-foreground">Test Draft</h2>
+            <p className="text-xs text-muted-foreground mt-1">
               Runs the real generation flow using the text currently in the editor above — nothing is saved to the client's documents.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="block text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Client User ID</label>
+              <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Client User ID</label>
               <input
                 type="number"
                 value={testClientUserId}
                 onChange={(e) => setTestClientUserId(e.target.value)}
                 placeholder="e.g. 42"
-                className="w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#00B4D8]"
+                className="w-32 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#00B4D8]"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Project ID (optional)</label>
+              <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Project ID (optional)</label>
               <input
                 type="number"
                 value={testProjectId}
                 onChange={(e) => setTestProjectId(e.target.value)}
                 placeholder="e.g. 7"
-                className="w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#00B4D8]"
+                className="w-32 bg-background border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#00B4D8]"
               />
             </div>
             <button
@@ -588,7 +588,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           {testResult && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-[#E6EDF3] uppercase tracking-wider">Result</h3>
+                <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">Result</h3>
                 {typeof testResult.sowTotal === "number" && testResult.sowTotal > 0 && (
                   <span className="text-xs text-[#00B4D8] font-semibold">Computed total: ${testResult.sowTotal.toLocaleString()}</span>
                 )}

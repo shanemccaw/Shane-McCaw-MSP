@@ -22,9 +22,7 @@ import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import IDEShell, {
-  type ActivityItem, type ExplorerSection, type IDETab, type CmdKItem,
-} from "@/components/IDEShell";
+import { useLocation, useSearch } from "wouter";
 import { PayloadField } from "@/pages/workflows/PayloadField";
 import type { AncestorGroup } from "@/pages/workflows/ancestorOutputs";
 
@@ -239,27 +237,27 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
 
   return (
     <div className="flex h-full overflow-hidden">
-      <div className="w-[280px] min-w-[220px] flex flex-col border-r border-[#30363D] bg-[#0D1117] overflow-hidden">
-        <div className="p-3 border-b border-[#30363D] space-y-2 shrink-0">
+      <div className="w-[280px] min-w-[220px] flex flex-col border-r border-border bg-background overflow-hidden">
+        <div className="p-3 border-b border-border space-y-2 shrink-0">
           <div className="flex items-center justify-between gap-1">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Baseline Templates</span>
             <span className="text-xs text-gray-500">{filtered.length}</span>
           </div>
           <Input
             placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)}
-            className="h-7 text-xs bg-[#161B22] border-[#30363D] text-white placeholder:text-gray-600"
+            className="h-7 text-xs bg-card border-border text-white placeholder:text-gray-600"
           />
           <label className="flex items-center gap-2 cursor-pointer">
             <Switch checked={showArchived} onCheckedChange={setShowArchived} className="scale-75" />
             <span className="text-xs text-gray-400">Show archived</span>
           </label>
-          <Button size="sm" onClick={openCreate} className="h-7 text-xs bg-[#0078D4] hover:bg-[#006cbf] text-white w-full">
+          <Button size="sm" onClick={openCreate} className="h-7 text-xs bg-primary hover:bg-[#006cbf] text-white w-full">
             + New Template
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>
+            <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
           ) : grouped.length === 0 ? (
             <div className="text-center py-8 text-xs text-gray-600 px-3">{search ? "No templates match" : "No templates yet"}</div>
           ) : grouped.map(([category, items]) => (
@@ -274,7 +272,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                     key={t.templateId}
                     onClick={() => openEdit(t)}
                     className={`w-full flex flex-col gap-1 pl-4 pr-3 py-1.5 text-left transition-colors border-l-2 ${
-                      isSelected ? "bg-[#0078D4]/10 border-l-[#0078D4]" : "border-l-transparent hover:bg-[#161B22]"
+                      isSelected ? "bg-primary/10 border-l-primary" : "border-l-transparent hover:bg-card"
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -284,7 +282,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                     {packs.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {packs.map(p => (
-                          <span key={p.packKey} className="inline-block px-1.5 py-0.5 rounded text-[9px] bg-[#0078D4]/20 text-[#2E9EFF] border border-[#0078D4]/30 whitespace-nowrap">
+                          <span key={p.packKey} className="inline-block px-1.5 py-0.5 rounded text-[9px] bg-primary/20 text-[#2E9EFF] border border-primary/30 whitespace-nowrap">
                             {p.packKey} · step {p.sortOrder + 1} of {p.totalInPack}
                           </span>
                         ))}
@@ -298,7 +296,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden bg-[#161B22]">
+      <div className="flex-1 flex flex-col overflow-hidden bg-card">
         {editing === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 px-8">
             <div className="text-4xl text-gray-700">⬡</div>
@@ -307,10 +305,10 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
           </div>
         ) : (
           <div className="flex flex-col h-full overflow-hidden">
-            <div className="shrink-0 px-6 py-4 border-b border-[#30363D] flex items-center gap-3">
+            <div className="shrink-0 px-6 py-4 border-b border-border flex items-center gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-white">
-                  {editing.id ? <span className="font-mono text-[#0078D4]">{editing.templateId}</span> : "New Baseline Template"}
+                  {editing.id ? <span className="font-mono text-primary">{editing.templateId}</span> : "New Baseline Template"}
                 </h2>
                 {editing.id && editing.label && <p className="text-xs text-gray-400 mt-0.5">{editing.label}</p>}
               </div>
@@ -318,13 +316,13 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
             </div>
 
             {editing.id && (
-              <div className="shrink-0 flex border-b border-[#30363D]">
+              <div className="shrink-0 flex border-b border-border">
                 <button onClick={() => setDetailTab("details")}
-                  className={`px-4 py-2 text-xs font-medium transition-colors ${detailTab === "details" ? "text-[#0078D4] border-b-2 border-[#0078D4]" : "text-gray-400 hover:text-white"}`}>
+                  className={`px-4 py-2 text-xs font-medium transition-colors ${detailTab === "details" ? "text-primary border-b-2 border-primary" : "text-gray-400 hover:text-white"}`}>
                   Details
                 </button>
                 <button onClick={() => setDetailTab("testing")}
-                  className={`px-4 py-2 text-xs font-medium transition-colors ${detailTab === "testing" ? "text-[#0078D4] border-b-2 border-[#0078D4]" : "text-gray-400 hover:text-white"}`}>
+                  className={`px-4 py-2 text-xs font-medium transition-colors ${detailTab === "testing" ? "text-primary border-b-2 border-primary" : "text-gray-400 hover:text-white"}`}>
                   Testing
                 </button>
               </div>
@@ -338,25 +336,25 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                       <Label className="text-gray-400 text-xs">Template ID *</Label>
                       <Input value={editing.templateId ?? ""} onChange={e => updateField("templateId", e.target.value)}
                         placeholder="entra:enforce-mfa" disabled={Boolean(editing.id)}
-                        className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                        className="bg-background border-border text-white mt-1 font-mono text-sm" />
                     </div>
                     <div>
                       <Label className="text-gray-400 text-xs">Label *</Label>
                       <Input value={editing.label ?? ""} onChange={e => updateField("label", e.target.value)}
-                        placeholder="Enforce MFA for all users" className="bg-[#0D1117] border-[#30363D] text-white mt-1" />
+                        placeholder="Enforce MFA for all users" className="bg-background border-border text-white mt-1" />
                     </div>
                   </div>
 
                   <div>
                     <Label className="text-gray-400 text-xs">Description</Label>
                     <Input value={editing.description ?? ""} onChange={e => updateField("description", e.target.value)}
-                      placeholder="What this baseline action configures" className="bg-[#0D1117] border-[#30363D] text-white mt-1" />
+                      placeholder="What this baseline action configures" className="bg-background border-border text-white mt-1" />
                   </div>
 
                   <div>
                     <Label className="text-gray-400 text-xs">Category *</Label>
                     <Input value={editing.category ?? ""} onChange={e => updateField("category", e.target.value)}
-                      placeholder="identity" className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                      placeholder="identity" className="bg-background border-border text-white mt-1 font-mono text-sm" />
                   </div>
 
                   <div>
@@ -364,7 +362,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                     <Input
                       value={requiredVars.join(", ")}
                       onChange={e => updateField("requiredVariables", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
-                      placeholder="customerId, adminUpn" className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                      placeholder="customerId, adminUpn" className="bg-background border-border text-white mt-1 font-mono text-sm" />
                     <p className="text-[10px] text-gray-500 mt-1">Declared here so they appear in the {"{{"} variables {"}}"} picker below.</p>
                   </div>
 
@@ -382,8 +380,8 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                     <div>
                       <Label className="text-gray-400 text-xs">Method</Label>
                       <Select value={editing.method ?? "POST"} onValueChange={v => updateField("method", v as BaselineTemplate["method"])}>
-                        <SelectTrigger className="bg-[#0D1117] border-[#30363D] text-white mt-1"><SelectValue /></SelectTrigger>
-                        <SelectContent className="bg-[#161B22] border-[#30363D]">
+                        <SelectTrigger className="bg-background border-border text-white mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-card border-border">
                           <SelectItem value="POST">POST</SelectItem>
                           <SelectItem value="PATCH">PATCH</SelectItem>
                           <SelectItem value="PUT">PUT</SelectItem>
@@ -405,7 +403,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   <div>
                     <Label className="text-gray-400 text-xs">Success criteria (JSON — optional)</Label>
                     <Textarea value={successCriteriaText} onChange={e => setSuccessCriteriaText(e.target.value)} rows={3}
-                      className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-xs" placeholder='{"expectStatus": 204}' />
+                      className="bg-background border-border text-white mt-1 font-mono text-xs" placeholder='{"expectStatus": 204}' />
                   </div>
 
                   <div>
@@ -413,7 +411,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                     <Input
                       value={(editing.dependsOn ?? []).join(", ")}
                       onChange={e => updateField("dependsOn", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
-                      placeholder="entra:create-admin-account" className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                      placeholder="entra:create-admin-account" className="bg-background border-border text-white mt-1 font-mono text-sm" />
                   </div>
 
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -422,7 +420,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   </label>
                 </div>
 
-                <div className="shrink-0 px-6 py-4 border-t border-[#30363D] flex items-center justify-between gap-3">
+                <div className="shrink-0 px-6 py-4 border-t border-border flex items-center justify-between gap-3">
                   <div>
                     {editing.id && editing.status === "active" && (
                       <Button variant="ghost" size="sm" onClick={() => handleArchive(editing as BaselineTemplate)}
@@ -431,7 +429,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(null); setSelectedId(null); }} className="text-gray-400 hover:text-white">Cancel</Button>
-                    <Button onClick={handleSave} disabled={saving} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+                    <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-[#006cbf] text-white">
                       {saving ? "Saving…" : "Save Template"}
                     </Button>
                   </div>
@@ -505,8 +503,8 @@ function TestingTab({ template, fetchWithAuth }: { template: BaselineTemplate; f
           <div className="text-xs text-gray-500 mt-2">No testbed customers configured. Flag a customer as testbed to enable real-execution testing.</div>
         ) : (
           <Select value={customerId} onValueChange={setCustomerId}>
-            <SelectTrigger className="bg-[#0D1117] border-[#30363D] text-white mt-1"><SelectValue placeholder="Select a testbed customer…" /></SelectTrigger>
-            <SelectContent className="bg-[#161B22] border-[#30363D]">
+            <SelectTrigger className="bg-background border-border text-white mt-1"><SelectValue placeholder="Select a testbed customer…" /></SelectTrigger>
+            <SelectContent className="bg-card border-border">
               {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -520,7 +518,7 @@ function TestingTab({ template, fetchWithAuth }: { template: BaselineTemplate; f
             <div key={v} className="flex items-center gap-2">
               <span className="font-mono text-xs text-[#2E9EFF] w-40 shrink-0 truncate">{`{{${v}}}`}</span>
               <Input value={variables[v] ?? ""} onChange={e => setVariables(prev => ({ ...prev, [v]: e.target.value }))}
-                className="bg-[#0D1117] border-[#30363D] text-white text-xs font-mono" />
+                className="bg-background border-border text-white text-xs font-mono" />
             </div>
           ))}
         </div>
@@ -541,7 +539,7 @@ function TestingTab({ template, fetchWithAuth }: { template: BaselineTemplate; f
           {result.missingVariables && result.missingVariables.length > 0 && (
             <p className="text-xs text-red-400">Missing variables: {result.missingVariables.join(", ")}</p>
           )}
-          <pre className="text-[10px] text-gray-300 font-mono bg-[#0D1117] rounded p-2 overflow-x-auto max-h-48">{JSON.stringify(result.data, null, 2)}</pre>
+          <pre className="text-[10px] text-gray-300 font-mono bg-background rounded p-2 overflow-x-auto max-h-48">{JSON.stringify(result.data, null, 2)}</pre>
         </div>
       )}
     </div>
@@ -564,13 +562,13 @@ function SortableTemplateLink({ link, allLinks, onToggleDepends, onRemove }: Sor
   const dependsOn = link.dependsOnOverride ?? link.template?.dependsOn ?? [];
 
   return (
-    <div ref={setNodeRef} style={style} className="border-b border-[#21262D] bg-[#0D1117]">
+    <div ref={setNodeRef} style={style} className="border-b border-accent bg-background">
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <div {...attributes} {...listeners} className="flex-shrink-0 text-[#484F58] cursor-grab active:cursor-grabbing">
+        <div {...attributes} {...listeners} className="flex-shrink-0 text-muted-foreground/60 cursor-grab active:cursor-grabbing">
           <GripVertical className="w-3.5 h-3.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <span className="font-mono text-xs text-[#0078D4]">{link.templateId}</span>
+          <span className="font-mono text-xs text-primary">{link.templateId}</span>
           {link.template && <span className="text-xs text-gray-300 ml-2">{link.template.label}</span>}
         </div>
         <button type="button" onClick={() => onRemove(link.templateId)} className="text-xs text-red-400 hover:text-red-300 shrink-0">Remove</button>
@@ -583,8 +581,8 @@ function SortableTemplateLink({ link, allLinks, onToggleDepends, onRemove }: Sor
               <button key={o.templateId} type="button" onClick={() => onToggleDepends(link.templateId, o.templateId)}
                 className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
                   dependsOn.includes(o.templateId)
-                    ? "border-[#0078D4]/40 bg-[#0078D4]/15 text-[#2E9EFF]"
-                    : "border-[#30363D] text-gray-500 hover:text-gray-300"
+                    ? "border-primary/40 bg-primary/15 text-[#2E9EFF]"
+                    : "border-border text-gray-500 hover:text-gray-300"
                 }`}>
                 {o.templateId}
               </button>
@@ -755,23 +753,23 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
           <h2 className="text-xl font-semibold text-white">Config Packs</h2>
           <p className="text-sm text-gray-400 mt-1">Ordered groups of Baseline Action Templates, with per-pack dependency overrides</p>
         </div>
-        <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">+ New Pack</Button>
+        <Button onClick={openCreate} className="bg-primary hover:bg-[#006cbf] text-white">+ New Pack</Button>
       </div>
 
       <Input placeholder="Search packs…" value={search} onChange={e => setSearch(e.target.value)}
-        className="max-w-sm bg-[#161B22] border-[#30363D] text-white" />
+        className="max-w-sm bg-card border-border text-white" />
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
       ) : (
         <div className="space-y-3">
           {filtered.length === 0 && <div className="text-center py-12 text-gray-500">No config packs yet — create the first one</div>}
           {filtered.map(pack => (
-            <div key={pack.packKey} className="bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden">
+            <div key={pack.packKey} className="bg-card border border-border rounded-lg overflow-hidden">
               <div className="p-4 flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm text-[#0078D4]">{pack.packKey}</span>
+                    <span className="font-mono text-sm text-primary">{pack.packKey}</span>
                     <Badge variant="outline" className={pack.status === "active" ? "border-green-500/30 text-green-400" : "border-gray-500/30 text-gray-400"}>{pack.status}</Badge>
                   </div>
                   <div className="mt-1 text-sm text-white font-medium">{pack.label}</div>
@@ -789,7 +787,7 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
               </div>
 
               {selectedPackKey === pack.packKey && (
-                <div className="border-t border-[#30363D] bg-[#0D1117]">
+                <div className="border-t border-border bg-background">
                   {loadingLinks ? (
                     <div className="p-4 text-sm text-gray-500">Loading…</div>
                   ) : (
@@ -806,16 +804,16 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
                           </SortableContext>
                         </DndContext>
                       )}
-                      <div className="p-3 flex items-center gap-2 border-t border-[#21262D]">
+                      <div className="p-3 flex items-center gap-2 border-t border-accent">
                         <Select value={addTemplateId} onValueChange={setAddTemplateId}>
-                          <SelectTrigger className="bg-[#161B22] border-[#30363D] text-white text-xs h-8 flex-1">
+                          <SelectTrigger className="bg-card border-border text-white text-xs h-8 flex-1">
                             <SelectValue placeholder="Add a template…" />
                           </SelectTrigger>
-                          <SelectContent className="bg-[#161B22] border-[#30363D]">
+                          <SelectContent className="bg-card border-border">
                             {availableToAdd.map(t => <SelectItem key={t.templateId} value={t.templateId}>{t.templateId} — {t.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Button size="sm" onClick={handleAddTemplate} disabled={!addTemplateId} className="bg-[#0078D4] hover:bg-[#006cbf] text-white h-8 text-xs">Add</Button>
+                        <Button size="sm" onClick={handleAddTemplate} disabled={!addTemplateId} className="bg-primary hover:bg-[#006cbf] text-white h-8 text-xs">Add</Button>
                       </div>
                     </>
                   )}
@@ -827,7 +825,7 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
       )}
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-lg">
+        <DialogContent className="bg-card border-border text-white max-w-lg">
           <DialogHeader><DialogTitle>{editingPack?.id ? "Edit Pack" : "New Config Pack"}</DialogTitle></DialogHeader>
           {editingPack && (
             <div className="space-y-4">
@@ -835,30 +833,30 @@ function ConfigPacksSection({ fetchWithAuth }: { fetchWithAuth: (url: string, op
                 <div>
                   <Label className="text-gray-400 text-xs">Pack Key *</Label>
                   <Input value={editingPack.packKey ?? ""} onChange={e => setEditingPack(p => p ? { ...p, packKey: e.target.value } : p)}
-                    placeholder="m365-security-baseline" disabled={Boolean(editingPack.id)} className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                    placeholder="m365-security-baseline" disabled={Boolean(editingPack.id)} className="bg-background border-border text-white mt-1 font-mono text-sm" />
                 </div>
                 <div>
                   <Label className="text-gray-400 text-xs">Label *</Label>
                   <Input value={editingPack.label ?? ""} onChange={e => setEditingPack(p => p ? { ...p, label: e.target.value } : p)}
-                    placeholder="M365 Security Baseline" className="bg-[#0D1117] border-[#30363D] text-white mt-1" />
+                    placeholder="M365 Security Baseline" className="bg-background border-border text-white mt-1" />
                 </div>
               </div>
               <div>
                 <Label className="text-gray-400 text-xs">Description</Label>
                 <Textarea value={editingPack.description ?? ""} onChange={e => setEditingPack(p => p ? { ...p, description: e.target.value } : p)}
-                  rows={2} className="bg-[#0D1117] border-[#30363D] text-white mt-1" />
+                  rows={2} className="bg-background border-border text-white mt-1" />
               </div>
               <div>
                 <Label className="text-gray-400 text-xs">Categories (comma-separated)</Label>
                 <Input value={(editingPack.categories ?? []).join(", ")}
                   onChange={e => setEditingPack(p => p ? { ...p, categories: e.target.value.split(",").map(s => s.trim()).filter(Boolean) } : p)}
-                  placeholder="identity, compliance" className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm" />
+                  placeholder="identity, compliance" className="bg-background border-border text-white mt-1 font-mono text-sm" />
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowDialog(false)} className="text-gray-400">Cancel</Button>
-            <Button onClick={handleSavePack} disabled={saving} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">{saving ? "Saving…" : "Save Pack"}</Button>
+            <Button onClick={handleSavePack} disabled={saving} className="bg-primary hover:bg-[#006cbf] text-white">{saving ? "Saving…" : "Save Pack"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -900,16 +898,16 @@ function AuditLogSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
         <p className="text-sm text-gray-400 mt-1">Every create/update/archive and every real Testing/execution attempt</p>
       </div>
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
       ) : logs.length === 0 ? (
         <div className="text-center py-12 text-gray-500">No audit log entries yet</div>
       ) : (
-        <div className="border border-[#30363D] rounded-lg overflow-hidden divide-y divide-[#21262D]">
+        <div className="border border-border rounded-lg overflow-hidden divide-y divide-accent">
           {logs.map(log => (
-            <div key={log.id} className="bg-[#161B22]">
-              <button onClick={() => toggle(log.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-[#1C2128]">
+            <div key={log.id} className="bg-card">
+              <button onClick={() => toggle(log.id)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-accent">
                 <Badge variant="outline" className={actionColor(log.action)}>{log.action}</Badge>
-                <span className="font-mono text-xs text-[#0078D4]">{log.templateId ?? "—"}</span>
+                <span className="font-mono text-xs text-primary">{log.templateId ?? "—"}</span>
                 <span className="text-xs text-gray-500">admin #{log.adminId ?? "system"}</span>
                 <span className="text-xs text-gray-600 ml-auto shrink-0">{new Date(log.createdAt).toLocaleString()}</span>
               </button>
@@ -918,13 +916,13 @@ function AuditLogSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
                   {log.beforeSnapshot && (
                     <div>
                       <p className="text-[10px] text-gray-500 uppercase mb-1">Before</p>
-                      <pre className="text-[10px] text-gray-300 font-mono bg-[#0D1117] rounded p-2 overflow-x-auto max-h-40">{JSON.stringify(log.beforeSnapshot, null, 2)}</pre>
+                      <pre className="text-[10px] text-gray-300 font-mono bg-background rounded p-2 overflow-x-auto max-h-40">{JSON.stringify(log.beforeSnapshot, null, 2)}</pre>
                     </div>
                   )}
                   {log.afterSnapshot && (
                     <div>
                       <p className="text-[10px] text-gray-500 uppercase mb-1">After</p>
-                      <pre className="text-[10px] text-gray-300 font-mono bg-[#0D1117] rounded p-2 overflow-x-auto max-h-40">{JSON.stringify(log.afterSnapshot, null, 2)}</pre>
+                      <pre className="text-[10px] text-gray-300 font-mono bg-background rounded p-2 overflow-x-auto max-h-40">{JSON.stringify(log.afterSnapshot, null, 2)}</pre>
                     </div>
                   )}
                 </div>
@@ -937,120 +935,52 @@ function AuditLogSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
   );
 }
 
-// ── IDE Shell config ─────────────────────────────────────────────────────────
+// ── Section routing (URL-driven; chrome is provided by the global IDE shell) ──
 
-const SECTION_META: Record<string, { label: string; icon: string }> = {
-  templates:     { label: "Templates",    icon: "📄" },
-  "config-packs": { label: "Config Packs", icon: "📦" },
-  "audit-log":   { label: "Audit Log",    icon: "🕒" },
-};
+const RENDERABLE_SECTIONS = ["templates", "config-packs", "audit-log"] as const;
+const VALID_TABS = new Set<string>(RENDERABLE_SECTIONS);
+const BT_PATH = "/delivery/baseline-templates";
 
-const ACTIVITY_ITEMS: ActivityItem[] = [
-  {
-    id: "delivery", label: "Delivery", isActive: true,
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-      </svg>
-    ),
-  },
-  {
-    id: "workflows", label: "Workflows", href: "/workflows/list",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    ),
-  },
-  {
-    id: "system", label: "System", href: "/system/inbox",
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-];
-
-const EXPLORER_SECTIONS: ExplorerSection[] = [
-  {
-    id: "catalog", label: "Catalog", defaultOpen: true,
-    items: [
-      { id: "templates", label: "Templates", icon: "📄" },
-      { id: "config-packs", label: "Config Packs", icon: "📦" },
-    ],
-  },
-  {
-    id: "history", label: "History", defaultOpen: true,
-    items: [
-      { id: "audit-log", label: "Audit Log", icon: "🕒" },
-    ],
-  },
-];
-
-const CMDK_ITEMS: CmdKItem[] = [
-  { id: "templates", label: "Templates", section: "Catalog", icon: "📄" },
-  { id: "config-packs", label: "Config Packs", section: "Catalog", icon: "📦" },
-  { id: "audit-log", label: "Audit Log", section: "History", icon: "🕒" },
-];
-
-const RENDERABLE_SECTIONS = ["templates", "config-packs", "audit-log"];
+function getTabFromSearch(): string {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("tab") ?? "";
+  return VALID_TABS.has(raw) ? raw : "templates";
+}
 
 export default function BaselineTemplatesPage() {
   const { fetchWithAuth } = useAuth();
-  const [activeExplorer, setActiveExplorer] = useState<string>("templates");
-  const [openTabs, setOpenTabs] = useState<IDETab[]>([
-    { id: "templates", label: "Templates", icon: "📄", closeable: false },
-  ]);
-  const [mounted, setMounted] = useState<Set<string>>(new Set(["templates"]));
+  const [location] = useLocation();
+  const search = useSearch();
 
-  const navigate = useCallback((id: string) => {
-    setOpenTabs(prev => {
-      if (prev.some(t => t.id === id)) return prev;
-      const meta = SECTION_META[id] ?? { label: id, icon: "📄" };
-      return [...prev, { id, label: meta.label, icon: meta.icon, closeable: true }];
-    });
-    setMounted(prev => prev.has(id) ? prev : new Set([...prev, id]));
-    setActiveExplorer(id);
-  }, []);
+  const [activeTab, setActiveTab] = useState<string>(() => getTabFromSearch());
 
-  const handleTabSelect = useCallback((tabId: string) => setActiveExplorer(tabId), []);
+  // Sections stay mounted once visited so their state persists (shown/hidden
+  // with CSS), matching the old IDEShell tab behavior.
+  const [mounted, setMounted] = useState<Set<string>>(() => new Set([getTabFromSearch()]));
 
-  const handleTabClose = useCallback((tabId: string) => {
-    setOpenTabs(prev => {
-      const next = prev.filter(t => t.id !== tabId);
-      if (tabId === activeExplorer && next.length > 0) setActiveExplorer(next[next.length - 1]!.id);
-      return next;
-    });
-  }, [activeExplorer]);
+  // Sync with the URL (?tab=) — Explorer-tree clicks, deep links, and browser
+  // back/forward. Only while this page owns the location: the component stays
+  // mounted in a hidden shell tab while other routes are active.
+  useEffect(() => {
+    if (location !== BT_PATH) return;
+    const tab = getTabFromSearch();
+    setActiveTab(tab);
+    setMounted(prev => (prev.has(tab) ? prev : new Set([...prev, tab])));
+  }, [location, search]);
 
   return (
-    <IDEShell
-      activityItems={ACTIVITY_ITEMS}
-      explorerTitle="Baseline Templates"
-      explorerSections={EXPLORER_SECTIONS}
-      activeExplorerItem={activeExplorer}
-      onExplorerItemClick={navigate}
-      tabs={openTabs}
-      activeTabId={activeExplorer}
-      onTabSelect={handleTabSelect}
-      onTabClose={handleTabClose}
-      cmdKItems={CMDK_ITEMS}
-    >
-      <div className="h-full overflow-hidden relative">
-        {RENDERABLE_SECTIONS.map(sectionId => {
-          if (!mounted.has(sectionId)) return null;
-          const isVisible = activeExplorer === sectionId;
-          return (
-            <div key={sectionId} className="absolute inset-0 overflow-hidden" style={{ display: isVisible ? undefined : "none" }}>
-              {sectionId === "templates" && <TemplatesSection fetchWithAuth={fetchWithAuth} />}
-              {sectionId === "config-packs" && <div className="h-full overflow-y-auto"><ConfigPacksSection fetchWithAuth={fetchWithAuth} /></div>}
-              {sectionId === "audit-log" && <div className="h-full overflow-y-auto"><AuditLogSection fetchWithAuth={fetchWithAuth} /></div>}
-            </div>
-          );
-        })}
-      </div>
-    </IDEShell>
+    <div className="h-full overflow-hidden relative">
+      {RENDERABLE_SECTIONS.map(sectionId => {
+        if (!mounted.has(sectionId)) return null;
+        const isVisible = activeTab === sectionId;
+        return (
+          <div key={sectionId} className="absolute inset-0 overflow-hidden" style={{ display: isVisible ? undefined : "none" }}>
+            {sectionId === "templates" && <TemplatesSection fetchWithAuth={fetchWithAuth} />}
+            {sectionId === "config-packs" && <div className="h-full overflow-y-auto"><ConfigPacksSection fetchWithAuth={fetchWithAuth} /></div>}
+            {sectionId === "audit-log" && <div className="h-full overflow-y-auto"><AuditLogSection fetchWithAuth={fetchWithAuth} /></div>}
+          </div>
+        );
+      })}
+    </div>
   );
 }

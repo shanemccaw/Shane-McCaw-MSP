@@ -420,18 +420,18 @@ export default function StatusReportForm({
   return (
     <div>
         {/* Project selector */}
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl px-5 py-4 mb-6 flex flex-wrap items-end gap-4">
+        <div className="bg-card border border-border rounded-xl px-5 py-4 mb-6 flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[220px]">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#7D8590] mb-1.5">Project</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Project</label>
             {lockedProjectId ? (
-              <div className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#161B22] font-medium text-[#E6EDF3]">
+              <div className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-card font-medium text-foreground">
                 {autofill?.project.title ?? (autofillLoading ? "Loading…" : `Project #${lockedProjectId}`)}
               </div>
             ) : (
               <select
                 value={selectedProjectId}
                 onChange={e => void handleProjectChange(e.target.value)}
-                className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] font-medium text-[#E6EDF3]"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-accent font-medium text-foreground"
               >
                 <option value="">— Select a project to auto-populate —</option>
                 {projects.map(p => (
@@ -441,11 +441,11 @@ export default function StatusReportForm({
             )}
           </div>
           <div className="flex-1 min-w-[160px]">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#7D8590] mb-1.5">Report Period</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Report Period</label>
             <select
               value={form.period}
               onChange={e => setForm(f => ({ ...f, period: e.target.value }))}
-              className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-accent"
             >
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
@@ -454,17 +454,17 @@ export default function StatusReportForm({
             </select>
           </div>
           <div className="flex-1 min-w-[160px]">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#7D8590] mb-1.5">Report Date</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Report Date</label>
             <input
               type="date"
               value={form.reportDate}
               onChange={e => setForm(f => ({ ...f, reportDate: e.target.value }))}
-              className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
           {autofillLoading && (
-            <div className="flex items-center gap-2 text-xs text-[#7D8590] pb-2">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center gap-2 text-xs text-muted-foreground pb-2">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               Loading project data…
             </div>
           )}
@@ -473,10 +473,10 @@ export default function StatusReportForm({
               <button
                 onClick={() => void handleActivityFill()}
                 disabled={activityFillLoading || !!aiLoading}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 rounded-lg bg-[#0078D4]/5 hover:bg-[#0078D4]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-primary border border-primary/30 rounded-lg bg-primary/5 hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {activityFillLoading ? (
-                  <div className="w-3.5 h-3.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -485,12 +485,12 @@ export default function StatusReportForm({
                 {activityFillLoading ? "Fetching activity…" : "Auto-fill from project activity"}
               </button>
               {autofill?.lastReportDate && (
-                <span className="text-[10px] text-[#7D8590] font-medium">
+                <span className="text-[10px] text-muted-foreground font-medium">
                   Last report: {new Date(autofill.lastReportDate).toLocaleDateString()}
                 </span>
               )}
               {!autofill?.lastReportDate && (
-                <span className="text-[10px] text-[#7D8590] font-medium">
+                <span className="text-[10px] text-muted-foreground font-medium">
                   No prior reports — will fetch last 30 days
                 </span>
               )}
@@ -502,20 +502,20 @@ export default function StatusReportForm({
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-6">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[#7D8590]">Client Deliverable</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Client Deliverable</span>
               <span className="w-1.5 h-1.5 rounded-full bg-teal-500/100" />
               <span className="text-[11px] font-bold text-teal-400 uppercase tracking-widest">Shane McCaw Consulting</span>
             </div>
-            <h1 className="text-2xl font-bold text-[#E6EDF3] tracking-tight mb-1">Project Status Report</h1>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight mb-1">Project Status Report</h1>
             <div className="flex items-center gap-3 flex-wrap">
               <input
                 value={form.title}
                 onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                 placeholder="Report title (e.g. May 2026 Status Update)"
-                className="text-lg text-[#7D8590] bg-transparent border-0 border-b border-dashed border-[#30363D] focus:outline-none focus:border-[#0078D4] min-w-[320px] pb-0.5"
+                className="text-lg text-muted-foreground bg-transparent border-0 border-b border-dashed border-border focus:outline-none focus:border-primary min-w-[320px] pb-0.5"
               />
               {selectedProject && (
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_COLORS[selectedProject.status] ?? "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${STATUS_COLORS[selectedProject.status] ?? "bg-accent text-muted-foreground border-border"}`}>
                   {STATUS_LABELS[selectedProject.status] ?? selectedProject.status}
                 </span>
               )}
@@ -530,7 +530,7 @@ export default function StatusReportForm({
             {embedded && onCancel && (
               <button
                 onClick={onCancel}
-                className="flex items-center gap-2 px-4 py-2 border border-[#30363D] rounded-lg text-sm font-medium text-[#7D8590] bg-[#1C2128] hover:bg-[#1C2128] transition-all"
+                className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-muted-foreground bg-accent hover:bg-accent transition-all"
               >
                 Cancel
               </button>
@@ -538,7 +538,7 @@ export default function StatusReportForm({
             <button
               onClick={() => void handleSave()}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 border border-[#30363D] rounded-lg text-sm font-medium text-[#E6EDF3] bg-[#1C2128] hover:bg-[#1C2128] disabled:opacity-50 transition-all"
+              className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm font-medium text-foreground bg-accent hover:bg-accent disabled:opacity-50 transition-all"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
@@ -548,7 +548,7 @@ export default function StatusReportForm({
             <button
               onClick={() => void handleSend()}
               disabled={sending || saving}
-              className="flex items-center gap-2 px-5 py-2 bg-[#0078D4] text-white rounded-lg text-sm font-semibold hover:bg-[#0078D4]/90 disabled:opacity-50 active:scale-95 transition-all"
+              className="flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 active:scale-95 transition-all"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -560,17 +560,17 @@ export default function StatusReportForm({
 
         {/* Progress + Health Bar */}
         {selectedProject && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 p-5 bg-[#161B22] rounded-xl border border-[#30363D]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 p-5 bg-card rounded-xl border border-border">
             <div className="flex flex-col gap-2">
               <div className="flex justify-between items-center">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-[#7D8590]">Overall Project Progress</span>
-                <span className="text-sm font-bold text-[#E6EDF3]">{progress}%</span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Overall Project Progress</span>
+                <span className="text-sm font-bold text-foreground">{progress}%</span>
               </div>
-              <div className="w-full h-2 bg-[#1C2128] rounded-full overflow-hidden">
-                <div className="h-full bg-[#0078D4] rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+              <div className="w-full h-2 bg-accent rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
               </div>
               {autofill && (
-                <p className="text-xs text-[#7D8590] mt-0.5">{autofill.completedStepsCount} of {autofill.totalSteps} phases complete</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{autofill.completedStepsCount} of {autofill.totalSteps} phases complete</p>
               )}
             </div>
             <div className="flex items-center md:justify-end gap-4 flex-wrap">
@@ -582,11 +582,11 @@ export default function StatusReportForm({
                   <span className="text-xs font-bold text-red-400">Raised Issues: {autofill.blockedCount}</span>
                 </div>
               )}
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161B22] border border-[#30363D] rounded-lg">
-                <svg className="w-4 h-4 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg">
+                <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
-                <span className="text-xs font-bold text-[#7D8590]">{activities.length} Activities</span>
+                <span className="text-xs font-bold text-muted-foreground">{activities.length} Activities</span>
               </div>
             </div>
           </div>
@@ -599,29 +599,29 @@ export default function StatusReportForm({
           <div className="flex flex-col gap-6">
 
             {/* Executive Summary */}
-            <section className="bg-[#161B22] p-6 rounded-xl border border-[#30363D]">
+            <section className="bg-card p-6 rounded-xl border border-border">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 rounded-lg bg-[#30363D] flex items-center justify-center flex-shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-border flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h3 className="text-base font-bold text-[#E6EDF3]">Executive Summary</h3>
+                <h3 className="text-base font-bold text-foreground">Executive Summary</h3>
               </div>
               <textarea
                 value={form.executiveSummary}
                 onChange={e => setForm(f => ({ ...f, executiveSummary: e.target.value }))}
                 placeholder="Write a concise executive summary of progress, achievements, and current project health…"
                 rows={6}
-                className="w-full p-3 border border-[#30363D] rounded-lg text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none leading-relaxed"
+                className="w-full p-3 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none leading-relaxed"
               />
             </section>
 
             {/* Completed Activities */}
-            <section className="bg-[#161B22] p-6 rounded-xl border border-[#30363D]">
+            <section className="bg-card p-6 rounded-xl border border-border">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-base font-bold text-[#E6EDF3]">Completed Activities</h3>
+                  <h3 className="text-base font-bold text-foreground">Completed Activities</h3>
                   {activitySince && (
                     <span className="flex items-center gap-1 text-[10px] font-semibold text-teal-400 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-full">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -633,7 +633,7 @@ export default function StatusReportForm({
                 </div>
                 <button
                   onClick={addActivity}
-                  className="text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
+                  className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-primary/10 transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -642,8 +642,8 @@ export default function StatusReportForm({
                 </button>
               </div>
               {activities.length === 0 ? (
-                <div className="text-center py-6 border-2 border-dashed border-[#30363D] rounded-lg">
-                  <p className="text-xs text-[#7D8590] font-medium">Select a project above to auto-populate from completed tasks, or add manually.</p>
+                <div className="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                  <p className="text-xs text-muted-foreground font-medium">Select a project above to auto-populate from completed tasks, or add manually.</p>
                 </div>
               ) : (
                 <ul className="space-y-3">
@@ -655,18 +655,18 @@ export default function StatusReportForm({
                           value={a.title}
                           onChange={e => updateActivity(i, "title", e.target.value)}
                           placeholder="Activity title"
-                          className="w-full text-sm font-semibold text-[#E6EDF3] bg-transparent border-0 border-b border-transparent focus:border-[#0078D4] focus:outline-none pb-0.5 mb-1"
+                          className="w-full text-sm font-semibold text-foreground bg-transparent border-0 border-b border-transparent focus:border-primary focus:outline-none pb-0.5 mb-1"
                         />
                         <input
                           value={a.description}
                           onChange={e => updateActivity(i, "description", e.target.value)}
                           placeholder="Short description…"
-                          className="w-full text-xs text-[#7D8590] bg-transparent border-0 focus:outline-none"
+                          className="w-full text-xs text-muted-foreground bg-transparent border-0 focus:outline-none"
                         />
                       </div>
                       <button
                         onClick={() => removeActivity(i)}
-                        className="opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all mt-0.5"
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-red-400 transition-all mt-0.5"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -679,21 +679,21 @@ export default function StatusReportForm({
             </section>
 
             {/* Key Outcomes */}
-            <section className="bg-[#161B22] p-6 rounded-xl border border-[#30363D]">
+            <section className="bg-card p-6 rounded-xl border border-border">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-9 h-9 rounded-lg bg-teal-500/100/10 border border-teal-500/20 flex items-center justify-center flex-shrink-0">
                   <svg className="w-5 h-5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
                 </div>
-                <h3 className="text-base font-bold text-[#E6EDF3]">Key Outcomes</h3>
+                <h3 className="text-base font-bold text-foreground">Key Outcomes</h3>
               </div>
               <textarea
                 value={form.keyOutcomes}
                 onChange={e => setForm(f => ({ ...f, keyOutcomes: e.target.value }))}
                 placeholder="Describe the business or technical outcomes achieved this period — compliance improvements, risk reductions, efficiency gains…"
                 rows={4}
-                className="w-full p-3 border border-[#30363D] rounded-lg text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none leading-relaxed"
+                className="w-full p-3 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none leading-relaxed"
               />
             </section>
           </div>
@@ -702,25 +702,25 @@ export default function StatusReportForm({
           <div className="flex flex-col gap-6">
 
             {/* Draft Assist Panel */}
-            <section className="bg-[#161B22]/90 backdrop-blur border border-[#30363D] p-6 rounded-xl flex flex-col gap-5">
+            <section className="bg-card/90 backdrop-blur border border-border p-6 rounded-xl flex flex-col gap-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
                   </svg>
-                  <h4 className="text-base font-bold text-[#E6EDF3]">Draft Assist</h4>
+                  <h4 className="text-base font-bold text-foreground">Draft Assist</h4>
                 </div>
-                <span className="text-[9px] px-2 py-0.5 bg-[#0078D4] text-white rounded font-bold uppercase tracking-wider">AI</span>
+                <span className="text-[9px] px-2 py-0.5 bg-primary text-white rounded font-bold uppercase tracking-wider">AI</span>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#7D8590] mb-1.5 block">Additional Context</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5 block">Additional Context</label>
                 <textarea
                   value={draftInput}
                   onChange={e => setDraftInput(e.target.value)}
                   placeholder="Any extra context, blockers resolved, or notable events this period… (passed to AI)"
                   rows={3}
-                  className="w-full p-3 border border-[#30363D] rounded-lg text-sm focus:ring-2 focus:ring-[#0078D4] focus:outline-none resize-none"
+                  className="w-full p-3 border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary focus:outline-none resize-none"
                 />
               </div>
 
@@ -728,7 +728,7 @@ export default function StatusReportForm({
                 <button
                   onClick={() => void handleOneDraft()}
                   disabled={oneDraftLoading || !!aiLoading || activityFillLoading}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#30363D] text-white rounded-lg text-xs font-bold hover:bg-[#0A2540]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-border text-white rounded-lg text-xs font-bold hover:bg-[#0A2540]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                 >
                   {oneDraftLoading ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -753,12 +753,12 @@ export default function StatusReportForm({
                       key={section}
                       onClick={() => void aiDraft(section)}
                       disabled={!!aiLoading || oneDraftLoading}
-                      className="p-3 border border-[#30363D] rounded-lg text-xs font-semibold text-[#E6EDF3] hover:bg-[#0078D4]/5 hover:border-[#0078D4]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
+                      className="p-3 border border-border rounded-lg text-xs font-semibold text-foreground hover:bg-primary/5 hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
                     >
                       {loading ? (
-                        <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <svg className="w-4.5 h-4.5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <svg className="w-4.5 h-4.5 text-primary group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
                         </svg>
                       )}
@@ -769,12 +769,12 @@ export default function StatusReportForm({
                 <button
                   onClick={() => void aiDraft("all")}
                   disabled={!!aiLoading || oneDraftLoading}
-                  className="p-3 bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-lg text-xs font-bold text-[#0078D4] hover:bg-[#0078D4]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
+                  className="p-3 bg-primary/5 border border-primary/20 rounded-lg text-xs font-bold text-primary hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
                 >
                   {aiLoading === "all" ? (
-                    <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <svg className="w-4.5 h-4.5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <svg className="w-4.5 h-4.5 text-primary group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
                     </svg>
                   )}
@@ -792,9 +792,9 @@ export default function StatusReportForm({
               )}
 
               {(aiPreview.executiveSummary || aiPreview.keyOutcomes || aiPreview.nextSteps) && (
-                <div className="border-t border-[#30363D] pt-4 flex flex-col gap-4">
+                <div className="border-t border-border pt-4 flex flex-col gap-4">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-[#7D8590]">AI Draft Preview</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">AI Draft Preview</label>
                     <div className="flex items-center gap-2">
                       <span className="flex items-center gap-1 text-[10px] text-teal-400 font-bold">
                         <span className="w-1.5 h-1.5 bg-teal-500/100 rounded-full animate-pulse" />
@@ -802,7 +802,7 @@ export default function StatusReportForm({
                       </span>
                       <button
                         onClick={() => setAiPreview({})}
-                        className="text-[10px] text-[#7D8590] hover:text-[#7D8590] transition-colors"
+                        className="text-[10px] text-muted-foreground hover:text-muted-foreground transition-colors"
                       >
                         Clear
                       </button>
@@ -811,13 +811,13 @@ export default function StatusReportForm({
 
                   {aiPreview.executiveSummary && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4]">Executive Summary</p>
-                      <div className="p-3 bg-[#0078D4]/5 rounded-lg border border-[#0078D4]/15 text-sm text-[#E6EDF3] leading-relaxed">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Executive Summary</p>
+                      <div className="p-3 bg-primary/5 rounded-lg border border-primary/15 text-sm text-foreground leading-relaxed">
                         {aiPreview.executiveSummary}
                       </div>
                       <button
                         onClick={() => { setForm(f => ({ ...f, executiveSummary: aiPreview.executiveSummary! })); setAiPreview(p => ({ ...p, executiveSummary: undefined })); }}
-                        className="self-start text-xs font-bold text-[#0078D4] hover:text-[#0078D4]/80 px-3 py-1.5 rounded-lg bg-[#0078D4]/10 hover:bg-[#0078D4]/15 transition-colors flex items-center gap-1.5"
+                        className="self-start text-xs font-bold text-primary hover:text-primary/80 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/15 transition-colors flex items-center gap-1.5"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                         Apply to Executive Summary
@@ -828,7 +828,7 @@ export default function StatusReportForm({
                   {aiPreview.keyOutcomes && (
                     <div className="flex flex-col gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-teal-400">Key Outcomes</p>
-                      <div className="p-3 bg-teal-500/10/50 rounded-lg border border-teal-100 text-sm text-[#E6EDF3] leading-relaxed">
+                      <div className="p-3 bg-teal-500/10/50 rounded-lg border border-teal-100 text-sm text-foreground leading-relaxed">
                         {aiPreview.keyOutcomes}
                       </div>
                       <button
@@ -843,18 +843,18 @@ export default function StatusReportForm({
 
                   {aiPreview.nextSteps && aiPreview.nextSteps.length > 0 && (
                     <div className="flex flex-col gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#7D8590]">Suggested Next Steps</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Suggested Next Steps</p>
                       <div className="flex flex-col gap-1.5">
                         {aiPreview.nextSteps.map((s, i) => (
-                          <div key={i} className="p-2.5 bg-[#161B22] rounded-lg border border-[#30363D] text-xs text-[#E6EDF3]">
-                            <span className="font-bold text-[#E6EDF3]">{s.title}</span>
-                            {s.description && <span className="text-[#7D8590]"> — {s.description}</span>}
+                          <div key={i} className="p-2.5 bg-card rounded-lg border border-border text-xs text-foreground">
+                            <span className="font-bold text-foreground">{s.title}</span>
+                            {s.description && <span className="text-muted-foreground"> — {s.description}</span>}
                           </div>
                         ))}
                       </div>
                       <button
                         onClick={() => { setNextSteps(aiPreview.nextSteps!); setAiPreview(p => ({ ...p, nextSteps: undefined })); }}
-                        className="self-start text-xs font-bold text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 rounded-lg bg-[#1C2128] hover:bg-[#30363D] transition-colors flex items-center gap-1.5"
+                        className="self-start text-xs font-bold text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg bg-accent hover:bg-border transition-colors flex items-center gap-1.5"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                         Apply as Next Steps
@@ -866,9 +866,9 @@ export default function StatusReportForm({
             </section>
 
             {/* Next Steps */}
-            <section className="bg-[#161B22] p-6 rounded-xl border border-[#30363D]">
+            <section className="bg-card p-6 rounded-xl border border-border">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-[#E6EDF3]">Next Steps: Lookahead</h3>
+                <h3 className="text-base font-bold text-foreground">Next Steps: Lookahead</h3>
                 <div className="flex items-center gap-2">
                   {currentReportId && !isNew && nextSteps.length > 0 && nextSteps.some(s => !s.kanbanTaskId) && (
                     <button
@@ -889,7 +889,7 @@ export default function StatusReportForm({
                   )}
                   <button
                     onClick={addNextStep}
-                    className="text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
+                    className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-primary/10 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -899,30 +899,30 @@ export default function StatusReportForm({
                 </div>
               </div>
               {nextSteps.length === 0 ? (
-                <div className="text-center py-6 border-2 border-dashed border-[#30363D] rounded-lg">
-                  <p className="text-xs text-[#7D8590] font-medium">Pending workflow steps will appear here when a project is selected.</p>
+                <div className="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                  <p className="text-xs text-muted-foreground font-medium">Pending workflow steps will appear here when a project is selected.</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {nextSteps.map((s, i) => (
-                    <div key={i} className={`group p-3 border-l-4 bg-[#161B22] rounded-r-lg relative ${s.kanbanTaskId ? "border-emerald-400" : "border-[#0078D4]"}`}>
+                    <div key={i} className={`group p-3 border-l-4 bg-card rounded-r-lg relative ${s.kanbanTaskId ? "border-emerald-400" : "border-primary"}`}>
                       <input
                         value={s.label}
                         onChange={e => updateNextStep(i, "label", e.target.value)}
                         placeholder="Phase label"
-                        className="text-[10px] font-bold uppercase tracking-widest text-[#7D8590] bg-transparent border-0 focus:outline-none w-full mb-0.5"
+                        className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-transparent border-0 focus:outline-none w-full mb-0.5"
                       />
                       <input
                         value={s.title}
                         onChange={e => updateNextStep(i, "title", e.target.value)}
                         placeholder="Next step title"
-                        className="text-sm font-bold text-[#E6EDF3] bg-transparent border-0 focus:outline-none w-full mb-1"
+                        className="text-sm font-bold text-foreground bg-transparent border-0 focus:outline-none w-full mb-1"
                       />
                       <input
                         value={s.description}
                         onChange={e => updateNextStep(i, "description", e.target.value)}
                         placeholder="Brief description…"
-                        className="text-xs text-[#7D8590] bg-transparent border-0 focus:outline-none w-full"
+                        className="text-xs text-muted-foreground bg-transparent border-0 focus:outline-none w-full"
                       />
                       <div className="flex items-center justify-between mt-2">
                         {s.kanbanTaskId ? (
@@ -937,10 +937,10 @@ export default function StatusReportForm({
                             onClick={() => void handlePushToKanban(i)}
                             disabled={!!pushLoading[i]}
                             title="Add this step to the project Kanban board as a Backlog task"
-                            className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-white border border-[#0078D4]/30 hover:bg-[#0078D4] hover:border-[#0078D4] bg-[#1C2128] disabled:opacity-50 disabled:cursor-not-allowed px-2 py-0.5 rounded-full transition-colors"
+                            className="flex items-center gap-1 text-[10px] font-semibold text-primary hover:text-white border border-primary/30 hover:bg-primary hover:border-primary bg-accent disabled:opacity-50 disabled:cursor-not-allowed px-2 py-0.5 rounded-full transition-colors"
                           >
                             {pushLoading[i] ? (
-                              <div className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                              <div className="w-2.5 h-2.5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -949,11 +949,11 @@ export default function StatusReportForm({
                             Add to Kanban
                           </button>
                         ) : (
-                          <span className="text-[10px] text-[#484F58]">Save report first to push to Kanban</span>
+                          <span className="text-[10px] text-muted-foreground/60">Save report first to push to Kanban</span>
                         )}
                         <button
                           onClick={() => removeNextStep(i)}
-                          className="opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all"
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground/60 hover:text-red-400 transition-all"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -972,15 +972,15 @@ export default function StatusReportForm({
               if (!report?.clientQuestion && !(report?.replyThread ?? []).length) return null;
               const thread = report?.replyThread ?? [];
               return (
-                <section className="bg-[#161B22] p-6 rounded-xl border border-amber-500/20">
+                <section className="bg-card p-6 rounded-xl border border-amber-500/20">
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
                       <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                       </svg>
                     </div>
-                    <h3 className="text-base font-bold text-[#E6EDF3]">Client Conversation</h3>
-                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${report?.clientStatus === "has_questions" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : report?.clientStatus === "accepted" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
+                    <h3 className="text-base font-bold text-foreground">Client Conversation</h3>
+                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${report?.clientStatus === "has_questions" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : report?.clientStatus === "accepted" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : "bg-accent text-muted-foreground border-border"}`}>
                       {report?.clientStatus === "has_questions" ? "Awaiting resolution" : report?.clientStatus === "accepted" ? "Resolved" : report?.clientStatus ?? ""}
                     </span>
                   </div>
@@ -995,20 +995,20 @@ export default function StatusReportForm({
                           </div>
                           <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Client Question</p>
                         </div>
-                        <p className="text-sm text-[#E6EDF3] leading-relaxed">{report.clientQuestion}</p>
+                        <p className="text-sm text-foreground leading-relaxed">{report.clientQuestion}</p>
                       </div>
                     )}
 
                     {/* Initial admin reply */}
                     {report?.adminReply && (
-                      <div className="border-l-4 border-[#0078D4] pl-4 bg-[#0078D4]/5 rounded-r-lg py-3 pr-3">
+                      <div className="border-l-4 border-primary pl-4 bg-primary/5 rounded-r-lg py-3 pr-3">
                         <div className="flex items-center gap-1.5 mb-1">
-                          <div className="w-4 h-4 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
+                          <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                             <span className="text-white text-[7px] font-bold">SM</span>
                           </div>
-                          <p className="text-[10px] font-semibold text-[#0078D4] uppercase tracking-wide">Your Initial Reply</p>
+                          <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">Your Initial Reply</p>
                         </div>
-                        <p className="text-sm text-[#E6EDF3] leading-relaxed">{report.adminReply}</p>
+                        <p className="text-sm text-foreground leading-relaxed">{report.adminReply}</p>
                       </div>
                     )}
 
@@ -1016,16 +1016,16 @@ export default function StatusReportForm({
                     {thread.length > 0 && (
                       <div className="space-y-2 pl-2">
                         {thread.map((msg, i) => (
-                          <div key={i} className={`rounded-lg px-4 py-3 ${msg.sender === "client" ? "bg-amber-500/10 border border-amber-500/20 ml-4" : "bg-[#1C2128] border border-[#0078D4]/30"}`}>
+                          <div key={i} className={`rounded-lg px-4 py-3 ${msg.sender === "client" ? "bg-amber-500/10 border border-amber-500/20 ml-4" : "bg-accent border border-primary/30"}`}>
                             <div className="flex items-center gap-1.5 mb-1">
-                              <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${msg.sender === "client" ? "bg-amber-400" : "bg-[#0078D4]"}`}>
+                              <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${msg.sender === "client" ? "bg-amber-400" : "bg-primary"}`}>
                                 <span className="text-white text-[7px] font-bold">{msg.sender === "client" ? "C" : "SM"}</span>
                               </div>
-                              <p className="text-[10px] font-semibold text-[#7D8590]">
+                              <p className="text-[10px] font-semibold text-muted-foreground">
                                 {msg.sender === "client" ? "Client" : "You"} · {new Date(msg.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                               </p>
                             </div>
-                            <p className="text-sm text-[#E6EDF3] leading-relaxed">{msg.content}</p>
+                            <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>
                           </div>
                         ))}
                       </div>
@@ -1039,12 +1039,12 @@ export default function StatusReportForm({
                           onChange={e => setThreadDraft(e.target.value)}
                           placeholder="Reply to client follow-up…"
                           rows={3}
-                          className="w-full text-sm border border-[#30363D] rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]"
+                          className="w-full text-sm border border-border rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-accent"
                         />
                         <button
                           onClick={() => void handleThreadReply()}
                           disabled={!threadDraft.trim() || threadSending}
-                          className="flex items-center gap-2 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                          className="flex items-center gap-2 text-sm font-semibold text-white bg-primary hover:bg-primary/90 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {threadSending ? (
                             <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />

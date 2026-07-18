@@ -117,7 +117,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function ScoreBadge({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="flex flex-col items-center justify-center bg-[#161B22] border border-gray-700/50 rounded-xl p-4 gap-1">
+    <div className="flex flex-col items-center justify-center bg-card border border-gray-700/50 rounded-xl p-4 gap-1">
       <div className="relative w-20 h-20">
         <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
           <circle cx="40" cy="40" r="32" fill="none" stroke="#2d333b" strokeWidth="8" />
@@ -133,7 +133,7 @@ function ScoreBadge({ label, value, color }: { label: string; value: number; col
   );
 }
 
-function ProgressBar({ label, value, color = "#0078D4" }: { label: string; value: number; color?: string }) {
+function ProgressBar({ label, value, color = "#2F6FED" }: { label: string; value: number; color?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex justify-between text-xs text-gray-400">
@@ -175,7 +175,7 @@ function SlideOver({ open, onClose, title, children }: { open: boolean; onClose:
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-2xl h-full bg-[#0D1117] border-l border-gray-700/50 flex flex-col shadow-2xl">
+      <div className="relative w-full max-w-2xl h-full bg-background border-l border-gray-700/50 flex flex-col shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
           <h3 className="text-white font-semibold">{title}</h3>
           <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-4 h-4" /></button>
@@ -191,7 +191,7 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-[#161B22] border border-gray-700/50 rounded-xl shadow-2xl">
+      <div className="relative w-full max-w-lg bg-card border border-gray-700/50 rounded-xl shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
           <h3 className="text-white font-semibold">{title}</h3>
           <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-4 h-4" /></button>
@@ -291,13 +291,13 @@ function PromptEditDialog({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={handleClose} />
-      <div className="relative w-full max-w-2xl bg-[#161B22] border border-gray-700/50 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-2xl bg-card border border-gray-700/50 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50 shrink-0">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-blue-400" />
             <h3 className="text-white font-semibold text-sm">Edit Prompt</h3>
-            {meta && <span className="text-xs text-gray-500 font-mono bg-[#0D1117] px-2 py-0.5 rounded">{meta.key}</span>}
+            {meta && <span className="text-xs text-gray-500 font-mono bg-background px-2 py-0.5 rounded">{meta.key}</span>}
           </div>
           <button onClick={handleClose} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-4 h-4" /></button>
         </div>
@@ -320,7 +320,7 @@ function PromptEditDialog({
                   value={body}
                   onChange={e => setBody(e.target.value)}
                   rows={16}
-                  className="w-full bg-[#0D1117] border border-gray-700/50 text-gray-200 text-xs font-mono rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y leading-relaxed"
+                  className="w-full bg-background border border-gray-700/50 text-gray-200 text-xs font-mono rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y leading-relaxed"
                 />
                 <div className="flex items-center gap-1 text-xs text-gray-500">
                   <span>{body.length.toLocaleString()} chars</span>
@@ -404,7 +404,7 @@ function DashboardTab({
 
   if (loading) return (
     <div className="flex flex-col gap-4 animate-pulse">
-      {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-[#161B22] rounded-xl" />)}
+      {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-card rounded-xl" />)}
     </div>
   );
   if (error) return (
@@ -415,12 +415,12 @@ function DashboardTab({
   );
 
   const sd = scoresData;
-  const SCORE_COLORS = { security: "#ef4444", governance: "#f59e0b", readiness: "#3b82f6", composite: "#0078D4" };
+  const SCORE_COLORS = { security: "#ef4444", governance: "#f59e0b", readiness: "#3b82f6", composite: "#2F6FED" };
 
   return (
     <div className="flex flex-col gap-5">
       {/* Score cards */}
-      <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+      <div className="bg-card border border-gray-700/50 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-white font-semibold">M365 Health Scores</h3>
           <button onClick={() => void load()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3.5 h-3.5" /></button>
@@ -432,15 +432,15 @@ function DashboardTab({
           <ScoreBadge label="Composite"   value={sd?.scores.composite   ?? 0} color={SCORE_COLORS.composite}   />
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-          <div className="bg-[#0D1117] rounded-lg p-3">
+          <div className="bg-background rounded-lg p-3">
             <div className="text-lg font-bold text-white">{sd?.totalRuns ?? 0}</div>
             <div className="text-xs text-gray-400">Script Runs</div>
           </div>
-          <div className="bg-[#0D1117] rounded-lg p-3">
+          <div className="bg-background rounded-lg p-3">
             <div className="text-lg font-bold text-yellow-400">{sd?.totalGaps ?? 0}</div>
             <div className="text-xs text-gray-400">Config Gaps</div>
           </div>
-          <div className="bg-[#0D1117] rounded-lg p-3">
+          <div className="bg-background rounded-lg p-3">
             <div className="text-lg font-bold text-blue-400">{sd?.coveragePct ?? 0}%</div>
             <div className="text-xs text-gray-400">Coverage</div>
           </div>
@@ -448,10 +448,10 @@ function DashboardTab({
       </div>
 
       {/* Coverage bars */}
-      <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+      <div className="bg-card border border-gray-700/50 rounded-xl p-5">
         <h3 className="text-white font-semibold mb-4">Infrastructure Coverage</h3>
         <div className="flex flex-col gap-3">
-          <ProgressBar label="Conditional Access Coverage" value={sd?.conditionalAccessPct ?? 0} color="#0078D4" />
+          <ProgressBar label="Conditional Access Coverage" value={sd?.conditionalAccessPct ?? 0} color="#2F6FED" />
           <ProgressBar label="Device Compliance"           value={sd?.deviceCompliancePct  ?? 0} color="#10b981" />
           <ProgressBar label="Assessment Coverage"         value={sd?.coveragePct           ?? 0} color="#f59e0b" />
         </div>
@@ -459,14 +459,14 @@ function DashboardTab({
 
       {/* Risk heatmap */}
       {heatmap.length > 0 && (
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+        <div className="bg-card border border-gray-700/50 rounded-xl p-5">
           <h3 className="text-white font-semibold mb-4">Risk Heatmap by Domain</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={heatmap} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
               <XAxis dataKey="domain" tick={{ fill: "#9ca3af", fontSize: 11 }} />
               <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
+              <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
               <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 12 }} />
               <Bar dataKey="high"   name="High"   fill="#ef4444" stackId="a" />
               <Bar dataKey="medium" name="Medium" fill="#f59e0b" stackId="a" />
@@ -478,15 +478,15 @@ function DashboardTab({
 
       {/* Score trend */}
       {(sd?.weeklyTrend.length ?? 0) > 0 && (
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+        <div className="bg-card border border-gray-700/50 rounded-xl p-5">
           <h3 className="text-white font-semibold mb-4">Score Trend (8-week)</h3>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={sd!.weeklyTrend} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
               <XAxis dataKey="week" tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <YAxis domain={[0, 100]} tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
-              <Bar dataKey="composite" name="Composite" fill="#0078D4" radius={[4, 4, 0, 0]} />
+              <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
+              <Bar dataKey="composite" name="Composite" fill="#2F6FED" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -494,7 +494,7 @@ function DashboardTab({
 
       {/* Findings + Recommendations — full-width two-column row */}
       <div className="grid grid-cols-2 gap-5">
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
+        <div className="bg-card border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
           <h4 className="text-white font-medium text-sm mb-3">Latest Findings</h4>
           {(sd?.findings.length ?? 0) === 0 ? (
             <p className="text-gray-500 text-xs">No findings yet. Run PowerShell assessments to populate.</p>
@@ -506,7 +506,7 @@ function DashboardTab({
             </ul>
           )}
         </div>
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
+        <div className="bg-card border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
           <h4 className="text-white font-medium text-sm mb-3">Recommendations</h4>
           {(sd?.recommendations.length ?? 0) === 0 ? (
             <p className="text-gray-500 text-xs">No recommendations yet.</p>
@@ -760,7 +760,7 @@ function DocumentsTab({
             const Icon = rt.icon;
             const count = docs.filter(d => d.docType === rt.key).length;
             return (
-              <div key={rt.key} className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 flex flex-col gap-3">
+              <div key={rt.key} className="bg-card border border-gray-700/50 rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-blue-500/10 rounded-lg shrink-0"><Icon className="w-4 h-4 text-blue-400" /></div>
                   <div className="flex-1 min-w-0">
@@ -795,7 +795,7 @@ function DocumentsTab({
           })}
         </div>
 
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl">
+        <div className="bg-card border border-gray-700/50 rounded-xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
             <h3 className="text-white font-medium text-sm">Generated Reports ({docs.length})</h3>
             <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
@@ -849,7 +849,7 @@ function DocumentsTab({
 
       {/* Right: preview */}
       {selectedDoc && (
-        <div className="w-[480px] shrink-0 bg-[#161B22] border border-gray-700/50 rounded-xl flex flex-col">
+        <div className="w-[480px] shrink-0 bg-card border border-gray-700/50 rounded-xl flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
             <div><div className="text-white text-sm font-medium truncate max-w-[260px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
             <div className="flex gap-1">
@@ -887,7 +887,7 @@ function DocumentsTab({
               <select
                 value={dialogCustomerId ?? ""}
                 onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
-                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">Select a customer…</option>
                 {customers.map(c => (
@@ -901,7 +901,7 @@ function DocumentsTab({
                 <select
                   value={dialogProjectId ?? ""}
                   onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                  className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Select a project…</option>
                   {dialogProjects.map(p => (
@@ -916,10 +916,10 @@ function DocumentsTab({
             <div>
               <label className="text-gray-400 text-xs mb-1.5 block">Report Title</label>
               <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
-                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
-            <div className="bg-[#0D1117] rounded-lg p-3 text-xs text-gray-400">
+            <div className="bg-background rounded-lg p-3 text-xs text-gray-400">
               <div className="text-gray-300 font-medium mb-1">This will:</div>
               <ul className="list-disc list-inside flex flex-col gap-1">
                 <li>Fetch telemetry from script_run_results scoped to the selected customer and project</li>
@@ -995,12 +995,12 @@ function DocumentsTab({
           <div>
             <label className="text-gray-400 text-xs mb-1.5 block">Recipient Email (optional — uses customer email if blank)</label>
             <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} type="email" placeholder="client@company.com"
-              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           <div>
             <label className="text-gray-400 text-xs mb-1.5 block">Email Subject</label>
             <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
-              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           {sendResult && <p className={`text-xs ${sendResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{sendResult}</p>}
           <div className="flex gap-2 justify-end">
@@ -1301,7 +1301,7 @@ function ConsultingTab({
             const isViewOnly = ct.key === "scoped_sow";
             const showWarningBadge = workstreamWarnings.length > 0 && !isViewOnly && (ct.key === "sow" || ct.key === "consolidated_sow");
             return (
-              <div key={ct.key} className={`bg-[#161B22] border rounded-xl p-4 flex flex-col gap-3 ${showWarningBadge ? "border-yellow-500/40" : "border-gray-700/50"}`}>
+              <div key={ct.key} className={`bg-card border rounded-xl p-4 flex flex-col gap-3 ${showWarningBadge ? "border-yellow-500/40" : "border-gray-700/50"}`}>
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-purple-500/10 rounded-lg shrink-0"><Icon className="w-4 h-4 text-purple-400" /></div>
                   <div className="flex-1 min-w-0">
@@ -1351,7 +1351,7 @@ function ConsultingTab({
           })}
         </div>
 
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl">
+        <div className="bg-card border border-gray-700/50 rounded-xl">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
             <h3 className="text-white font-medium text-sm">Consulting Deliverables ({docs.length})</h3>
             <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
@@ -1406,7 +1406,7 @@ function ConsultingTab({
       </div>
 
       {/* Right inspector */}
-      <div className="w-[480px] shrink-0 bg-[#161B22] border border-gray-700/50 rounded-xl flex flex-col">
+      <div className="w-[480px] shrink-0 bg-card border border-gray-700/50 rounded-xl flex flex-col">
         {selectedDoc ? (
           <>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
@@ -1449,7 +1449,7 @@ function ConsultingTab({
               <select
                 value={dialogCustomerId ?? ""}
                 onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
-                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
               >
                 <option value="">Select a customer…</option>
                 {customers.map(c => (
@@ -1463,7 +1463,7 @@ function ConsultingTab({
                 <select
                   value={dialogProjectId ?? ""}
                   onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                  className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 >
                   <option value="">Select a project…</option>
                   {dialogProjects.map(p => (
@@ -1481,7 +1481,7 @@ function ConsultingTab({
                 <select
                   value={wizardSowDocumentId ?? ""}
                   onChange={e => setWizardSowDocumentId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                  className="w-full bg-[#0D1117] border border-amber-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="w-full bg-background border border-amber-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
                   <option value="">Select a SOW document…</option>
                   {sowDocs.map(d => (
@@ -1496,10 +1496,10 @@ function ConsultingTab({
             <div>
               <label className="text-gray-400 text-xs mb-1.5 block">Deliverable Title</label>
               <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
-                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+                className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500" />
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
-            <div className="bg-[#0D1117] rounded-lg p-3 text-xs text-gray-400">
+            <div className="bg-background rounded-lg p-3 text-xs text-gray-400">
               Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry scoped to the selected customer and project. Auto-approved on generation — Send is available immediately. SharePoint upload occurs automatically on delivery if the client site is configured.
             </div>
             <div className="flex gap-2 justify-end">
@@ -1546,12 +1546,12 @@ function ConsultingTab({
           <div>
             <label className="text-gray-400 text-xs mb-1.5 block">Recipient Email (optional — uses customer email if blank)</label>
             <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} type="email" placeholder="client@company.com"
-              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           <div>
             <label className="text-gray-400 text-xs mb-1.5 block">Email Subject</label>
             <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
-              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
           </div>
           {sendResult && <p className={`text-xs ${sendResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{sendResult}</p>}
           <div className="flex gap-2 justify-end">
@@ -1750,7 +1750,7 @@ function AutomationTab({
           const at = AUTOMATION_TYPES.find(t => t.key === e.target.value);
           setWType(e.target.value);
           if (at) { setWCron(at.defaultCron); if (!wName || AUTOMATION_TYPES.some(t => t.label === wName)) setWName(at.label); }
-        }} className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2">
+        }} className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2">
           {AUTOMATION_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
         </select>
         <p className="text-gray-500 text-xs mt-1">{AUTOMATION_TYPES.find(t => t.key === wType)?.desc}</p>
@@ -1758,18 +1758,18 @@ function AutomationTab({
       <div>
         <label className="text-gray-400 text-xs mb-1.5 block">Name</label>
         <input value={wName} onChange={e => setWName(e.target.value)}
-          className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Automation name…" />
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Automation name…" />
       </div>
       <div>
         <label className="text-gray-400 text-xs mb-1.5 block">Cron Schedule</label>
         <input value={wCron} onChange={e => setWCron(e.target.value)}
-          className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500" />
         <p className="text-gray-500 text-xs mt-1">Format: minute hour day month weekday — e.g. <code>0 9 1 * *</code> = 9am on 1st of month</p>
       </div>
       <div>
         <label className="text-gray-400 text-xs mb-1.5 block">Linked Script ID (optional — triggers Azure script execution on fire)</label>
         <input value={wLinkedScript} onChange={e => setWLinkedScript(e.target.value)}
-          className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="UUID of PowerShell script…" />
+          className="w-full bg-background border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="UUID of PowerShell script…" />
       </div>
       <div className="flex items-center gap-6">
         <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
@@ -1791,7 +1791,7 @@ function AutomationTab({
         {AUTOMATION_TYPES.map(at => {
           const existing = automations.find(a => a.automationType === at.key);
           return (
-            <div key={at.key} className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4">
+            <div key={at.key} className="bg-card border border-gray-700/50 rounded-xl p-4">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="text-white text-sm font-medium">{at.label}</div>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium shrink-0 ${
@@ -1819,7 +1819,7 @@ function AutomationTab({
         })}
       </div>
 
-      <div className="bg-[#161B22] border border-gray-700/50 rounded-xl">
+      <div className="bg-card border border-gray-700/50 rounded-xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
           <h3 className="text-white font-medium text-sm">All Automations ({automations.length})</h3>
           <div className="flex gap-2">
@@ -1886,7 +1886,7 @@ function AutomationTab({
                   const entries = isLive ? liveLog : (a.lastRunLog ?? []);
                   if (!isLive && entries.length === 0) return null;
                   return (
-                    <div className={`mx-4 mb-3 rounded-lg overflow-hidden border ${isLive ? "border-blue-500/40 bg-[#0A1628]" : "border-gray-700/50 bg-[#0D1117]"}`}>
+                    <div className={`mx-4 mb-3 rounded-lg overflow-hidden border ${isLive ? "border-blue-500/40 bg-[#0A1628]" : "border-gray-700/50 bg-background"}`}>
                       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/30">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
@@ -1977,7 +1977,7 @@ function Selectors({
       <select
         value={selectedCustomer ?? ""}
         onChange={e => { onSelectCustomer(e.target.value ? parseInt(e.target.value, 10) : null); onSelectProject(null); }}
-        className="bg-[#161B22] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="bg-card border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
       >
         <option value="">All Customers</option>
         {customers.map(c => (
@@ -1988,7 +1988,7 @@ function Selectors({
         <select
           value={selectedProject ?? ""}
           onChange={e => onSelectProject(e.target.value ? parseInt(e.target.value, 10) : null)}
-          className="bg-[#161B22] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="bg-card border border-gray-700/50 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">All Projects</option>
           {projects.map(p => (
@@ -2075,7 +2075,7 @@ export default function InsightsOutputs() {
   const tabProps = { customerId: selectedCustomer, projectId: selectedProject, fetchWithAuth, customers };
 
   return (
-    <div className="flex flex-col h-full bg-[#0D1117] text-white">
+    <div className="flex flex-col h-full bg-background text-white">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-700/50 flex items-center justify-between gap-4">
         <div>

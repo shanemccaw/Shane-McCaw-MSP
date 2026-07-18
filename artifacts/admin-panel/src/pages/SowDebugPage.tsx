@@ -46,8 +46,8 @@ interface AiPrompt {
 
 const PROMPT_KEY = "insights-consulting-consolidated_sow";
 const LEVEL_COLORS: Record<string, string> = {
-  debug: "text-[#7D8590]",
-  info: "text-[#58A6FF]",
+  debug: "text-muted-foreground",
+  info: "text-primary",
   warn: "text-amber-400",
   error: "text-red-400",
 };
@@ -206,19 +206,19 @@ export default function SowDebugPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-[#E6EDF3]">SOW Generation Debug</h1>
-        <p className="text-sm text-[#7D8590] mt-1">
+        <h1 className="text-xl font-semibold text-foreground">SOW Generation Debug</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           Run the real Consolidated SOW generator against any client without persisting the result,
           then inspect the signals that fired, the step-by-step log, and the live prompt.
         </p>
       </div>
 
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4">
+      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#7D8590]">Client</label>
+            <label className="text-xs text-muted-foreground">Client</label>
             <select
-              className="bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-2 text-sm text-[#E6EDF3] min-w-[220px]"
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground min-w-[220px]"
               value={selectedClientId}
               onChange={(e) => { setSelectedClientId(e.target.value); setSelectedProjectId(""); }}
               disabled={clientsLoading}
@@ -230,9 +230,9 @@ export default function SowDebugPage() {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-[#7D8590]">Project (optional)</label>
+            <label className="text-xs text-muted-foreground">Project (optional)</label>
             <select
-              className="bg-[#0D1117] border border-[#30363D] rounded-md px-3 py-2 text-sm text-[#E6EDF3] min-w-[200px]"
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground min-w-[200px]"
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
               disabled={!selectedClient || selectedClient.projects.length === 0}
@@ -246,25 +246,25 @@ export default function SowDebugPage() {
           <button
             onClick={() => void generate()}
             disabled={generating || !selectedClientId}
-            className="bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-md"
+            className="bg-primary hover:bg-[#0086EF] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-md"
           >
             {generating ? "Generating…" : correlationId ? "Regenerate SOW" : "Generate SOW"}
           </button>
           {correlationId && (
-            <span className="text-xs text-[#7D8590]">Run ID: {correlationId.slice(0, 8)}…</span>
+            <span className="text-xs text-muted-foreground">Run ID: {correlationId.slice(0, 8)}…</span>
           )}
         </div>
         {genError && <p className="text-sm text-red-400">{genError}</p>}
-        <p className="text-xs text-[#7D8590]">
+        <p className="text-xs text-muted-foreground">
           Generation runs in test mode — nothing is written to the database and no client-facing
           document is created.
         </p>
       </div>
 
       {htmlContent && (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-3">
+        <div className="bg-card border border-border rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Generated SOW — {clientName}</h2>
+            <h2 className="text-sm font-semibold text-foreground">Generated SOW — {clientName}</h2>
             {sowTotal != null && (
               <span className="text-sm text-[#00B4D8] font-medium">
                 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(sowTotal)}
@@ -279,46 +279,46 @@ export default function SowDebugPage() {
       )}
 
       <Collapsible open={debugOpen} onOpenChange={setDebugOpen}>
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
           <CollapsibleTrigger asChild>
             <button className="w-full flex items-center justify-between px-5 py-4 text-left">
-              <span className="text-sm font-semibold text-[#E6EDF3]">Debug Panel</span>
-              <span className="text-xs text-[#7D8590]">{debugOpen ? "Collapse ▲" : "Expand ▼"}</span>
+              <span className="text-sm font-semibold text-foreground">Debug Panel</span>
+              <span className="text-xs text-muted-foreground">{debugOpen ? "Collapse ▲" : "Expand ▼"}</span>
             </button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="px-5 pb-5 space-y-6 border-t border-[#30363D] pt-5">
+            <div className="px-5 pb-5 space-y-6 border-t border-border pt-5">
 
               {/* Signal Output */}
               <div>
-                <h3 className="text-sm font-semibold text-[#E6EDF3] mb-2">Signal Output</h3>
-                {runLoading && <p className="text-sm text-[#7D8590]">Loading…</p>}
+                <h3 className="text-sm font-semibold text-foreground mb-2">Signal Output</h3>
+                {runLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
                 {!runLoading && !run && (
-                  <p className="text-sm text-[#7D8590]">Generate a SOW above to see fired signals.</p>
+                  <p className="text-sm text-muted-foreground">Generate a SOW above to see fired signals.</p>
                 )}
                 {!runLoading && run && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div>
-                      <p className="text-[#7D8590] mb-1">Fired signals ({run.signals.firedSignals?.length ?? 0})</p>
-                      <pre className="bg-[#0D1117] border border-[#30363D] rounded-md p-3 overflow-x-auto text-[#58A6FF]">
+                      <p className="text-muted-foreground mb-1">Fired signals ({run.signals.firedSignals?.length ?? 0})</p>
+                      <pre className="bg-background border border-border rounded-md p-3 overflow-x-auto text-primary">
 {JSON.stringify(run.signals.firedSignals ?? [], null, 2)}
                       </pre>
                     </div>
                     <div>
-                      <p className="text-[#7D8590] mb-1">Fired adjustment signals ({run.signals.firedAdjSignalKeys?.length ?? 0})</p>
-                      <pre className="bg-[#0D1117] border border-[#30363D] rounded-md p-3 overflow-x-auto text-amber-400">
+                      <p className="text-muted-foreground mb-1">Fired adjustment signals ({run.signals.firedAdjSignalKeys?.length ?? 0})</p>
+                      <pre className="bg-background border border-border rounded-md p-3 overflow-x-auto text-amber-400">
 {JSON.stringify(run.signals.firedAdjSignalKeys ?? [], null, 2)}
                       </pre>
                     </div>
                     <div>
-                      <p className="text-[#7D8590] mb-1">Included projects ({run.signals.includedProjectTitles?.length ?? 0})</p>
-                      <pre className="bg-[#0D1117] border border-[#30363D] rounded-md p-3 overflow-x-auto text-green-400">
+                      <p className="text-muted-foreground mb-1">Included projects ({run.signals.includedProjectTitles?.length ?? 0})</p>
+                      <pre className="bg-background border border-border rounded-md p-3 overflow-x-auto text-green-400">
 {JSON.stringify(run.signals.includedProjectTitles ?? [], null, 2)}
                       </pre>
                     </div>
                     <div>
-                      <p className="text-[#7D8590] mb-1">Excluded projects ({run.signals.excludedProjectTitles?.length ?? 0})</p>
-                      <pre className="bg-[#0D1117] border border-[#30363D] rounded-md p-3 overflow-x-auto text-[#7D8590]">
+                      <p className="text-muted-foreground mb-1">Excluded projects ({run.signals.excludedProjectTitles?.length ?? 0})</p>
+                      <pre className="bg-background border border-border rounded-md p-3 overflow-x-auto text-muted-foreground">
 {JSON.stringify(run.signals.excludedProjectTitles ?? [], null, 2)}
                       </pre>
                     </div>
@@ -334,7 +334,7 @@ export default function SowDebugPage() {
               {/* Logs */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-[#E6EDF3]">Logs</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Logs</h3>
                   <div className="flex gap-1">
                     {(["all", "warn", "error"] as const).map(f => (
                       <button
@@ -342,8 +342,8 @@ export default function SowDebugPage() {
                         onClick={() => setLogFilter(f)}
                         className={`text-xs px-2 py-1 rounded-md border ${
                           logFilter === f
-                            ? "bg-[#0078D4]/20 border-[#0078D4] text-[#58A6FF]"
-                            : "border-[#30363D] text-[#7D8590]"
+                            ? "bg-primary/20 border-primary text-primary"
+                            : "border-border text-muted-foreground"
                         }`}
                       >
                         {f === "all" ? "All" : f === "warn" ? "Warnings+" : "Errors"}
@@ -352,18 +352,18 @@ export default function SowDebugPage() {
                   </div>
                 </div>
                 {run && filteredLogs.length === 0 && (
-                  <p className="text-sm text-[#7D8590]">No log entries match this filter.</p>
+                  <p className="text-sm text-muted-foreground">No log entries match this filter.</p>
                 )}
-                {!run && <p className="text-sm text-[#7D8590]">No run yet.</p>}
+                {!run && <p className="text-sm text-muted-foreground">No run yet.</p>}
                 {run && filteredLogs.length > 0 && (
-                  <div className="bg-[#0D1117] border border-[#30363D] rounded-md max-h-72 overflow-y-auto font-mono text-xs">
+                  <div className="bg-background border border-border rounded-md max-h-72 overflow-y-auto font-mono text-xs">
                     {filteredLogs.map((l, i) => (
-                      <div key={i} className="px-3 py-2 border-b border-[#161B22] last:border-b-0">
-                        <span className="text-[#484F58]">{new Date(l.ts).toLocaleTimeString()}</span>{" "}
+                      <div key={i} className="px-3 py-2 border-b border-card last:border-b-0">
+                        <span className="text-muted-foreground/60">{new Date(l.ts).toLocaleTimeString()}</span>{" "}
                         <span className={`font-semibold ${LEVEL_COLORS[l.level]}`}>[{l.level.toUpperCase()}]</span>{" "}
-                        <span className="text-[#E6EDF3]">{l.message}</span>
+                        <span className="text-foreground">{l.message}</span>
                         {l.meta && (
-                          <pre className="text-[#7D8590] mt-1 whitespace-pre-wrap">{JSON.stringify(l.meta, null, 2)}</pre>
+                          <pre className="text-muted-foreground mt-1 whitespace-pre-wrap">{JSON.stringify(l.meta, null, 2)}</pre>
                         )}
                       </div>
                     ))}
@@ -377,14 +377,14 @@ export default function SowDebugPage() {
               {/* AI Prompt Editor */}
               <Collapsible open={promptEditorOpen} onOpenChange={setPromptEditorOpen}>
                 <CollapsibleTrigger asChild>
-                  <button className="text-sm font-semibold text-[#E6EDF3] flex items-center gap-2">
+                  <button className="text-sm font-semibold text-foreground flex items-center gap-2">
                     AI Prompt Editor — {PROMPT_KEY}
-                    <span className="text-xs text-[#7D8590]">{promptEditorOpen ? "▲" : "▼"}</span>
+                    <span className="text-xs text-muted-foreground">{promptEditorOpen ? "▲" : "▼"}</span>
                   </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="mt-3 space-y-3">
-                    {promptLoading && <p className="text-sm text-[#7D8590]">Loading prompt…</p>}
+                    {promptLoading && <p className="text-sm text-muted-foreground">Loading prompt…</p>}
                     {promptError && <p className="text-sm text-red-400">{promptError}</p>}
                     {promptSaved && <p className="text-sm text-green-400">{promptSaved}</p>}
                     {prompt && (
@@ -392,25 +392,25 @@ export default function SowDebugPage() {
                         <textarea
                           value={promptBody}
                           onChange={(e) => { setPromptBody(e.target.value); setPromptSaved(null); }}
-                          className="w-full h-64 bg-[#0D1117] border border-[#30363D] rounded-md p-3 text-xs font-mono text-[#E6EDF3]"
+                          className="w-full h-64 bg-background border border-border rounded-md p-3 text-xs font-mono text-foreground"
                           spellCheck={false}
                         />
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => void savePrompt()}
                             disabled={promptSaving || !promptBody.trim()}
-                            className="bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-md"
+                            className="bg-primary hover:bg-[#0086EF] disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-md"
                           >
                             {promptSaving ? "Publishing…" : "Publish Prompt"}
                           </button>
                           <button
                             onClick={() => setPromptBody(prompt.defaultBody)}
-                            className="text-xs text-[#7D8590] hover:text-[#E6EDF3] underline"
+                            className="text-xs text-muted-foreground hover:text-foreground underline"
                           >
                             Reset editor to default body
                           </button>
                         </div>
-                        <p className="text-xs text-[#7D8590]">
+                        <p className="text-xs text-muted-foreground">
                           Publishing here updates the live prompt used by all Consolidated SOW generation —
                           including client-facing document generation. Generate a new debug run afterward
                           to see the effect.

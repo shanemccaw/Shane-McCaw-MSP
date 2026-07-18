@@ -254,9 +254,9 @@ export function SimulatorLeftTree() {
                       <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                     )}
                     {expandedCats[cat] ? (
-                      <FolderOpen className="h-3.5 w-3.5 text-[#58A6FF]" />
+                      <FolderOpen className="h-3.5 w-3.5 text-primary" />
                     ) : (
-                      <Folder className="h-3.5 w-3.5 text-[#58A6FF]" />
+                      <Folder className="h-3.5 w-3.5 text-primary" />
                     )}
                     <span className="truncate capitalize">{cat}</span>
                     <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
@@ -265,7 +265,7 @@ export function SimulatorLeftTree() {
                   </div>
 
                   {expandedCats[cat] && (
-                    <div className="ml-[22px] border-l border-[#21262D]">
+                    <div className="ml-[22px] border-l border-accent">
                       {scenariosByCategory[cat].map((event) => (
                         <ContextMenu key={event.id}>
                           <ContextMenuTrigger asChild>
@@ -273,7 +273,7 @@ export function SimulatorLeftTree() {
                               onClick={() => openModal("execute-scenario", { event })}
                               className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
                             >
-                              <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-[#58A6FF]" />
+                              <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
                               <span className="flex-1 truncate" title={event.description || event.name}>
                                 {event.name}
                               </span>
@@ -326,7 +326,7 @@ export function SimulatorLeftTree() {
                       ) : (
                         <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
                       )}
-                      <Database className="h-3.5 w-3.5 text-[#58A6FF]" />
+                      <Database className="h-3.5 w-3.5 text-primary" />
                       <span className="truncate">{cat}</span>
                       <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
                         {scriptsByCategory[cat].length}
@@ -334,7 +334,7 @@ export function SimulatorLeftTree() {
                     </div>
 
                     {expandedCats[cat] && (
-                      <div className="ml-[22px] border-l border-[#21262D]">
+                      <div className="ml-[22px] border-l border-accent">
                         {scriptsByCategory[cat].map((script) => (
                           <ContextMenu key={script.id}>
                             <ContextMenuTrigger asChild>

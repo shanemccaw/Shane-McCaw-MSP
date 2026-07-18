@@ -37,7 +37,7 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
   const color = scoreColor(score);
   return (
     <svg width={size} height={size} className="flex-shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#30363D" strokeWidth={6} />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#232A36" strokeWidth={6} />
       <circle
         cx={size / 2} cy={size / 2} r={radius}
         fill="none"
@@ -62,7 +62,7 @@ function ScoreRing({ score, size = 64 }: { score: number; size?: number }) {
 }
 
 function DeltaBadge({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="text-xs text-[#7D8590]">no change</span>;
+  if (delta === 0) return <span className="text-xs text-muted-foreground">no change</span>;
   const positive = delta > 0;
   return (
     <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${positive ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
@@ -231,7 +231,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="w-7 h-7 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-7 h-7 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -243,7 +243,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p className="text-sm font-semibold text-red-400 mb-1">Failed to load health data</p>
-        <p className="text-xs text-[#484F58] font-mono max-w-xs mx-auto">{apiError}</p>
+        <p className="text-xs text-muted-foreground/60 font-mono max-w-xs mx-auto">{apiError}</p>
       </div>
     );
   }
@@ -252,7 +252,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     <button
       onClick={() => void handleRecordHealth()}
       disabled={recording}
-      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#161B22] border border-[#30363D] text-[#E6EDF3] px-3 py-1.5 rounded-lg hover:border-[#0078D4]/60 hover:bg-[#0078D4]/8 disabled:opacity-50 transition-colors"
+      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-card border border-border text-foreground px-3 py-1.5 rounded-lg hover:border-primary/60 hover:bg-primary/8 disabled:opacity-50 transition-colors"
     >
       {recording ? (
         <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -326,7 +326,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     confirmClear ? (
       <div className="flex items-center gap-2">
         {clearError && <span className="text-[10px] text-red-400">{clearError}</span>}
-        <span className="text-xs text-[#7D8590]">Delete all history?</span>
+        <span className="text-xs text-muted-foreground">Delete all history?</span>
         <button
           onClick={() => void handleClearHistory()}
           disabled={clearingHistory}
@@ -337,7 +337,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
         <button
           onClick={() => { setConfirmClear(false); setClearError(null); }}
           disabled={clearingHistory}
-          className="text-xs text-[#484F58] hover:text-[#7D8590] transition-colors"
+          className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
         >
           Cancel
         </button>
@@ -345,7 +345,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     ) : (
       <button
         onClick={() => setConfirmClear(true)}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#161B22] border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:border-red-500/40 hover:text-red-400 transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-card border border-border text-muted-foreground px-3 py-1.5 rounded-lg hover:border-red-500/40 hover:text-red-400 transition-colors"
       >
         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -364,17 +364,17 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
         </div>
         <RecordFeedback />
         <div className="text-center py-10 px-6">
-          <svg className="w-12 h-12 mx-auto mb-4 text-[#30363D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <svg className="w-12 h-12 mx-auto mb-4 text-border" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <p className="text-sm font-semibold text-[#7D8590] mb-1">No health data yet</p>
-          <p className="text-xs text-[#484F58] max-w-xs mx-auto mb-5">
+          <p className="text-sm font-semibold text-muted-foreground mb-1">No health data yet</p>
+          <p className="text-xs text-muted-foreground/60 max-w-xs mx-auto mb-5">
             Health snapshots are recorded each time the M365 profile is saved. Complete or update the profile to generate the first snapshot.
           </p>
           {onOpenWizard && (
             <button
               onClick={onOpenWizard}
-              className="inline-flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-4 py-2 rounded-lg hover:bg-[#006CBE] transition-colors"
+              className="inline-flex items-center gap-2 text-xs font-semibold bg-primary text-white px-4 py-2 rounded-lg hover:bg-[#006CBE] transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -396,7 +396,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     <div className="p-5 space-y-5">
       {/* Record Health action row */}
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] text-[#484F58]">Manual snapshot · updates charts immediately</p>
+        <p className="text-[10px] text-muted-foreground/60">Manual snapshot · updates charts immediately</p>
         <div className="flex items-center gap-2 flex-shrink-0">
           <ClearHistoryButton />
           <RecordHealthButton />
@@ -404,38 +404,38 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
       </div>
       <RecordFeedback />
       {/* Overall headline */}
-      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5">
+      <div className="bg-background border border-border rounded-xl p-5">
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">
           <ScoreRing score={d.overallLatest} size={80} />
           <div className="flex-1">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Overall Health Score</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Overall Health Score</p>
                   {lastPolled && (
-                    <span className="text-[10px] text-[#484F58] tabular-nums">
+                    <span className="text-[10px] text-muted-foreground/60 tabular-nums">
                       · refreshed {formatRelativeTime(lastPolled)}
                     </span>
                   )}
                 </div>
                 <p className="text-3xl font-extrabold" style={{ color: overallColor }}>
-                  {d.overallLatest}<span className="text-lg font-semibold text-[#484F58]">%</span>
+                  {d.overallLatest}<span className="text-lg font-semibold text-muted-foreground/60">%</span>
                 </p>
                 {hasHistory && d.overallFirst > 0 && d.overallDelta !== 0 && (
-                  <p className="text-xs text-[#7D8590] mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {d.overallDelta > 0 ? "+" : ""}{Math.round((d.overallDelta / d.overallFirst) * 100)}% from baseline
                   </p>
                 )}
               </div>
               {hasHistory && (
                 <div className="text-right flex-shrink-0">
-                  <p className="text-[10px] text-[#7D8590] mb-1">Since baseline</p>
+                  <p className="text-[10px] text-muted-foreground mb-1">Since baseline</p>
                   <DeltaBadge delta={d.overallDelta} />
-                  <p className="text-[10px] text-[#7D8590] mt-1">from {d.overallFirst}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">from {d.overallFirst}%</p>
                 </div>
               )}
             </div>
-            <p className="text-[10px] text-[#484F58] mt-3">
+            <p className="text-[10px] text-muted-foreground/60 mt-3">
               Last updated {new Date(d.lastUpdated).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </p>
           </div>
@@ -443,10 +443,10 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
 
         {d.timeSeries.length >= 2 && (
           <div className="mt-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Score Trend</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Score Trend</p>
             <ResponsiveContainer width="100%" height={100}>
               <LineChart data={d.timeSeries} margin={{ top: 4, right: 8, left: -28, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#21262D" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#171C26" />
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 9, fill: "#484F58" }}
@@ -458,13 +458,13 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
                     if (!active || !payload?.length) return null;
                     const pt = payload[0].payload as { score: number; sourceTaskTitle?: string | null };
                     return (
-                      <div style={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#161B22", color: "#E6EDF3", padding: "8px 10px", lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 11, borderRadius: 8, border: "1px solid #232A36", background: "#11151C", color: "#E6EDF3", padding: "8px 10px", lineHeight: 1.5 }}>
                         <p style={{ fontWeight: 600, marginBottom: 2 }}>
                           {new Date(String(label) + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                         </p>
-                        <p style={{ color: "#0078D4" }}>{pt.score}% overall</p>
+                        <p style={{ color: "#2F6FED" }}>{pt.score}% overall</p>
                         {pt.sourceTaskTitle && (
-                          <p style={{ color: "#7D8590", marginTop: 2 }}>⚡ via {pt.sourceTaskTitle}</p>
+                          <p style={{ color: "#8B94A3", marginTop: 2 }}>⚡ via {pt.sourceTaskTitle}</p>
                         )}
                       </div>
                     );
@@ -473,9 +473,9 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
                 <Line
                   type="monotone"
                   dataKey="score"
-                  stroke="#0078D4"
+                  stroke="#2F6FED"
                   strokeWidth={2}
-                  dot={{ fill: "#0078D4", r: 3, strokeWidth: 0 }}
+                  dot={{ fill: "#2F6FED", r: 3, strokeWidth: 0 }}
                   activeDot={{ r: 5 }}
                 />
               </LineChart>
@@ -483,18 +483,18 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
 
             {/* Automation-triggered snapshot attribution */}
             {d.timeSeries.some(p => p.sourceTaskTitle) && (
-              <div className="mt-3 pt-3 border-t border-[#21262D]">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Automation-Triggered Snapshots</p>
+              <div className="mt-3 pt-3 border-t border-accent">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Automation-Triggered Snapshots</p>
                 <div className="space-y-1.5">
                   {d.timeSeries.filter(p => p.sourceTaskTitle).slice(-5).map(p => (
-                    <div key={p.date} className="flex items-center gap-2 text-xs text-[#7D8590]">
+                    <div key={p.date} className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="text-emerald-400 flex-shrink-0">⚡</span>
                       <span className="tabular-nums">
                         {new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </span>
-                      <span className="text-[#484F58]">·</span>
-                      <span className="text-[#E6EDF3] truncate">{p.sourceTaskTitle}</span>
-                      <span className="ml-auto text-[#0078D4] font-semibold flex-shrink-0">{p.score}%</span>
+                      <span className="text-muted-foreground/60">·</span>
+                      <span className="text-foreground truncate">{p.sourceTaskTitle}</span>
+                      <span className="ml-auto text-primary font-semibold flex-shrink-0">{p.score}%</span>
                     </div>
                   ))}
                 </div>
@@ -506,16 +506,16 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
 
       {/* Category breakdown */}
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Category Breakdown</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Category Breakdown</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {d.categories.map(cat => (
             <div
               key={cat.key}
-              className={`bg-[#0D1117] rounded-xl border p-4 ${cat.hasAlert ? "border-amber-500/40" : "border-[#30363D]"}`}
+              className={`bg-background rounded-xl border p-4 ${cat.hasAlert ? "border-amber-500/40" : "border-border"}`}
             >
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-[#0078D4]">{CATEGORY_ICONS[cat.key]}</span>
-                <span className="text-xs font-semibold text-[#E6EDF3]">{cat.label}</span>
+                <span className="text-primary">{CATEGORY_ICONS[cat.key]}</span>
+                <span className="text-xs font-semibold text-foreground">{cat.label}</span>
                 {cat.hasAlert && (
                   <span className="ml-auto text-[9px] font-bold uppercase bg-amber-500/15 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/30">Alert</span>
                 )}
@@ -525,16 +525,16 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
                 <div className="flex-1 min-w-0">
                   {hasHistory && cat.firstScore !== cat.latestScore ? (
                     <>
-                      <p className="text-[10px] text-[#7D8590]">Start → Now</p>
-                      <p className="text-xs font-bold text-[#E6EDF3]">{cat.firstScore}% → {cat.latestScore}%</p>
+                      <p className="text-[10px] text-muted-foreground">Start → Now</p>
+                      <p className="text-xs font-bold text-foreground">{cat.firstScore}% → {cat.latestScore}%</p>
                       <div className="mt-1">
                         <DeltaBadge delta={cat.delta} />
                       </div>
                     </>
                   ) : (
                     <>
-                      <p className="text-[10px] text-[#7D8590]">Current score</p>
-                      <p className="text-xs font-bold text-[#E6EDF3]">{cat.latestScore}%</p>
+                      <p className="text-[10px] text-muted-foreground">Current score</p>
+                      <p className="text-xs font-bold text-foreground">{cat.latestScore}%</p>
                     </>
                   )}
                 </div>
@@ -547,15 +547,15 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
       {/* 30-day alerts */}
       {alerts.length > 0 && (
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">30-Day Alerts</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">30-Day Alerts</p>
           <div className="bg-amber-500/8 border border-amber-500/30 rounded-xl p-4 space-y-2">
             <p className="text-[10px] text-amber-400 font-medium mb-2">
               {alerts.length} {alerts.length === 1 ? "category has" : "categories have"} moved ≥10 points in the last 30 days.
             </p>
             {alerts.map(cat => (
-              <div key={cat.key} className="flex items-center gap-3 bg-[#161B22] rounded-lg px-3 py-2 border border-amber-500/20">
+              <div key={cat.key} className="flex items-center gap-3 bg-card rounded-lg px-3 py-2 border border-amber-500/20">
                 <span className="text-amber-500">{CATEGORY_ICONS[cat.key]}</span>
-                <span className="text-xs font-semibold text-[#E6EDF3] flex-1">{cat.label}</span>
+                <span className="text-xs font-semibold text-foreground flex-1">{cat.label}</span>
                 <DeltaBadge delta={cat.delta} />
               </div>
             ))}

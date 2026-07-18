@@ -248,7 +248,7 @@ export default function MonitoringPackagesPage() {
             variant="outline"
             size="sm"
             onClick={() => downloadTemplate("monitoring-packages-template.json", MONITORING_PACKAGE_TEMPLATE)}
-            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+            className="border-border text-gray-300 hover:text-white hover:border-gray-400 text-xs"
           >
             Template
           </Button>
@@ -256,7 +256,7 @@ export default function MonitoringPackagesPage() {
             variant="outline"
             size="sm"
             onClick={() => openImportDialog()}
-            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+            className="border-border text-gray-300 hover:text-white hover:border-gray-400 text-xs"
           >
             Import JSON
           </Button>
@@ -264,11 +264,11 @@ export default function MonitoringPackagesPage() {
             variant="outline"
             size="sm"
             onClick={() => exportJson("monitoring-packages.json", packages)}
-            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+            className="border-border text-gray-300 hover:text-white hover:border-gray-400 text-xs"
           >
             Export JSON
           </Button>
-          <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+          <Button onClick={openCreate} className="bg-primary hover:bg-[#006cbf] text-white">
             + New Package
           </Button>
         </div>
@@ -279,24 +279,24 @@ export default function MonitoringPackagesPage() {
           placeholder="Search packages…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="max-w-sm bg-[#161B22] border-[#30363D] text-white"
+          className="max-w-sm bg-card border-border text-white"
         />
         <span className="text-sm text-gray-500">{filtered.length} packages</span>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
       ) : (
         <div className="space-y-3">
           {filtered.length === 0 && (
             <div className="text-center py-12 text-gray-500">No monitoring packages yet — create the first one</div>
           )}
           {filtered.map(pkg => (
-            <div key={pkg.key} className="bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden">
+            <div key={pkg.key} className="bg-card border border-border rounded-lg overflow-hidden">
               <div className="p-4 flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm text-[#0078D4]">{pkg.key}</span>
+                    <span className="font-mono text-sm text-primary">{pkg.key}</span>
                     <Badge variant="outline" className={pkg.status === "active" ? "border-green-500/30 text-green-400" : "border-gray-500/30 text-gray-400"}>
                       {pkg.status}
                     </Badge>
@@ -331,7 +331,7 @@ export default function MonitoringPackagesPage() {
               </div>
 
               {expandedPkg === pkg.key && (
-                <div className="border-t border-[#30363D] bg-[#0D1117] px-4 py-3">
+                <div className="border-t border-border bg-background px-4 py-3">
                   {(pkgChecks[pkg.key] ?? []).length === 0 ? (
                     <p className="text-sm text-gray-500">No checks assigned — click Assign to add checks</p>
                   ) : (
@@ -339,7 +339,7 @@ export default function MonitoringPackagesPage() {
                       {(pkgChecks[pkg.key] ?? []).map((link, i) => (
                         <div key={link.checkKey} className="flex items-center gap-3 text-sm">
                           <span className="text-gray-500 w-4 text-right">{i + 1}.</span>
-                          <span className="font-mono text-[#0078D4] text-xs">{link.checkKey}</span>
+                          <span className="font-mono text-primary text-xs">{link.checkKey}</span>
                           {link.check && (
                             <>
                               <span className="text-gray-300">{link.check.label}</span>
@@ -366,7 +366,7 @@ export default function MonitoringPackagesPage() {
       />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-lg">
+        <DialogContent className="bg-card border-border text-white max-w-lg">
           <DialogHeader><DialogTitle>{editingPkg?.id ? "Edit Package" : "New Monitoring Package"}</DialogTitle></DialogHeader>
           {editingPkg && (
             <div className="space-y-4">
@@ -378,7 +378,7 @@ export default function MonitoringPackagesPage() {
                     onChange={e => updateField("key", e.target.value)}
                     placeholder="m365-security-baseline"
                     disabled={Boolean(editingPkg.id)}
-                    className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                    className="bg-background border-border text-white mt-1 font-mono text-sm"
                   />
                 </div>
                 <div>
@@ -387,7 +387,7 @@ export default function MonitoringPackagesPage() {
                     value={editingPkg.label ?? ""}
                     onChange={e => updateField("label", e.target.value)}
                     placeholder="M365 Security Baseline"
-                    className="bg-[#0D1117] border-[#30363D] text-white mt-1"
+                    className="bg-background border-border text-white mt-1"
                   />
                 </div>
               </div>
@@ -397,7 +397,7 @@ export default function MonitoringPackagesPage() {
                   value={editingPkg.description ?? ""}
                   onChange={e => updateField("description", e.target.value)}
                   rows={2}
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1"
+                  className="bg-background border-border text-white mt-1"
                 />
               </div>
               <div>
@@ -406,14 +406,14 @@ export default function MonitoringPackagesPage() {
                   value={(editingPkg.engines ?? []).join(", ")}
                   onChange={e => updateField("engines", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
                   placeholder="health, monitoring, priority"
-                  className="bg-[#0D1117] border-[#30363D] text-white mt-1 font-mono text-sm"
+                  className="bg-background border-border text-white mt-1 font-mono text-sm"
                 />
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowDialog(false)} className="text-gray-400">Cancel</Button>
-            <Button onClick={handleSave} disabled={saving} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+            <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-[#006cbf] text-white">
               {saving ? "Saving…" : "Save Package"}
             </Button>
           </DialogFooter>
@@ -421,21 +421,21 @@ export default function MonitoringPackagesPage() {
       </Dialog>
 
       <Dialog open={showChecksDialog} onOpenChange={setShowChecksDialog}>
-        <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-white max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Assign Checks to {selectedPkgKey}</DialogTitle></DialogHeader>
           <p className="text-sm text-gray-400">Select the checks to include in this package. Order is preserved.</p>
           <div className="space-y-2 mt-2">
             {allChecks.filter(c => c.status === "active").map(check => (
-              <label key={check.key} className="flex items-start gap-3 p-3 rounded-lg hover:bg-[#0D1117] cursor-pointer">
+              <label key={check.key} className="flex items-start gap-3 p-3 rounded-lg hover:bg-background cursor-pointer">
                 <input
                   type="checkbox"
                   checked={assignedCheckKeys.includes(check.key)}
                   onChange={() => toggleCheckAssignment(check.key)}
-                  className="mt-0.5 accent-[#0078D4]"
+                  className="mt-0.5 accent-primary"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[#0078D4]">{check.key}</span>
+                    <span className="font-mono text-xs text-primary">{check.key}</span>
                     <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400">{check.frequency}</Badge>
                     {check.requiresCustomerScript && (
                       <Badge variant="outline" className="text-xs border-purple-500/30 text-purple-400">script</Badge>
@@ -452,7 +452,7 @@ export default function MonitoringPackagesPage() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowChecksDialog(false)} className="text-gray-400">Cancel</Button>
-            <Button onClick={handleSaveChecks} disabled={saving} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+            <Button onClick={handleSaveChecks} disabled={saving} className="bg-primary hover:bg-[#006cbf] text-white">
               {saving ? "Saving…" : "Save Assignment"}
             </Button>
           </DialogFooter>

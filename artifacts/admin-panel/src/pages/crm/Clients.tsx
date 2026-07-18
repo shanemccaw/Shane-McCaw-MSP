@@ -103,7 +103,7 @@ function timeAgo(ts: string) {
 }
 
 function ScoreBadge({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-xs text-[#484F58]">—</span>;
+  if (score === null) return <span className="text-xs text-muted-foreground/60">—</span>;
   const pct = Math.min(100, Math.round((score / 100) * 100));
   const color =
     pct >= 70 ? "text-emerald-400" : pct >= 40 ? "text-amber-400" : "text-red-400";
@@ -153,16 +153,16 @@ function DeleteConfirmDialog({
 
   return (
     <Dialog open onOpenChange={open => { if (!open && !deleting) onClose(); }}>
-      <DialogContent className="bg-[#161B22] border-border text-[#E6EDF3] max-w-md">
+      <DialogContent className="bg-card border-border text-foreground max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-[#E6EDF3]">Delete {client.name ?? client.email}?</DialogTitle>
+          <DialogTitle className="text-foreground">Delete {client.name ?? client.email}?</DialogTitle>
           <DialogDescription className="text-muted-foreground">
             This will permanently remove the client and all associated data.
           </DialogDescription>
         </DialogHeader>
         {loadingPreview ? (
-          <div className="flex items-center gap-2 py-2 text-sm text-[#7D8590]">
-            <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             Checking data…
           </div>
         ) : preview ? (
@@ -190,7 +190,7 @@ function DeleteConfirmDialog({
           <button
             onClick={onClose}
             disabled={deleting}
-            className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
+            className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-accent disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -238,27 +238,27 @@ function ClientEmailPanel({ client, onClose }: { client: EnrichedClient; onClose
 
   return (
     <tr>
-      <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
+      <td colSpan={7} className="px-0 py-0 border-b border-border bg-primary/5">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-            <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
+            <span className="text-xs font-bold text-primary uppercase tracking-widest">
               Email Activity · @{clientDomain}
             </span>
-            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
           {loading ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-[#7D8590]">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               Loading…
             </div>
           ) : error ? (
             <p className="text-sm text-red-400">{error}</p>
           ) : emails.length === 0 ? (
-            <p className="text-sm text-[#7D8590]">No emails from @{clientDomain} yet.</p>
+            <p className="text-sm text-muted-foreground">No emails from @{clientDomain} yet.</p>
           ) : (
             <div className="space-y-3">
               {unlinked.length > 0 && (
@@ -268,15 +268,15 @@ function ClientEmailPanel({ client, onClose }: { client: EnrichedClient; onClose
                   </p>
                   <div className="space-y-1.5">
                     {unlinked.map(row => (
-                      <div key={row.email.id} className="flex items-center gap-3 bg-[#161B22] border border-amber-500/20 rounded-lg px-3 py-2">
+                      <div key={row.email.id} className="flex items-center gap-3 bg-card border border-amber-500/20 rounded-lg px-3 py-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#E6EDF3] truncate">{row.email.subject ?? "(no subject)"}</p>
-                          <p className="text-[10px] text-[#7D8590]">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
+                          <p className="text-xs font-medium text-foreground truncate">{row.email.subject ?? "(no subject)"}</p>
+                          <p className="text-[10px] text-muted-foreground">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
                         </div>
                         <button
                           disabled={assigningId === row.email.id}
                           onClick={() => assignEmail(row.email.id, client.id).then(() => void load()).catch(() => null)}
-                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold bg-[#0078D4] text-white rounded-md hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold bg-primary text-white rounded-md hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
                         >
                           Link
                         </button>
@@ -292,15 +292,15 @@ function ClientEmailPanel({ client, onClose }: { client: EnrichedClient; onClose
                   </p>
                   <div className="space-y-1.5">
                     {linkedToThis.map(row => (
-                      <div key={row.email.id} className="flex items-center gap-3 bg-[#161B22] border border-emerald-500/20 rounded-lg px-3 py-2">
+                      <div key={row.email.id} className="flex items-center gap-3 bg-card border border-emerald-500/20 rounded-lg px-3 py-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#E6EDF3] truncate">{row.email.subject ?? "(no subject)"}</p>
-                          <p className="text-[10px] text-[#7D8590]">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
+                          <p className="text-xs font-medium text-foreground truncate">{row.email.subject ?? "(no subject)"}</p>
+                          <p className="text-[10px] text-muted-foreground">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
                         </div>
                         <button
                           disabled={assigningId === row.email.id}
                           onClick={() => assignEmail(row.email.id, null).then(() => void load()).catch(() => null)}
-                          className="shrink-0 px-2.5 py-1 text-[11px] text-[#7D8590] border border-[#30363D] rounded-md hover:border-red-500/40 hover:text-red-400 disabled:opacity-50 transition-colors"
+                          className="shrink-0 px-2.5 py-1 text-[11px] text-muted-foreground border border-border rounded-md hover:border-red-500/40 hover:text-red-400 disabled:opacity-50 transition-colors"
                         >
                           Unlink
                         </button>
@@ -395,11 +395,11 @@ function ClientSharePointPanel({
 
   return (
     <tr>
-      <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
+      <td colSpan={7} className="px-0 py-0 border-b border-border bg-primary/5">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-            <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">SharePoint Site</span>
-            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+            <span className="text-xs font-bold text-primary uppercase tracking-widest">SharePoint Site</span>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -411,12 +411,12 @@ function ClientSharePointPanel({
               placeholder="https://contoso.sharepoint.com/sites/…"
               value={urlInput}
               onChange={e => setUrlInput(e.target.value)}
-              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22] text-[#E6EDF3]"
+              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-card text-foreground"
             />
             <button
               onClick={() => void handleSave()}
               disabled={saving}
-              className="px-3 py-2 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+              className="px-3 py-2 bg-primary text-white text-xs font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -425,21 +425,21 @@ function ClientSharePointPanel({
             <button
               onClick={() => void handleProvision()}
               disabled={provisioning}
-              className="text-xs font-semibold text-[#0078D4] hover:underline disabled:opacity-50 transition-colors"
+              className="text-xs font-semibold text-primary hover:underline disabled:opacity-50 transition-colors"
             >
               {provisioning ? "Provisioning…" : "Auto-provision site"}
             </button>
             {client.sharepointSiteUrl && (
               <>
-                <span className="text-[#484F58]">·</span>
+                <span className="text-muted-foreground/60">·</span>
                 <a href={client.sharepointSiteUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-emerald-400 hover:underline">
                   Open site ↗
                 </a>
-                <span className="text-[#484F58]">·</span>
+                <span className="text-muted-foreground/60">·</span>
                 <button
                   onClick={() => void handleAddOwner()}
                   disabled={addingOwner}
-                  className="text-xs font-semibold text-[#7D8590] hover:text-[#0078D4] disabled:opacity-50 transition-colors"
+                  className="text-xs font-semibold text-muted-foreground hover:text-primary disabled:opacity-50 transition-colors"
                 >
                   {addingOwner ? "Adding…" : "Add Shane as owner"}
                 </button>
@@ -684,10 +684,10 @@ export default function ClientsPage() {
   }
 
   function SortIcon({ col }: { col: typeof sortKey }) {
-    if (sortKey !== col) return <svg className="w-3 h-3 text-[#484F58] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" /></svg>;
+    if (sortKey !== col) return <svg className="w-3 h-3 text-muted-foreground/60 inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" /></svg>;
     return sortDir === "asc"
-      ? <svg className="w-3 h-3 text-[#0078D4] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
-      : <svg className="w-3 h-3 text-[#0078D4] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
+      ? <svg className="w-3 h-3 text-primary inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+      : <svg className="w-3 h-3 text-primary inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
   }
 
   const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0) +
@@ -705,14 +705,14 @@ export default function ClientsPage() {
   );
 
   const inputCls =
-    "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
+    "w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary bg-accent";
 
   return (
     <div className="p-4 sm:p-6 max-w-[1400px]">
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-xl font-bold text-[#E6EDF3]">Clients</h1>
+          <h1 className="text-xl font-bold text-foreground">Clients</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {clients.length} client{clients.length !== 1 ? "s" : ""} — click a name to open the command center
           </p>
@@ -720,7 +720,7 @@ export default function ClientsPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate("/crm/testimonials")}
-            className="flex items-center gap-2 border border-border text-[#E6EDF3] text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#1C2128] transition-colors"
+            className="flex items-center gap-2 border border-border text-foreground text-sm font-medium px-4 py-2 rounded-lg hover:bg-accent transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
@@ -729,7 +729,7 @@ export default function ClientsPage() {
           </button>
           <button
             onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setError(""); }}
-            className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+            className="flex items-center gap-2 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -749,14 +749,14 @@ export default function ClientsPage() {
           placeholder="Search by name, email or company…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22] text-[#E6EDF3]"
+          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-card text-foreground"
         />
       </div>
 
       {/* ── Add / Edit form ─────────────────────────────────────────── */}
       {showForm && (
-        <div className="bg-[#1C2128] border border-border rounded-xl p-5 mb-6">
-          <h3 className="text-sm font-bold text-[#E6EDF3] mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
+        <div className="bg-accent border border-border rounded-xl p-5 mb-6">
+          <h3 className="text-sm font-bold text-foreground mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
           {!editingId && (
             <p className="text-xs text-muted-foreground mb-4">
               A portal invite email will be sent automatically so the client can set their own password.
@@ -764,29 +764,29 @@ export default function ClientsPage() {
           )}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Email *</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">Email *</label>
               <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Name</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">Name</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Company</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">Company</label>
               <input type="text" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Phone</label>
+              <label className="block text-xs font-semibold text-foreground mb-1">Phone</label>
               <input type="text" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} />
             </div>
             {error && (
               <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
             )}
             <div className="sm:col-span-2 flex gap-3">
-              <button type="submit" disabled={saving} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
+              <button type="submit" disabled={saving} className="bg-primary text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors">
                 {saving ? "Saving…" : editingId ? "Save Changes" : "Create & Send Invite"}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }} className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">
+              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }} className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-accent transition-colors">
                 Cancel
               </button>
             </div>
@@ -797,22 +797,22 @@ export default function ClientsPage() {
       {/* ── Table + Filter Sidebar ──────────────────────────────────── */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : clients.length === 0 ? (
-        <div className="bg-[#161B22] border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
+        <div className="bg-card border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
           No clients yet. Add a client account to give them portal access.
         </div>
       ) : (
         <div className="flex gap-4 items-start">
           {/* Filter Sidebar */}
-          <div className="w-44 flex-shrink-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2.5 bg-[#1C2128] border-b border-border">
+          <div className="w-44 flex-shrink-0 bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2.5 bg-accent border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filters</p>
               {activeFilterCount > 0 && (
                 <button
                   onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); setFilterIndustry("all"); setFilterOnboarding("all"); }}
-                  className="text-[10px] font-semibold text-[#0078D4] hover:underline"
+                  className="text-[10px] font-semibold text-primary hover:underline"
                 >
                   Clear {activeFilterCount}
                 </button>
@@ -828,7 +828,7 @@ export default function ClientsPage() {
                     const labels = { all: "All clients", active: "Has projects", "no-projects": "No projects" };
                     return (
                       <button key={opt} onClick={() => setFilterStatus(opt)}
-                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterStatus === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterStatus === opt ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                         {labels[opt]}
                       </button>
                     );
@@ -842,7 +842,7 @@ export default function ClientsPage() {
                 <div className="space-y-0.5">
                   {(["all", "Expert", "Intermediate", "Beginner"] as const).map(opt => (
                     <button key={opt} onClick={() => setFilterTier(opt)}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterTier === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterTier === opt ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       {opt === "all" ? "All tiers" : opt}
                     </button>
                   ))}
@@ -855,12 +855,12 @@ export default function ClientsPage() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">License Tier</p>
                   <div className="space-y-0.5">
                     <button onClick={() => setFilterLicenseTier("all")}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterLicenseTier === "all" ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterLicenseTier === "all" ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       All licenses
                     </button>
                     {distinctLicenseTiers.map(t => (
                       <button key={t} onClick={() => setFilterLicenseTier(t)}
-                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterLicenseTier === t ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterLicenseTier === t ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                         {t}
                       </button>
                     ))}
@@ -874,7 +874,7 @@ export default function ClientsPage() {
                 <div className="space-y-0.5">
                   {(["all", "high", "medium", "low"] as const).map(opt => (
                     <button key={opt} onClick={() => setFilterAiRisk(opt)}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiRisk === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiRisk === opt ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       {opt === "all" ? "All risk levels" : opt.charAt(0).toUpperCase() + opt.slice(1)}
                     </button>
                   ))}
@@ -887,7 +887,7 @@ export default function ClientsPage() {
                 <div className="space-y-0.5">
                   {(["all", "high", "medium", "low"] as const).map(opt => (
                     <button key={opt} onClick={() => setFilterAiOpp(opt)}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiOpp === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiOpp === opt ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       {opt === "all" ? "All levels" : opt.charAt(0).toUpperCase() + opt.slice(1)}
                     </button>
                   ))}
@@ -900,12 +900,12 @@ export default function ClientsPage() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Industry</p>
                   <div className="space-y-0.5">
                     <button onClick={() => setFilterIndustry("all")}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterIndustry === "all" ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterIndustry === "all" ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                       All industries
                     </button>
                     {distinctIndustries.map(ind => (
                       <button key={ind} onClick={() => setFilterIndustry(ind)}
-                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterIndustry === ind ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterIndustry === ind ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                         {ind}
                       </button>
                     ))}
@@ -921,7 +921,7 @@ export default function ClientsPage() {
                     const labels = { all: "All clients", complete: "Setup complete", pending: "Pending setup" };
                     return (
                       <button key={opt} onClick={() => setFilterOnboarding(opt)}
-                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterOnboarding === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterOnboarding === opt ? "bg-primary/15 text-primary font-semibold" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}>
                         {labels[opt]}
                       </button>
                     );
@@ -933,11 +933,11 @@ export default function ClientsPage() {
               <div className="border-t border-border pt-3 space-y-1.5">
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Total</span>
-                  <span className="text-[#E6EDF3] font-semibold">{clients.length}</span>
+                  <span className="text-foreground font-semibold">{clients.length}</span>
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Showing</span>
-                  <span className="text-[#E6EDF3] font-semibold">{sortedFilteredClients.length}</span>
+                  <span className="text-foreground font-semibold">{sortedFilteredClients.length}</span>
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Setup done</span>
@@ -953,21 +953,21 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">M365 profile filled</span>
-                  <span className="text-[#E6EDF3] font-semibold">{clients.filter(c => c.hasM365Profile).length}</span>
+                  <span className="text-foreground font-semibold">{clients.filter(c => c.hasM365Profile).length}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Table */}
-          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
+          <div className="flex-1 min-w-0 bg-card border border-border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-[#1C2128] border-b border-border">
+              <thead className="bg-accent border-b border-border">
                 <tr>
                   <th className="pl-4 pr-2 py-3 w-10">
                     <input
                       type="checkbox"
-                      className="accent-[#0078D4] w-4 h-4 cursor-pointer"
+                      className="accent-primary w-4 h-4 cursor-pointer"
                       checked={sortedFilteredClients.length > 0 && sortedFilteredClients.every(c => selectedIds.has(c.id))}
                       onChange={e => {
                         if (e.target.checked) {
@@ -979,28 +979,28 @@ export default function ClientsPage() {
                     />
                   </th>
                   <th className="text-left px-5 py-3">
-                    <button onClick={() => toggleSort("name")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                    <button onClick={() => toggleSort("name")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
                       Name / Email<SortIcon col="name" />
                     </button>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
                   <th className="text-center px-3 py-3 hidden md:table-cell">
-                    <button onClick={() => toggleSort("projects")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                    <button onClick={() => toggleSort("projects")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
                       Projects<SortIcon col="projects" />
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden md:table-cell">
-                    <button onClick={() => toggleSort("tasks")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                    <button onClick={() => toggleSort("tasks")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
                       Tasks<SortIcon col="tasks" />
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden lg:table-cell">
-                    <button onClick={() => toggleSort("copilot")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                    <button onClick={() => toggleSort("copilot")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
                       Copilot<SortIcon col="copilot" />
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden lg:table-cell">
-                    <button onClick={() => toggleSort("governance")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                    <button onClick={() => toggleSort("governance")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
                       Gov.<SortIcon col="governance" />
                     </button>
                   </th>
@@ -1026,13 +1026,13 @@ export default function ClientsPage() {
                       <tr
                         onMouseEnter={() => setHoverRowId(c.id)}
                         onMouseLeave={() => setHoverRowId(null)}
-                        className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : hoverRowId === c.id ? "bg-[#1C2128]" : ""}`}
+                        className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-accent" : hoverRowId === c.id ? "bg-accent" : ""}`}
                       >
                         {/* Checkbox */}
                         <td className="pl-4 pr-2 py-3.5" onClick={e => e.stopPropagation()}>
                           <input
                             type="checkbox"
-                            className="accent-[#0078D4] w-4 h-4 cursor-pointer"
+                            className="accent-primary w-4 h-4 cursor-pointer"
                             checked={selectedIds.has(c.id)}
                             onChange={e => {
                               setSelectedIds(prev => {
@@ -1046,8 +1046,8 @@ export default function ClientsPage() {
                         {/* Name / Email */}
                         <td className="px-5 py-3.5">
                           <button onClick={() => navigate(`/crm/clients/${c.id}`)} className="text-left group">
-                            <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors leading-tight">
-                              {c.name ?? <span className="text-[#484F58]">—</span>}
+                            <p className="font-semibold text-foreground group-hover:text-primary transition-colors leading-tight">
+                              {c.name ?? <span className="text-muted-foreground/60">—</span>}
                             </p>
                             <p className="text-xs text-muted-foreground">{c.email}</p>
                           </button>
@@ -1059,14 +1059,14 @@ export default function ClientsPage() {
                         {/* Projects */}
                         <td className="px-3 py-3.5 text-center hidden md:table-cell">
                           {c.projectCount === 0 ? (
-                            <span className="text-xs text-[#484F58]">—</span>
+                            <span className="text-xs text-muted-foreground/60">—</span>
                           ) : (
                             <div className="inline-flex items-center gap-1">
-                              {c.activeProjectCount > 0 && <span className="text-xs font-bold text-[#0078D4]">{c.activeProjectCount}</span>}
+                              {c.activeProjectCount > 0 && <span className="text-xs font-bold text-primary">{c.activeProjectCount}</span>}
                               {c.projectCount > c.activeProjectCount && (
-                                <span className="text-xs text-[#484F58]">{c.activeProjectCount > 0 ? `+${c.projectCount - c.activeProjectCount}` : c.projectCount}</span>
+                                <span className="text-xs text-muted-foreground/60">{c.activeProjectCount > 0 ? `+${c.projectCount - c.activeProjectCount}` : c.projectCount}</span>
                               )}
-                              {c.activeProjectCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] inline-block" />}
+                              {c.activeProjectCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
                             </div>
                           )}
                         </td>
@@ -1074,9 +1074,9 @@ export default function ClientsPage() {
                         {/* Open Tasks */}
                         <td className="px-3 py-3.5 text-center hidden md:table-cell">
                           {c.openTaskCount === 0 ? (
-                            <span className="text-xs text-[#484F58]">—</span>
+                            <span className="text-xs text-muted-foreground/60">—</span>
                           ) : (
-                            <span className={`text-xs font-bold tabular-nums ${c.openTaskCount > 5 ? "text-amber-400" : "text-[#E6EDF3]"}`}>{c.openTaskCount}</span>
+                            <span className={`text-xs font-bold tabular-nums ${c.openTaskCount > 5 ? "text-amber-400" : "text-foreground"}`}>{c.openTaskCount}</span>
                           )}
                         </td>
 
@@ -1084,14 +1084,14 @@ export default function ClientsPage() {
                         <td className="px-3 py-3.5 text-center hidden lg:table-cell">
                           {c.copilotReadinessScore !== null ? (
                             <span className={`text-xs font-bold tabular-nums ${c.copilotReadinessScore >= 70 ? "text-emerald-400" : c.copilotReadinessScore >= 40 ? "text-amber-400" : "text-red-400"}`}>{c.copilotReadinessScore}</span>
-                          ) : <span className="text-xs text-[#484F58]">—</span>}
+                          ) : <span className="text-xs text-muted-foreground/60">—</span>}
                         </td>
 
                         {/* Governance Score */}
                         <td className="px-3 py-3.5 text-center hidden lg:table-cell">
                           {c.governanceScore !== null ? (
                             <span className={`text-xs font-bold tabular-nums ${c.governanceScore >= 70 ? "text-emerald-400" : c.governanceScore >= 40 ? "text-amber-400" : "text-red-400"}`}>{c.governanceScore}</span>
-                          ) : <span className="text-xs text-[#484F58]">—</span>}
+                          ) : <span className="text-xs text-muted-foreground/60">—</span>}
                         </td>
 
                         {/* App Registration status */}
@@ -1112,7 +1112,7 @@ export default function ClientsPage() {
                               Pending
                             </span>
                           ) : (
-                            <span className="text-xs text-[#484F58]">—</span>
+                            <span className="text-xs text-muted-foreground/60">—</span>
                           )}
                         </td>
 
@@ -1124,8 +1124,8 @@ export default function ClientsPage() {
                               Done
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-[#30363D] text-[#7D8590] border-border">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#484F58]" />
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-border text-muted-foreground border-border">
+                              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60" />
                               None
                             </span>
                           )}
@@ -1136,7 +1136,7 @@ export default function ClientsPage() {
                           <div className="flex items-center gap-1.5 justify-end">
                             <button
                               onClick={() => navigate(`/crm/clients/${c.id}`)}
-                              className="text-xs font-semibold text-[#0078D4] hover:underline"
+                              className="text-xs font-semibold text-primary hover:underline"
                             >
                               Open
                             </button>
@@ -1148,7 +1148,7 @@ export default function ClientsPage() {
                                 setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
                                 setMenuOpenId(c.id);
                               }}
-                              className="p-1 text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#30363D] rounded transition-colors"
+                              className="p-1 text-muted-foreground hover:text-foreground hover:bg-border rounded transition-colors"
                               title="More actions"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1182,20 +1182,20 @@ export default function ClientsPage() {
 
       {/* ── Bulk Action Bar ── */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#1C2128] border border-border rounded-xl px-5 py-3 shadow-xl">
-          <span className="text-sm font-semibold text-[#E6EDF3]">{selectedIds.size} selected</span>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-accent border border-border rounded-xl px-5 py-3 shadow-xl">
+          <span className="text-sm font-semibold text-foreground">{selectedIds.size} selected</span>
           <div className="w-px h-4 bg-border" />
           <button
             onClick={() => {
               toast({ title: "Send Status Email", description: `Status emails queued for ${selectedIds.size} client(s). (Coming soon)` });
             }}
-            className="text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs font-semibold text-white bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg transition-colors"
           >
             Send Status Email
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-xs font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+            className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             Cancel
           </button>
@@ -1227,7 +1227,7 @@ export default function ClientsPage() {
         return createPortal(
           <div
             ref={menuRef}
-            className="fixed z-[9999] w-48 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden"
+            className="fixed z-[9999] w-48 bg-accent border border-border rounded-xl shadow-xl overflow-hidden"
             style={{ top: menuPos.top, right: menuPos.right }}
           >
             {[
@@ -1244,7 +1244,7 @@ export default function ClientsPage() {
               <button
                 key={label}
                 onClick={action}
-                className={`w-full text-left text-xs px-3.5 py-2 hover:bg-[#30363D] transition-colors ${danger ? "text-red-400" : dim ? "text-muted-foreground" : "text-[#E6EDF3]"}`}
+                className={`w-full text-left text-xs px-3.5 py-2 hover:bg-border transition-colors ${danger ? "text-red-400" : dim ? "text-muted-foreground" : "text-foreground"}`}
               >
                 {label}
               </button>

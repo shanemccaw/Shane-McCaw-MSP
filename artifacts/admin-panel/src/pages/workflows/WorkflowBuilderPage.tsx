@@ -43,7 +43,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"               },
   error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"               },
   // ── Platform (generic — kept for backward compat with saved workflows) ──
-  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"              },
+  action:    { bg: "#0D1A2E", border: "#2F6FED",  icon: "⚡", label: "Action"              },
   // ── Promoted Platform / Communication nodes ──
   http_request:           { bg: "#0A1220", border: "#3B82F6",  icon: "🌐", label: "HTTP Request"           },
   sql_query:              { bg: "#0A1A12", border: "#10B981",  icon: "🗄️", label: "SQL Query"              },
@@ -141,7 +141,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   execute_baseline_template: { bg: "#0D1527", border: "#3B82F6", icon: "📑", label: "Execute Baseline Template" },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   // ── Calendar (Exchange / Microsoft Graph) ──
-  check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
+  check_exchange_calendar_availability: { bg: "#041620", border: "#2F6FED", icon: "📅", label: "Check Calendar"           },
   create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
   // ── SharePoint ──
   save_to_sharepoint: { bg: "#0A1A10", border: "#34D399", icon: "💾", label: "Save to SharePoint"  },
@@ -523,16 +523,16 @@ function CommentNode({ data, selected, id }: NodeProps) {
       onDoubleClick={handleDoubleClick}
       style={{
         background: "#FEF3C7",
-        border: `2px solid ${isEditing ? "#0078D4" : selected ? "#0078D4" : "#CA8A04"}`,
+        border: `2px solid ${isEditing ? "#2F6FED" : selected ? "#2F6FED" : "#CA8A04"}`,
         borderRadius: 10,
         padding: "10px 14px 12px",
         minWidth: 220,
         maxWidth: 300,
         cursor: isEditing ? "text" : "default",
         boxShadow: isEditing
-          ? "0 0 0 3px #0078D440, 0 4px 14px rgba(0,120,212,0.25)"
+          ? "0 0 0 3px #2F6FED40, 0 4px 14px rgba(0,120,212,0.25)"
           : selected
-          ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
+          ? "0 0 0 3px #2F6FED40, 0 4px 14px rgba(202,138,4,0.3)"
           : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
       }}
     >
@@ -618,12 +618,12 @@ function WfNode(props: NodeProps) {
     <div
       style={{
         background: style.bg,
-        border: `2px solid ${selected ? "#0078D4" : style.border}`,
+        border: `2px solid ${selected ? "#2F6FED" : style.border}`,
         borderRadius: 10,
         padding: "10px 16px",
         minWidth: 140,
         maxWidth: 200,
-        boxShadow: selected ? `0 0 0 2px #0078D440` : "0 2px 8px rgba(0,0,0,0.4)",
+        boxShadow: selected ? `0 0 0 2px #2F6FED40` : "0 2px 8px rgba(0,0,0,0.4)",
       }}
     >
       <Handle type="target" position={Position.Top} style={{ background: style.border, border: "none" }} />
@@ -634,9 +634,9 @@ function WfNode(props: NodeProps) {
           <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: style.border }}>
             {nodeType}
           </div>
-          <div className="text-xs font-medium text-[#E6EDF3] truncate leading-snug">{label}</div>
+          <div className="text-xs font-medium text-foreground truncate leading-snug">{label}</div>
           {(data.description as string | undefined) && (
-            <div className="text-[10px] text-[#7D8590] truncate mt-0.5">{data.description as string}</div>
+            <div className="text-[10px] text-muted-foreground truncate mt-0.5">{data.description as string}</div>
           )}
         </div>
       </div>
@@ -817,7 +817,7 @@ function WfNode(props: NodeProps) {
               </div>
             </>
           ) : (
-            <div className="text-[9px] text-center text-[#484F58] mt-1 italic">Terminal — no campaign</div>
+            <div className="text-[9px] text-center text-muted-foreground/60 mt-1 italic">Terminal — no campaign</div>
           )}
         </>
       ) : (
@@ -1127,22 +1127,22 @@ function LibraryNodeItem({
         e.dataTransfer.effectAllowed = "copy";
       }}
       onClick={() => { if (!isArchived) onAdd(); }}
-      className={`w-full flex items-start gap-2 p-2 rounded-lg border transition-colors group ${isArchived ? "opacity-40 cursor-not-allowed border-transparent" : "hover:bg-[#1C2128] border-transparent hover:border-[#30363D] cursor-grab active:cursor-grabbing"}`}
+      className={`w-full flex items-start gap-2 p-2 rounded-lg border transition-colors group ${isArchived ? "opacity-40 cursor-not-allowed border-transparent" : "hover:bg-accent border-transparent hover:border-border cursor-grab active:cursor-grabbing"}`}
     >
       <span style={{ color: s.border, fontSize: 13, lineHeight: 1, marginTop: 2 }}>{s.icon}</span>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-[#E6EDF3] leading-tight">{n.label}</p>
-        <p className="text-[9px] text-[#484F58] leading-tight mt-0.5 truncate">{n.description}</p>
+        <p className="text-xs font-medium text-foreground leading-tight">{n.label}</p>
+        <p className="text-[9px] text-muted-foreground/60 leading-tight mt-0.5 truncate">{n.description}</p>
         <div className="flex flex-wrap gap-1 mt-1">
           {n.tags.slice(0, 2).map(tag => (
-            <span key={tag} className="text-[8px] bg-[#1C2128] border border-[#30363D] text-[#484F58] px-1 rounded">{tag}</span>
+            <span key={tag} className="text-[8px] bg-accent border border-border text-muted-foreground/60 px-1 rounded">{tag}</span>
           ))}
         </div>
       </div>
       {!isArchived && (
         <button
           onClick={onToggleFav}
-          className={`flex-shrink-0 text-[10px] mt-0.5 transition-colors ${isFav ? "text-amber-400" : "text-[#30363D] group-hover:text-[#484F58]"}`}
+          className={`flex-shrink-0 text-[10px] mt-0.5 transition-colors ${isFav ? "text-amber-400" : "text-border group-hover:text-muted-foreground/60"}`}
           title={isFav ? "Remove from favourites" : "Add to favourites"}
         >
           {isFav ? "★" : "☆"}
@@ -1232,10 +1232,10 @@ function StartNodeTriggers({ defId }: { defId: number }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[#7D8590]">Triggers</span>
+        <span className="text-xs font-medium text-muted-foreground">Triggers</span>
         <button
           onClick={() => setShowAdd(v => !v)}
-          className="text-[10px] font-medium text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1"
+          className="text-[10px] font-medium text-primary hover:text-[#2E9EFF] transition-colors flex items-center gap-1"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1246,11 +1246,11 @@ function StartNodeTriggers({ defId }: { defId: number }) {
 
       {/* Add form */}
       {showAdd && (
-        <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-2.5">
+        <div className="rounded-lg bg-background border border-border p-3 space-y-2.5">
           <select
             value={newType}
             onChange={e => setNewType(e.target.value as typeof newType)}
-            className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+            className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
           >
             <option value="manual">🖱 Manual (API / Run Now)</option>
             <option value="schedule">📅 Schedule (cron)</option>
@@ -1263,7 +1263,7 @@ function StartNodeTriggers({ defId }: { defId: number }) {
               value={cronExpr}
               onChange={e => setCronExpr(e.target.value)}
               placeholder="Cron expression, e.g. 0 9 * * 1"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+              className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
             />
           )}
           {newType === "event" && (
@@ -1271,7 +1271,7 @@ function StartNodeTriggers({ defId }: { defId: number }) {
               <select
                 value={KNOWN_EVENTS.some(ev => ev.name === eventName) ? eventName : "__custom__"}
                 onChange={e => { if (e.target.value === "__custom__") setEventName(""); else setEventName(e.target.value); }}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
               >
                 <option value="__custom__">✏️ Custom event name…</option>
                 {Array.from(new Set(KNOWN_EVENTS.map(ev => ev.category))).map(cat => (
@@ -1283,19 +1283,19 @@ function StartNodeTriggers({ defId }: { defId: number }) {
                 ))}
               </select>
               {KNOWN_EVENTS.some(ev => ev.name === eventName) ? (
-                <p className="text-[10px] text-[#7D8590] leading-relaxed px-0.5">{KNOWN_EVENTS.find(ev => ev.name === eventName)?.description}</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed px-0.5">{KNOWN_EVENTS.find(ev => ev.name === eventName)?.description}</p>
               ) : (
                 <input
                   value={eventName}
                   onChange={e => setEventName(e.target.value)}
                   placeholder="e.g. my.custom.event"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                 />
               )}
             </div>
           )}
           {newType === "webhook" && (
-            <p className="text-[10px] text-[#7D8590]">A unique webhook URL will be generated automatically.</p>
+            <p className="text-[10px] text-muted-foreground">A unique webhook URL will be generated automatically.</p>
           )}
 
           {addMut.isError && (
@@ -1306,13 +1306,13 @@ function StartNodeTriggers({ defId }: { defId: number }) {
             <button
               onClick={() => addMut.mutate()}
               disabled={addMut.isPending || (newType === "event" && !eventName.trim())}
-              className="flex-1 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-40 text-white text-[11px] font-medium py-1.5 rounded-lg transition-colors"
+              className="flex-1 bg-primary hover:bg-[#006CBD] disabled:opacity-40 text-white text-[11px] font-medium py-1.5 rounded-lg transition-colors"
             >
               {addMut.isPending ? "Adding…" : "Add Trigger"}
             </button>
             <button
               onClick={() => setShowAdd(false)}
-              className="px-3 text-[11px] text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors"
+              className="px-3 text-[11px] text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
             >
               Cancel
             </button>
@@ -1322,22 +1322,22 @@ function StartNodeTriggers({ defId }: { defId: number }) {
 
       {/* Trigger list */}
       {isLoading ? (
-        <p className="text-[10px] text-[#484F58] py-1">Loading…</p>
+        <p className="text-[10px] text-muted-foreground/60 py-1">Loading…</p>
       ) : triggers.length === 0 ? (
-        <p className="text-[10px] text-[#484F58] py-1">No triggers yet — add one above.</p>
+        <p className="text-[10px] text-muted-foreground/60 py-1">No triggers yet — add one above.</p>
       ) : (
         <div className="space-y-1.5">
           {triggers.map(t => (
-            <div key={t.id} className="rounded-lg bg-[#0D1117] border border-[#30363D] px-3 py-2 space-y-1">
+            <div key={t.id} className="rounded-lg bg-background border border-border px-3 py-2 space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="text-sm">{TRIGGER_ICONS[t.type] ?? "⚡"}</span>
-                  <span className="text-[11px] font-medium text-[#E6EDF3] capitalize">{t.type}</span>
+                  <span className="text-[11px] font-medium text-foreground capitalize">{t.type}</span>
                   {typeof t.config.cron === "string" && (
-                    <span className="text-[10px] font-mono text-[#7D8590] truncate">{t.config.cron}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground truncate">{t.config.cron}</span>
                   )}
                   {typeof t.config.eventName === "string" && (
-                    <span className="text-[10px] font-mono text-[#7D8590] truncate">{t.config.eventName}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground truncate">{t.config.eventName}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -1345,7 +1345,7 @@ function StartNodeTriggers({ defId }: { defId: number }) {
                   <button
                     onClick={() => toggleMut.mutate({ id: t.id, enabled: !t.enabled })}
                     title={t.enabled ? "Disable" : "Enable"}
-                    className={`w-7 h-4 rounded-full relative transition-colors ${t.enabled ? "bg-[#22C55E]/70" : "bg-[#30363D]"}`}
+                    className={`w-7 h-4 rounded-full relative transition-colors ${t.enabled ? "bg-[#22C55E]/70" : "bg-border"}`}
                   >
                     <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${t.enabled ? "left-3.5" : "left-0.5"}`} />
                   </button>
@@ -1360,7 +1360,7 @@ function StartNodeTriggers({ defId }: { defId: number }) {
                   ) : (
                     <button
                       onClick={() => setConfirmDel(t.id)}
-                      className="text-[#484F58] hover:text-[#EF4444] transition-colors"
+                      className="text-muted-foreground/60 hover:text-[#EF4444] transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1370,10 +1370,10 @@ function StartNodeTriggers({ defId }: { defId: number }) {
                 </div>
               </div>
               {t.type === "webhook" && t.webhookToken && (
-                <p className="text-[10px] font-mono text-[#484F58] break-all">{webhookBase}/{t.webhookToken}</p>
+                <p className="text-[10px] font-mono text-muted-foreground/60 break-all">{webhookBase}/{t.webhookToken}</p>
               )}
               {t.nextRunAt && (
-                <p className="text-[10px] text-[#484F58]">Next: {new Date(t.nextRunAt).toLocaleString()}</p>
+                <p className="text-[10px] text-muted-foreground/60">Next: {new Date(t.nextRunAt).toLocaleString()}</p>
               )}
             </div>
           ))}
@@ -1412,43 +1412,43 @@ function StartNodePayloadFields({
     update(fields.filter(f => f.id !== id));
   }
 
-  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60";
+  const inputCls = "w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60";
 
   return (
     <div className="space-y-2 pt-1">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Payload Variables</label>
+          <label className="text-xs font-medium text-muted-foreground">Payload Variables</label>
           <FieldHint text="Declare the variables this workflow receives at runtime (e.g. clientId, projectId). These appear in the {{token}} picker for every downstream node. For event triggers the fields are auto-detected; use this for manual, schedule, webhook, or chain-triggered runs where the fields aren't automatically known." />
         </div>
         <button
           onClick={addField}
-          className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+          className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors"
         >
           + Add variable
         </button>
       </div>
 
       {fields.length === 0 ? (
-        <p className="text-[10px] text-[#484F58] text-center py-2 border border-dashed border-[#30363D] rounded-lg">
+        <p className="text-[10px] text-muted-foreground/60 text-center py-2 border border-dashed border-border rounded-lg">
           {/* hint changes based on whether there's an event trigger */}
           Declare variables here to see them in the token picker below
         </p>
       ) : (
         <div className="space-y-1.5">
           {fields.map(f => (
-            <div key={f.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] p-2 space-y-1.5">
+            <div key={f.id} className="rounded-lg border border-border bg-background p-2 space-y-1.5">
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[9px] font-bold text-[#0078D4] uppercase tracking-wider">Variable</span>
+                <span className="text-[9px] font-bold text-primary uppercase tracking-wider">Variable</span>
                 <button
                   onClick={() => removeField(f.id)}
-                  className="text-[#484F58] hover:text-red-400 transition-colors text-xs"
+                  className="text-muted-foreground/60 hover:text-red-400 transition-colors text-xs"
                   title="Remove"
                 >✕</button>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="space-y-1">
-                  <label className="text-[10px] text-[#7D8590]">Key <span className="text-[#484F58]">(no spaces)</span></label>
+                  <label className="text-[10px] text-muted-foreground">Key <span className="text-muted-foreground/60">(no spaces)</span></label>
                   <input
                     type="text"
                     value={f.key}
@@ -1458,7 +1458,7 @@ function StartNodePayloadFields({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-[#7D8590]">Description</label>
+                  <label className="text-[10px] text-muted-foreground">Description</label>
                   <input
                     type="text"
                     value={f.label}
@@ -1909,7 +1909,7 @@ function ExpressionField({
       {/* Label row */}
       <div className="flex items-center justify-between min-h-[18px]">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+          <label className="text-xs font-medium text-muted-foreground">{label}</label>
           {hint && <FieldHint text={hint} />}
         </div>
         <div className="flex items-center gap-2">
@@ -1939,7 +1939,7 @@ function ExpressionField({
                   setPickerOpen(v => !v);
                   setPickerSearch("");
                 }}
-                className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
+                className="text-[10px] text-primary hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
@@ -1949,7 +1949,7 @@ function ExpressionField({
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => { setPickerOpen(false); setPickerSearch(""); }} />
                   <div
-                    className="fixed z-50 w-64 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden"
+                    className="fixed z-50 w-64 bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
                     style={{ top: pickerPos.top, right: pickerPos.right }}
                   >
                     <div className="px-2 pt-2 pb-1">
@@ -1959,7 +1959,7 @@ function ExpressionField({
                         value={pickerSearch}
                         onChange={e => setPickerSearch(e.target.value)}
                         placeholder="Search variables…"
-                        className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                        className="w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                       />
                     </div>
                     <div className="max-h-52 overflow-y-auto py-1">
@@ -1971,18 +1971,18 @@ function ExpressionField({
                             ? group.outputs.filter(o => o.key.toLowerCase().includes(q) || o.label.toLowerCase().includes(q))
                             : group.outputs,
                         })).filter(g => g.outputs.length > 0);
-                        if (filteredGroups.length === 0) return <p className="px-3 py-2 text-[10px] text-[#484F58]">No variables match.</p>;
+                        if (filteredGroups.length === 0) return <p className="px-3 py-2 text-[10px] text-muted-foreground/60">No variables match.</p>;
                         return filteredGroups.map(group => (
                           <div key={group.nodeId}>
-                            <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
+                            <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">{group.nodeName}</p>
                             {group.outputs.map(o => {
                               const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
                               return (
                                 <div key={o.key}>
                                   <button type="button" onClick={() => insertToken(tokenPath)}
-                                    className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                    className="w-full text-left px-3 py-1.5 hover:bg-background flex items-start justify-between gap-3">
                                     <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
-                                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                                    <span className="text-[10px] text-muted-foreground/60 text-right leading-tight">{o.label}</span>
                                   </button>
                                   {o.enumValues && o.enumValues.length > 0 && (
                                     <div className="px-3 pb-1.5 flex flex-wrap gap-1">
@@ -2013,7 +2013,7 @@ function ExpressionField({
       {/* AI helper popover */}
       {aiOpen && (
         <div className="rounded-lg border border-[#A78BFA]/40 bg-[#110D22] p-2.5 space-y-2">
-          <p className="text-[10px] text-[#7D8590] leading-relaxed">Describe what you want to check and AI will write the expression.</p>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">Describe what you want to check and AI will write the expression.</p>
           <div className="flex gap-2">
             <input
               autoFocus
@@ -2023,7 +2023,7 @@ function ExpressionField({
               onKeyDown={e => { if (e.key === "Enter") void handleAiSubmit(); if (e.key === "Escape") setAiOpen(false); }}
               placeholder="e.g. status is active and score is above 80"
               disabled={aiLoading}
-              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#A78BFA]/60 disabled:opacity-50"
+              className="flex-1 bg-background border border-border rounded px-2 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-[#A78BFA]/60 disabled:opacity-50"
             />
             <button
               type="button"
@@ -2050,7 +2050,7 @@ function ExpressionField({
             onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             rows={3}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none font-mono"
           />
         ) : (
           <input
@@ -2062,33 +2062,33 @@ function ExpressionField({
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
             onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
           />
         )}
         {suggest && filteredTokens.length > 0 && (
-          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden">
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-2xl overflow-hidden">
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredTokens.map((t, i) => (
                 <button
                   key={t.key}
                   type="button"
                   onMouseDown={e => { e.preventDefault(); pickSuggestion(t); }}
-                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-primary/20" : "hover:bg-background"}`}
                 >
                   <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0 truncate">{t.insertText}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {t.enumValue !== undefined && (
                       <span className="px-1 py-0.5 rounded text-[9px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/25">enum</span>
                     )}
-                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                    <span className="text-[10px] text-muted-foreground/60 text-right leading-tight">{t.label}</span>
                   </div>
                 </button>
               ))}
             </div>
-            <div className="px-3 py-1 border-t border-[#30363D] flex items-center gap-2">
-              <span className="text-[9px] text-[#484F58]">↑↓ navigate</span>
-              <span className="text-[9px] text-[#484F58]">↵ / Tab insert</span>
-              <span className="text-[9px] text-[#484F58]">Esc dismiss</span>
+            <div className="px-3 py-1 border-t border-border flex items-center gap-2">
+              <span className="text-[9px] text-muted-foreground/60">↑↓ navigate</span>
+              <span className="text-[9px] text-muted-foreground/60">↵ / Tab insert</span>
+              <span className="text-[9px] text-muted-foreground/60">Esc dismiss</span>
             </div>
           </div>
         )}
@@ -2125,11 +2125,11 @@ function ImageUrlField({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between min-h-[18px]">
-        <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+        <label className="text-xs font-medium text-muted-foreground">{label}</label>
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="flex items-center gap-1 text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+          className="flex items-center gap-1 text-[10px] text-primary hover:text-[#2E9EFF] transition-colors"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -2233,7 +2233,7 @@ function PlaySoundPanel({
     <>
       {/* Target */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Target</label>
+        <label className="text-xs font-medium text-muted-foreground">Target</label>
         <div className="flex gap-2">
           {(["browser", "desktop"] as const).map(t => (
             <button
@@ -2242,14 +2242,14 @@ function PlaySoundPanel({
               className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                 target === t
                   ? "bg-[#E879F9]/10 border-[#E879F9]/60 text-[#E879F9]"
-                  : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+                  : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"
               }`}
             >
               {t === "browser" ? "🌐 Browser" : "🖥 Desktop"}
             </button>
           ))}
         </div>
-        <p className="text-[10px] text-[#484F58] leading-relaxed">
+        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
           {target === "browser"
             ? "Plays audio directly in the open admin panel tab via the Web Audio API (instant)."
             : "Delivers a web push notification — plays audio in any tab when the SW broadcasts it."}
@@ -2258,7 +2258,7 @@ function PlaySoundPanel({
 
       {/* Sound mode */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Sound source</label>
+        <label className="text-xs font-medium text-muted-foreground">Sound source</label>
         <div className="flex gap-1.5">
           {([["preset", "Preset"], ["url", "Custom URL"], ["generate", "AI Generate"]] as const).map(([m, l]) => (
             <button
@@ -2267,7 +2267,7 @@ function PlaySoundPanel({
               className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium border transition-colors ${
                 soundMode === m
                   ? "bg-[#E879F9]/10 border-[#E879F9]/60 text-[#E879F9]"
-                  : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+                  : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"
               }`}
             >
               {l}
@@ -2279,11 +2279,11 @@ function PlaySoundPanel({
       {/* Preset picker */}
       {soundMode === "preset" && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Preset sound</label>
+          <label className="text-xs font-medium text-muted-foreground">Preset sound</label>
           <select
             value={sound}
             onChange={e => up({ sound: e.target.value })}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60"
           >
             {SOUND_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
@@ -2293,27 +2293,27 @@ function PlaySoundPanel({
       {/* Custom URL */}
       {soundMode === "url" && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Audio URL</label>
+          <label className="text-xs font-medium text-muted-foreground">Audio URL</label>
           <input
             value={url}
             onChange={e => up({ url: e.target.value })}
             placeholder="https://example.com/chime.mp3"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58]"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60 placeholder-muted-foreground/60"
           />
-          <p className="text-[10px] text-[#484F58]">Must be a publicly accessible audio file (MP3, OGG, WAV). Browser target only — URLs are not delivered via push.</p>
+          <p className="text-[10px] text-muted-foreground/60">Must be a publicly accessible audio file (MP3, OGG, WAV). Browser target only — URLs are not delivered via push.</p>
         </div>
       )}
 
       {/* AI Generate */}
       {soundMode === "generate" && (
         <div className="space-y-2">
-          <label className="text-xs font-medium text-[#7D8590]">Describe the moment</label>
+          <label className="text-xs font-medium text-muted-foreground">Describe the moment</label>
           <textarea
             value={synthDesc}
             onChange={e => up({ synthDesc: e.target.value })}
             placeholder="e.g. payment received, urgent warning, new lead"
             rows={2}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58] resize-none"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60 placeholder-muted-foreground/60 resize-none"
           />
           <button
             onClick={() => void handleGenerate()}
@@ -2324,7 +2324,7 @@ function PlaySoundPanel({
           </button>
           {synthError && <p className="text-[10px] text-red-400">{synthError}</p>}
           {synthParams && !synthError && (
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2 text-[10px] text-[#484F58]">
+            <div className="rounded-lg bg-background border border-border p-2 text-[10px] text-muted-foreground/60">
               <span className="text-[#22C55E]">✓</span> Sound parameters generated — click Preview to hear them.
             </div>
           )}
@@ -2341,12 +2341,12 @@ function PlaySoundPanel({
       </button>
 
       {/* Play only when — condition gate */}
-      <div className="space-y-2 pt-1 border-t border-[#21262D]">
-        <label className="text-xs font-medium text-[#7D8590]">Play only when</label>
+      <div className="space-y-2 pt-1 border-t border-accent">
+        <label className="text-xs font-medium text-muted-foreground">Play only when</label>
         <select
           value={playConditionOp}
           onChange={e => up({ playConditionOp: e.target.value, playConditionExpr: "", playConditionVal: "" })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60"
         >
           <option value="always">Always (unconditional)</option>
           <option value="truthy">Variable is truthy (non-empty, non-zero, non-false)</option>
@@ -2370,28 +2370,28 @@ function PlaySoundPanel({
 
         {(playConditionOp === "eq" || playConditionOp === "neq") && (
           <div className="space-y-1">
-            <label className="text-xs font-medium text-[#7D8590]">
+            <label className="text-xs font-medium text-muted-foreground">
               {playConditionOp === "eq" ? "Equals" : "Does not equal"}
             </label>
             <input
               value={playConditionVal}
               onChange={e => up({ playConditionVal: e.target.value })}
               placeholder="e.g. true, success, 1"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58]"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60 placeholder-muted-foreground/60"
             />
           </div>
         )}
 
         {playConditionOp !== "always" && (
-          <p className="text-[10px] text-[#484F58] leading-relaxed">
-            When the condition is not met, the sound is skipped and <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> will be <span className="font-mono text-[#7D8590]">false</span>.
+          <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+            When the condition is not met, the sound is skipped and <span className="font-mono text-muted-foreground">{"{{soundPlayed}}"}</span> will be <span className="font-mono text-muted-foreground">false</span>.
           </p>
         )}
       </div>
 
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">
-          Outputs: <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> (boolean), <span className="font-mono text-[#7D8590]">{"{{soundTarget}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{soundSkipped}}"}</span> (boolean — true when condition not met).
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">
+          Outputs: <span className="font-mono text-muted-foreground">{"{{soundPlayed}}"}</span> (boolean), <span className="font-mono text-muted-foreground">{"{{soundTarget}}"}</span>, <span className="font-mono text-muted-foreground">{"{{soundSkipped}}"}</span> (boolean — true when condition not met).
           Browser target plays in real-time via SSE. Desktop target delivers via web push (requires VAPID secrets).
         </p>
       </div>
@@ -2423,27 +2423,27 @@ function ForeachItemFields({
   }
 
   const inputCls =
-    "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#A855F7]/60";
+    "w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-[#A855F7]/60";
 
   return (
-    <div className="rounded-lg border border-[#30363D] overflow-hidden">
+    <div className="rounded-lg border border-border overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-[#0D1117] hover:bg-[#161B22] transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 bg-background hover:bg-card transition-colors"
       >
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] font-medium text-[#7D8590]">
-            Item fields <span className="text-[#484F58] font-normal">(optional)</span>
+          <span className="text-[10px] font-medium text-muted-foreground">
+            Item fields <span className="text-muted-foreground/60 font-normal">(optional)</span>
           </span>
           {fields.length > 0 && (
-            <span className="text-[9px] bg-[#1C2128] border border-[#30363D] text-[#A855F7] rounded-full px-1.5 py-0.5 leading-none">
+            <span className="text-[9px] bg-accent border border-border text-[#A855F7] rounded-full px-1.5 py-0.5 leading-none">
               {fields.length}
             </span>
           )}
         </div>
         <svg
-          className={`w-3 h-3 text-[#484F58] transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
+          className={`w-3 h-3 text-muted-foreground/60 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -2451,16 +2451,16 @@ function ForeachItemFields({
       </button>
 
       {expanded && (
-        <div className="p-2.5 border-t border-[#30363D] space-y-2 bg-[#0D1117]">
-          <p className="text-[10px] text-[#484F58] leading-snug">
+        <div className="p-2.5 border-t border-border space-y-2 bg-background">
+          <p className="text-[10px] text-muted-foreground/60 leading-snug">
             Add fields when the array schema isn&apos;t known — e.g. after a SQL query or webhook. Each field you name here becomes{" "}
-            <span className="font-mono text-[#7D8590]">{"{{item.fieldName}}"}</span> inside the loop body.
+            <span className="font-mono text-muted-foreground">{"{{item.fieldName}}"}</span> inside the loop body.
           </p>
 
           {fields.map(f => (
             <div key={f.id} className="grid grid-cols-2 gap-1.5">
               <div className="space-y-1">
-                <label className="text-[10px] text-[#7D8590]">Field name</label>
+                <label className="text-[10px] text-muted-foreground">Field name</label>
                 <input
                   type="text"
                   value={f.key}
@@ -2472,7 +2472,7 @@ function ForeachItemFields({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-[#7D8590]">Label</label>
+                <label className="text-[10px] text-muted-foreground">Label</label>
                 <div className="flex gap-1">
                   <input
                     type="text"
@@ -2486,7 +2486,7 @@ function ForeachItemFields({
                   <button
                     type="button"
                     onClick={() => update(fields.filter(x => x.id !== f.id))}
-                    className="text-[#484F58] hover:text-red-400 transition-colors px-1 flex-shrink-0 text-xs"
+                    className="text-muted-foreground/60 hover:text-red-400 transition-colors px-1 flex-shrink-0 text-xs"
                   >✕</button>
                 </div>
               </div>
@@ -2709,25 +2709,25 @@ function NodeConfigPanel({
 
   return (
     <FocusTrackerContext.Provider value={focusTrackerCtxRef.current}>
-    <div className="flex flex-col h-full bg-[#161B22] overflow-y-auto">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+    <div className="flex flex-col h-full bg-card overflow-y-auto">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <span style={{ color: style.border, fontSize: 16 }}>{style.icon}</span>
-          <span className="text-sm font-semibold text-[#E6EDF3]">{nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node</span>
+          <span className="text-sm font-semibold text-foreground">{nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node</span>
         </div>
         <div className="flex items-center gap-2">
           {nodeType !== "start" && (
             <button
               onClick={() => { onDelete(node.id); }}
               title="Delete node (Del)"
-              className="text-[#484F58] hover:text-[#EF4444] transition-colors"
+              className="text-muted-foreground/60 hover:text-[#EF4444] transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </button>
           )}
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -2738,7 +2738,7 @@ function NodeConfigPanel({
       <div className="p-4 space-y-4">
         <div className="space-y-1">
           <div className="flex items-center gap-1">
-            <label className="text-xs font-medium text-[#7D8590]">Node Name</label>
+            <label className="text-xs font-medium text-muted-foreground">Node Name</label>
             <FieldHint text="Display label for this node in the canvas. Has no effect on execution." />
           </div>
           <input
@@ -2746,7 +2746,7 @@ function NodeConfigPanel({
             value={(node.data.label as string) ?? ""}
             onChange={e => onChange(node.id, { ...node.data, label: e.target.value })}
             placeholder="Give this node a name…"
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm font-medium text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm font-medium text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
           />
         </div>
         <ConfigField
@@ -2777,13 +2777,13 @@ function NodeConfigPanel({
           <>
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Action Type</label>
+                <label className="text-xs font-medium text-muted-foreground">Action Type</label>
                 <FieldHint text="The operation this node performs. Changing the type reveals the relevant configuration fields below." />
               </div>
               <select
                 value={(node.data.actionType as string) ?? "http_request"}
                 onChange={e => onChange(node.id, { ...node.data, actionType: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
               >
                 <optgroup label="Platform">
                   <option value="http_request">🌐 HTTP Request</option>
@@ -2813,11 +2813,11 @@ function NodeConfigPanel({
             {(node.data.actionType as string | undefined) === "http_request" || !(node.data.actionType as string) ? (
               <>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Method</label>
+                  <label className="text-xs font-medium text-muted-foreground">Method</label>
                   <select
                     value={(p.method as string) ?? "GET"}
                     onChange={e => onChange(node.id, { ...node.data, params: { ...p, method: e.target.value } })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                   >
                     {["GET","POST","PUT","PATCH","DELETE"].map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
@@ -2850,8 +2850,8 @@ function NodeConfigPanel({
                   multiline
                   ancestorOutputs={ancestorOutputs}
                 />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Results are injected into the payload as <span className="font-mono text-[#7D8590]">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Results are injected into the payload as <span className="font-mono text-muted-foreground">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
                 </div>
               </>
             )}
@@ -2926,7 +2926,7 @@ function NodeConfigPanel({
             {(node.data.actionType as string) === "cancel_workflow" && (
               <div className="rounded-lg bg-[#1A0D0D] border border-[#EF4444]/30 p-3">
                 <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
-                <p className="text-[11px] text-[#7D8590] mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
+                <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
               </div>
             )}
 
@@ -2944,17 +2944,17 @@ function NodeConfigPanel({
               <>
                 <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+                  <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
                   <select
                     value={(node.data.workflowType as string) ?? "DiscoveryCall"}
                     onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
                   >
                     {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates an opportunity linked to the lead and generates the matching workflow task set. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Creates an opportunity linked to the lead and generates the matching workflow task set. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -2963,8 +2963,8 @@ function NodeConfigPanel({
               <>
                 <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.name}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.clientEmail}}" ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates a CRM user account with role <span className="font-mono text-[#7D8590]">client</span>. Output: <span className="font-mono text-[#7D8590]">{"{{clientId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{clientEmail}}"}</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Creates a CRM user account with role <span className="font-mono text-muted-foreground">client</span>. Output: <span className="font-mono text-muted-foreground">{"{{clientId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{clientEmail}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -2974,19 +2974,19 @@ function NodeConfigPanel({
                 <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="{{payload.leadName}} Onboarding" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Description" value={(node.data.description as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, description: v })} placeholder="Auto-created by workflow" multiline ancestorOutputs={ancestorOutputs} />
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Project Type</label>
+                  <label className="text-xs font-medium text-muted-foreground">Project Type</label>
                   <select
                     value={(node.data.projectType as string) ?? "project"}
                     onChange={e => onChange(node.id, { ...node.data, projectType: e.target.value })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
                   >
                     <option value="project">Project</option>
                     <option value="retainer">Retainer</option>
                   </select>
                 </div>
                 <PayloadField label="Client User ID (optional)" value={(node.data.clientUserId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientUserId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Output: <span className="font-mono text-[#7D8590]">{"{{projectId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{projectTitle}}"}</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Output: <span className="font-mono text-muted-foreground">{"{{projectId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{projectTitle}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -2996,8 +2996,8 @@ function NodeConfigPanel({
                 <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="M365-Health-Check" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-muted-foreground">{"{{jobId}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -3007,8 +3007,8 @@ function NodeConfigPanel({
               return (
               <>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Execution Mode</label>
-                  <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                  <label className="text-xs font-medium text-muted-foreground">Execution Mode</label>
+                  <div className="flex rounded-lg overflow-hidden border border-border">
                     {(["Single", "Multiple"] as const).map(mode => (
                       <button
                         key={mode}
@@ -3020,7 +3020,7 @@ function NodeConfigPanel({
                             onChange(node.id, { ...node.data, runbooks: "", runbookName: "", runbookId: "" });
                           }
                         }}
-                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
                       >
                         {mode}
                       </button>
@@ -3031,18 +3031,18 @@ function NodeConfigPanel({
                   <>
                     <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v, runbookId: "" })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
                     <div className="flex items-center gap-2 my-0.5">
-                      <div className="flex-1 h-px bg-[#30363D]" />
-                      <span className="text-[10px] text-[#484F58] uppercase tracking-widest">or</span>
-                      <div className="flex-1 h-px bg-[#30363D]" />
+                      <div className="flex-1 h-px bg-border" />
+                      <span className="text-[10px] text-muted-foreground/60 uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-border" />
                     </div>
                     <PayloadField label="Runbook ID" value={(node.data.runbookId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookId: v, runbookName: "" })} placeholder="/subscriptions/.../runbooks/My-Runbook" ancestorOutputs={ancestorOutputs} />
                   </>
                 ) : (
                   <>
                     <PayloadField label="Multiple Runbooks" value={(node.data.runbooks as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbooks: v })} placeholder={"Runbook-A, Runbook-B, Runbook-C\nor a {{variable}} that resolves to a JSON array"} multiline ancestorOutputs={ancestorOutputs} />
-                    <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-0.5">
-                      <p className="text-[10px] text-[#484F58]">Runs all in parallel — outputs <span className="font-mono text-[#7D8590]">{"{{results}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{succeeded}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{failed}}"}</span>.</p>
-                      <p className="text-[10px] text-[#484F58]">Branch on <span className="font-mono text-[#7D8590]">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-[#7D8590]">{"{{results}}"}</span> has <span className="font-mono text-[#7D8590]">runbook</span>, <span className="font-mono text-[#7D8590]">status</span>, <span className="font-mono text-[#7D8590]">output</span>, and <span className="font-mono text-[#7D8590]">jobId</span>.</p>
+                    <div className="rounded-lg bg-background border border-border p-2.5 space-y-0.5">
+                      <p className="text-[10px] text-muted-foreground/60">Runs all in parallel — outputs <span className="font-mono text-muted-foreground">{"{{results}}"}</span>, <span className="font-mono text-muted-foreground">{"{{succeeded}}"}</span>, and <span className="font-mono text-muted-foreground">{"{{failed}}"}</span>.</p>
+                      <p className="text-[10px] text-muted-foreground/60">Branch on <span className="font-mono text-muted-foreground">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-muted-foreground">{"{{results}}"}</span> has <span className="font-mono text-muted-foreground">runbook</span>, <span className="font-mono text-muted-foreground">status</span>, <span className="font-mono text-muted-foreground">output</span>, and <span className="font-mono text-muted-foreground">jobId</span>.</p>
                     </div>
                   </>
                 )}
@@ -3050,8 +3050,8 @@ function NodeConfigPanel({
                 <PayloadField label="Client ID (optional)" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 {!isMulti && (
-                  <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                    <p className="text-[10px] text-[#484F58]">Requires Azure secrets. Provide Script Name <span className="italic">or</span> Script ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{scriptName}}"}</span>.</p>
+                  <div className="rounded-lg bg-background border border-border p-2.5">
+                    <p className="text-[10px] text-muted-foreground/60">Requires Azure secrets. Provide Script Name <span className="italic">or</span> Script ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-muted-foreground">{"{{jobId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{jobStatus}}"}</span>, <span className="font-mono text-muted-foreground">{"{{jobOutput}}"}</span>, <span className="font-mono text-muted-foreground">{"{{scriptName}}"}</span>.</p>
                   </div>
                 )}
               </>
@@ -3062,8 +3062,8 @@ function NodeConfigPanel({
               <>
                 <PayloadField label="Document ID" value={(node.data.documentId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, documentId: v })} placeholder="{{documentId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Doc Type Override (optional)" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder="consolidated_sow" ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-[#7D8590]">sowPricingLines</span> + <span className="font-mono text-[#7D8590]">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-[#7D8590]">{"{{totalPrice}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{lineCount}}"}</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-muted-foreground">sowPricingLines</span> + <span className="font-mono text-muted-foreground">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-muted-foreground">{"{{totalPrice}}"}</span>, <span className="font-mono text-muted-foreground">{"{{lineCount}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -3072,13 +3072,13 @@ function NodeConfigPanel({
               <>
                 <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Document Category</label>
-                  <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                  <label className="text-xs font-medium text-muted-foreground">Document Category</label>
+                  <div className="flex rounded-lg overflow-hidden border border-border">
                     {(["report", "consulting"] as const).map(cat => (
                       <button
                         key={cat}
                         onClick={() => onChange(node.id, { ...node.data, docCategory: cat, docType: cat === "report" ? "executive_summary" : "sow" })}
-                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
                       >
                         {cat === "report" ? "Insights Report" : "Consulting Doc"}
                       </button>
@@ -3086,15 +3086,15 @@ function NodeConfigPanel({
                   </div>
                 </div>
                 <PayloadField label="Document Type" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder={((node.data.docCategory as string) ?? "report") === "consulting" ? "sow" : "executive_summary"} ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-                  <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
-                  <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
+                <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+                  <p className="text-[10px] text-muted-foreground/60 font-medium">Valid values for <span className="text-muted-foreground">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
+                  <p className="text-[10px] font-mono text-muted-foreground/60 leading-relaxed">
                     {(((node.data.docCategory as string) ?? "report") === "consulting"
                       ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
                       : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
                     )}
                   </p>
-                  <p className="text-[10px] text-[#484F58]">Accepts a <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> — e.g. <span className="font-mono text-[#7D8590]">{"{{item.docType}}"}</span> from a ForEach loop.</p>
+                  <p className="text-[10px] text-muted-foreground/60">Accepts a <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> — e.g. <span className="font-mono text-muted-foreground">{"{{item.docType}}"}</span> from a ForEach loop.</p>
                 </div>
                 <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
@@ -3112,8 +3112,8 @@ function NodeConfigPanel({
                     </div>
                   </>
                 )}
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5">
+                  <p className="text-[10px] text-muted-foreground/60">Creates a document for the client. All fields support <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-muted-foreground">{"{{htmlContent}}"}</span></>}.</p>
                 </div>
               </>
             )}
@@ -3125,11 +3125,11 @@ function NodeConfigPanel({
         {nodeType === "http_request" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Method</label>
+              <label className="text-xs font-medium text-muted-foreground">Method</label>
               <select
                 value={(p.method as string) ?? "GET"}
                 onChange={e => onChange(node.id, { ...node.data, params: { ...p, method: e.target.value } })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
               >
                 {["GET","POST","PUT","PATCH","DELETE"].map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -3142,8 +3142,8 @@ function NodeConfigPanel({
         {nodeType === "sql_query" && (
           <>
             <PayloadField label="SQL Query" value={(node.data.query as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, query: v })} placeholder="SELECT * FROM clients WHERE status = 'active'" multiline ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Results are injected into the payload as <span className="font-mono text-[#7D8590]">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Results are injected into the payload as <span className="font-mono text-muted-foreground">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
             </div>
           </>
         )}
@@ -3158,7 +3158,7 @@ function NodeConfigPanel({
         {nodeType === "cancel_workflow" && (
           <div className="rounded-lg bg-[#1A0D0D] border border-[#EF4444]/30 p-3">
             <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
-            <p className="text-[11px] text-[#7D8590] mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
+            <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
           </div>
         )}
 
@@ -3188,8 +3188,8 @@ function NodeConfigPanel({
             <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="New lead: {{leadName}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{company}} submitted a contact form." multiline ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Link path (optional)" value={(node.data.linkPath as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, linkPath: v })} placeholder="/admin-panel/crm/leads" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">All three fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Sends to all subscribed admins. Requires <span className="font-mono text-[#7D8590]">VAPID_PUBLIC_KEY</span> and <span className="font-mono text-[#7D8590]">VAPID_PRIVATE_KEY</span> secrets — gracefully skipped if absent. Output: <span className="font-mono text-[#7D8590]">{"{{notificationSent}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">All three fields support <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Sends to all subscribed admins. Requires <span className="font-mono text-muted-foreground">VAPID_PUBLIC_KEY</span> and <span className="font-mono text-muted-foreground">VAPID_PRIVATE_KEY</span> secrets — gracefully skipped if absent. Output: <span className="font-mono text-muted-foreground">{"{{notificationSent}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3198,8 +3198,8 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="New lead: {{leadName}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{company}} submitted a contact form." multiline ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Both fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Broadcasts to all registered Expo device tokens. If no tokens are registered the node outputs <span className="font-mono text-[#7D8590]">sent: false</span> without failing. Outputs: <span className="font-mono text-[#7D8590]">{"{{sent}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{sentCount}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Both fields support <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Broadcasts to all registered Expo device tokens. If no tokens are registered the node outputs <span className="font-mono text-muted-foreground">sent: false</span> without failing. Outputs: <span className="font-mono text-muted-foreground">{"{{sent}}"}</span>, <span className="font-mono text-muted-foreground">{"{{sentCount}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3210,11 +3210,11 @@ function NodeConfigPanel({
             <PayloadField label="Body (optional)" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{clientName}} purchased {{serviceName}} — ${{amount}}" multiline ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Link path (optional)" value={(node.data.linkPath as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, linkPath: v })} placeholder="/admin-panel/crm/leads" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Notification type</label>
+              <label className="text-xs font-medium text-muted-foreground">Notification type</label>
               <select
                 value={(node.data.type as string) ?? "message"}
                 onChange={e => onChange(node.id, { ...node.data, type: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#22C55E]/60"
               >
                 <option value="message">Message</option>
                 <option value="document">Document</option>
@@ -3224,8 +3224,8 @@ function NodeConfigPanel({
                 <option value="general">General</option>
               </select>
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Title, body, and link path support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Inserts a persistent row into the notification bell for every admin user. Appears within the next poll cycle (≤ 30 s). Output: <span className="font-mono text-[#7D8590]">{"{{notificationCount}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Title, body, and link path support <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Inserts a persistent row into the notification bell for every admin user. Appears within the next poll cycle (≤ 30 s). Output: <span className="font-mono text-muted-foreground">{"{{notificationCount}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3246,17 +3246,17 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+              <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
               <select
                 value={(node.data.workflowType as string) ?? "DiscoveryCall"}
                 onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               >
                 {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates an opportunity linked to the lead. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Creates an opportunity linked to the lead. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3265,8 +3265,8 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.name}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.clientEmail}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a CRM user account with role <span className="font-mono text-[#7D8590]">client</span>. Output: <span className="font-mono text-[#7D8590]">{"{{clientId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{clientEmail}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Creates a CRM user account with role <span className="font-mono text-muted-foreground">client</span>. Output: <span className="font-mono text-muted-foreground">{"{{clientId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{clientEmail}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3276,19 +3276,19 @@ function NodeConfigPanel({
             <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="{{payload.leadName}} Onboarding" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Description" value={(node.data.description as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, description: v })} placeholder="Auto-created by workflow" multiline ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Project Type</label>
+              <label className="text-xs font-medium text-muted-foreground">Project Type</label>
               <select
                 value={(node.data.projectType as string) ?? "project"}
                 onChange={e => onChange(node.id, { ...node.data, projectType: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               >
                 <option value="project">Project</option>
                 <option value="retainer">Retainer</option>
               </select>
             </div>
             <PayloadField label="Client User ID (optional)" value={(node.data.clientUserId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientUserId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Output: <span className="font-mono text-[#7D8590]">{"{{projectId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{projectTitle}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Output: <span className="font-mono text-muted-foreground">{"{{projectId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{projectTitle}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3307,8 +3307,8 @@ function NodeConfigPanel({
           return (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Execution Mode</label>
-              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+              <label className="text-xs font-medium text-muted-foreground">Execution Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-border">
                 {(["Single", "Multiple"] as const).map(mode => (
                   <button
                     key={mode}
@@ -3321,7 +3321,7 @@ function NodeConfigPanel({
                         onChange(node.id, { ...node.data, runbookMode: "single", runbooks: "", runbookName: "", runbookId: "" });
                       }
                     }}
-                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
                   >
                     {mode}
                   </button>
@@ -3330,9 +3330,9 @@ function NodeConfigPanel({
             </div>
             {!isMulti ? (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
+                <label className="text-xs font-medium text-muted-foreground">Runbook Name</label>
                 {runbooksLoading ? (
-                  <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
+                  <select disabled className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-muted-foreground/60 outline-none">
                     <option>Loading runbooks…</option>
                   </select>
                 ) : runbookNames.length > 0 && !runbookManualMode ? (
@@ -3340,12 +3340,12 @@ function NodeConfigPanel({
                     <select
                       value={(node.data.runbookName as string) ?? ""}
                       onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                     >
                       <option value="">— select a runbook —</option>
                       {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
                     </select>
-                    <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:underline underline-offset-2 transition-colors">
                       use a variable instead
                     </button>
                   </>
@@ -3356,11 +3356,11 @@ function NodeConfigPanel({
                       value={(node.data.runbookName as string) ?? ""}
                       onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
                       placeholder="My-Runbook-Name"
-                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                     />
                     {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
                     {runbookNames.length > 0 && !runbooksLoading && (
-                      <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                      <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:underline underline-offset-2 transition-colors">
                         choose from list
                       </button>
                     )}
@@ -3378,18 +3378,18 @@ function NodeConfigPanel({
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Multiple Runbooks</label>
+                  <label className="text-xs font-medium text-muted-foreground">Multiple Runbooks</label>
                   <textarea
                     value={(node.data.runbooks as string) ?? ""}
                     onChange={e => onChange(node.id, { ...node.data, runbooks: e.target.value })}
                     placeholder={"Runbook-A, Runbook-B, Runbook-C\nor a {{variable}} that resolves to a JSON array"}
                     rows={3}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-y font-mono"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-y font-mono"
                   />
                 </div>
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-0.5">
-                  <p className="text-[10px] text-[#484F58]">Runs all in parallel — outputs <span className="font-mono text-[#7D8590]">{"{{results}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{succeeded}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{failed}}"}</span>.</p>
-                  <p className="text-[10px] text-[#484F58]">Branch on <span className="font-mono text-[#7D8590]">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-[#7D8590]">{"{{results}}"}</span> has <span className="font-mono text-[#7D8590]">runbook</span>, <span className="font-mono text-[#7D8590]">status</span>, <span className="font-mono text-[#7D8590]">output</span>, and <span className="font-mono text-[#7D8590]">jobId</span>.</p>
+                <div className="rounded-lg bg-background border border-border p-2.5 space-y-0.5">
+                  <p className="text-[10px] text-muted-foreground/60">Runs all in parallel — outputs <span className="font-mono text-muted-foreground">{"{{results}}"}</span>, <span className="font-mono text-muted-foreground">{"{{succeeded}}"}</span>, and <span className="font-mono text-muted-foreground">{"{{failed}}"}</span>.</p>
+                  <p className="text-[10px] text-muted-foreground/60">Branch on <span className="font-mono text-muted-foreground">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-muted-foreground">{"{{results}}"}</span> has <span className="font-mono text-muted-foreground">runbook</span>, <span className="font-mono text-muted-foreground">status</span>, <span className="font-mono text-muted-foreground">output</span>, and <span className="font-mono text-muted-foreground">jobId</span>.</p>
                 </div>
               </>
             )}
@@ -3397,8 +3397,8 @@ function NodeConfigPanel({
             <PayloadField label="Client ID (optional)" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
             {!isMulti && (
-              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>.</p>
+              <div className="rounded-lg bg-background border border-border p-2.5">
+                <p className="text-[10px] text-muted-foreground/60">Requires Azure Automation secrets. Polls until completion (10 min max). Outputs: <span className="font-mono text-muted-foreground">{"{{jobId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{jobStatus}}"}</span>, <span className="font-mono text-muted-foreground">{"{{jobOutput}}"}</span>.</p>
               </div>
             )}
           </>
@@ -3409,9 +3409,9 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
+              <label className="text-xs font-medium text-muted-foreground">Runbook Name</label>
               {runbooksLoading ? (
-                <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
+                <select disabled className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-muted-foreground/60 outline-none">
                   <option>Loading runbooks…</option>
                 </select>
               ) : runbookNames.length > 0 && !runbookManualMode ? (
@@ -3419,12 +3419,12 @@ function NodeConfigPanel({
                   <select
                     value={(node.data.runbookName as string) ?? ""}
                     onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
                   >
                     <option value="">— select a runbook —</option>
                     {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
                   </select>
-                  <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                  <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:underline underline-offset-2 transition-colors">
                     use a variable instead
                   </button>
                 </>
@@ -3435,11 +3435,11 @@ function NodeConfigPanel({
                     value={(node.data.runbookName as string) ?? ""}
                     onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
                     placeholder="M365-Health-Check"
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                   />
                   {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
                   {runbookNames.length > 0 && !runbooksLoading && (
-                    <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:underline underline-offset-2 transition-colors">
                       choose from list
                     </button>
                   )}
@@ -3447,8 +3447,8 @@ function NodeConfigPanel({
               )}
             </div>
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-muted-foreground">{"{{jobId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3478,8 +3478,8 @@ function NodeConfigPanel({
                 ancestorOutputs={ancestorOutputs}
               />
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Emits a real-time status message into the run log. Supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Payload passes through unchanged.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Emits a real-time status message into the run log. Supports <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Payload passes through unchanged.</p>
             </div>
           </>
         )}
@@ -3488,8 +3488,8 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Document ID" value={(node.data.documentId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, documentId: v })} placeholder="{{documentId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Doc Type Override (optional)" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder="consolidated_sow" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-[#7D8590]">sowPricingLines</span> + <span className="font-mono text-[#7D8590]">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-[#7D8590]">{"{{totalPrice}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{lineCount}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-muted-foreground">sowPricingLines</span> + <span className="font-mono text-muted-foreground">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-muted-foreground">{"{{totalPrice}}"}</span>, <span className="font-mono text-muted-foreground">{"{{lineCount}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3498,13 +3498,13 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Document Category</label>
-              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+              <label className="text-xs font-medium text-muted-foreground">Document Category</label>
+              <div className="flex rounded-lg overflow-hidden border border-border">
                 {(["report", "consulting"] as const).map(cat => (
                   <button
                     key={cat}
                     onClick={() => onChange(node.id, { ...node.data, docCategory: cat, docType: cat === "report" ? "executive_summary" : "sow" })}
-                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
                   >
                     {cat === "report" ? "Insights Report" : "Consulting Doc"}
                   </button>
@@ -3512,15 +3512,15 @@ function NodeConfigPanel({
               </div>
             </div>
             <PayloadField label="Document Type" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder={((node.data.docCategory as string) ?? "report") === "consulting" ? "sow" : "executive_summary"} ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
-              <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60 font-medium">Valid values for <span className="text-muted-foreground">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
+              <p className="text-[10px] font-mono text-muted-foreground/60 leading-relaxed">
                 {(((node.data.docCategory as string) ?? "report") === "consulting"
                   ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
                   : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
                 )}
               </p>
-              <p className="text-[10px] text-[#484F58]">Accepts a <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> — e.g. <span className="font-mono text-[#7D8590]">{"{{item.docType}}"}</span> from a ForEach loop.</p>
+              <p className="text-[10px] text-muted-foreground/60">Accepts a <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> — e.g. <span className="font-mono text-muted-foreground">{"{{item.docType}}"}</span> from a ForEach loop.</p>
             </div>
             <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
@@ -3552,8 +3552,8 @@ function NodeConfigPanel({
                 </div>
               </>
             )}
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Creates a document for the client. All fields support <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-muted-foreground">{"{{htmlContent}}"}</span></>}.</p>
             </div>
           </>
         )}
@@ -3561,8 +3561,8 @@ function NodeConfigPanel({
         {nodeType === "generate_script" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Output Mode</label>
-              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+              <label className="text-xs font-medium text-muted-foreground">Output Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-border">
                 {([
                   { value: "auto",    label: "🤖 Auto" },
                   { value: "single",  label: "📄 Single Script" },
@@ -3573,28 +3573,28 @@ function NodeConfigPanel({
                     <button
                       key={value}
                       onClick={() => onChange(node.id, { ...node.data, outputMode: value })}
-                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${current === value ? "bg-[#0078D4]/20 text-[#58A6FF] border-r border-[#0078D4]/30" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${current === value ? "bg-primary/20 text-primary border-r border-primary/30" : "bg-background text-muted-foreground hover:text-foreground"}`}
                     >
                       {label}
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-[#484F58]">
-                <span className="font-medium text-[#7D8590]">Auto</span> — AI decides based on task count.{" "}
-                <span className="font-medium text-[#7D8590]">Single</span> — one consolidated script.{" "}
-                <span className="font-medium text-[#7D8590]">Package</span> — always creates a Script Package with multiple named modules.
+              <p className="text-[10px] text-muted-foreground/60">
+                <span className="font-medium text-muted-foreground">Auto</span> — AI decides based on task count.{" "}
+                <span className="font-medium text-muted-foreground">Single</span> — one consolidated script.{" "}
+                <span className="font-medium text-muted-foreground">Package</span> — always creates a Script Package with multiple named modules.
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Source Mode</label>
-              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+              <label className="text-xs font-medium text-muted-foreground">Source Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-border">
                 {(["service", "document"] as const).map(mode => (
                   <button
                     key={mode}
                     onClick={() => { onChange(node.id, { ...node.data, sourceMode: mode, targetId: "" }); setGsSearch(""); }}
-                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${gsSourceMode === mode ? "bg-[#22C55E]/20 text-[#22C55E] border-r border-[#22C55E]/30" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${gsSourceMode === mode ? "bg-[#22C55E]/20 text-[#22C55E] border-r border-[#22C55E]/30" : "bg-background text-muted-foreground hover:text-foreground"}`}
                   >
                     {mode === "service" ? "📋 From Service" : "📄 From Document"}
                   </button>
@@ -3604,7 +3604,7 @@ function NodeConfigPanel({
 
             {/* Searchable selector for service or document */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">
+              <label className="text-xs font-medium text-muted-foreground">
                 {gsSourceMode === "service" ? "Select Service" : "Select Document"}
               </label>
               <input
@@ -3612,14 +3612,14 @@ function NodeConfigPanel({
                 value={gsSearch}
                 onChange={e => setGsSearch(e.target.value)}
                 placeholder={gsSourceMode === "service" ? "Search services…" : "Search documents…"}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#22C55E]/60 placeholder-muted-foreground/60"
               />
-              <div className="rounded-lg border border-[#30363D] overflow-hidden max-h-40 overflow-y-auto bg-[#0D1117]">
+              <div className="rounded-lg border border-border overflow-hidden max-h-40 overflow-y-auto bg-background">
                 {gsLoading ? (
-                  <p className="text-[10px] text-[#7D8590] px-3 py-2">Loading…</p>
+                  <p className="text-[10px] text-muted-foreground px-3 py-2">Loading…</p>
                 ) : gsSourceMode === "service" ? (
                   gsServices.filter(s => !gsSearch || s.name.toLowerCase().includes(gsSearch.toLowerCase())).length === 0 ? (
-                    <p className="text-[10px] text-[#484F58] px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground/60 px-3 py-2">
                       {gsServices.length === 0 ? "No services found." : `No services match "${gsSearch}"`}
                     </p>
                   ) : (
@@ -3629,16 +3629,16 @@ function NodeConfigPanel({
                         <button
                           key={s.id}
                           onClick={() => { onChange(node.id, { ...node.data, targetId: String(s.id), targetName: s.name }); setGsSearch(""); }}
-                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-[#21262D] last:border-0 ${(node.data.targetId as string) === String(s.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-[#E6EDF3]"}`}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-accent last:border-0 ${(node.data.targetId as string) === String(s.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-foreground"}`}
                         >
                           <span className="font-medium truncate block">{s.name}</span>
-                          {s.category && <span className="text-[10px] text-[#484F58]">{s.category}</span>}
+                          {s.category && <span className="text-[10px] text-muted-foreground/60">{s.category}</span>}
                         </button>
                       ))
                   )
                 ) : (
                   gsDocs.filter(d => !gsSearch || (d.title ?? "").toLowerCase().includes(gsSearch.toLowerCase()) || d.docType.toLowerCase().includes(gsSearch.toLowerCase())).length === 0 ? (
-                    <p className="text-[10px] text-[#484F58] px-3 py-2">
+                    <p className="text-[10px] text-muted-foreground/60 px-3 py-2">
                       {gsDocs.length === 0 ? "No documents found." : `No documents match "${gsSearch}"`}
                     </p>
                   ) : (
@@ -3648,10 +3648,10 @@ function NodeConfigPanel({
                         <button
                           key={d.id}
                           onClick={() => { onChange(node.id, { ...node.data, targetId: String(d.id), targetName: d.title ?? `Document #${d.id}` }); setGsSearch(""); }}
-                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-[#21262D] last:border-0 ${(node.data.targetId as string) === String(d.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-[#E6EDF3]"}`}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-accent last:border-0 ${(node.data.targetId as string) === String(d.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-foreground"}`}
                         >
                           <span className="font-medium truncate block">{d.title ?? "(untitled)"}</span>
-                          <span className="text-[10px] text-[#484F58]">{d.docType}</span>
+                          <span className="text-[10px] text-muted-foreground/60">{d.docType}</span>
                         </button>
                       ))
                   )
@@ -3668,7 +3668,7 @@ function NodeConfigPanel({
                   </span>
                   <button
                     onClick={() => onChange(node.id, { ...node.data, targetId: "", targetName: "" })}
-                    className="ml-auto text-[#484F58] hover:text-[#EF4444] transition-colors flex-shrink-0"
+                    className="ml-auto text-muted-foreground/60 hover:text-[#EF4444] transition-colors flex-shrink-0"
                     title="Clear selection"
                   >✕</button>
                 </div>
@@ -3698,12 +3698,12 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">
                 Generates a PowerShell script using AI and saves it to the Script Library under the <span className="font-mono text-[#22C55E]">Workflow Generated</span> category.
               </p>
-              <p className="text-[10px] text-[#484F58]">
-                Outputs: <span className="font-mono text-[#7D8590]">{"{{scriptId}}"}</span> (single script) or <span className="font-mono text-[#7D8590]">{"{{packageId}}"}</span> (multi-module package).
+              <p className="text-[10px] text-muted-foreground/60">
+                Outputs: <span className="font-mono text-muted-foreground">{"{{scriptId}}"}</span> (single script) or <span className="font-mono text-muted-foreground">{"{{packageId}}"}</span> (multi-module package).
               </p>
             </div>
           </>
@@ -3712,26 +3712,26 @@ function NodeConfigPanel({
         {nodeType === "run_workflow" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Target Workflow ID</label>
+              <label className="text-xs font-medium text-muted-foreground">Target Workflow ID</label>
               <input
                 type="number"
                 value={(node.data.workflowId as number | undefined) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, workflowId: e.target.value ? Number(e.target.value) : undefined })}
                 placeholder="e.g. 12"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder-muted-foreground/60"
               />
-              <p className="text-[10px] text-[#484F58]">The numeric ID of the published workflow to execute. Find it in the Workflows list URL.</p>
+              <p className="text-[10px] text-muted-foreground/60">The numeric ID of the published workflow to execute. Find it in the Workflows list URL.</p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-[#7D8590]">Input Mapping</label>
+                <label className="text-xs font-medium text-muted-foreground">Input Mapping</label>
                 <button
                   type="button"
                   onClick={() => {
                     const cur = (node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? [];
                     onChange(node.id, { ...node.data, inputMapping: [...cur, { key: "", expr: "" }] });
                   }}
-                  className="text-[10px] text-[#0078D4] hover:text-[#3B9EDB] transition-colors"
+                  className="text-[10px] text-primary hover:text-[#3B9EDB] transition-colors"
                 >
                   + Add mapping
                 </button>
@@ -3746,7 +3746,7 @@ function NodeConfigPanel({
                       onChange(node.id, { ...node.data, inputMapping: cur });
                     }}
                     placeholder="key"
-                    className="w-1/3 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58] font-mono"
+                    className="w-1/3 bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60 placeholder-muted-foreground/60 font-mono"
                   />
                   <input
                     value={m.expr}
@@ -3756,7 +3756,7 @@ function NodeConfigPanel({
                       onChange(node.id, { ...node.data, inputMapping: cur });
                     }}
                     placeholder={"{{value}}"}
-                    className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58] font-mono"
+                    className="flex-1 bg-background border border-border rounded px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary/60 placeholder-muted-foreground/60 font-mono"
                   />
                   <button
                     type="button"
@@ -3769,10 +3769,10 @@ function NodeConfigPanel({
                   >✕</button>
                 </div>
               ))}
-              <p className="text-[10px] text-[#484F58]">Map values from the current context into the sub-workflow's input payload. The sub-workflow outputs are merged back and <span className="font-mono text-[#7D8590]">{"{{childRunId}}"}</span> is always available.</p>
+              <p className="text-[10px] text-muted-foreground/60">Map values from the current context into the sub-workflow's input payload. The sub-workflow outputs are merged back and <span className="font-mono text-muted-foreground">{"{{childRunId}}"}</span> is always available.</p>
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Runs the target workflow <strong className="text-[#7D8590]">synchronously</strong> — the parent run waits for it to complete. On failure, routes to the <span className="font-mono text-[#7D8590]">onError</span> edge (if wired). Outputs: <span className="font-mono text-[#7D8590]">{"{{childRunId}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Runs the target workflow <strong className="text-muted-foreground">synchronously</strong> — the parent run waits for it to complete. On failure, routes to the <span className="font-mono text-muted-foreground">onError</span> edge (if wired). Outputs: <span className="font-mono text-muted-foreground">{"{{childRunId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3784,19 +3784,19 @@ function NodeConfigPanel({
             <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Qualification Threshold</label>
+                <label className="text-xs font-medium text-muted-foreground">Qualification Threshold</label>
                 <FieldHint text="Lead score (0–100). Leads scoring at or above this are flagged as qualified; those below are unqualified." />
               </div>
               <input
                 type="number" min={0} max={100}
                 value={(node.data.threshold as number) ?? 50}
                 onChange={e => onChange(node.id, { ...node.data, threshold: Number(e.target.value) })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               />
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Scores the lead on fit, pain, intent, and urgency. Writes a qualification record. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{score}}"} · {"{{scoreLabel}}"} · {"{{qualified}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Scores the lead on fit, pain, intent, and urgency. Writes a qualification record. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{score}}"} · {"{{scoreLabel}}"} · {"{{qualified}}"}</p>
             </div>
           </>
         )}
@@ -3811,15 +3811,15 @@ function NodeConfigPanel({
             <>
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
-                  <label className="text-xs font-medium text-[#7D8590]">Target type</label>
+                  <label className="text-xs font-medium text-muted-foreground">Target type</label>
                   <FieldHint text="Whether to move a Lead or an Opportunity to the new stage." />
                 </div>
-                <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                <div className="flex rounded-lg overflow-hidden border border-border">
                   {(["opportunity","lead"] as const).map(t => (
                     <button
                       key={t}
                       onClick={() => onChange(node.id, { ...node.data, targetType: t, stage: t === "lead" ? "Warm" : "DiscoveryCall" })}
-                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${tgt === t ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${tgt === t ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
                     >
                       {t === "opportunity" ? "Opportunity" : "Lead"}
                     </button>
@@ -3832,20 +3832,20 @@ function NodeConfigPanel({
               }
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
-                  <label className="text-xs font-medium text-[#7D8590]">New stage</label>
+                  <label className="text-xs font-medium text-muted-foreground">New stage</label>
                   <FieldHint text="The pipeline stage to move the record into. Available stages change based on the target type above." />
                 </div>
                 <select
                   value={stageList.includes(currentStage) ? currentStage : stageList[0]}
                   onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
                 >
                   {stageList.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                <p className="text-[10px] text-[#484F58]">
-                  Moves a {tgt} to the chosen stage. Outputs: <span className="font-mono text-[#7D8590]">{"{{stage}}"} · {"{{targetType}}"} · {"{{" + (tgt === "lead" ? "leadId" : "opportunityId") + "}}"}</span>.
+              <div className="rounded-lg bg-background border border-border p-2.5">
+                <p className="text-[10px] text-muted-foreground/60">
+                  Moves a {tgt} to the chosen stage. Outputs: <span className="font-mono text-muted-foreground">{"{{stage}}"} · {"{{targetType}}"} · {"{{" + (tgt === "lead" ? "leadId" : "opportunityId") + "}}"}</span>.
                 </p>
               </div>
             </>
@@ -3856,17 +3856,17 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+              <label className="text-xs font-medium text-muted-foreground">Workflow Type</label>
               <select
                 value={(node.data.workflowType as string) ?? "DiscoveryCall"}
                 onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               >
                 {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a new opportunity from a lead. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Creates a new opportunity from a lead. Output: <span className="font-mono text-muted-foreground">{"{{opportunityId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3876,9 +3876,9 @@ function NodeConfigPanel({
         {nodeType === "parse_quiz_results" && (
           <>
             <PayloadField label="Quiz Lead ID" value={(node.data.quizLeadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, quizLeadId: v })} placeholder="{{quizLeadId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Reads the quiz lead record and surfaces scores. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{totalScore}}"} · {"{{tier}}"} · {"{{recommendedService}}"} · {"{{categoryScores}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Reads the quiz lead record and surfaces scores. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{totalScore}}"} · {"{{tier}}"} · {"{{recommendedService}}"} · {"{{categoryScores}}"}</p>
             </div>
           </>
         )}
@@ -3886,9 +3886,9 @@ function NodeConfigPanel({
         {nodeType === "generate_readiness_score" && (
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Averages the client's health history records to compute a composite readiness score and writes a summary record. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{readinessScore}}"} · {"{{readinessLabel}}"} · {"{{recordId}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Averages the client's health history records to compute a composite readiness score and writes a summary record. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{readinessScore}}"} · {"{{readinessLabel}}"} · {"{{recordId}}"}</p>
             </div>
           </>
         )}
@@ -3897,8 +3897,8 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Insight Text / Document Name" value={(node.data.insightText as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, insightText: v })} placeholder="M365 Readiness — {{tier}} ({{totalScore}})" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Saves quiz insights as a client document. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Saves quiz insights as a client document. Output: <span className="font-mono text-muted-foreground">{"{{documentId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -3909,9 +3909,9 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="Validate-M365-Permissions" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Runs a permission-check runbook against the client's Azure tenant. Requires Azure secrets. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{permissionsValid}}"} · {"{{missingCount}}"} · {"{{jobId}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Runs a permission-check runbook against the client's Azure tenant. Requires Azure secrets. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{permissionsValid}}"} · {"{{missingCount}}"} · {"{{jobId}}"}</p>
             </div>
           </>
         )}
@@ -3920,9 +3920,9 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="Update-M365-Intelligence" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Triggers a health-data collection runbook and appends a new health history record. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{updated}}"} · {"{{recordId}}"} · {"{{jobId}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Triggers a health-data collection runbook and appends a new health history record. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{updated}}"} · {"{{recordId}}"} · {"{{jobId}}"}</p>
             </div>
           </>
         )}
@@ -3930,9 +3930,9 @@ function NodeConfigPanel({
         {nodeType === "generate_diff_report" && (
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Compares the two most recent health snapshots for the client and creates a diff report document. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{documentId}}"} · {"{{changesFound}}"} · {"{{changeCount}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Compares the two most recent health snapshots for the client and creates a diff report document. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{documentId}}"} · {"{{changesFound}}"} · {"{{changeCount}}"}</p>
             </div>
           </>
         )}
@@ -3942,16 +3942,16 @@ function NodeConfigPanel({
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Notify Email" value={(node.data.notifyEmail as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, notifyEmail: v })} placeholder="shane@example.com" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Alert Threshold (changes)</label>
+              <label className="text-xs font-medium text-muted-foreground">Alert Threshold (changes)</label>
               <input
                 type="number" min={1} max={100}
                 value={(node.data.changeThreshold as number) ?? 15}
                 onChange={e => onChange(node.id, { ...node.data, changeThreshold: Number(e.target.value) })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               />
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Sends an email alert if <span className="font-mono text-[#7D8590]">{"{{changeCount}}"}</span> (from a prior Diff Report node) meets or exceeds the threshold. Uses <span className="font-mono text-[#7D8590]">CRM_ADMIN_EMAIL</span> as fallback if no email is specified.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5">
+              <p className="text-[10px] text-muted-foreground/60">Sends an email alert if <span className="font-mono text-muted-foreground">{"{{changeCount}}"}</span> (from a prior Diff Report node) meets or exceeds the threshold. Uses <span className="font-mono text-muted-foreground">CRM_ADMIN_EMAIL</span> as fallback if no email is specified.</p>
             </div>
           </>
         )}
@@ -3959,9 +3959,9 @@ function NodeConfigPanel({
         {nodeType === "get_tenant_signals" && (
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Evaluates all configured signal rules for the client and outputs the fired signal keys. Pipe <span className="font-mono text-[#7D8590]">{"{{signals}}"}</span> into the <em>Pre-computed Signals</em> field of a downstream <em>Generate Document</em> (consolidated_sow) node to skip redundant signal evaluation. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{signals}}"} · {"{{signalCount}}"} · {"{{hasSignals}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Evaluates all configured signal rules for the client and outputs the fired signal keys. Pipe <span className="font-mono text-muted-foreground">{"{{signals}}"}</span> into the <em>Pre-computed Signals</em> field of a downstream <em>Generate Document</em> (consolidated_sow) node to skip redundant signal evaluation. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{signals}}"} · {"{{signalCount}}"} · {"{{hasSignals}}"}</p>
             </div>
           </>
         )}
@@ -3978,10 +3978,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
               hint="Key (slug) of the monitoring package to resolve. Must match an active package in the Monitor Packages library."
             />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Resolves the package metadata and its list of checks without executing them. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{packageKey}}"} · {"{{packageLabel}}"} · {"{{checks}}"} · {"{{checkCount}}"} · {"{{engines}}"}</p>
-              <p className="text-[10px] text-[#484F58]">Pipe <span className="font-mono text-[#7D8590]">{"{{packageKey}}"}</span> into an <em>Execute Monitor Package</em> node to run the checks.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Resolves the package metadata and its list of checks without executing them. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{packageKey}}"} · {"{{packageLabel}}"} · {"{{checks}}"} · {"{{checkCount}}"} · {"{{engines}}"}</p>
+              <p className="text-[10px] text-muted-foreground/60">Pipe <span className="font-mono text-muted-foreground">{"{{packageKey}}"}</span> into an <em>Execute Monitor Package</em> node to run the checks.</p>
             </div>
           </>
         )}
@@ -4012,10 +4012,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
               hint="Optional stable key used to deduplicate check results. Auto-generated from the run ID if left blank."
             />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Runs all checks in the package via the Microsoft Graph API. Emits per-check progress events visible in the run timeline. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{runStatus}}"} · {"{{checksTotal}}"} · {"{{checksOk}}"} · {"{{checksError}}"} · {"{{consentRevoked}}"} · {"{{checks}}"} · {"{{enginesRecomputed}}"}</p>
-              <p className="text-[10px] text-[#484F58]"><span className="font-mono text-[#7D8590]">{"{{runStatus}}"}</span> is one of <span className="font-mono text-[#7D8590]">completed · partial_failure · consent_revoked · no_checks</span>. Branch on it with a Condition node.</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Runs all checks in the package via the Microsoft Graph API. Emits per-check progress events visible in the run timeline. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{runStatus}}"} · {"{{checksTotal}}"} · {"{{checksOk}}"} · {"{{checksError}}"} · {"{{consentRevoked}}"} · {"{{checks}}"} · {"{{enginesRecomputed}}"}</p>
+              <p className="text-[10px] text-muted-foreground/60"><span className="font-mono text-muted-foreground">{"{{runStatus}}"}</span> is one of <span className="font-mono text-muted-foreground">completed · partial_failure · consent_revoked · no_checks</span>. Branch on it with a Condition node.</p>
             </div>
           </>
         )}
@@ -4046,9 +4046,9 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
               hint="Key under which critical events are stored in tenant_monitor_profiles. Defaults to live.<contentType> if omitted."
             />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Fetches audit blobs since the stored watermark and applies severity rules. Writes critical events to tenant_monitor_profiles and advances the watermark. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{criticalChangeDetected}}"} · {"{{eventCount}}"} · {"{{criticalCount}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Fetches audit blobs since the stored watermark and applies severity rules. Writes critical events to tenant_monitor_profiles and advances the watermark. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{criticalChangeDetected}}"} · {"{{eventCount}}"} · {"{{criticalCount}}"}</p>
             </div>
           </>
         )}
@@ -4071,9 +4071,9 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
               hint="O365 Management Activity content type to subscribe to. E.g. Audit.AzureActiveDirectory, Audit.Exchange, Audit.SharePoint, DLP.All."
             />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">Idempotent — safe to call on every run. Creates the subscription if missing or re-confirms it if it already exists. Resets the poll watermark on first creation. Outputs:</p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{subscriptionStatus}}"} · {"{{contentType}}"} · {"{{tenantId}}"} · {"{{webhookAuthId}}"}</p>
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">Idempotent — safe to call on every run. Creates the subscription if missing or re-confirms it if it already exists. Resets the poll watermark on first creation. Outputs:</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{subscriptionStatus}}"} · {"{{contentType}}"} · {"{{tenantId}}"} · {"{{webhookAuthId}}"}</p>
             </div>
           </>
         )}
@@ -4083,8 +4083,8 @@ function NodeConfigPanel({
           nodeType === "calculate_msp") && (
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-              <p className="text-[10px] text-[#484F58]">
+            <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+              <p className="text-[10px] text-muted-foreground/60">
                 {nodeType === "calculate_priority" && "Ranks this tenant by summing priorityScoreContribution across currently-fired, enabled signals."}
                 {nodeType === "calculate_pricing_engine" && "Sums pricingImpact / pricingValueContribution across currently-fired, enabled signals for this tenant."}
                 {nodeType === "calculate_health" && "Sums governance/security/compliance/adoption/copilot/architecture impact into an overall health score for this tenant."}
@@ -4094,7 +4094,7 @@ function NodeConfigPanel({
                 {nodeType === "calculate_msp" && "Aggregates health + drift + priority scores for this tenant into a portfolio-wide risk roll-up."}
                 {" "}Outputs:
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{engine}}"} · {"{{score}}"} · {"{{breakdown}}"} · {"{{rawSignals}}"} · {"{{timestamp}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{engine}}"} · {"{{score}}"} · {"{{breakdown}}"} · {"{{rawSignals}}"} · {"{{timestamp}}"}</p>
             </div>
           </>
         )}
@@ -4340,26 +4340,26 @@ function NodeConfigPanel({
                 onChange={e => onChange(node.id, { ...node.data, parseAsJson: e.target.checked })}
                 className="w-3.5 h-3.5 accent-[#2DD4BF] cursor-pointer"
               />
-              <span className="text-[11px] text-[#C9D1D9]">Parse output as JSON</span>
+              <span className="text-[11px] text-foreground/90">Parse output as JSON</span>
             </label>
             {Boolean(node.data.parseAsJson) && (
               <div className="space-y-1">
-                <label className="text-[11px] text-[#C9D1D9] font-medium">Validate JSON Schema <span className="text-[#7D8590] font-normal">(optional)</span></label>
+                <label className="text-[11px] text-foreground/90 font-medium">Validate JSON Schema <span className="text-muted-foreground font-normal">(optional)</span></label>
                 <textarea
                   rows={6}
                   value={(node.data.jsonSchema as string) ?? ""}
                   onChange={e => onChange(node.id, { ...node.data, jsonSchema: e.target.value })}
                   placeholder={'{\n  "type": "object",\n  "required": ["name"],\n  "properties": {\n    "name": { "type": "string" }\n  }\n}'}
                   spellCheck={false}
-                  className="w-full rounded-md border border-[#2DD4BF]/30 bg-[#051424] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#2DD4BF]/70 resize-y"
+                  className="w-full rounded-md border border-[#2DD4BF]/30 bg-[#051424] px-2.5 py-2 text-[11px] font-mono text-foreground/90 placeholder-[#3D444D] focus:outline-none focus:border-[#2DD4BF]/70 resize-y"
                 />
-                <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                   Paste a JSON Schema draft-07 object. If the parsed output doesn't match, the node will fail with a descriptive error before any downstream node runs.{" "}
-                  <span className="text-[#7D8590]/70">Schema validation is skipped during dry-runs.</span>
+                  <span className="text-muted-foreground/70">Schema validation is skipped during dry-runs.</span>
                 </p>
               </div>
             )}
-            <p className="text-[10px] text-[#7D8590] leading-relaxed">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
               Enter any value or expression. Reference upstream data with{" "}
               <span className="font-mono text-[#2DD4BF]">{"{{steps.nodeId.key}}"}</span>.
               The evaluated result is available downstream as{" "}
@@ -4394,7 +4394,7 @@ function NodeConfigPanel({
               fetchWithAuth={fetchWithAuth}
             />
             <div className="space-y-1">
-              <label className="text-xs text-[#E6EDF3] font-medium">Sort groups by key</label>
+              <label className="text-xs text-foreground font-medium">Sort groups by key</label>
               <div className="flex gap-2">
                 {(["none", "asc", "desc"] as const).map(opt => (
                   <button
@@ -4404,17 +4404,17 @@ function NodeConfigPanel({
                     className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
                       ((node.data.sortGroups as string | undefined) ?? "none") === opt
                         ? "bg-[#818CF8] border-[#818CF8] text-white"
-                        : "bg-transparent border-[#30363D] text-[#7D8590] hover:border-[#818CF8] hover:text-[#E6EDF3]"
+                        : "bg-transparent border-border text-muted-foreground hover:border-[#818CF8] hover:text-foreground"
                     }`}
                   >
                     {opt === "none" ? "None" : opt === "asc" ? "A → Z" : "Z → A"}
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-[#7D8590]">Controls the order groups appear in the output array.</p>
+              <p className="text-[10px] text-muted-foreground">Controls the order groups appear in the output array.</p>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-[#E6EDF3] font-medium">Null key behaviour</label>
+              <label className="text-xs text-foreground font-medium">Null key behaviour</label>
               <div className="flex gap-2">
                 {(["collect", "skip", "error"] as const).map(opt => (
                   <button
@@ -4424,21 +4424,21 @@ function NodeConfigPanel({
                     className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
                       ((node.data.nullKeyBehaviour as string | undefined) ?? "collect") === opt
                         ? "bg-[#818CF8] border-[#818CF8] text-white"
-                        : "bg-transparent border-[#30363D] text-[#7D8590] hover:border-[#818CF8] hover:text-[#E6EDF3]"
+                        : "bg-transparent border-border text-muted-foreground hover:border-[#818CF8] hover:text-foreground"
                     }`}
                   >
                     {opt === "collect" ? "Collect" : opt === "skip" ? "Skip" : "Error"}
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-[#7D8590]">
+              <p className="text-[10px] text-muted-foreground">
                 What to do when an item's key resolves to blank or null.{" "}
-                <span className="font-medium text-[#E6EDF3]">Collect</span> puts them in a "(no key)" group (default),{" "}
-                <span className="font-medium text-[#E6EDF3]">Skip</span> silently omits them,{" "}
-                <span className="font-medium text-[#E6EDF3]">Error</span> fails the node immediately.
+                <span className="font-medium text-foreground">Collect</span> puts them in a "(no key)" group (default),{" "}
+                <span className="font-medium text-foreground">Skip</span> silently omits them,{" "}
+                <span className="font-medium text-foreground">Error</span> fails the node immediately.
               </p>
             </div>
-            <p className="text-[10px] text-[#7D8590] leading-relaxed">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
               Outputs <span className="font-mono text-[#818CF8]">{"{{steps.<id>.groups}}"}</span> — an array of{" "}
               <span className="font-mono text-[#818CF8]">{"{ key, items }"}</span> objects.{" "}
               Feed into a <span className="font-mono text-[#818CF8]">ForEach</span> and access{" "}
@@ -4476,10 +4476,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#051424] border border-[#0A66C2]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Requires <span className="font-mono text-[#0A66C2]">LINKEDIN_ACCESS_TOKEN</span> and <span className="font-mono text-[#0A66C2]">LINKEDIN_ORG_ID</span> in Replit Secrets. Obtain a long-lived page token from the LinkedIn Developer Portal. When an Image URL is provided the image is uploaded via the LinkedIn Assets API and attached to the post.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{linkedinPostId}}"} · {"{{linkedinPostUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{linkedinPostId}}"} · {"{{linkedinPostUrl}}"}</p>
             </div>
           </>
         )}
@@ -4502,10 +4502,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#0D0D0D] border border-[#E7E7E7]/20 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Requires five secrets in Replit Secrets: <span className="font-mono text-[#E7E7E7]">TWITTER_API_KEY</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_API_SECRET</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN_SECRET</span>, and (optionally) <span className="font-mono text-[#E7E7E7]">TWITTER_BEARER_TOKEN</span>. Create an app with Read &amp; Write access in the Twitter Developer Portal. When an Image URL is provided it is uploaded via the v1.1 media upload API and attached to the tweet.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{twitterTweetId}}"} · {"{{twitterTweetUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{twitterTweetId}}"} · {"{{twitterTweetUrl}}"}</p>
             </div>
           </>
         )}
@@ -4536,10 +4536,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#071533] border border-[#1877F2]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Requires <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ACCESS_TOKEN</span> and <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ID</span> in Replit Secrets. Generate a permanent Page access token via Meta for Developers → Graph API Explorer. When an Image URL is provided the post is created via the <span className="font-mono text-[#1877F2]">/photos</span> endpoint with the image attached.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{facebookPostId}}"} · {"{{facebookPostUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{facebookPostId}}"} · {"{{facebookPostUrl}}"}</p>
             </div>
           </>
         )}
@@ -4549,15 +4549,15 @@ function NodeConfigPanel({
         {(nodeType === "set_variable" || nodeType === "update_variable") && (
           <>
             <div className="space-y-1">
-              <label className="text-[11px] text-[#C9D1D9] font-medium">Variable Name</label>
+              <label className="text-[11px] text-foreground/90 font-medium">Variable Name</label>
               <input
                 type="text"
                 value={(node.data.variableName as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, variableName: e.target.value.replace(/\s+/g, "_") })}
                 placeholder="my_variable"
-                className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-1.5 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#34D399]/60"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] font-mono text-foreground/90 placeholder-[#3D444D] focus:outline-none focus:border-[#34D399]/60"
               />
-              <p className="text-[10px] text-[#7D8590]">
+              <p className="text-[10px] text-muted-foreground">
                 Used as a top-level payload key — accessible downstream as{" "}
                 <span className="font-mono text-[#34D399]">{"{{variableName}}"}</span> or{" "}
                 <span className="font-mono text-[#34D399]">{"{{steps.<thisNodeId>.value}}"}</span>.
@@ -4565,11 +4565,11 @@ function NodeConfigPanel({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] text-[#C9D1D9] font-medium">Type</label>
+              <label className="text-[11px] text-foreground/90 font-medium">Type</label>
               <select
                 value={(node.data.variableType as string) ?? "string"}
                 onChange={e => onChange(node.id, { ...node.data, variableType: e.target.value })}
-                className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-1.5 text-[11px] text-[#C9D1D9] focus:outline-none focus:border-[#34D399]/60"
+                className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-[11px] text-foreground/90 focus:outline-none focus:border-[#34D399]/60"
               >
                 <option value="string">String</option>
                 <option value="int">Integer</option>
@@ -4583,10 +4583,10 @@ function NodeConfigPanel({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] text-[#C9D1D9] font-medium">
+              <label className="text-[11px] text-foreground/90 font-medium">
                 Value
                 {["array", "object", "json"].includes((node.data.variableType as string) ?? "string") && (
-                  <span className="ml-1 text-[#7D8590] font-normal">— must be valid JSON</span>
+                  <span className="ml-1 text-muted-foreground font-normal">— must be valid JSON</span>
                 )}
               </label>
               {["array", "object", "json"].includes((node.data.variableType as string) ?? "string") ? (
@@ -4609,7 +4609,7 @@ function NodeConfigPanel({
                           : "[]  or  {}  or  42  or  \"text\""
                     }
                     spellCheck={false}
-                    className={`w-full rounded-md border bg-[#0D1117] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none resize-y ${node.data._jsonError ? "border-[#EF4444]/70 focus:border-[#EF4444]" : "border-[#30363D] focus:border-[#34D399]/60"}`}
+                    className={`w-full rounded-md border bg-background px-2.5 py-2 text-[11px] font-mono text-foreground/90 placeholder-[#3D444D] focus:outline-none resize-y ${node.data._jsonError ? "border-[#EF4444]/70 focus:border-[#EF4444]" : "border-border focus:border-[#34D399]/60"}`}
                   />
                   {node.data._jsonError && (
                     <p className="text-[10px] text-[#EF4444] font-mono break-all">{node.data._jsonError as string}</p>
@@ -4636,7 +4636,7 @@ function NodeConfigPanel({
             </div>
 
             <div className={`rounded-lg p-3 space-y-1 border ${nodeType === "update_variable" ? "bg-[#1A0E00] border-[#F97316]/30" : "bg-[#0A1A10] border-[#34D399]/30"}`}>
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 The resolved value is coerced to the selected type at run-time.
                 For <span className="font-mono">array / object / json</span>, the executor JSON-parses the interpolated string — invalid JSON causes the node to fail with a descriptive error.
                 For <span className="font-mono">int / float</span>, NaN results are also treated as errors.
@@ -4664,27 +4664,27 @@ function NodeConfigPanel({
           <>
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Gate Label</label>
+                <label className="text-xs font-medium text-muted-foreground">Gate Label</label>
                 <FieldHint text="Name shown on the approval card — helps approvers understand what they are reviewing." />
               </div>
               <input
                 value={(node.data.label as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, label: e.target.value })}
                 placeholder="Approval Gate"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#F59E0B]/60 placeholder-muted-foreground/60"
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Approver Role <span className="text-[#484F58] font-normal">(locked)</span></label>
+                <label className="text-xs font-medium text-muted-foreground">Approver Role <span className="text-muted-foreground/60 font-normal">(locked)</span></label>
                 <FieldHint text="Who can approve this gate. Currently locked to admin — only admins can approve or reject." />
               </div>
               <input
                 value="admin"
                 disabled
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#484F58] outline-none cursor-not-allowed"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-muted-foreground/60 outline-none cursor-not-allowed"
               />
-              <p className="text-[9px] text-[#484F58] leading-snug">Only admins can approve or reject approval gates.</p>
+              <p className="text-[9px] text-muted-foreground/60 leading-snug">Only admins can approve or reject approval gates.</p>
             </div>
             <ConfigField
               label="Timeout (seconds)"
@@ -4692,14 +4692,14 @@ function NodeConfigPanel({
               value={String(node.data.timeoutSeconds ?? 3600)}
               onChange={v => onChange(node.id, { ...node.data, timeoutSeconds: parseInt(v, 10) || 3600 })}
             />
-            <p className="text-[9px] text-[#484F58] leading-snug">
+            <p className="text-[9px] text-muted-foreground/60 leading-snug">
               Auto-rejects the run after this many seconds with no decision. Default: 3600 (1 hour).
             </p>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
-                Connect the output handle to nodes that run <span className="text-emerald-400 font-semibold">when approved</span>. Downstream nodes receive <span className="font-mono text-[#7D8590]">{"{{approved}}"}</span> (always true) and <span className="font-mono text-[#7D8590]">{"{{decisionNote}}"}</span>.
+            <div className="rounded-lg bg-background border border-border p-3 space-y-1.5">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                Connect the output handle to nodes that run <span className="text-emerald-400 font-semibold">when approved</span>. Downstream nodes receive <span className="font-mono text-muted-foreground">{"{{approved}}"}</span> (always true) and <span className="font-mono text-muted-foreground">{"{{decisionNote}}"}</span>.
               </p>
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
                 Rejection and timeout both <span className="text-red-400 font-semibold">fail the run</span> — no downstream nodes execute on rejection.
               </p>
             </div>
@@ -4725,11 +4725,11 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Method</label>
+              <label className="text-xs font-medium text-muted-foreground">Method</label>
               <select
                 value={(node.data.method as string) ?? "POST"}
                 onChange={e => onChange(node.id, { ...node.data, method: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
               >
                 {["POST", "PATCH", "PUT"].map(m => (
                   <option key={m} value={m}>
@@ -4806,26 +4806,26 @@ function NodeConfigPanel({
             />
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Item alias <span className="text-[#484F58] font-normal">(optional)</span></label>
+                <label className="text-xs font-medium text-muted-foreground">Item alias <span className="text-muted-foreground/60 font-normal">(optional)</span></label>
                 <FieldHint text="Short name for each loop item — accessible as {{alias.fieldName}} inside the loop body alongside the default {{item}}." />
               </div>
               <input
                 value={(node.data.itemAlias as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, itemAlias: e.target.value })}
                 placeholder="headline"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60 placeholder-muted-foreground/60"
               />
-              <p className="text-[9px] text-[#484F58] leading-snug">
-                If set, each element is also injected as <span className="font-mono text-[#7D8590]">{"{{<alias>}}"}</span> alongside <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>.
+              <p className="text-[9px] text-muted-foreground/60 leading-snug">
+                If set, each element is also injected as <span className="font-mono text-muted-foreground">{"{{<alias>}}"}</span> alongside <span className="font-mono text-muted-foreground">{"{{item}}"}</span>.
               </p>
             </div>
             <ForeachItemFields node={node} onChange={onChange} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
-                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Loop</span> handle to the first node of the loop body — downstream nodes receive <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{itemIndex}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{itemsTotal}}"}</span> per iteration.
+            <div className="rounded-lg bg-background border border-border p-3 space-y-1.5">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Loop</span> handle to the first node of the loop body — downstream nodes receive <span className="font-mono text-muted-foreground">{"{{item}}"}</span>, <span className="font-mono text-muted-foreground">{"{{itemIndex}}"}</span>, and <span className="font-mono text-muted-foreground">{"{{itemsTotal}}"}</span> per iteration.
               </p>
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
-                Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-[#7D8590]">{"{{collectedResults}}"}</span>.
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-muted-foreground">{"{{collectedResults}}"}</span>.
               </p>
             </div>
           </>
@@ -4843,7 +4843,7 @@ function NodeConfigPanel({
             />
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Max iterations <span className="text-[#484F58] font-normal">(optional safety cap)</span></label>
+                <label className="text-xs font-medium text-muted-foreground">Max iterations <span className="text-muted-foreground/60 font-normal">(optional safety cap)</span></label>
                 <FieldHint text="If set, the loop stops after this many iterations even if the array is longer — useful to prevent runaway loops in production." />
               </div>
               <input
@@ -4855,14 +4855,14 @@ function NodeConfigPanel({
                   onChange(node.id, { ...node.data, maxIterations: v === "" ? undefined : Math.max(1, Number(v)) });
                 }}
                 placeholder="unlimited"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A855F7]/60 placeholder-[#484F58]"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#A855F7]/60 placeholder-muted-foreground/60"
               />
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
-                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Body</span> handle to the first node of the loop body — each iteration injects <span className="font-mono text-[#7D8590]">{"{{item}}"}</span> (the element) and <span className="font-mono text-[#7D8590]">{"{{index}}"}</span> (0-based position).
+            <div className="rounded-lg bg-background border border-border p-3 space-y-1.5">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Body</span> handle to the first node of the loop body — each iteration injects <span className="font-mono text-muted-foreground">{"{{item}}"}</span> (the element) and <span className="font-mono text-muted-foreground">{"{{index}}"}</span> (0-based position).
               </p>
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete. Iterations are <span className="font-semibold">sequential</span> — each one finishes before the next starts.
               </p>
             </div>
@@ -4872,30 +4872,30 @@ function NodeConfigPanel({
         {nodeType === "retry" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Max Attempts</label>
+              <label className="text-xs font-medium text-muted-foreground">Max Attempts</label>
               <input
                 type="number" min={1}
                 value={(node.data.maxAttempts as number) ?? 3}
                 onChange={e => onChange(node.id, { ...node.data, maxAttempts: Math.max(1, Number(e.target.value)) })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Delay between retries (seconds)</label>
+                <label className="text-xs font-medium text-muted-foreground">Delay between retries (seconds)</label>
               </div>
               <input
                 type="number" min={0}
                 value={(node.data.delaySeconds as number) ?? 0}
                 onChange={e => onChange(node.id, { ...node.data, delaySeconds: Math.max(0, Number(e.target.value)) })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-primary/60"
               />
             </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
-                Connect the <span className="font-semibold text-red-400">Exhausted</span> handle to the first node of your error-handling subgraph — it receives <span className="font-mono text-[#7D8590]">{`{{_retry.${node.id}.count}}`}</span> and <span className="font-mono text-[#7D8590]">{`{{_retry.${node.id}.lastError}}`}</span>.
+            <div className="rounded-lg bg-background border border-border p-3 space-y-1.5">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                Connect the <span className="font-semibold text-red-400">Exhausted</span> handle to the first node of your error-handling subgraph — it receives <span className="font-mono text-muted-foreground">{`{{_retry.${node.id}.count}}`}</span> and <span className="font-mono text-muted-foreground">{`{{_retry.${node.id}.lastError}}`}</span>.
               </p>
-              <p className="text-[10px] text-[#484F58] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after the exhausted subgraph completes (or after a successful retry, the source node's normal path is used directly).
               </p>
             </div>
@@ -4907,17 +4907,17 @@ function NodeConfigPanel({
         {nodeType === "comment" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Comment</label>
+              <label className="text-xs font-medium text-muted-foreground">Comment</label>
               <textarea
                 rows={4}
                 value={((node.data.params as Record<string, unknown> | undefined)?.text as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, params: { ...((node.data.params as Record<string, unknown>) ?? {}), text: e.target.value } })}
                 placeholder="Add a note about this workflow step…"
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#CA8A04]/60 resize-none leading-relaxed"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-[#CA8A04]/60 resize-none leading-relaxed"
               />
             </div>
             <div className="rounded-lg bg-[#1A1600] border border-[#CA8A04]/20 p-2.5">
-              <p className="text-[10px] text-[#7D8590]">This node is decorative — it is skipped entirely when the workflow runs and produces no output variables.</p>
+              <p className="text-[10px] text-muted-foreground">This node is decorative — it is skipped entirely when the workflow runs and produces no output variables.</p>
             </div>
           </>
         )}
@@ -4947,11 +4947,11 @@ function NodeConfigPanel({
               placeholder="2025-09-01T17:00:00 or {{meetingEnd}}"
               ancestorOutputs={ancestorOutputs}
             />
-            <div className="rounded-lg bg-[#041620] border border-[#0078D4]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
-                Calls the Microsoft Graph <span className="font-mono text-[#0078D4]">getSchedule</span> endpoint. Requires <span className="font-mono text-[#0078D4]">GRAPH_CLIENT_ID</span>, <span className="font-mono text-[#0078D4]">GRAPH_CLIENT_SECRET</span>, and <span className="font-mono text-[#0078D4]">GRAPH_TENANT_ID</span> secrets with <span className="font-mono">Calendars.Read</span> application permission.
+            <div className="rounded-lg bg-[#041620] border border-primary/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Calls the Microsoft Graph <span className="font-mono text-primary">getSchedule</span> endpoint. Requires <span className="font-mono text-primary">GRAPH_CLIENT_ID</span>, <span className="font-mono text-primary">GRAPH_CLIENT_SECRET</span>, and <span className="font-mono text-primary">GRAPH_TENANT_ID</span> secrets with <span className="font-mono">Calendars.Read</span> application permission.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{isBusy}}"} · {"{{availableSlots}}"} · {"{{busySlots}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{isBusy}}"} · {"{{availableSlots}}"} · {"{{busySlots}}"}</p>
             </div>
           </>
         )}
@@ -5002,10 +5002,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041620] border border-[#00B4D8]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Creates an event in the mailbox via the Graph <span className="font-mono text-[#00B4D8]">POST /users/&#123;upn&#125;/events</span> endpoint. Requires <span className="font-mono text-[#00B4D8]">Calendars.ReadWrite</span> application permission.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{eventId}}"} · {"{{eventUrl}}"} · {"{{eventWebLink}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{eventId}}"} · {"{{eventUrl}}"} · {"{{eventWebLink}}"}</p>
             </div>
           </>
         )}
@@ -5065,10 +5065,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#0A1A10] border border-[#34D399]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Uploads via Graph <span className="font-mono text-[#34D399]">PUT /sites/&#123;id&#125;/drives/&#123;driveId&#125;/items/root:/&#123;path&#125;/content</span>. Requires <span className="font-mono text-[#34D399]">Files.ReadWrite.All</span> application permission.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{sharePointItemId}}"} · {"{{sharePointWebUrl}}"} · {"{{sharePointDownloadUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{sharePointItemId}}"} · {"{{sharePointWebUrl}}"} · {"{{sharePointDownloadUrl}}"}</p>
             </div>
           </>
         )}
@@ -5104,10 +5104,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#0A1A10] border border-[#6EE7B7]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Downloads the file and returns its contents as a <span className="font-mono text-[#6EE7B7]">base64</span> string. Provide either the Item ID (faster) or the full drive path. Requires <span className="font-mono text-[#6EE7B7]">Files.Read.All</span> application permission.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{fileContentBase64}}"} · {"{{fileName}}"} · {"{{mimeType}}"} · {"{{sharePointWebUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{fileContentBase64}}"} · {"{{fileName}}"} · {"{{mimeType}}"} · {"{{sharePointWebUrl}}"}</p>
             </div>
           </>
         )}
@@ -5132,10 +5132,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#1A0D00] border border-[#F97316]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Strips HTML tags and renders text content using <span className="font-mono text-[#F97316]">pdf-lib</span> with A4 page dimensions. Supports <span className="font-mono text-[#F97316]">h1</span>, <span className="font-mono text-[#F97316]">h2</span>, <span className="font-mono text-[#F97316]">strong</span>, paragraph wrapping, bullet lists, and horizontal rules. Outputs a base64 string and a <span className="font-mono text-[#F97316]">data:</span> URI — pipe into Save to SharePoint or Send Email.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{pdfBase64}}"} · {"{{pdfDataUri}}"} · {"{{fileName}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{pdfBase64}}"} · {"{{pdfDataUri}}"} · {"{{fileName}}"}</p>
             </div>
           </>
         )}
@@ -5216,10 +5216,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#0A1420] border border-[#818CF8]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Generates a branded proposal page, saves it to the database, and returns a public URL. Combine with <span className="font-mono text-[#818CF8]">generate_stripe_payment_link</span> to embed a checkout button, and <span className="font-mono text-[#818CF8]">send_email</span> to deliver the link to the client. Page expires after 30 days by default (or the date set in Valid Until).
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{presentationUrl}}"} · {"{{presentationId}}"} · {"{{presentationHtml}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{presentationUrl}}"} · {"{{presentationId}}"} · {"{{presentationHtml}}"}</p>
             </div>
           </>
         )}
@@ -5246,7 +5246,7 @@ function NodeConfigPanel({
             />
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Days Until Due</label>
+                <label className="text-xs font-medium text-muted-foreground">Days Until Due</label>
                 <FieldHint text="How many calendar days from the run date the Stripe invoice is due. 0 means due immediately." />
               </div>
               <input
@@ -5254,7 +5254,7 @@ function NodeConfigPanel({
                 min={0}
                 value={String(node.data.daysUntilDue ?? 7)}
                 onChange={e => onChange(node.id, { ...node.data, daysUntilDue: parseInt(e.target.value, 10) || 7 })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#34D399]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#34D399]/60"
               />
             </div>
             <PayloadField
@@ -5267,10 +5267,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#34D399]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Creates a Stripe customer (or looks up existing by email), creates a draft invoice, adds line items, finalises it, and sends it to the customer. Amount is in <span className="font-mono text-[#34D399]">smallest currency unit</span> (e.g. 250000 = $2,500.00 USD). Requires <span className="font-mono text-[#34D399]">STRIPE_SECRET_KEY</span> or <span className="font-mono text-[#34D399]">STRIPE_SECRET_KEY_PROD</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceId}}"} · {"{{invoiceUrl}}"} · {"{{invoicePdfUrl}}"} · {"{{amountDue}}"} · {"{{currency}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{invoiceId}}"} · {"{{invoiceUrl}}"} · {"{{invoicePdfUrl}}"} · {"{{amountDue}}"} · {"{{currency}}"}</p>
             </div>
           </>
         )}
@@ -5303,7 +5303,7 @@ function NodeConfigPanel({
             />
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Quantity</label>
+                <label className="text-xs font-medium text-muted-foreground">Quantity</label>
                 <FieldHint text="Number of units for this line item on the Stripe payment link." />
               </div>
               <input
@@ -5311,7 +5311,7 @@ function NodeConfigPanel({
                 min={1}
                 value={String(node.data.quantity ?? 1)}
                 onChange={e => onChange(node.id, { ...node.data, quantity: parseInt(e.target.value, 10) || 1 })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#2DD4BF]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#2DD4BF]/60"
               />
             </div>
             <PayloadField
@@ -5323,10 +5323,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#2DD4BF]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Creates a Stripe product, a price, and a Payment Link in one step. The link can be embedded in emails, proposals, or the <span className="font-mono text-[#2DD4BF]">build_presentation</span> node's checkout URL. Requires <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY</span> or <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY_PROD</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{paymentLinkId}}"} · {"{{paymentLinkUrl}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{paymentLinkId}}"} · {"{{paymentLinkUrl}}"}</p>
             </div>
           </>
         )}
@@ -5366,10 +5366,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#F59E0B]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Creates one Stripe draft invoice per SOW phase (80% total, distributed by phase amount). Sets <span className="font-mono text-[#F59E0B]">collection_method: charge_automatically</span> and <span className="font-mono text-[#F59E0B]">auto_advance: false</span>. Saves the deposit payment method as the Stripe Customer&apos;s default. Writes the <span className="font-mono text-[#F59E0B]">stripeInvoiceId</span> back to each workflow step row. Requires <span className="font-mono text-[#F59E0B]">STRIPE_SECRET_KEY</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceIds}}"} · {"{{phaseCount}}"} · {"{{totalScheduled}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{invoiceIds}}"} · {"{{phaseCount}}"} · {"{{totalScheduled}}"}</p>
             </div>
           </>
         )}
@@ -5433,10 +5433,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#A78BFA]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Creates a single Stripe draft invoice for one SOW phase. Use inside a <span className="font-mono text-[#A78BFA]">foreach</span> node iterating over phases. Sets <span className="font-mono text-[#A78BFA]">collection_method: charge_automatically</span> and <span className="font-mono text-[#A78BFA]">auto_advance: false</span>. Saves the deposit payment method as customer default. Writes <span className="font-mono text-[#A78BFA]">stripeInvoiceId</span> back to the matching workflow step when <span className="font-mono text-[#A78BFA]">projectId</span> is supplied. Requires <span className="font-mono text-[#A78BFA]">STRIPE_SECRET_KEY</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceId}}"} · {"{{customerId}}"} · {"{{amountCents}}"} · {"{{phaseTitle}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{invoiceId}}"} · {"{{customerId}}"} · {"{{amountCents}}"} · {"{{phaseTitle}}"}</p>
             </div>
           </>
         )}
@@ -5452,10 +5452,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#EF4444]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Finalizes the Stripe draft invoice then immediately charges the customer&apos;s default payment method. On card decline or any Stripe error, returns <span className="font-mono text-[#EF4444]">chargeStatus: &quot;failed&quot;</span> instead of throwing, so a downstream condition node can branch and notify Shane. Requires <span className="font-mono text-[#EF4444]">STRIPE_SECRET_KEY</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{chargeStatus}}"} · {"{{amountCharged}}"} · {"{{stripePaymentIntentId}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{chargeStatus}}"} · {"{{amountCharged}}"} · {"{{stripePaymentIntentId}}"}</p>
             </div>
           </>
         )}
@@ -5495,10 +5495,10 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="rounded-lg bg-[#041A1A] border border-[#818CF8]/30 p-3 space-y-1.5">
-              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
                 Updates a <span className="font-mono text-[#818CF8]">draft</span> Stripe invoice. Only updates fields whose expression resolves to a non-empty string. Fails with an error if the invoice is not in draft status — wire a <span className="font-mono text-amber-400">condition</span> node on <span className="font-mono text-[#818CF8]">{"{{found}} == true"}</span> before this node if using Find Object. Requires <span className="font-mono text-[#818CF8]">STRIPE_SECRET_KEY</span>.
               </p>
-              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceId}}"} · {"{{status}}"} · {"{{dueDate}}"}</p>
+              <p className="text-[10px] font-mono text-muted-foreground">{"{{invoiceId}}"} · {"{{status}}"} · {"{{dueDate}}"}</p>
             </div>
           </>
         )}
@@ -5523,11 +5523,11 @@ function NodeConfigPanel({
                 onChange={e => onChange(node.id, { ...node.data, cancelOnFalse: e.target.checked })}
                 className="w-3.5 h-3.5 rounded accent-amber-500"
               />
-              <label htmlFor={`cancel-on-false-${node.id}`} className="text-xs text-[#7D8590] cursor-pointer">
+              <label htmlFor={`cancel-on-false-${node.id}`} className="text-xs text-muted-foreground cursor-pointer">
                 Cancel workflow when condition is false
               </label>
             </div>
-            <p className="text-[10px] text-[#484F58] leading-relaxed">
+            <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
               true → follow <span className="text-emerald-400 font-mono">true</span> edge &nbsp;·&nbsp;
               false → follow <span className="text-amber-400 font-mono">false</span> edge
               {node.data.cancelOnFalse ? " (or cancel if no false edge)" : ""}
@@ -5546,11 +5546,11 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Sensitivity</label>
+              <label className="text-xs font-medium text-muted-foreground">Sensitivity</label>
               <select
                 value={(node.data.sensitivity as string) ?? "balanced"}
                 onChange={e => onChange(node.id, { ...node.data, sensitivity: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#2DD4BF]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#2DD4BF]/60"
               >
                 <option value="strict">Strict — any warning or non-zero exit fails</option>
                 <option value="balanced">Balanced — major errors fail, warnings pass</option>
@@ -5558,7 +5558,7 @@ function NodeConfigPanel({
                 <option value="very_lenient">Very Lenient — only fail on total/catastrophic failure</option>
               </select>
             </div>
-            <p className="text-[10px] text-[#484F58] leading-relaxed">
+            <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
               AI evaluates the output and routes to <span className="text-[#2DD4BF] font-mono">Passed</span> or <span className="text-red-400 font-mono">On Failure</span>.
             </p>
           </>
@@ -5568,13 +5568,13 @@ function NodeConfigPanel({
           <>
             <div className="space-y-1.5">
               <div className="flex items-center gap-1">
-                <label className="text-xs font-medium text-[#7D8590]">Mode</label>
+                <label className="text-xs font-medium text-muted-foreground">Mode</label>
                 <FieldHint text="Fixed pauses for a set number of seconds. Until Timestamp waits until a specific ISO date. Until Condition polls until an expression becomes true." />
               </div>
               <select
                 value={(node.data.mode as string) ?? "fixed"}
                 onChange={e => onChange(node.id, { ...node.data, mode: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60"
               >
                 <option value="fixed">Fixed Duration</option>
                 <option value="until_timestamp">Until Timestamp</option>
@@ -5657,8 +5657,8 @@ function NodeConfigPanel({
         scanObj(node.data);
         if (refs.length === 0) return null;
         return (
-          <div className="pt-3 border-t border-[#30363D] space-y-1.5">
-            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Token References</p>
+          <div className="pt-3 border-t border-border space-y-1.5">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Token References</p>
             <div className="flex flex-wrap gap-1">
               {refs.map(ref => (
                 <span
@@ -5672,7 +5672,7 @@ function NodeConfigPanel({
                 </span>
               ))}
             </div>
-            <p className="text-[8px] text-[#484F58]">Hover a token to highlight its source node on the canvas</p>
+            <p className="text-[8px] text-muted-foreground/60">Hover a token to highlight its source node on the canvas</p>
           </div>
         );
       })()}
@@ -5747,26 +5747,26 @@ function SendCampaignEmailPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Campaign Email Copy</label>
+          <label className="text-xs font-medium text-muted-foreground">Campaign Email Copy</label>
           <FieldHint text="The email copy asset to send. Create assets in Marketing → Campaigns → Assets, then select one here." />
         </div>
         {isLoading ? (
-          <div className="text-xs text-[#484F58] animate-pulse">Loading email assets…</div>
+          <div className="text-xs text-muted-foreground/60 animate-pulse">Loading email assets…</div>
         ) : (
           <>
             <button
               type="button"
               onClick={() => setPickerOpen(o => !o)}
-              className="w-full flex items-center justify-between bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-left outline-none focus:border-[#10B981]/60 hover:border-[#484F58] transition-colors"
+              className="w-full flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2 text-xs text-left outline-none focus:border-[#10B981]/60 hover:border-muted-foreground/60 transition-colors"
             >
-              <span className={selectedAsset ? "text-[#E6EDF3]" : "text-[#484F58]"}>
+              <span className={selectedAsset ? "text-foreground" : "text-muted-foreground/60"}>
                 {selectedAsset ? selectedAsset.title : "— choose an email copy asset —"}
               </span>
-              <span className="text-[#484F58] ml-2">{pickerOpen ? "▲" : "▼"}</span>
+              <span className="text-muted-foreground/60 ml-2">{pickerOpen ? "▲" : "▼"}</span>
             </button>
 
             {pickerOpen && (
-              <div className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
+              <div className="rounded-lg border border-border bg-background overflow-hidden">
                 <div className="px-2 pt-2 pb-1">
                   <input
                     autoFocus
@@ -5774,14 +5774,14 @@ function SendCampaignEmailPanel({
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder="Search by title…"
-                    className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#10B981]/60"
+                    className="w-full bg-card border border-border rounded px-2 py-1 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-[#10B981]/60"
                   />
                 </div>
-                <div className="max-h-48 overflow-y-auto divide-y divide-[#21262D]">
+                <div className="max-h-48 overflow-y-auto divide-y divide-accent">
                   {assets.length === 0 ? (
-                    <p className="text-[10px] text-[#484F58] px-3 py-2">No email copy assets found. Generate some in Marketing → Campaigns.</p>
+                    <p className="text-[10px] text-muted-foreground/60 px-3 py-2">No email copy assets found. Generate some in Marketing → Campaigns.</p>
                   ) : filtered.length === 0 ? (
-                    <p className="text-[10px] text-[#484F58] px-3 py-2">No assets match.</p>
+                    <p className="text-[10px] text-muted-foreground/60 px-3 py-2">No assets match.</p>
                   ) : filtered.map(a => (
                     <button
                       key={a.id}
@@ -5791,10 +5791,10 @@ function SendCampaignEmailPanel({
                         setPickerOpen(false);
                         setSearch("");
                       }}
-                      className={`w-full text-left px-3 py-2 hover:bg-[#1C2128] transition-colors ${a.id === assetId ? "bg-[#10B981]/10" : ""}`}
+                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${a.id === assetId ? "bg-[#10B981]/10" : ""}`}
                     >
-                      <p className="text-xs font-medium text-[#E6EDF3]">{a.title}</p>
-                      <p className="text-[9px] text-[#484F58] font-mono mt-0.5">
+                      <p className="text-xs font-medium text-foreground">{a.title}</p>
+                      <p className="text-[9px] text-muted-foreground/60 font-mono mt-0.5">
                         {a.campaignId
                           ? campaignNameById[a.campaignId] ?? `campaign #${a.campaignId}`
                           : "no campaign"} · asset #{a.id}
@@ -5808,14 +5808,14 @@ function SendCampaignEmailPanel({
         )}
 
         {selectedAsset && (
-          <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-2">
+          <div className="rounded-lg bg-background border border-border p-2.5 space-y-2">
             <div>
-              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Subject (from title)</p>
-              <p className="text-[10px] text-[#7D8590] font-mono break-all">{selectedAsset.title}</p>
+              <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold mb-0.5">Subject (from title)</p>
+              <p className="text-[10px] text-muted-foreground font-mono break-all">{selectedAsset.title}</p>
             </div>
             <div>
-              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Body preview</p>
-              <p className="text-[10px] text-[#7D8590] leading-relaxed line-clamp-4 break-words">
+              <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 font-bold mb-0.5">Body preview</p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-4 break-words">
                 {selectedAsset.content.slice(0, 300)}{selectedAsset.content.length > 300 ? "…" : ""}
               </p>
             </div>
@@ -5829,9 +5829,9 @@ function SendCampaignEmailPanel({
         placeholder="{{email}} or client@example.com"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Sends the selected campaign email copy to the recipient, substituting <span className="font-mono text-[#7D8590]">{"{{token}}"}</span> placeholders from the workflow payload. The asset title is used as the email subject. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{sent}}"} · {"{{recipient}}"} · {"{{subject}}"} · {"{{sourceRef}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Sends the selected campaign email copy to the recipient, substituting <span className="font-mono text-muted-foreground">{"{{token}}"}</span> placeholders from the workflow payload. The asset title is used as the email subject. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{sent}}"} · {"{{recipient}}"} · {"{{subject}}"} · {"{{sourceRef}}"}</p>
       </div>
     </>
   );
@@ -5871,9 +5871,9 @@ function GenerateLandingPagePanel({
         placeholder="Book Your Paid Assessment or {{cta}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">AI generates a full landing page (headline, subheadline, 3 value-prop blocks, CTA) and saves it to the database as <span className="text-[#7D8590]">unpublished</span>. Wire a <span className="font-mono text-[#7D8590]">Publish Landing Page</span> node after this one to make it live. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{landingPageId}}"} · {"{{slug}}"} · {"{{headline}}"} · {"{{subheadline}}"} · {"{{published}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">AI generates a full landing page (headline, subheadline, 3 value-prop blocks, CTA) and saves it to the database as <span className="text-muted-foreground">unpublished</span>. Wire a <span className="font-mono text-muted-foreground">Publish Landing Page</span> node after this one to make it live. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{landingPageId}}"} · {"{{slug}}"} · {"{{headline}}"} · {"{{subheadline}}"} · {"{{published}}"}</p>
       </div>
     </>
   );
@@ -5924,21 +5924,21 @@ function CreateKanbanTaskPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Board type</label>
+          <label className="text-xs font-medium text-muted-foreground">Board type</label>
           <FieldHint text="Choose Marketing to hardcode the marketing board, or Project board to pass a dynamic {{projectId}} at runtime." />
         </div>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => onChange(node.id, { ...node.data, boardId: "marketing", columnId: MARKETING_COLUMNS[0]!.id })}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
           >
             Marketing
           </button>
           <button
             type="button"
             onClick={() => onChange(node.id, { ...node.data, boardId: "{{projectId}}", columnId: PROJECT_COLUMNS[0]!.id })}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
           >
             Project board
           </button>
@@ -5956,13 +5956,13 @@ function CreateKanbanTaskPanel({
       )}
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
+          <label className="text-xs font-medium text-muted-foreground">Column / Status</label>
           <FieldHint text={isMarketing ? "The status column on the marketing board." : "The column (status) the card starts in on the project kanban board."} />
         </div>
         <select
           value={effectiveColumnId}
           onChange={e => onChange(node.id, { ...node.data, columnId: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#6366F1]/60"
         >
           {columns.map(c => (
             <option key={c.id} value={c.id}>{c.label}</option>
@@ -5988,13 +5988,13 @@ function CreateKanbanTaskPanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Priority</label>
+          <label className="text-xs font-medium text-muted-foreground">Priority</label>
           <FieldHint text="Priority level assigned to the kanban card — urgent, high, medium, or low." />
         </div>
         <select
           value={(node.data.priority as string) ?? "medium"}
           onChange={e => onChange(node.id, { ...node.data, priority: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#6366F1]/60"
         >
           {PRIORITY_OPTIONS.map(p => (
             <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -6011,9 +6011,9 @@ function CreateKanbanTaskPanel({
           ancestorOutputs={ancestorOutputs}
         />
       )}
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title, description, board ID, and phase ID support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Creates a Kanban card on the selected board and column. Title, description, board ID, and phase ID support <span className="font-mono text-muted-foreground">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
       </div>
     </>
   );
@@ -6040,10 +6040,10 @@ function GetProjectTasksPanel({
         placeholder="{{projectId}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Fetches all kanban tasks for the project, grouped under their phases (workflow steps). Tasks with no phase go into an "Unassigned" bucket. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phases}}"} · {"{{taskCount}}"} · {"{{projectId}}"}</p>
-        <p className="text-[10px] text-[#484F58]">Each task in <span className="font-mono text-[#7D8590]">phases[].tasks</span> includes: <span className="font-mono text-[#7D8590]">taskId, title, column, priority, assignedTo, dueDate, groupName, taskType, isCustomerTask, linkedRunbookId, customerDownloadScriptId, triggersHealthScore, taskMetadata</span></p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Fetches all kanban tasks for the project, grouped under their phases (workflow steps). Tasks with no phase go into an "Unassigned" bucket. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{phases}}"} · {"{{taskCount}}"} · {"{{projectId}}"}</p>
+        <p className="text-[10px] text-muted-foreground/60">Each task in <span className="font-mono text-muted-foreground">phases[].tasks</span> includes: <span className="font-mono text-muted-foreground">taskId, title, column, priority, assignedTo, dueDate, groupName, taskType, isCustomerTask, linkedRunbookId, customerDownloadScriptId, triggersHealthScore, taskMetadata</span></p>
       </div>
     </>
   );
@@ -6072,13 +6072,13 @@ function UpdateProjectTaskPanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Column (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Column (optional)</label>
           <FieldHint text="Move the task to a different column. Leave blank to keep the current column." />
         </div>
         <select
           value={(node.data.column as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, column: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#A78BFA]/60"
         >
           <option value="">(no change)</option>
           {PROJECT_COLUMNS.map(c => (
@@ -6105,13 +6105,13 @@ function UpdateProjectTaskPanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Priority (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Priority (optional)</label>
           <FieldHint text="Change the task priority. Leave blank to keep the current priority." />
         </div>
         <select
           value={(node.data.priority as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, priority: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#A78BFA]/60"
         >
           <option value="">(no change)</option>
           {PRIORITY_OPTIONS.map(p => (
@@ -6135,9 +6135,9 @@ function UpdateProjectTaskPanel({
         placeholder="{{dueDate}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Updates the specified task. Only non-blank fields are written — omitted fields are left unchanged. Errors if no task is found with the given ID. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{updated}}"} · {"{{taskId}}"} · {"{{column}}"} · {"{{title}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Updates the specified task. Only non-blank fields are written — omitted fields are left unchanged. Errors if no task is found with the given ID. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{updated}}"} · {"{{taskId}}"} · {"{{column}}"} · {"{{title}}"}</p>
       </div>
     </>
   );
@@ -6173,13 +6173,13 @@ function UpdateMilestonePanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Status (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Status (optional)</label>
           <FieldHint text="New status for the phase. Leave blank to keep the current status. Setting to 'In Progress' seeds Kanban cards from the phase template (no script auto-fire)." />
         </div>
         <select
           value={(node.data.statusExpr as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, statusExpr: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#22C55E]/60"
         >
           <option value="">(no change)</option>
           {MILESTONE_STATUSES.map(s => (
@@ -6195,11 +6195,11 @@ function UpdateMilestonePanel({
         placeholder="{{deliveryDate}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">
           Updates the milestone status and/or due date. When status is <span className="font-mono text-[#22C55E]">in_progress</span>, Kanban cards are seeded from the phase template if none exist yet — no script auto-fire. Outputs:
         </p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{milestoneId}}"} · {"{{previousStatus}}"} · {"{{newStatus}}"} · {"{{kanbanCardsSeeded}}"}</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{milestoneId}}"} · {"{{previousStatus}}"} · {"{{newStatus}}"} · {"{{kanbanCardsSeeded}}"}</p>
       </div>
     </>
   );
@@ -6234,9 +6234,9 @@ function GetPhasesPanel({
         placeholder="{{presentationId}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Reads <span className="font-mono text-[#7D8590]">sowPhases</span> from <span className="font-mono text-[#7D8590]">quick_win_presentations</span>, filtered to <span className="font-mono text-[#7D8590]">selected: true</span> phases. Returns empty array (non-fatal) if no presentation is found. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phases}}"} · {"{{phaseCount}}"} · {"{{presentationId}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Reads <span className="font-mono text-muted-foreground">sowPhases</span> from <span className="font-mono text-muted-foreground">quick_win_presentations</span>, filtered to <span className="font-mono text-muted-foreground">selected: true</span> phases. Returns empty array (non-fatal) if no presentation is found. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{phases}}"} · {"{{phaseCount}}"} · {"{{presentationId}}"}</p>
       </div>
     </>
   );
@@ -6300,9 +6300,9 @@ function CreatePhasePanel({
         placeholder="0"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Inserts a row into <span className="font-mono text-[#7D8590]">workflow_steps</span> with <span className="font-mono text-[#7D8590]">status: pending</span>. Errors if projectId or title are missing. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phaseId}}"} · {"{{phaseTitle}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Inserts a row into <span className="font-mono text-muted-foreground">workflow_steps</span> with <span className="font-mono text-muted-foreground">status: pending</span>. Errors if projectId or title are missing. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{phaseId}}"} · {"{{phaseTitle}}"}</p>
       </div>
     </>
   );
@@ -6345,9 +6345,9 @@ function SavePhasesPanel({
         placeholder="{{aiResponse}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Persists AI-generated phases to <span className="font-mono text-[#7D8590]">quick_win_presentations.sowPhases</span>. Allocates prices by <span className="font-mono text-[#7D8590]">priceWeight</span>. Also inserts <span className="font-mono text-[#7D8590]">workflow_steps</span> rows if a project is linked. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{saved}}"} · {"{{phaseCount}}"} · {"{{resolvedPhases}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Persists AI-generated phases to <span className="font-mono text-muted-foreground">quick_win_presentations.sowPhases</span>. Allocates prices by <span className="font-mono text-muted-foreground">priceWeight</span>. Also inserts <span className="font-mono text-muted-foreground">workflow_steps</span> rows if a project is linked. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{saved}}"} · {"{{phaseCount}}"} · {"{{resolvedPhases}}"}</p>
       </div>
     </>
   );
@@ -6395,13 +6395,13 @@ function GenerateArticlePanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Category</label>
+          <label className="text-xs font-medium text-muted-foreground">Category</label>
           <FieldHint text="The blog category this article is filed under on the consulting site resource page." />
         </div>
         <select
           value={(node.data.category as string) ?? "M365 Best Practices"}
           onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#C084FC]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#C084FC]/60"
         >
           {ARTICLE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -6416,20 +6416,20 @@ function GenerateArticlePanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Tone</label>
+          <label className="text-xs font-medium text-muted-foreground">Tone</label>
           <FieldHint text="Writing style for the AI. Professional suits most content; technical is better for in-depth guides; executive is best for leadership audiences." />
         </div>
         <select
           value={(node.data.tone as string) ?? ARTICLE_TONES[0]}
           onChange={e => onChange(node.id, { ...node.data, tone: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#C084FC]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#C084FC]/60"
         >
           {ARTICLE_TONES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Calls Claude AI to write a professional consulting article in Shane's voice. Outputs a JSON payload — wire directly into a <span className="font-mono text-[#C084FC]">publish_article</span> node to publish automatically. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{articleTitle}}"} · {"{{articleSlug}}"} · {"{{articleContent}}"} · {"{{articleSummary}}"} · {"{{articleDate}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Calls Claude AI to write a professional consulting article in Shane's voice. Outputs a JSON payload — wire directly into a <span className="font-mono text-[#C084FC]">publish_article</span> node to publish automatically. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{articleTitle}}"} · {"{{articleSlug}}"} · {"{{articleContent}}"} · {"{{articleSummary}}"} · {"{{articleDate}}"}</p>
       </div>
     </>
   );
@@ -6448,8 +6448,8 @@ function PublishArticlePanel({
 }) {
   return (
     <>
-      <div className="rounded-lg bg-[#0D1117] border border-[#C084FC]/20 p-2.5 space-y-1">
-        <p className="text-[10px] text-[#7D8590]">By default, reads <span className="font-mono">{"{{articleTitle}}"}</span>, <span className="font-mono">{"{{articleSlug}}"}</span>, <span className="font-mono">{"{{articleContent}}"}</span>, <span className="font-mono">{"{{articleSummary}}"}</span>, <span className="font-mono">{"{{articleCategory}}"}</span>, and <span className="font-mono">{"{{articleDate}}"}</span> from the previous node's payload. Use the override fields below to hard-code or re-map values.</p>
+      <div className="rounded-lg bg-background border border-[#C084FC]/20 p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground">By default, reads <span className="font-mono">{"{{articleTitle}}"}</span>, <span className="font-mono">{"{{articleSlug}}"}</span>, <span className="font-mono">{"{{articleContent}}"}</span>, <span className="font-mono">{"{{articleSummary}}"}</span>, <span className="font-mono">{"{{articleCategory}}"}</span>, and <span className="font-mono">{"{{articleDate}}"}</span> from the previous node's payload. Use the override fields below to hard-code or re-map values.</p>
       </div>
       <PayloadField
         label="Title override (leave blank to use {{articleTitle}})"
@@ -6492,9 +6492,9 @@ function PublishArticlePanel({
         placeholder="{{articleDate}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Saves the article to the database and writes a <span className="font-mono text-[#7D8590]">.md</span> file to the public site. When wired after a <span className="font-mono text-[#C084FC]">generate_article</span> node all fields auto-populate — no override expressions needed. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{published}}"} · {"{{slug}}"} · {"{{articleId}}"} · {"{{title}}"}</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Saves the article to the database and writes a <span className="font-mono text-muted-foreground">.md</span> file to the public site. When wired after a <span className="font-mono text-[#C084FC]">generate_article</span> node all fields auto-populate — no override expressions needed. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{published}}"} · {"{{slug}}"} · {"{{articleId}}"} · {"{{title}}"}</p>
       </div>
     </>
   );
@@ -6515,13 +6515,13 @@ function TopicPickerPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Category</label>
+          <label className="text-xs font-medium text-muted-foreground">Category</label>
           <FieldHint text="Limits the AI to topics within this Microsoft 365 category — helps keep content focused and on-brand." />
         </div>
         <select
           value={(node.data.category as string) ?? "M365 Best Practices"}
           onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#E879F9]/60"
         >
           {ARTICLE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -6536,18 +6536,18 @@ function TopicPickerPanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Articles to check for duplicates</label>
+          <label className="text-xs font-medium text-muted-foreground">Articles to check for duplicates</label>
           <FieldHint text="How many of the most recent published articles to scan. The AI avoids topics already covered in this window." />
         </div>
         <input
           type="number" min={5} max={100}
           value={(node.data.excludeRecent as number) ?? 20}
           onChange={e => onChange(node.id, { ...node.data, excludeRecent: Number(e.target.value) })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#E879F9]/60"
         />
       </div>
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Queries existing article titles then calls Claude AI to pick a novel topic that hasn't been covered. Wire directly into a <span className="font-mono text-[#C084FC]">generate_article</span> node — the output <span className="font-mono text-[#7D8590]">{"{{articleTopic}}"}</span> maps to the Topic field automatically. Also outputs <span className="font-mono text-[#7D8590]">{"{{topicCategory}}"}</span> and <span className="font-mono text-[#7D8590]">{"{{topicRationale}}"}</span>.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Queries existing article titles then calls Claude AI to pick a novel topic that hasn't been covered. Wire directly into a <span className="font-mono text-[#C084FC]">generate_article</span> node — the output <span className="font-mono text-muted-foreground">{"{{articleTopic}}"}</span> maps to the Topic field automatically. Also outputs <span className="font-mono text-muted-foreground">{"{{topicCategory}}"}</span> and <span className="font-mono text-muted-foreground">{"{{topicRationale}}"}</span>.</p>
       </div>
     </>
   );
@@ -6592,13 +6592,13 @@ function GenerateImagePanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Aspect Ratio / Format</label>
+          <label className="text-xs font-medium text-muted-foreground">Aspect Ratio / Format</label>
           <FieldHint text="Dimensions of the generated image. Landscape suits article headers and social cards; square suits Instagram; portrait suits Pinterest." />
         </div>
         <select
           value={(node.data.aspectRatio as string) ?? "landscape"}
           onChange={e => onChange(node.id, { ...node.data, aspectRatio: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#F59E0B]/60"
         >
           {ASPECT_RATIO_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -6607,13 +6607,13 @@ function GenerateImagePanel({
       </div>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Style hint (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Style hint (optional)</label>
           <FieldHint text="Visual style appended to the image prompt. 'None' lets the prompt alone drive the style. Choose a preset to get a consistent look across generated images." />
         </div>
         <select
           value={(node.data.style as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, style: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#F59E0B]/60"
         >
           {STYLE_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -6621,10 +6621,10 @@ function GenerateImagePanel({
         </select>
       </div>
       <div className="rounded-lg bg-[#1A100A] border border-[#F59E0B]/30 p-3 space-y-1.5">
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">
-          Calls <span className="font-mono text-[#F59E0B]">gpt-image-1</span> via Replit AI Integrations — no extra API key required. The generated image is downloaded and saved permanently at <span className="font-mono text-[#7D8590]">shanemccaw.com/api/uploads/generated-images/&lt;uuid&gt;.png</span>. Wire <span className="font-mono text-[#7D8590]">{"{{imageUrl}}"}</span> directly into the Image URL field of any <span className="font-mono text-[#F59E0B]">post_linkedin</span>, <span className="font-mono text-[#F59E0B]">post_twitter</span>, or <span className="font-mono text-[#F59E0B]">post_facebook</span> node. Dry-run returns a placeholder — no API call is made.
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          Calls <span className="font-mono text-[#F59E0B]">gpt-image-1</span> via Replit AI Integrations — no extra API key required. The generated image is downloaded and saved permanently at <span className="font-mono text-muted-foreground">shanemccaw.com/api/uploads/generated-images/&lt;uuid&gt;.png</span>. Wire <span className="font-mono text-muted-foreground">{"{{imageUrl}}"}</span> directly into the Image URL field of any <span className="font-mono text-[#F59E0B]">post_linkedin</span>, <span className="font-mono text-[#F59E0B]">post_twitter</span>, or <span className="font-mono text-[#F59E0B]">post_facebook</span> node. Dry-run returns a placeholder — no API call is made.
         </p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{imageUrl}}"} · {"{{revisedPrompt}}"}</p>
+        <p className="text-[10px] font-mono text-muted-foreground">{"{{imageUrl}}"} · {"{{revisedPrompt}}"}</p>
       </div>
     </>
   );
@@ -6654,7 +6654,7 @@ function FetchNewsPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Search topics</label>
+          <label className="text-xs font-medium text-muted-foreground">Search topics</label>
           <FieldHint text="Comma-separated keywords used to search for relevant news via NewsAPI (if key is configured) or Microsoft RSS feeds as a fallback." />
         </div>
         <textarea
@@ -6662,14 +6662,14 @@ function FetchNewsPanel({
           value={(node.data.topics as string) ?? DEFAULT_TOPICS}
           onChange={e => onChange(node.id, { ...node.data, topics: e.target.value })}
           placeholder={DEFAULT_TOPICS}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60 resize-none"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#06B6D4]/60 resize-none"
         />
-        <p className="text-[10px] text-[#484F58]">Comma-separated keywords. Used with NewsAPI (if key is set) or Microsoft RSS feeds as fallback.</p>
+        <p className="text-[10px] text-muted-foreground/60">Comma-separated keywords. Used with NewsAPI (if key is set) or Microsoft RSS feeds as fallback.</p>
       </div>
 
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Custom AI prompt (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Custom AI prompt (optional)</label>
           <FieldHint text="Overrides the built-in analyst prompt. Must instruct the AI to return JSON with: topic, context, articleSuggestion, hotScore (0–100), targetSector." />
         </div>
         <textarea
@@ -6677,38 +6677,38 @@ function FetchNewsPanel({
           value={(node.data.customPrompt as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, customPrompt: e.target.value })}
           placeholder="Leave blank to use the built-in Shane McCaw analyst prompt. The prompt receives the headlines array and must return JSON with: topic, context, articleSuggestion, hotScore, targetSector."
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60 resize-none font-mono"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#06B6D4]/60 resize-none font-mono"
         />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <div className="flex items-center gap-1">
-            <label className="text-xs font-medium text-[#7D8590]">Max results</label>
+            <label className="text-xs font-medium text-muted-foreground">Max results</label>
             <FieldHint text="Maximum number of headlines to fetch and score. Higher values give better coverage but are slower to process." />
           </div>
           <input
             type="number" min={1} max={50}
             value={(node.data.maxResults as number) ?? 10}
             onChange={e => onChange(node.id, { ...node.data, maxResults: Number(e.target.value) })}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#06B6D4]/60"
           />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center gap-1">
-            <label className="text-xs font-medium text-[#7D8590]">Hot-score threshold</label>
+            <label className="text-xs font-medium text-muted-foreground">Hot-score threshold</label>
             <FieldHint text="Articles scoring above this (0–100) are flagged as 'hot'. Lower values trigger campaigns more often; higher values are more selective." />
           </div>
           <input
             type="number" min={0} max={100}
             value={(node.data.hotScoreThreshold as number) ?? 60}
             onChange={e => onChange(node.id, { ...node.data, hotScoreThreshold: Number(e.target.value) })}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground outline-none focus:border-[#06B6D4]/60"
           />
         </div>
       </div>
 
-      <div className="flex items-start gap-3 rounded-lg border border-[#30363D] p-3">
+      <div className="flex items-start gap-3 rounded-lg border border-border p-3">
         <input
           type="checkbox"
           id={`fnh-auto-${node.id}`}
@@ -6793,8 +6793,8 @@ function FetchNewsPanel({
           className="mt-0.5 accent-[#06B6D4]"
         />
         <div>
-          <label htmlFor={`fnh-auto-${node.id}`} className="text-xs font-medium text-[#E6EDF3] cursor-pointer">Auto-build campaign</label>
-          <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">When on and the score exceeds the threshold, a campaign draft is created automatically and its ID is available as <span className="font-mono text-[#06B6D4]">{"{{campaignId}}"}</span>.</p>
+          <label htmlFor={`fnh-auto-${node.id}`} className="text-xs font-medium text-foreground cursor-pointer">Auto-build campaign</label>
+          <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">When on and the score exceeds the threshold, a campaign draft is created automatically and its ID is available as <span className="font-mono text-[#06B6D4]">{"{{campaignId}}"}</span>.</p>
         </div>
       </div>
 
@@ -6814,11 +6814,11 @@ function FetchNewsPanel({
           ].map(([key, desc]) => (
             <div key={key} className="flex gap-2">
               <span className="font-mono text-[10px] text-[#06B6D4] shrink-0">{`{{${key}}}`}</span>
-              <span className="text-[10px] text-[#7D8590]">{desc}</span>
+              <span className="text-[10px] text-muted-foreground">{desc}</span>
             </div>
           ))}
         </div>
-        <p className="text-[10px] text-[#484F58] pt-1 border-t border-[#30363D]">
+        <p className="text-[10px] text-muted-foreground/60 pt-1 border-t border-border">
           Requires <span className="font-mono" style={{ color: accentColor }}>NEWS_API_KEY</span> in Replit Secrets for live headlines. Falls back to Microsoft public RSS feeds automatically when absent. Dry-run returns realistic stub values — no API calls are made.
         </p>
       </div>
@@ -6849,8 +6849,8 @@ function DefineCampaignGoalPanel({
         placeholder="Generate 20 qualified leads for Copilot readiness assessments"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Defines the campaign goal and passes it downstream as <span className="font-mono text-[#7D8590]">{"{{campaignGoal}}"}</span>. Wire it into the Target Audience and Create Campaign nodes.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Defines the campaign goal and passes it downstream as <span className="font-mono text-muted-foreground">{"{{campaignGoal}}"}</span>. Wire it into the Target Audience and Create Campaign nodes.</p>
       </div>
     </>
   );
@@ -6877,8 +6877,8 @@ function DefineTargetAudiencePanel({
         placeholder="IT directors at mid-market companies (100–500 employees)"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Defines who the campaign targets and passes it downstream as <span className="font-mono text-[#7D8590]">{"{{targetAudience}}"}</span>. Wire it into the Create Offer and Create Campaign nodes.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Defines who the campaign targets and passes it downstream as <span className="font-mono text-muted-foreground">{"{{targetAudience}}"}</span>. Wire it into the Create Offer and Create Campaign nodes.</p>
       </div>
     </>
   );
@@ -6937,8 +6937,8 @@ function CreateCampaignOfferPanel({
         placeholder="Book a free 30-min call"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Creates an offer record in the database. Outputs <span className="font-mono text-[#7D8590]">{"{{offerId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerName}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerGoal}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerAudience}}"}</span>.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Creates an offer record in the database. Outputs <span className="font-mono text-muted-foreground">{"{{offerId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{offerName}}"}</span>, <span className="font-mono text-muted-foreground">{"{{offerGoal}}"}</span>, <span className="font-mono text-muted-foreground">{"{{offerAudience}}"}</span>.</p>
       </div>
     </>
   );
@@ -6991,20 +6991,20 @@ function CreateMarketingCampaignPanel({
       />
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Initial status</label>
+          <label className="text-xs font-medium text-muted-foreground">Initial status</label>
           <FieldHint text="Whether the campaign record is created as a draft (hidden from reporting) or immediately active." />
         </div>
         <select
           value={(node.data.status as string) ?? "draft"}
           onChange={e => onChange(node.id, { ...node.data, status: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#34D399]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#34D399]/60"
         >
           <option value="draft">Draft</option>
           <option value="active">Active</option>
         </select>
       </div>
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Creates a campaign record in the Marketing database. Outputs <span className="font-mono text-[#7D8590]">{"{{campaignId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{campaignName}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{campaignStatus}}"}</span>.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Creates a campaign record in the Marketing database. Outputs <span className="font-mono text-muted-foreground">{"{{campaignId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{campaignName}}"}</span>, <span className="font-mono text-muted-foreground">{"{{campaignStatus}}"}</span>.</p>
       </div>
     </>
   );
@@ -7031,8 +7031,8 @@ function PublishLandingPagePanel({
         placeholder="copilot-readiness-offer"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Finds the landing page by slug and sets it to published, making it live on the consulting site. Outputs <span className="font-mono text-[#7D8590]">{"{{landingPageId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{slug}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{published}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{wasAlreadyPublished}}"}</span>. The slug must match exactly as it appears in Marketing → Landing Pages.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Finds the landing page by slug and sets it to published, making it live on the consulting site. Outputs <span className="font-mono text-muted-foreground">{"{{landingPageId}}"}</span>, <span className="font-mono text-muted-foreground">{"{{slug}}"}</span>, <span className="font-mono text-muted-foreground">{"{{published}}"}</span>, and <span className="font-mono text-muted-foreground">{"{{wasAlreadyPublished}}"}</span>. The slug must match exactly as it appears in Marketing → Landing Pages.</p>
       </div>
     </>
   );
@@ -7065,13 +7065,13 @@ function AskAiPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Model</label>
+          <label className="text-xs font-medium text-muted-foreground">Model</label>
           <FieldHint text="Haiku is fast and cheap — ideal for simple extraction or formatting. Sonnet produces higher-quality reasoning and is better for complex analysis." />
         </div>
         <select
           value={(node.data.model as string) ?? "claude-haiku-4-5"}
           onChange={e => onChange(node.id, { ...node.data, model: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#A78BFA]/60"
         >
           <option value="claude-haiku-4-5">Claude Haiku (fast, cheap)</option>
           <option value="claude-sonnet-4-5">Claude Sonnet (smarter, slower)</option>
@@ -7099,7 +7099,7 @@ function AskAiPanel({
 
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Max tokens</label>
+          <label className="text-xs font-medium text-muted-foreground">Max tokens</label>
           <FieldHint text="Maximum response length (~¾ of a word per token). 1024 suits most tasks. Increase for long structured outputs; decrease to cut costs." />
         </div>
         <input
@@ -7109,15 +7109,15 @@ function AskAiPanel({
           step={64}
           value={(node.data.maxTokens as number) ?? 1024}
           onChange={e => onChange(node.id, { ...node.data, maxTokens: Number(e.target.value) })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#A78BFA]/60"
         />
       </div>
 
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">
           Sends the prompt to Claude and exposes the response as{" "}
-          <span className="font-mono text-[#7D8590]">{"{{aiResponse}}"}</span>.
-          Use <span className="font-mono text-[#7D8590]">{"{{aiResponse}}"}</span> in
+          <span className="font-mono text-muted-foreground">{"{{aiResponse}}"}</span>.
+          Use <span className="font-mono text-muted-foreground">{"{{aiResponse}}"}</span> in
           downstream nodes — e.g. wire it into a Define Target Audience node's audience
           field so AI fills it in automatically.
         </p>
@@ -7142,21 +7142,21 @@ function FindObjectPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Object type</label>
+        <label className="text-xs font-medium text-muted-foreground">Object type</label>
         <select
           value={objectType}
           onChange={e => onChange(node.id, { ...node.data, objectType: e.target.value, fieldName: "" })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#818CF8]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#818CF8]/60"
         >
           {FIND_OBJECT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
       </div>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Look up by field</label>
+        <label className="text-xs font-medium text-muted-foreground">Look up by field</label>
         <select
           value={(node.data.fieldName as string) ?? typeConfig.fields[0]}
           onChange={e => onChange(node.id, { ...node.data, fieldName: e.target.value })}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#818CF8]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-[#818CF8]/60"
         >
           {typeConfig.fields.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
@@ -7168,8 +7168,8 @@ function FindObjectPanel({
         placeholder="{{leadEmail}}"
         ancestorOutputs={ancestorOutputs}
       />
-      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Looks up the first matching record and injects its fields into the payload. Always outputs <span className="font-mono text-[#7D8590]">{"{{found}}"}</span> (true/false) and <span className="font-mono text-[#7D8590]">{"{{objectId}}"}</span>. Wire a <span className="font-mono text-amber-400">condition</span> node on <span className="font-mono text-[#7D8590]">{"{{found}} == true"}</span> to branch on whether the record exists.</p>
+      <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60">Looks up the first matching record and injects its fields into the payload. Always outputs <span className="font-mono text-muted-foreground">{"{{found}}"}</span> (true/false) and <span className="font-mono text-muted-foreground">{"{{objectId}}"}</span>. Wire a <span className="font-mono text-amber-400">condition</span> node on <span className="font-mono text-muted-foreground">{"{{found}} == true"}</span> to branch on whether the record exists.</p>
       </div>
     </>
   );
@@ -7195,7 +7195,7 @@ function ConfigField({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1">
-        <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+        <label className="text-xs font-medium text-muted-foreground">{label}</label>
         {hint && <FieldHint text={hint} />}
       </div>
       {multiline ? (
@@ -7204,7 +7204,7 @@ function ConfigField({
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           rows={3}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none font-mono"
         />
       ) : (
         <input
@@ -7212,7 +7212,7 @@ function ConfigField({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
         />
       )}
     </div>
@@ -7416,13 +7416,13 @@ function AskForInputPanel({
     updateFields(fields.map(f => f.id === id ? { ...f, ...patch } : f));
   }
 
-  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#F97316]/60";
-  const selectCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#F97316]/60";
+  const inputCls = "w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-[#F97316]/60";
+  const selectCls = "w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-[#F97316]/60";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-[#7D8590]">Input Fields</label>
+        <label className="text-xs font-medium text-muted-foreground">Input Fields</label>
         <button
           onClick={addField}
           className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/30 hover:bg-[#F97316]/20 transition-colors"
@@ -7432,13 +7432,13 @@ function AskForInputPanel({
       </div>
 
       {fields.length === 0 && (
-        <p className="text-[10px] text-[#484F58] text-center py-3 border border-dashed border-[#30363D] rounded-lg">
+        <p className="text-[10px] text-muted-foreground/60 text-center py-3 border border-dashed border-border rounded-lg">
           No fields yet — add one above
         </p>
       )}
 
       {fields.map((f, i) => (
-        <div key={f.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] p-2.5 space-y-2">
+        <div key={f.id} className="rounded-lg border border-border bg-background p-2.5 space-y-2">
           <div className="flex items-center justify-between mb-0.5">
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] font-bold text-[#F97316] uppercase tracking-wider">Field {i + 1}</span>
@@ -7446,26 +7446,26 @@ function AskForInputPanel({
                 <button
                   onClick={() => { if (i === 0) return; const f2 = [...fields]; [f2[i - 1], f2[i]] = [f2[i], f2[i - 1]]; updateFields(f2); }}
                   disabled={i === 0}
-                  className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors leading-none text-[8px]"
+                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-20 transition-colors leading-none text-[8px]"
                   title="Move up"
                 >▲</button>
                 <button
                   onClick={() => { if (i === fields.length - 1) return; const f2 = [...fields]; [f2[i], f2[i + 1]] = [f2[i + 1], f2[i]]; updateFields(f2); }}
                   disabled={i === fields.length - 1}
-                  className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors leading-none text-[8px]"
+                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-20 transition-colors leading-none text-[8px]"
                   title="Move down"
                 >▼</button>
               </div>
             </div>
             <button
               onClick={() => removeField(f.id)}
-              className="text-[#484F58] hover:text-red-400 transition-colors text-xs"
+              className="text-muted-foreground/60 hover:text-red-400 transition-colors text-xs"
               title="Remove field"
             >✕</button>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] text-[#7D8590]">Variable name</label>
+            <label className="text-[10px] text-muted-foreground">Variable name</label>
             <input
               type="text"
               value={f.variableName}
@@ -7473,11 +7473,11 @@ function AskForInputPanel({
               placeholder="client_name"
               className={inputCls}
             />
-            <p className="text-[9px] text-[#484F58]">Used as <span className="font-mono text-[#F97316]">{`{{${f.variableName || "variableName"}}}`}</span> in downstream nodes</p>
+            <p className="text-[9px] text-muted-foreground/60">Used as <span className="font-mono text-[#F97316]">{`{{${f.variableName || "variableName"}}}`}</span> in downstream nodes</p>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] text-[#7D8590]">Label (shown to operator)</label>
+            <label className="text-[10px] text-muted-foreground">Label (shown to operator)</label>
             <input
               type="text"
               value={f.label}
@@ -7488,7 +7488,7 @@ function AskForInputPanel({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] text-[#7D8590]">Type</label>
+            <label className="text-[10px] text-muted-foreground">Type</label>
             <select
               value={f.type}
               onChange={e => updateField(f.id, { type: e.target.value as AskForInputFieldType, multi: false })}
@@ -7518,7 +7518,7 @@ function AskForInputPanel({
                 onChange={e => updateField(f.id, { required: e.target.checked })}
                 className="w-3 h-3 rounded accent-orange-500"
               />
-              <span className="text-[10px] text-[#7D8590]">Required</span>
+              <span className="text-[10px] text-muted-foreground">Required</span>
             </label>
             {ENTITY_FIELD_TYPES.includes(f.type) && (
               <label className="flex items-center gap-1.5 cursor-pointer">
@@ -7528,14 +7528,14 @@ function AskForInputPanel({
                   onChange={e => updateField(f.id, { multi: e.target.checked })}
                   className="w-3 h-3 rounded accent-orange-500"
                 />
-                <span className="text-[10px] text-[#7D8590]">Multi-select</span>
+                <span className="text-[10px] text-muted-foreground">Multi-select</span>
               </label>
             )}
           </div>
 
           {f.type === "select" && (
             <div className="space-y-1">
-              <label className="text-[10px] text-[#7D8590]">Options (comma-separated)</label>
+              <label className="text-[10px] text-muted-foreground">Options (comma-separated)</label>
               <input
                 type="text"
                 value={f.options}
@@ -7549,7 +7549,7 @@ function AskForInputPanel({
       ))}
 
       <div className="rounded-lg bg-[#1A0E00] border border-[#F97316]/20 p-2.5">
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           When a manual run is triggered on a workflow containing this node, a dialog appears prompting the operator to fill in each field. The values are injected into the payload before any downstream nodes execute.
         </p>
       </div>
@@ -7624,7 +7624,7 @@ function BuildCasesPopover({
   }
 
   return (
-    <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-3 space-y-3">
+    <div className="rounded-lg border border-border bg-card p-3 space-y-3">
       {groups.map(g => {
         const allChecked = g.items.every(item => checked[item.id]);
         const noneChecked = g.items.every(item => !checked[item.id]);
@@ -7636,7 +7636,7 @@ function BuildCasesPopover({
                 <button
                   type="button"
                   onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
-                  className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                  className="text-[9px] text-muted-foreground hover:text-foreground transition-colors underline"
                 >
                   {allChecked ? "Deselect all" : "Select all"}
                 </button>
@@ -7647,7 +7647,7 @@ function BuildCasesPopover({
                 <button
                   type="button"
                   onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
-                  className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                  className="text-[9px] text-muted-foreground hover:text-foreground transition-colors underline"
                 >
                   {allChecked ? "Deselect all" : "Select all"}
                 </button>
@@ -7662,15 +7662,15 @@ function BuildCasesPopover({
                     onChange={() => toggleItem(item.id)}
                     className="w-3 h-3 rounded accent-orange-500 shrink-0"
                   />
-                  <span className="text-[11px] text-[#E6EDF3] group-hover:text-white transition-colors">{item.label}</span>
-                  <span className="text-[9px] text-[#484F58] font-mono ml-auto">{item.id}</span>
+                  <span className="text-[11px] text-foreground group-hover:text-white transition-colors">{item.label}</span>
+                  <span className="text-[9px] text-muted-foreground/60 font-mono ml-auto">{item.id}</span>
                 </label>
               ))}
             </div>
           </div>
         );
       })}
-      <div className="flex items-center gap-2 pt-1 border-t border-[#30363D]">
+      <div className="flex items-center gap-2 pt-1 border-t border-border">
         <button
           type="button"
           onClick={handleAdd}
@@ -7681,7 +7681,7 @@ function BuildCasesPopover({
         <button
           type="button"
           onClick={onCancel}
-          className="text-[11px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors underline"
         >
           Cancel
         </button>
@@ -7783,18 +7783,18 @@ function ParallelPanel({
     <>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-[#7D8590]">Branch Count</label>
+          <label className="text-xs font-medium text-muted-foreground">Branch Count</label>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setBranchCount(branchCount - 1)}
               disabled={branchCount <= 2}
-              className="w-5 h-5 rounded bg-[#1C2128] border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 text-sm leading-none flex items-center justify-center"
+              className="w-5 h-5 rounded bg-accent border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 text-sm leading-none flex items-center justify-center"
             >−</button>
-            <span className="text-xs text-[#E6EDF3] w-4 text-center">{branchCount}</span>
+            <span className="text-xs text-foreground w-4 text-center">{branchCount}</span>
             <button
               onClick={() => setBranchCount(branchCount + 1)}
               disabled={branchCount >= 4}
-              className="w-5 h-5 rounded bg-[#1C2128] border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 text-sm leading-none flex items-center justify-center"
+              className="w-5 h-5 rounded bg-accent border border-border text-muted-foreground hover:text-foreground disabled:opacity-30 text-sm leading-none flex items-center justify-center"
             >+</button>
           </div>
         </div>
@@ -7805,18 +7805,18 @@ function ParallelPanel({
           const color = branchColors[i % branchColors.length];
           const wait  = branchWait[i] !== false;
           return (
-            <div key={i} className="rounded-lg border border-[#30363D] overflow-hidden">
+            <div key={i} className="rounded-lg border border-border overflow-hidden">
               <div className="px-2.5 py-1.5 flex items-center gap-2" style={{ background: `${color}0D`, borderBottom: `1px solid ${color}25` }}>
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
                 <input
                   value={branchLabels[i] ?? `Branch ${i + 1}`}
                   onChange={e => updateLabel(i, e.target.value)}
-                  className="flex-1 bg-transparent text-[11px] font-semibold text-[#E6EDF3] outline-none placeholder-[#484F58]"
+                  className="flex-1 bg-transparent text-[11px] font-semibold text-foreground outline-none placeholder-muted-foreground/60"
                   placeholder={`Branch ${i + 1}`}
                 />
               </div>
-              <div className="px-2.5 py-2 flex items-center justify-between bg-[#0D1117]">
-                <label className="text-[10px] text-[#7D8590]">Wait for completion</label>
+              <div className="px-2.5 py-2 flex items-center justify-between bg-background">
+                <label className="text-[10px] text-muted-foreground">Wait for completion</label>
                 <input
                   type="checkbox"
                   checked={wait}
@@ -7830,10 +7830,10 @@ function ParallelPanel({
       </div>
 
       <div className="rounded-lg bg-[#041A1A] border border-[#06B6D4]/25 p-3 space-y-1.5">
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           Branches with <span className="text-[#06B6D4] font-semibold">Wait for completion</span> run concurrently via Promise.all — their outputs are merged at the Join node.
         </p>
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           Branches with it <span className="text-amber-400 font-semibold">off</span> fire and forget — failures are logged but do not fail the run.
         </p>
       </div>
@@ -7932,7 +7932,7 @@ function SwitchCasePanel({
     setPendingCases(null);
   }
 
-  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#FB923C]";
+  const inputCls = "w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-[#FB923C]";
 
   return (
     <div className="space-y-3">
@@ -7982,7 +7982,7 @@ function SwitchCasePanel({
                 <button
                   type="button"
                   onClick={() => setPendingCases(null)}
-                  className="text-[11px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors underline"
                 >
                   Cancel
                 </button>
@@ -7995,25 +7995,25 @@ function SwitchCasePanel({
       {/* Case list */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">Cases</span>
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Cases</span>
           {cases.length >= SWITCH_CASE_MAX && (
             <span className="text-[10px] text-amber-400">Max 20 cases</span>
           )}
         </div>
 
         {cases.length === 0 && (
-          <p className="text-[10px] text-[#484F58] italic">No cases yet — add one below</p>
+          <p className="text-[10px] text-muted-foreground/60 italic">No cases yet — add one below</p>
         )}
 
         {cases.map((c, idx) => (
-          <div key={c.id} className="rounded-lg border border-[#30363D] bg-[#0D1117]">
-            <div className="flex items-center gap-1 px-2 py-1 bg-[#161B22] border-b border-[#30363D] rounded-t-lg">
+          <div key={c.id} className="rounded-lg border border-border bg-background">
+            <div className="flex items-center gap-1 px-2 py-1 bg-card border-b border-border rounded-t-lg">
               <span className="text-[10px] font-semibold text-[#FB923C]">Case {idx + 1}</span>
               <div className="flex-1" />
               <button type="button" onClick={() => moveCase(c.id, -1)} disabled={idx === 0}
-                className="text-[10px] text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 px-0.5">▲</button>
+                className="text-[10px] text-muted-foreground/60 hover:text-foreground disabled:opacity-30 px-0.5">▲</button>
               <button type="button" onClick={() => moveCase(c.id, 1)} disabled={idx === cases.length - 1}
-                className="text-[10px] text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 px-0.5">▼</button>
+                className="text-[10px] text-muted-foreground/60 hover:text-foreground disabled:opacity-30 px-0.5">▼</button>
               <button type="button" onClick={() => removeCase(c.id)}
                 className="text-[10px] text-red-400 hover:text-red-300 px-0.5 ml-1">✕</button>
             </div>
@@ -8026,7 +8026,7 @@ function SwitchCasePanel({
                 ancestorOutputs={ancestorOutputs}
               />
               <div>
-                <label className="text-[10px] text-[#7D8590] block mb-0.5">Handle label (shown on canvas)</label>
+                <label className="text-[10px] text-muted-foreground block mb-0.5">Handle label (shown on canvas)</label>
                 <input
                   type="text"
                   value={c.label}
@@ -8040,12 +8040,12 @@ function SwitchCasePanel({
         ))}
 
         {/* Default (locked) */}
-        <div className="rounded-lg border border-[#30363D]/50 bg-[#0D1117] overflow-hidden opacity-60">
-          <div className="flex items-center gap-1 px-2 py-1 bg-[#161B22] border-b border-[#30363D]/50">
+        <div className="rounded-lg border border-border/50 bg-background overflow-hidden opacity-60">
+          <div className="flex items-center gap-1 px-2 py-1 bg-card border-b border-border/50">
             <span className="text-[10px] font-semibold text-[#6B7280]">Default</span>
-            <span className="ml-auto text-[9px] text-[#484F58]">🔒 always present</span>
+            <span className="ml-auto text-[9px] text-muted-foreground/60">🔒 always present</span>
           </div>
-          <p className="text-[10px] text-[#484F58] p-2">Fires when no case matches</p>
+          <p className="text-[10px] text-muted-foreground/60 p-2">Fires when no case matches</p>
         </div>
 
         <button
@@ -8059,7 +8059,7 @@ function SwitchCasePanel({
       </div>
 
       <div className="rounded-lg bg-[#180D00] border border-[#FB923C]/20 p-2.5">
-        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
           Evaluates the expression against each case in order — the first exact match wins. Connect edges from each case handle and the Default handle to downstream nodes. <span className="text-[#FB923C] font-mono">{"{{switchValue}}"}</span> and <span className="text-[#FB923C] font-mono">{"{{chosenBranch}}"}</span> are injected into the next payload.
         </p>
       </div>
@@ -8190,7 +8190,7 @@ function EntityPickerControl({
     !search || o.label.toLowerCase().includes(search.toLowerCase()) || o.id.includes(search),
   );
 
-  const borderCls = hasError ? "border-red-500" : "border-[#30363D]";
+  const borderCls = hasError ? "border-red-500" : "border-border";
 
   /** Renders a flat list with sticky group header rows inserted before each new group */
   function renderWithGroups(renderItem: (o: EntityOption) => React.ReactNode) {
@@ -8199,7 +8199,7 @@ function EntityPickerControl({
     for (const o of filtered) {
       if (o.group && o.group !== lastGroup) {
         nodes.push(
-          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#484F58] bg-[#161B22] border-b border-[#30363D] sticky top-0">
+          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 bg-card border-b border-border sticky top-0">
             {o.group}
           </div>,
         );
@@ -8216,32 +8216,32 @@ function EntityPickerControl({
       onChange(next);  // emit a real string[] — no CSV join
     };
     return (
-      <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
-          <span className="text-[#484F58] text-xs">🔍</span>
+      <div className={`border ${borderCls} rounded-lg bg-background overflow-hidden`}>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+          <span className="text-muted-foreground/60 text-xs">🔍</span>
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search…"
-            className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none"
           />
           {selected.length > 0 && (
             <span className="text-[10px] text-[#F97316] font-medium">{selected.length} selected</span>
           )}
         </div>
         <div className="max-h-44 overflow-y-auto">
-          {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
-          {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+          {loading && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">Loading…</p>}
+          {!loading && filtered.length === 0 && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">No results</p>}
           {!loading && renderWithGroups(o => (
-            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#1C2128] cursor-pointer transition-colors">
+            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-accent cursor-pointer transition-colors">
               <input
                 type="checkbox"
                 checked={selected.includes(o.id)}
                 onChange={() => toggle(o.id)}
                 className="w-3.5 h-3.5 rounded accent-orange-500 flex-shrink-0"
               />
-              <span className="text-sm text-[#E6EDF3] truncate">{o.label}</span>
+              <span className="text-sm text-foreground truncate">{o.label}</span>
             </label>
           ))}
         </div>
@@ -8250,27 +8250,27 @@ function EntityPickerControl({
   }
 
   return (
-    <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
-        <span className="text-[#484F58] text-xs">🔍</span>
+    <div className={`border ${borderCls} rounded-lg bg-background overflow-hidden`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border">
+        <span className="text-muted-foreground/60 text-xs">🔍</span>
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search…"
-          className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+          className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none"
         />
         {value && <span className="text-[10px] text-[#F97316] truncate max-w-[100px]">{options.find(o => o.id === value)?.label ?? value}</span>}
       </div>
       <div className="max-h-44 overflow-y-auto">
-        {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
-        {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+        {loading && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">Loading…</p>}
+        {!loading && filtered.length === 0 && <p className="text-[10px] text-muted-foreground/60 p-3 text-center">No results</p>}
         {!loading && renderWithGroups(o => (
           <button
             key={o.id}
             type="button"
             onClick={() => { onChange(o.id); setSearch(""); }}
-            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#1C2128] ${value === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-[#E6EDF3]"}`}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-accent ${value === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-foreground"}`}
           >
             {o.label}
           </button>
@@ -8317,26 +8317,26 @@ function PreRunInputModal({
   }
 
   const inputCls = (name: string) =>
-    `w-full bg-[#0D1117] border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-[#30363D] focus:border-[#F97316]/60"}`;
+    `w-full bg-background border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-border focus:border-[#F97316]/60"}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md mx-4">
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-[#30363D]">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
           <span className="text-[#F97316]">⌨</span>
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Run inputs required</h3>
+          <h3 className="text-sm font-semibold text-foreground">Run inputs required</h3>
         </div>
 
         <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-          <p className="text-xs text-[#7D8590]">This workflow prompts for values before starting. Fill in the fields below.</p>
+          <p className="text-xs text-muted-foreground">This workflow prompts for values before starting. Fill in the fields below.</p>
 
           {fields.map(f => (
             <div key={f.variableName} className="space-y-1.5">
-              <label className="text-xs font-medium text-[#E6EDF3]">
+              <label className="text-xs font-medium text-foreground">
                 {f.label || f.variableName}
                 {f.required && <span className="text-red-400 ml-0.5">*</span>}
                 {ENTITY_FIELD_TYPES.includes(f.type) && (
-                  <span className="ml-1.5 text-[10px] text-[#484F58] font-normal capitalize">
+                  <span className="ml-1.5 text-[10px] text-muted-foreground/60 font-normal capitalize">
                     ({f.type.replace("_", " ")}{f.multi ? " · multi" : ""})
                   </span>
                 )}
@@ -8388,10 +8388,10 @@ function PreRunInputModal({
           ))}
         </div>
 
-        <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-border">
           <button
             onClick={onCancel}
-            className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Cancel
           </button>
@@ -8569,25 +8569,25 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
   }, [progressRunData?.status, (progressRunData?.nodeOutputs ?? []).length, (progressRunData as { activeNodeId?: string | null } | undefined)?.activeNodeId]);
 
   return (
-    <div className="flex flex-col h-full bg-[#161B22] overflow-hidden">
+    <div className="flex flex-col h-full bg-card overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm flex-shrink-0">🧪</span>
-          <h3 className="text-sm font-semibold text-[#E6EDF3] flex-shrink-0">Test Run</h3>
+          <h3 className="text-sm font-semibold text-foreground flex-shrink-0">Test Run</h3>
           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider flex-shrink-0">Draft</span>
           {runId !== null && (
-            <span className="text-[10px] text-[#484F58] font-mono flex-shrink-0">#{runId}</span>
+            <span className="text-[10px] text-muted-foreground/60 font-mono flex-shrink-0">#{runId}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
           {/* Dry-run / Live toggle — only relevant before run starts */}
           {runId === null && (
-            <div className="flex items-center rounded-lg border border-[#30363D] overflow-hidden text-[10px] font-semibold">
+            <div className="flex items-center rounded-lg border border-border overflow-hidden text-[10px] font-semibold">
               <button
                 type="button"
                 onClick={() => setDryRun(true)}
-                className={`px-2.5 py-1 transition-colors ${dryRun ? "bg-[#0078D4] text-white" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                className={`px-2.5 py-1 transition-colors ${dryRun ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"}`}
                 title="Use fake/stub data — no real actions are performed"
               >
                 Fake data
@@ -8595,14 +8595,14 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
               <button
                 type="button"
                 onClick={() => setDryRun(false)}
-                className={`px-2.5 py-1 transition-colors ${!dryRun ? "bg-red-500/80 text-white" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                className={`px-2.5 py-1 transition-colors ${!dryRun ? "bg-red-500/80 text-white" : "text-muted-foreground hover:text-foreground"}`}
                 title="Execute nodes for real — emails will send, records will be created"
               >
                 Live
               </button>
             </div>
           )}
-          <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1" title="Close test run">×</button>
+          <button onClick={onClose} className="text-muted-foreground/60 hover:text-foreground text-xl leading-none px-1" title="Close test run">×</button>
         </div>
       </div>
 
@@ -8652,16 +8652,16 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
           <div className="flex-1 overflow-hidden">
             <RunDetailContent runId={runId} />
           </div>
-          <div className="flex-shrink-0 flex gap-2 px-4 py-3 border-t border-[#30363D]">
+          <div className="flex-shrink-0 flex gap-2 px-4 py-3 border-t border-border">
             <button
               onClick={() => navigate(`/workflows/runs/${runId}`)}
-              className="flex-1 px-4 py-2 bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] text-xs font-medium rounded-lg transition-colors"
+              className="flex-1 px-4 py-2 bg-accent border border-border hover:border-muted-foreground/60 text-muted-foreground hover:text-foreground text-xs font-medium rounded-lg transition-colors"
             >
               Open full run page →
             </button>
             <button
               onClick={() => { setRunId(null); runMut.reset(); }}
-              className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-primary hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
             >
               Run again
             </button>
@@ -8678,21 +8678,21 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
                 <span className="text-red-400 text-sm flex-shrink-0 mt-0.5">⚠</span>
                 <div>
                   <p className="text-xs font-semibold text-red-400">Live execution — real actions will fire</p>
-                  <p className="text-[11px] text-[#7D8590] mt-0.5">Emails will send, records will be created, and APIs will be called for real. Switch to <strong className="text-[#E6EDF3]">Fake data</strong> to test safely.</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Emails will send, records will be created, and APIs will be called for real. Switch to <strong className="text-foreground">Fake data</strong> to test safely.</p>
                 </div>
               </div>
             )}
 
             {/* ── Trigger context ── */}
             {loadingTriggers ? (
-              <div className="text-xs text-[#484F58] py-1 animate-pulse">Loading triggers…</div>
+              <div className="text-xs text-muted-foreground/60 py-1 animate-pulse">Loading triggers…</div>
             ) : eventTriggers.length > 1 ? (
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Simulate event trigger</label>
+                <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Simulate event trigger</label>
                 <select
                   value={selectedTriggerId ?? ""}
                   onChange={e => setSelectedTriggerId(Number(e.target.value))}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs text-foreground outline-none focus:border-primary/60"
                 >
                   {eventTriggers.map(t => (
                     <option key={t.id} value={t.id}>
@@ -8702,25 +8702,25 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
                 </select>
               </div>
             ) : activeTrigger ? (
-              <div className="rounded-lg bg-[#0D1117] border border-[#0078D4]/30 p-3 space-y-0.5">
-                <p className="text-[10px] uppercase tracking-widest font-bold text-[#0078D4]">Simulating event trigger</p>
-                <p className="text-xs font-mono text-[#E6EDF3]">{activeEventName || "—"}</p>
-                {knownEvent && <p className="text-[10px] text-[#7D8590] mt-0.5">{knownEvent.description}</p>}
+              <div className="rounded-lg bg-background border border-primary/30 p-3 space-y-0.5">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-primary">Simulating event trigger</p>
+                <p className="text-xs font-mono text-foreground">{activeEventName || "—"}</p>
+                {knownEvent && <p className="text-[10px] text-muted-foreground mt-0.5">{knownEvent.description}</p>}
               </div>
             ) : (
-              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
-                <p className="text-[10px] text-[#7D8590]">No event trigger — running with manual payload.</p>
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] text-muted-foreground">No event trigger — running with manual payload.</p>
               </div>
             )}
 
             {/* ── Payload editor ── */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test payload (JSON)</label>
+                <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Test payload (JSON)</label>
                 {knownEvent && (
                   <button
                     onClick={() => { setPayloadText(JSON.stringify(defaultPayload, null, 2)); setJsonErr(null); }}
-                    className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+                    className="text-[10px] text-primary hover:text-[#2E9EFF] transition-colors"
                   >
                     ↺ Reset to mock
                   </button>
@@ -8731,7 +8731,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
                 onChange={e => handlePayloadChange(e.target.value)}
                 rows={knownEvent ? 9 : 6}
                 spellCheck={false}
-                className="w-full font-mono text-xs bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none"
+                className="w-full font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground outline-none focus:border-primary/60 resize-none"
               />
               {jsonErr && (
                 <p className="text-[10px] text-red-400 font-mono break-all">{jsonErr}</p>
@@ -8740,13 +8740,13 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
 
             {/* ── Field reference ── */}
             {knownEvent && knownEvent.payloadFields.length > 0 && (
-              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
-                <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Payload fields</p>
+              <div className="rounded-lg bg-background border border-border p-3">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 mb-2">Payload fields</p>
                 <div className="space-y-1">
                   {knownEvent.payloadFields.map(f => (
                     <div key={f.key} className="flex items-baseline gap-2">
                       <span className="font-mono text-[11px] text-[#2E9EFF] flex-shrink-0">{`{{${f.key}}}`}</span>
-                      <span className="text-[10px] text-[#484F58]">{f.label}</span>
+                      <span className="text-[10px] text-muted-foreground/60">{f.label}</span>
                     </div>
                   ))}
                 </div>
@@ -8759,12 +8759,12 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
-            <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border flex-shrink-0">
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
             <button
               onClick={() => handleRunClick()}
               disabled={!!jsonErr || runMut.isPending}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-primary hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
             >
               {runMut.isPending
                 ? <><span className="animate-spin inline-block">⟳</span> Starting…</>
@@ -8898,7 +8898,7 @@ function AiWorkflowModal({
     return (
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
         <div
-          className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto"
+          className="bg-card border border-border rounded-xl p-6 max-w-lg w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto"
           onClick={e => e.stopPropagation()}
         >
           {/* Success header */}
@@ -8909,10 +8909,10 @@ function AiWorkflowModal({
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-[#E6EDF3]">Workflow generated</h2>
-              <p className="text-xs text-[#7D8590]">Canvas updated — some steps need new node types first.</p>
+              <h2 className="font-semibold text-foreground">Workflow generated</h2>
+              <p className="text-xs text-muted-foreground">Canvas updated — some steps need new node types first.</p>
             </div>
-            <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+            <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -8942,7 +8942,7 @@ function AiWorkflowModal({
           {/* Replit prompt box */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-[#E6EDF3] flex items-center gap-1.5">
+              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
@@ -8950,7 +8950,7 @@ function AiWorkflowModal({
               </p>
               <button
                 onClick={handleCopy}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${copied ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-[#21262D] hover:bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${copied ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-accent hover:bg-border text-muted-foreground hover:text-foreground border border-border"}`}
               >
                 {copied ? (
                   <>
@@ -8969,18 +8969,18 @@ function AiWorkflowModal({
                 )}
               </button>
             </div>
-            <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[11px] text-[#7D8590] font-mono whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+            <pre className="bg-background border border-border rounded-lg p-3 text-[11px] text-muted-foreground font-mono whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
               {suggestion.prompt}
             </pre>
-            <p className="text-[10px] text-[#484F58]">
+            <p className="text-[10px] text-muted-foreground/60">
               Copy this prompt and paste it into Replit AI to add the missing node types end-to-end.
             </p>
           </div>
 
-          <div className="flex justify-end pt-1 border-t border-[#30363D]">
+          <div className="flex justify-end pt-1 border-t border-border">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] text-sm text-[#E6EDF3] font-medium rounded-lg transition-colors"
+              className="px-4 py-2 bg-accent hover:bg-border border border-border text-sm text-foreground font-medium rounded-lg transition-colors"
             >
               Done
             </button>
@@ -8994,7 +8994,7 @@ function AiWorkflowModal({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4"
+        className="bg-card border border-border rounded-xl p-6 max-w-lg w-full mx-4 space-y-4"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">
@@ -9004,10 +9004,10 @@ function AiWorkflowModal({
             </svg>
           </div>
           <div className="min-w-0">
-            <h2 className="font-semibold text-[#E6EDF3]">Build with AI</h2>
-            <p className="text-xs text-[#7D8590]">Describe the workflow and AI will generate the canvas nodes and connections.</p>
+            <h2 className="font-semibold text-foreground">Build with AI</h2>
+            <p className="text-xs text-muted-foreground">Describe the workflow and AI will generate the canvas nodes and connections.</p>
           </div>
-          <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+          <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -9015,12 +9015,12 @@ function AiWorkflowModal({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Trigger (optional)</label>
+          <label className="text-xs font-medium text-muted-foreground">Trigger (optional)</label>
           <select
             value={triggerType}
             onChange={e => setTriggerType(e.target.value)}
             disabled={loading}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 disabled:opacity-50"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-primary/60 disabled:opacity-50"
           >
             {AI_TRIGGER_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -9029,7 +9029,7 @@ function AiWorkflowModal({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Describe your workflow</label>
+          <label className="text-xs font-medium text-muted-foreground">Describe your workflow</label>
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
@@ -9037,15 +9037,15 @@ function AiWorkflowModal({
             rows={5}
             maxLength={2000}
             disabled={loading}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none disabled:opacity-50"
           />
           <div className="flex justify-between items-start gap-2">
             {descTooShort ? (
               <span className="text-[10px] text-amber-400">Add more detail — at least {MIN_DESC_LEN} characters, describing specific steps, conditions, and actions</span>
             ) : (
-              <span className="text-[10px] text-[#484F58]">Be specific about conditions, actions, and data fields</span>
+              <span className="text-[10px] text-muted-foreground/60">Be specific about conditions, actions, and data fields</span>
             )}
-            <span className="text-[10px] text-[#484F58] flex-shrink-0">{description.length}/2000</span>
+            <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{description.length}/2000</span>
           </div>
         </div>
 
@@ -9056,7 +9056,7 @@ function AiWorkflowModal({
         )}
 
         <div className="flex gap-2 justify-end pt-1">
-          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50">
+          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
             Cancel
           </button>
           <button
@@ -9083,7 +9083,7 @@ function AiWorkflowModal({
           </button>
         </div>
 
-        <p className="text-[10px] text-[#484F58] border-t border-[#30363D] pt-3">
+        <p className="text-[10px] text-muted-foreground/60 border-t border-border pt-3">
           Existing canvas content will be replaced. Save first if you want to keep it. Uses Replit AI (Anthropic) — billed to your credits.
         </p>
       </div>
@@ -9162,7 +9162,7 @@ function AiRefineModal({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 max-w-md w-full mx-4 space-y-4"
+        className="bg-card border border-border rounded-xl p-5 max-w-md w-full mx-4 space-y-4"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">
@@ -9172,12 +9172,12 @@ function AiRefineModal({
             </svg>
           </div>
           <div className="min-w-0">
-            <h2 className="font-semibold text-[#E6EDF3]">Refine with AI</h2>
-            <p className="text-xs text-[#7D8590]">
+            <h2 className="font-semibold text-foreground">Refine with AI</h2>
+            <p className="text-xs text-muted-foreground">
               Current canvas: {nodes.length} node{nodes.length !== 1 ? "s" : ""}, {edges.length} edge{edges.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+          <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -9185,7 +9185,7 @@ function AiRefineModal({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">What would you like to change?</label>
+          <label className="text-xs font-medium text-muted-foreground">What would you like to change?</label>
           <textarea
             value={instruction}
             onChange={e => setInstruction(e.target.value)}
@@ -9194,15 +9194,15 @@ function AiRefineModal({
             maxLength={2000}
             disabled={loading}
             autoFocus
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60 resize-none disabled:opacity-50"
           />
           <div className="flex justify-between items-start gap-2">
             {instrTooShort ? (
               <span className="text-[10px] text-amber-400">Add more detail — describe a specific change like "add an error handler" or "split the lead scoring into two branches"</span>
             ) : (
-              <span className="text-[10px] text-[#484F58]">e.g. "add an error handler after scoring" or "split the condition into High and Medium paths"</span>
+              <span className="text-[10px] text-muted-foreground/60">e.g. "add an error handler after scoring" or "split the condition into High and Medium paths"</span>
             )}
-            <span className="text-[10px] text-[#484F58] flex-shrink-0">{instruction.length}/2000</span>
+            <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">{instruction.length}/2000</span>
           </div>
         </div>
 
@@ -9213,7 +9213,7 @@ function AiRefineModal({
         )}
 
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50">
+          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
             Cancel
           </button>
           <button
@@ -9240,7 +9240,7 @@ function AiRefineModal({
           </button>
         </div>
 
-        <p className="text-[10px] text-[#484F58] border-t border-[#30363D] pt-3">
+        <p className="text-[10px] text-muted-foreground/60 border-t border-border pt-3">
           AI will update the canvas and preserve unchanged nodes. Ctrl+Z undoes the change. Uses Replit AI (Anthropic).
         </p>
       </div>
@@ -9270,7 +9270,7 @@ function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value:
     <select
       value={value ?? ""}
       onChange={e => onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-      className="text-[10px] bg-[#1C2128] border border-violet-500/30 text-violet-200 rounded-lg px-2 py-1.5 outline-none focus:border-violet-500/60 max-w-[160px] truncate"
+      className="text-[10px] bg-accent border border-violet-500/30 text-violet-200 rounded-lg px-2 py-1.5 outline-none focus:border-violet-500/60 max-w-[160px] truncate"
     >
       <option value="">Select run…</option>
       {runs.map(r => (
@@ -9332,7 +9332,7 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
   return (
     <div ref={containerRef} className="p-3 space-y-1">
       {runData?.status && (
-        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#1C2128]">
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-accent">
           <span className={`text-[10px] font-bold font-sans ${
             runData.status === "completed" ? "text-emerald-400" :
             runData.status === "failed" ? "text-red-400" :
@@ -9346,7 +9346,7 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
         </div>
       )}
       {logs.length === 0 ? (
-        <div className="text-[#484F58] py-2 font-sans">Waiting for log output…</div>
+        <div className="text-muted-foreground/60 py-2 font-sans">Waiting for log output…</div>
       ) : logs.map((log, idx) => {
         const isLastForNode = log.nodeId ? lastLogIdxByNode.get(log.nodeId) === idx : false;
         const nodeOut = log.nodeId ? nodeOutputMap.get(log.nodeId) : undefined;
@@ -9354,21 +9354,21 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
         const isExpanded = expandedIo.has(ioKey);
         return (
           <React.Fragment key={log.id}>
-            <div className={`flex items-start gap-2 rounded px-1 -mx-1 transition-colors ${log.nodeId && log.nodeId === focusNodeId ? "bg-[#0078D4]/15 ring-1 ring-[#0078D4]/30" : ""}`}>
-              <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#484F58]"}`}>
+            <div className={`flex items-start gap-2 rounded px-1 -mx-1 transition-colors ${log.nodeId && log.nodeId === focusNodeId ? "bg-primary/15 ring-1 ring-primary/30" : ""}`}>
+              <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-muted-foreground/60"}`}>
                 {log.level === "error" ? "✕" : log.level === "warn" ? "⚠" : "·"}
               </span>
-              <span className="text-[#484F58] flex-shrink-0">
+              <span className="text-muted-foreground/60 flex-shrink-0">
                 {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </span>
-              <span className={log.level === "error" ? "text-red-300" : log.level === "warn" ? "text-amber-300" : "text-[#7D8590]"}>
+              <span className={log.level === "error" ? "text-red-300" : log.level === "warn" ? "text-amber-300" : "text-muted-foreground"}>
                 {log.message}
               </span>
             </div>
             {/* Per-step I/O sub-row — shown after the last log line for a completed node */}
             {isLastForNode && log.nodeId && (
               nodeOut ? (
-                <div className="ml-8 border border-[#1C2128] rounded-lg overflow-hidden font-sans">
+                <div className="ml-8 border border-accent rounded-lg overflow-hidden font-sans">
                   <button
                     data-node-id={log.nodeId}
                     onClick={() => setExpandedIo(prev => {
@@ -9379,23 +9379,23 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] transition-colors ${
                       nodeOut.status === "completed" ? "text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10" :
                       nodeOut.status === "failed" ? "text-red-400 bg-red-500/5 hover:bg-red-500/10" :
-                      "text-[#7D8590] bg-[#0D1117] hover:bg-[#1C2128]"
+                      "text-muted-foreground bg-background hover:bg-accent"
                     }`}
                   >
                     <span>{isExpanded ? "▾" : "▸"}</span>
                     <span className="font-mono">{log.nodeId}</span>
                     <span className="ml-1 capitalize">{nodeOut.status}</span>
-                    {nodeOut.durationMs != null && <span className="ml-auto text-[#484F58]">{nodeOut.durationMs}ms</span>}
+                    {nodeOut.durationMs != null && <span className="ml-auto text-muted-foreground/60">{nodeOut.durationMs}ms</span>}
                   </button>
                   {isExpanded && (
-                    <div className="border-t border-[#1C2128] divide-y divide-[#1C2128]">
+                    <div className="border-t border-accent divide-y divide-accent">
                       {[
                         { label: "Input", obj: nodeOut.input },
                         { label: "Output", obj: nodeOut.output },
                       ].map(({ label, obj }) => (
                         <div key={label} className="p-2">
-                          <p className="text-[9px] uppercase tracking-widest text-[#484F58] mb-1">{label}</p>
-                          <pre className="text-[10px] text-[#7D8590] overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                          <p className="text-[9px] uppercase tracking-widest text-muted-foreground/60 mb-1">{label}</p>
+                          <pre className="text-[10px] text-muted-foreground overflow-auto max-h-40 whitespace-pre-wrap break-all">
                             {JSON.stringify(obj, null, 2)}
                           </pre>
                         </div>
@@ -9411,8 +9411,8 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
                 </div>
               ) : !TERMINAL.has(runData?.status ?? "") ? (
                 // Step is still running — show spinner
-                <div className="ml-8 flex items-center gap-2 text-[#484F58] py-1 text-[10px] font-sans">
-                  <span className="w-3 h-3 rounded-full border border-[#484F58] border-t-transparent animate-spin flex-shrink-0" />
+                <div className="ml-8 flex items-center gap-2 text-muted-foreground/60 py-1 text-[10px] font-sans">
+                  <span className="w-3 h-3 rounded-full border border-muted-foreground/60 border-t-transparent animate-spin flex-shrink-0" />
                   <span className="font-mono">{log.nodeId}</span> — capturing I/O…
                 </div>
               ) : null
@@ -9432,11 +9432,11 @@ import { PATTERNS as WORKFLOW_PATTERNS } from "./patternRegistry";
 
 function RibbonGroup({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`flex-shrink-0 flex flex-col border border-[#30363D] bg-[#1C2128] rounded overflow-hidden ${className ?? ""}`}>
+    <div className={`flex-shrink-0 flex flex-col border border-border bg-accent rounded overflow-hidden ${className ?? ""}`}>
       <div className="flex items-end gap-0.5 px-1.5 pt-1.5 pb-1">
         {children}
       </div>
-      <div className="border-t border-[#30363D] text-[9px] uppercase tracking-widest text-[#484F58] py-0.5 text-center select-none leading-none">
+      <div className="border-t border-border text-[9px] uppercase tracking-widest text-muted-foreground/60 py-0.5 text-center select-none leading-none">
         {label}
       </div>
     </div>
@@ -9787,7 +9787,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
-      style: { stroke: "#30363D", strokeWidth: 2 },
+      style: { stroke: "#232A36", strokeWidth: 2 },
       animated: false,
     })));
     setIsDirty(false);
@@ -9918,7 +9918,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       source: idMap.get(pe.source) ?? pe.source,
       target: idMap.get(pe.target) ?? pe.target,
       sourceHandle: pe.sourceHandle,
-      style: { stroke: "#30363D", strokeWidth: 2 },
+      style: { stroke: "#232A36", strokeWidth: 2 },
       animated: false,
     }));
     // If there is a selected anchor node, connect it to the first inserted pattern node
@@ -9928,7 +9928,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         id: `edge-${++nodeIdCounter.current}`,
         source: anchor.id,
         target: newPNodes[0].id,
-        style: { stroke: "#30363D", strokeWidth: 2 },
+        style: { stroke: "#232A36", strokeWidth: 2 },
         animated: false,
       });
     }
@@ -10272,7 +10272,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       source: idMap.get(e.source) ?? e.source,
       target: idMap.get(e.target) ?? e.target,
       sourceHandle: e.sourceHandle ?? undefined,
-      style: { stroke: "#30363D", strokeWidth: 2 },
+      style: { stroke: "#232A36", strokeWidth: 2 },
     }));
     setNodes(rfNodes);
     setEdges(rfEdges);
@@ -10725,14 +10725,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Toolbar: two-row Office Ribbon */}
-      <div className="flex-shrink-0 flex flex-col bg-[#161B22] border-b border-[#30363D]">
+      <div className="flex-shrink-0 flex flex-col bg-card border-b border-border">
 
         {/* ── Row 1: Title bar ──────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 h-9 border-b border-[#30363D]/50 gap-3">
+        <div className="flex items-center justify-between px-4 h-9 border-b border-border/50 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => isDirty ? setShowUnsavedDialog(true) : (onClose ? onClose() : navigate("/workflows/list"))}
-              className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
+              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
               title={isDirty ? "You have unsaved changes" : "Back to workflows"}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10740,9 +10740,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </svg>
             </button>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#E6EDF3] truncate">{def?.name ?? "Loading…"}</p>
+              <p className="text-sm font-semibold text-foreground truncate">{def?.name ?? "Loading…"}</p>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[#484F58]">{currentVersion?.label ?? ""}</span>
+                <span className="text-xs text-muted-foreground/60">{currentVersion?.label ?? ""}</span>
                 {isPublished && (
                   <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-semibold">LIVE</span>
                 )}
@@ -10750,7 +10750,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-semibold">DRAFT</span>
                 )}
                 {isArchived && (
-                  <span className="text-[9px] bg-[#30363D] border border-[#484F58] text-[#7D8590] px-1.5 py-0.5 rounded-full font-semibold">ARCHIVED</span>
+                  <span className="text-[9px] bg-border border border-muted-foreground/60 text-muted-foreground px-1.5 py-0.5 rounded-full font-semibold">ARCHIVED</span>
                 )}
               </div>
             </div>
@@ -10763,7 +10763,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </span>
             )}
             {lastDraftSavedAt && saveStatus !== "saved" && (
-              <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
+              <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
                 Auto-saved {draftAgeLabel(lastDraftSavedAt)}
               </span>
             )}
@@ -10771,7 +10771,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               <button
                 onClick={() => saveMut.mutate()}
                 disabled={saveMut.isPending}
-                className="px-3 py-1 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
+                className="px-3 py-1 text-xs border border-border hover:border-muted-foreground/60 rounded-lg transition-colors disabled:opacity-50 text-foreground"
                 title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
               >
                 {saveStatus === "saving" ? "Saving…"
@@ -10796,7 +10796,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             )}
             <button
               onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1 bg-primary hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
             >
               🧪 Test Run
             </button>
@@ -10804,7 +10804,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
 
         {/* ── Row 2: Command Ribbon ──────────────────────────────────────────── */}
-        <div className="bg-[#0D1117] flex items-end gap-1.5 px-3 pt-1.5 pb-1.5 overflow-x-auto border-b border-[#1C2128]">
+        <div className="bg-background flex items-end gap-1.5 px-3 pt-1.5 pb-1.5 overflow-x-auto border-b border-accent">
 
           {/* Clipboard */}
           <RibbonGroup label="Clipboard">
@@ -10812,7 +10812,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={handleUndo}
               disabled={!canUndo}
               title="Undo (Ctrl+Z)"
-              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590] disabled:hover:bg-transparent"
+              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-muted-foreground hover:text-foreground hover:bg-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
@@ -10823,7 +10823,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={handleRedo}
               disabled={!canRedo}
               title="Redo (Ctrl+Shift+Z)"
-              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590] disabled:hover:bg-transparent"
+              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-muted-foreground hover:text-foreground hover:bg-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent"
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6M21 10l-6-6" />
@@ -10837,7 +10837,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {!isReadOnly && (
               <button
                 onClick={runAutoLayout}
-                className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
+                className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-muted-foreground hover:text-foreground hover:bg-border"
                 title="Auto-arrange nodes in a structured top-to-bottom layout"
               >
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10848,7 +10848,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             )}
             <button
               onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
-              className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
+              className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-muted-foreground hover:text-foreground hover:bg-border"
               title="View run history for this workflow"
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10862,7 +10862,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <RibbonGroup label="Analytics">
             <button
               onClick={() => { setShowTrendsDrawer(v => !v); setShowTrends(v => !v); }}
-              className={`flex flex-col items-center gap-0.5 min-w-[40px] rounded px-1.5 py-1 transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
+              className={`flex flex-col items-center gap-0.5 min-w-[40px] rounded px-1.5 py-1 transition-colors ${(showTrendsDrawer || showTrends) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-border"}`}
               title="View workflow trends and run analytics"
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10890,7 +10890,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <RibbonGroup label="Inspect">
             <button
               onClick={() => { setInspectMode(v => !v); if (inspectMode) { setInspectRunId(null); setReplayMode(false); } }}
-              className={`flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 transition-colors ${inspectMode ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
+              className={`flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 transition-colors ${inspectMode ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30" : "text-muted-foreground hover:text-foreground hover:bg-border"}`}
               title="Inspect a run — overlay execution results on each step card"
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10909,7 +10909,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={() => { const entering = !replayMode; setReplayMode(entering); if (entering) setLiveRunState(null); }}
               disabled={!inspectRunId}
               className={`flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                replayMode ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
+                replayMode ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" : "text-muted-foreground hover:text-foreground hover:bg-border"
               }`}
               title={inspectRunId ? "Toggle replay mode — step through run with ← →" : "Select a run first to enable replay"}
             >
@@ -11014,7 +11014,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
             <button
               onClick={() => { setShowSearch(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-              className={`p-1.5 rounded-lg border transition-colors ${showSearch ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              className={`p-1.5 rounded-lg border transition-colors ${showSearch ? "text-primary border-primary/40 bg-primary/10" : "text-muted-foreground hover:text-foreground border-border hover:border-muted-foreground/60"}`}
               title="Search nodes (Cmd/Ctrl+F)"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11023,7 +11023,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
             <button
               onClick={() => setBottomDockOpen(v => !v)}
-              className={`p-1.5 rounded-lg border transition-colors ${bottomDockOpen ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              className={`p-1.5 rounded-lg border transition-colors ${bottomDockOpen ? "text-primary border-primary/40 bg-primary/10" : "text-muted-foreground hover:text-foreground border-border hover:border-muted-foreground/60"}`}
               title={bottomDockOpen ? "Close output dock" : "Open output dock (console)"}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11033,7 +11033,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
             <button
               onClick={() => setSplitViewActive(v => !v)}
-              className={`p-1.5 rounded-lg border transition-colors ${splitViewActive ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              className={`p-1.5 rounded-lg border transition-colors ${splitViewActive ? "text-primary border-primary/40 bg-primary/10" : "text-muted-foreground hover:text-foreground border-border hover:border-muted-foreground/60"}`}
               title={splitViewActive ? "Exit split view (Ctrl+\\)" : "Split view — canvas + console side by side (Ctrl+\\)"}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11085,7 +11085,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
             <button
               onClick={() => { setReplayActive(false); setReplayIndex(0); }}
-              className="px-2 py-0.5 text-[10px] border border-[#484F58] rounded text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] ml-1 transition-colors"
+              className="px-2 py-0.5 text-[10px] border border-muted-foreground/60 rounded text-muted-foreground hover:text-foreground hover:border-muted-foreground ml-1 transition-colors"
             >
               Exit
             </button>
@@ -11102,13 +11102,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {isPublished && (
         <div className="flex-shrink-0 flex items-center gap-2 bg-emerald-500/5 border-b border-emerald-500/20 px-4 py-2">
           <span className="text-[10px] font-semibold text-emerald-400">● LIVE VERSION</span>
-          <span className="text-[10px] text-[#484F58]">Active in production. "Save as Draft" creates an editable copy — live traffic is unaffected.</span>
+          <span className="text-[10px] text-muted-foreground/60">Active in production. "Save as Draft" creates an editable copy — live traffic is unaffected.</span>
         </div>
       )}
       {isArchived && (
-        <div className="flex-shrink-0 flex items-center gap-2 bg-[#30363D]/30 border-b border-[#484F58]/30 px-4 py-2">
-          <span className="text-[10px] font-semibold text-[#7D8590]">🔒 ARCHIVED — Read-only</span>
-          <span className="text-[10px] text-[#484F58]">This is a historical snapshot. Select a different version to edit, or publish a new one from the Builder.</span>
+        <div className="flex-shrink-0 flex items-center gap-2 bg-border/30 border-b border-muted-foreground/30 px-4 py-2">
+          <span className="text-[10px] font-semibold text-muted-foreground">🔒 ARCHIVED — Read-only</span>
+          <span className="text-[10px] text-muted-foreground/60">This is a historical snapshot. Select a different version to edit, or publish a new one from the Builder.</span>
         </div>
       )}
 
@@ -11164,7 +11164,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   source: e.source,
                   target: e.target,
                   sourceHandle: e.sourceHandle,
-                  style: { stroke: "#30363D", strokeWidth: 2 },
+                  style: { stroke: "#232A36", strokeWidth: 2 },
                   animated: false,
                 })));
                 setIsDirty(true);
@@ -11180,7 +11180,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 setShowDraftBanner(false);
                 setLocalDraft(null);
               }}
-              className="px-2.5 py-1 text-xs font-medium text-[#7D8590] border border-[#30363D] rounded-lg hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+              className="px-2.5 py-1 text-xs font-medium text-muted-foreground border border-border rounded-lg hover:text-foreground hover:border-muted-foreground/60 transition-colors"
             >
               Discard
             </button>
@@ -11191,13 +11191,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Node library sidebar (collapsible) */}
-        <div className={`flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] flex flex-col overflow-hidden transition-[width] duration-200 ${leftCollapsed ? "w-0" : "w-52"}`}>
+        <div className={`flex-shrink-0 bg-background border-r border-border flex flex-col overflow-hidden transition-[width] duration-200 ${leftCollapsed ? "w-0" : "w-52"}`}>
           {/* Header + collapse toggle */}
-          <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-[#1C2128]">
-            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Node Library</p>
+          <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-accent">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Node Library</p>
             <button
               onClick={() => setLeftCollapsed(true)}
-              className="text-[#484F58] hover:text-[#E6EDF3] p-0.5 rounded transition-colors"
+              className="text-muted-foreground/60 hover:text-foreground p-0.5 rounded transition-colors"
               title="Collapse node library"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11207,15 +11207,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           </div>
 
           {/* Nodes / Patterns sub-tabs */}
-          <div className="flex-shrink-0 flex border-b border-[#1C2128]">
+          <div className="flex-shrink-0 flex border-b border-accent">
             {(["nodes", "patterns"] as const).map(t => (
               <button
                 key={t}
                 onClick={() => setLibTab(t)}
                 className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-b-2 ${
                   libTab === t
-                    ? "border-[#0078D4] text-[#E6EDF3]"
-                    : "border-transparent text-[#484F58] hover:text-[#7D8590]"
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground/60 hover:text-muted-foreground"
                 }`}
               >
                 {t === "nodes" ? "Nodes" : "Patterns"}
@@ -11230,14 +11230,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   value={libSearch}
                   onChange={e => setLibSearch(e.target.value)}
                   placeholder="Search nodes…"
-                  className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  className="w-full bg-card border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
                 />
               </div>
               <div className="flex-1 overflow-y-auto p-2 space-y-3">
             {/* Recently Used */}
             {recentTypes.length > 0 && !libSearch && (
               <div>
-                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Recent</p>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60 px-1 mb-1">Recent</p>
                 <div className="space-y-1">
                   {recentTypes.map(type => {
                     const n = ALL_LIBRARY_NODES.find(x => x.type === type);
@@ -11261,7 +11261,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {/* Favourites */}
             {libFavs.size > 0 && !libSearch && (
               <div>
-                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Favourites</p>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60 px-1 mb-1">Favourites</p>
                 <div className="space-y-1">
                   {[...libFavs].map(type => {
                     const n = ALL_LIBRARY_NODES.find(x => x.type === type);
@@ -11285,7 +11285,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {/* Categories (or filtered) */}
             {libSearch ? (
               <div>
-                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Results</p>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60 px-1 mb-1">Results</p>
                 <div className="space-y-1">
                   {ALL_LIBRARY_NODES.filter(n =>
                     n.label.toLowerCase().includes(libSearch.toLowerCase()) ||
@@ -11309,7 +11309,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             ) : (
               LIBRARY_CATEGORIES.map(cat => (
                 <div key={cat.name}>
-                  <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">{cat.name}</p>
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60 px-1 mb-1">{cat.name}</p>
                   <div className="space-y-1">
                     {cat.nodes.map(n => {
                       const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
@@ -11333,15 +11333,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           ) : (
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {PATTERNS.map(pattern => (
-                <div key={pattern.id} className="rounded-lg border border-[#30363D] bg-[#161B22] p-2.5 space-y-1.5">
+                <div key={pattern.id} className="rounded-lg border border-border bg-card p-2.5 space-y-1.5">
                   <div className="flex items-start justify-between gap-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm">{pattern.icon}</span>
-                      <p className="text-[11px] font-semibold text-[#E6EDF3] leading-snug">{pattern.name}</p>
+                      <p className="text-[11px] font-semibold text-foreground leading-snug">{pattern.name}</p>
                     </div>
                     {!isReadOnly && (
                       <button
-                        className="flex-shrink-0 text-[9px] font-medium text-[#0078D4] hover:text-[#4DA6F5] border border-[#0078D4]/30 hover:border-[#0078D4]/60 rounded px-1.5 py-0.5 transition-colors"
+                        className="flex-shrink-0 text-[9px] font-medium text-primary hover:text-[#4DA6F5] border border-primary/30 hover:border-primary/60 rounded px-1.5 py-0.5 transition-colors"
                         onClick={() => {
                           const anchorNode = selectedNodeId
                             ? nodes.find(n => n.id === selectedNodeId)
@@ -11366,7 +11366,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                               source: srcIdx >= 0 ? newNodes[srcIdx].id : pe.source,
                               target: tgtIdx >= 0 ? newNodes[tgtIdx].id : pe.target,
                               sourceHandle: pe.sourceHandle,
-                              style: { stroke: "#30363D", strokeWidth: 2 },
+                              style: { stroke: "#232A36", strokeWidth: 2 },
                               animated: false,
                             };
                           });
@@ -11375,7 +11375,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                               id: `edge-anchor-pat-${Date.now()}`,
                               source: anchorNode.id,
                               target: newNodes[0].id,
-                              style: { stroke: "#30363D", strokeWidth: 2 },
+                              style: { stroke: "#232A36", strokeWidth: 2 },
                               animated: false,
                             });
                           }
@@ -11391,10 +11391,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </button>
                     )}
                   </div>
-                  <p className="text-[9px] text-[#7D8590] leading-relaxed">{pattern.description}</p>
+                  <p className="text-[9px] text-muted-foreground leading-relaxed">{pattern.description}</p>
                   <div className="flex flex-wrap gap-1">
                     {pattern.tags.map(t => (
-                      <span key={t} className="text-[8px] bg-[#0D1117] border border-[#30363D] text-[#484F58] rounded px-1 py-0.5">{t}</span>
+                      <span key={t} className="text-[8px] bg-background border border-border text-muted-foreground/60 rounded px-1 py-0.5">{t}</span>
                     ))}
                   </div>
                 </div>
@@ -11418,7 +11418,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           {leftCollapsed && (
             <button
               onClick={() => setLeftCollapsed(false)}
-              className="absolute top-2 left-2 z-10 w-6 h-6 flex items-center justify-center bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors"
+              className="absolute top-2 left-2 z-10 w-6 h-6 flex items-center justify-center bg-accent border border-border hover:border-muted-foreground/60 text-muted-foreground/60 hover:text-foreground rounded transition-colors"
               title="Expand node library"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11466,7 +11466,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           {/* so MiniMap and Controls are implemented as custom canvas overlay components.  */}
           {showMiniMap && nodes.length > 0 && (
             <div
-              className="absolute bottom-20 right-2 w-24 bg-[#0D1117]/90 border border-[#30363D] rounded-lg overflow-hidden z-10 shadow-xl"
+              className="absolute bottom-20 right-2 w-24 bg-background/90 border border-border rounded-lg overflow-hidden z-10 shadow-xl"
               style={{ height: Math.min(120, nodes.length * 4 + 16) }}
               title="MiniMap — click to jump"
               onClick={e => {
@@ -11477,10 +11477,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               }}
             >
               <div className="px-1.5 pt-1 pb-0.5 flex items-center justify-between">
-                <span className="text-[9px] text-[#484F58] font-medium uppercase tracking-wide">Map</span>
+                <span className="text-[9px] text-muted-foreground/60 font-medium uppercase tracking-wide">Map</span>
                 <button
                   onClick={e => { e.stopPropagation(); setShowMiniMap(false); }}
-                  className="text-[#30363D] hover:text-[#484F58] transition-colors"
+                  className="text-border hover:text-muted-foreground/60 transition-colors"
                   title="Hide minimap"
                 >
                   <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11497,7 +11497,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     : style?.border?.includes("red")    ? "#EF4444"
                     : style?.border?.includes("emerald") || style?.border?.includes("green") ? "#10B981"
                     : style?.border?.includes("sky")    ? "#0EA5E9"
-                    : "#0078D4";
+                    : "#2F6FED";
                   const total = nodes.length;
                   const topPct = total > 1 ? (i / (total - 1)) * 100 : 0;
                   const inReplay = replayMode && i < replayStep;
@@ -11516,7 +11516,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 {/* Viewport indicator */}
                 {canvasViewPct < 0.99 && (
                   <div
-                    className="absolute left-0 right-0 rounded border border-[#0078D4]/50 bg-[#0078D4]/10 pointer-events-none"
+                    className="absolute left-0 right-0 rounded border border-primary/50 bg-primary/10 pointer-events-none"
                     style={{
                       top: `${canvasScrollPct * (1 - canvasViewPct) * 100}%`,
                       height: `${canvasViewPct * 100}%`,
@@ -11531,7 +11531,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           {!showMiniMap && (
             <button
               onClick={() => setShowMiniMap(true)}
-              className="absolute bottom-20 right-2 z-10 w-7 h-7 flex items-center justify-center bg-[#0D1117]/90 border border-[#30363D] hover:border-[#484F58] text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors"
+              className="absolute bottom-20 right-2 z-10 w-7 h-7 flex items-center justify-center bg-background/90 border border-border hover:border-muted-foreground/60 text-muted-foreground/60 hover:text-foreground rounded transition-colors"
               title="Show minimap"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11544,17 +11544,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <div className="absolute bottom-4 right-4 flex flex-col gap-0.5 z-10">
             <button
               onClick={() => setCanvasZoom(z => Math.min(+(z + 0.15).toFixed(2), 1.5))}
-              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-sm font-semibold transition-colors"
+              className="w-7 h-7 flex items-center justify-center bg-card border border-border hover:border-muted-foreground/60 text-muted-foreground hover:text-foreground rounded text-sm font-semibold transition-colors"
               title="Zoom in"
             >+</button>
             <button
               onClick={() => setCanvasZoom(1.0)}
-              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-[10px] font-mono transition-colors"
+              className="w-7 h-7 flex items-center justify-center bg-card border border-border hover:border-muted-foreground/60 text-muted-foreground hover:text-foreground rounded text-[10px] font-mono transition-colors"
               title={`Reset zoom (${Math.round(canvasZoom * 100)}%)`}
             >{Math.round(canvasZoom * 100)}%</button>
             <button
               onClick={() => setCanvasZoom(z => Math.max(+(z - 0.15).toFixed(2), 0.5))}
-              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-sm font-semibold transition-colors"
+              className="w-7 h-7 flex items-center justify-center bg-card border border-border hover:border-muted-foreground/60 text-muted-foreground hover:text-foreground rounded text-sm font-semibold transition-colors"
               title="Zoom out"
             >−</button>
           </div>
@@ -11577,12 +11577,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             <>
               <div
                 onMouseDown={startSplitResize}
-                className="flex-shrink-0 w-1 cursor-col-resize bg-[#30363D] hover:bg-[#0078D4]/50 transition-colors select-none"
+                className="flex-shrink-0 w-1 cursor-col-resize bg-border hover:bg-primary/50 transition-colors select-none"
                 title="Drag to resize panes"
               />
-              <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#0D1117] border-l border-[#30363D]">
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background border-l border-border">
                 {/* Split pane tab bar */}
-                <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-[#30363D] bg-[#161B22]">
+                <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-border bg-card">
                   {([
                     { key: "runoutput" as const, label: "Run Output" },
                     { key: "activity" as const, label: "Activity" },
@@ -11591,7 +11591,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       key={tab.key}
                       onClick={() => setSplitPaneTab(tab.key)}
                       className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                        splitPaneTab === tab.key ? "bg-[#1C2128] text-[#E6EDF3]" : "text-[#484F58] hover:text-[#7D8590]"
+                        splitPaneTab === tab.key ? "bg-accent text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
                       }`}
                     >
                       {tab.label}
@@ -11600,7 +11600,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   <div className="ml-auto flex items-center gap-1">
                     <button
                       onClick={() => setSplitViewActive(false)}
-                      className="text-[#484F58] hover:text-[#E6EDF3] text-lg leading-none px-1 transition-colors"
+                      className="text-muted-foreground/60 hover:text-foreground text-lg leading-none px-1 transition-colors"
                       title="Close split view (Ctrl+\)"
                     >
                       ×
@@ -11611,12 +11611,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 <div className="flex-1 overflow-y-auto text-[11px] font-mono">
                   {splitPaneTab === "runoutput" ? (
                     lastTestRunId == null ? (
-                      <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
-                        <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground/60 font-sans">
+                        <svg className="w-7 h-7 text-border" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
+                        <p className="text-xs">No run yet — click <strong className="text-foreground">Test Run</strong> to see output here.</p>
                       </div>
                     ) : (
                       <RunOutputDock
@@ -11629,12 +11629,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     /* Activity tab — recent runs list */
                     <div className="flex flex-col h-full font-sans">
                       <div className="px-4 pt-4 pb-2 flex-shrink-0">
-                        <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Recent Runs</p>
+                        <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/60">Recent Runs</p>
                       </div>
                       <div className="flex-1 overflow-y-auto px-3 space-y-1 pb-3">
                         {activityRuns.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center py-12 gap-2 text-[#484F58]">
-                            <svg className="w-6 h-6 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground/60">
+                            <svg className="w-6 h-6 text-border" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <p className="text-xs text-center">No runs yet</p>
@@ -11643,7 +11643,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                           const isOk = run.status === "completed" || run.status === "success";
                           const isFail = run.status === "failed" || run.status === "error";
                           const isRunning = run.status === "running" || run.status === "in_progress";
-                          const dotColor = isOk ? "bg-emerald-400" : isFail ? "bg-red-400" : isRunning ? "bg-blue-400 animate-pulse" : "bg-[#484F58]";
+                          const dotColor = isOk ? "bg-emerald-400" : isFail ? "bg-red-400" : isRunning ? "bg-blue-400 animate-pulse" : "bg-muted-foreground/60";
                           const relTs = (() => {
                             const diff = Date.now() - new Date(run.startedAt).getTime();
                             if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
@@ -11661,25 +11661,25 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                             <button
                               key={run.id}
                               onClick={() => navigate(`/workflows/runs/${run.id}`)}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-[#1C2128] transition-colors text-left group"
+                              className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-accent transition-colors text-left group"
                             >
                               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs text-[#E6EDF3] capitalize">{run.status}</p>
-                                <p className="text-[9px] text-[#484F58]">{relTs}</p>
+                                <p className="text-xs text-foreground capitalize">{run.status}</p>
+                                <p className="text-[9px] text-muted-foreground/60">{relTs}</p>
                               </div>
-                              {dur && <span className="text-[9px] text-[#484F58] flex-shrink-0">{dur}</span>}
-                              <svg className="w-3 h-3 text-[#30363D] group-hover:text-[#7D8590] flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              {dur && <span className="text-[9px] text-muted-foreground/60 flex-shrink-0">{dur}</span>}
+                              <svg className="w-3 h-3 text-border group-hover:text-muted-foreground flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
                             </button>
                           );
                         })}
                       </div>
-                      <div className="flex-shrink-0 border-t border-[#1C2128] px-4 py-3">
+                      <div className="flex-shrink-0 border-t border-accent px-4 py-3">
                         <button
                           onClick={() => navigate(`/workflows/runs?definitionId=${defId}`)}
-                          className="text-[11px] text-[#0078D4] hover:text-[#0086F0] transition-colors"
+                          className="text-[11px] text-primary hover:text-[#0086F0] transition-colors"
                         >
                           View all runs →
                         </button>
@@ -11695,16 +11695,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         {/* Right: Docked Panel */}
         {rightPanelTab !== null && (
           <div
-            className="flex-shrink-0 relative flex flex-col border-l border-[#30363D] bg-[#161B22] overflow-hidden"
+            className="flex-shrink-0 relative flex flex-col border-l border-border bg-card overflow-hidden"
             style={{ width: rightPanelWidth }}
           >
             {/* Resize handle on left edge */}
             <div
-              className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-[#0078D4]/30 z-20 transition-colors"
+              className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-primary/30 z-20 transition-colors"
               onMouseDown={startPanelResize}
             />
             {/* Tab bar */}
-            <div className="flex-shrink-0 flex items-center border-b border-[#30363D] bg-[#0D1117] overflow-x-auto">
+            <div className="flex-shrink-0 flex items-center border-b border-border bg-background overflow-x-auto">
               {([
                 { id: "node" as const, label: "Node Config" },
                 { id: "testrun" as const, label: "Test Run" },
@@ -11718,8 +11718,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   onClick={() => setRightPanelTab(tab.id)}
                   className={`px-3 py-2.5 text-[11px] font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
                     rightPanelTab === tab.id
-                      ? "border-[#0078D4] text-[#E6EDF3] bg-[#161B22]"
-                      : "border-transparent text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#161B22]/50"
+                      ? "border-primary text-foreground bg-card"
+                      : "border-transparent text-muted-foreground hover:text-foreground hover:bg-card/50"
                   }`}
                 >
                   {tab.label}
@@ -11727,7 +11727,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ))}
               <button
                 onClick={() => { setSelectedNodeId(null); setRightPanelTab(null); }}
-                className="ml-auto px-2.5 py-2 text-[#484F58] hover:text-[#E6EDF3] flex-shrink-0 transition-colors"
+                className="ml-auto px-2.5 py-2 text-muted-foreground/60 hover:text-foreground flex-shrink-0 transition-colors"
                 title="Close panel (Esc)"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -11749,11 +11749,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               if (tabLabel) parts.push(tabLabel);
               if (parts.length < 2) return null;
               return (
-                <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 border-b border-[#1C2128] bg-[#0D1117]/60 overflow-hidden">
+                <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 border-b border-accent bg-background/60 overflow-hidden">
                   {parts.map((p, i) => (
                     <span key={i} className="flex items-center gap-1 min-w-0">
-                      {i > 0 && <span className="text-[#30363D] flex-shrink-0">›</span>}
-                      <span className={`text-[10px] truncate ${i === parts.length - 1 ? "text-[#7D8590]" : "text-[#484F58]"}`}>{p}</span>
+                      {i > 0 && <span className="text-border flex-shrink-0">›</span>}
+                      <span className={`text-[10px] truncate ${i === parts.length - 1 ? "text-muted-foreground" : "text-muted-foreground/60"}`}>{p}</span>
                     </span>
                   ))}
                 </div>
@@ -11775,10 +11775,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 />
               ) : rightPanelTab === "node" ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
-                  <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-border" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
                   </svg>
-                  <p className="text-xs text-[#484F58]">Select a node on the canvas<br />to configure it here</p>
+                  <p className="text-xs text-muted-foreground/60">Select a node on the canvas<br />to configure it here</p>
                 </div>
               ) : rightPanelTab === "testrun" ? (
                 <TestRunPanel
@@ -11806,7 +11806,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400";
                     return (
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk</span>
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Risk</span>
                         <span
                           className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border capitalize ${badge}`}
                           title={hs != null ? `Health score: ${hs}/100 (auto-derived)` : "Set manually — health score not yet available"}
@@ -11820,19 +11820,19 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
                   {/* Read-only metadata */}
                   {(def?.updatedAt || versions.some(v => v.status === "published")) && (
-                    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5 space-y-1">
+                    <div className="bg-background border border-border rounded-lg p-2.5 space-y-1">
                       {def?.updatedAt && (
                         <div className="flex items-center justify-between text-[10px]">
-                          <span className="text-[#484F58]">Last modified</span>
-                          <span className="text-[#7D8590]">{new Date(def.updatedAt).toLocaleString()}</span>
+                          <span className="text-muted-foreground/60">Last modified</span>
+                          <span className="text-muted-foreground">{new Date(def.updatedAt).toLocaleString()}</span>
                         </div>
                       )}
                       {(() => {
                         const pub = versions.find(v => v.status === "published");
                         return pub ? (
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-[#484F58]">Last published</span>
-                            <span className="text-[#7D8590]">{pub.label ?? `v${pub.versionNumber}`}</span>
+                            <span className="text-muted-foreground/60">Last published</span>
+                            <span className="text-muted-foreground">{pub.label ?? `v${pub.versionNumber}`}</span>
                           </div>
                         ) : null;
                       })()}
@@ -11841,7 +11841,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
                   {/* Workflow name */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Workflow Name</label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Workflow Name</label>
                     <input
                       value={metaName}
                       onChange={e => {
@@ -11854,12 +11854,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         }, 600);
                       }}
                       placeholder="e.g. Client Onboarding Workflow"
-                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                      className="w-full bg-background border border-border focus:border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Description</label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Description</label>
                     <textarea
                       value={metaDesc}
                       onChange={e => {
@@ -11873,11 +11873,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       }}
                       placeholder="Describe what this workflow does and when it runs…"
                       rows={3}
-                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none resize-none"
+                      className="w-full bg-background border border-border focus:border-primary/60 rounded-lg px-2.5 py-2 text-xs text-foreground placeholder-muted-foreground/60 outline-none resize-none"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Owner</label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Owner</label>
                     <input
                       value={metaOwner}
                       onChange={e => {
@@ -11890,11 +11890,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         }, 600);
                       }}
                       placeholder="e.g. Shane McCaw"
-                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                      className="w-full bg-background border border-border focus:border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Tags <span className="text-[#484F58] normal-case font-normal">(comma-separated)</span></label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Tags <span className="text-muted-foreground/60 normal-case font-normal">(comma-separated)</span></label>
                     <input
                       value={metaTags}
                       onChange={e => {
@@ -11907,12 +11907,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         }, 600);
                       }}
                       placeholder="e.g. onboarding, client, email"
-                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                      className="w-full bg-background border border-border focus:border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 outline-none"
                     />
                     {metaTags.trim() && (
                       <div className="flex flex-wrap gap-1 pt-0.5">
                         {metaTags.split(",").map(t => t.trim()).filter(Boolean).map((tag, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] rounded-full text-[10px]">
+                          <span key={i} className="px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary rounded-full text-[10px]">
                             {tag}
                           </span>
                         ))}
@@ -11923,7 +11923,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   {/* Risk Level — manual override (only shown when no healthScore) */}
                   {def?.healthScore == null && (
                     <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk Level <span className="normal-case font-normal text-[#484F58]">(manual)</span></label>
+                      <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Risk Level <span className="normal-case font-normal text-muted-foreground/60">(manual)</span></label>
                       <div className="flex gap-2">
                         {(["low", "medium", "high"] as const).map(level => (
                           <button
@@ -11943,7 +11943,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                                 ? level === "high" ? "bg-red-500/20 border-red-500/40 text-red-400"
                                   : level === "medium" ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
                                   : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                                : "bg-transparent border-[#30363D] text-[#484F58] hover:border-[#484F58]"
+                                : "bg-transparent border-border text-muted-foreground/60 hover:border-muted-foreground/60"
                             }`}
                           >
                             {level}
@@ -11955,17 +11955,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
                   {/* Save status indicator */}
                   <div className={`flex items-center gap-1.5 text-[10px] transition-opacity ${metaSaveStatus === "idle" ? "opacity-0" : "opacity-100"}`}>
-                    {metaSaveStatus === "saving" && <span className="text-[#484F58]">Auto-saving…</span>}
+                    {metaSaveStatus === "saving" && <span className="text-muted-foreground/60">Auto-saving…</span>}
                     {metaSaveStatus === "saved" && <><span className="text-emerald-400">✓</span><span className="text-emerald-400">Saved</span></>}
                     {metaSaveStatus === "error" && <span className="text-red-400">Save failed — retry</span>}
                   </div>
 
                   {/* Issues summary */}
                   {workflowIssues.length > 0 && (
-                    <div className="pt-2 border-t border-[#30363D] space-y-1.5">
-                      <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Workflow Issues ({workflowIssues.length})</p>
+                    <div className="pt-2 border-t border-border space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Workflow Issues ({workflowIssues.length})</p>
                       {workflowIssues.map((issue, i) => (
-                        <div key={i} className={`text-[10px] flex items-start gap-1.5 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                        <div key={i} className={`text-[10px] flex items-start gap-1.5 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-muted-foreground"}`}>
                           <span className="flex-shrink-0 mt-0.5">{issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}</span>
                           <span>{issue.message}</span>
                         </div>
@@ -11976,9 +11976,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : rightPanelTab === "settings" ? (
                 <div className="overflow-y-auto p-4 space-y-5">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Max nesting depth</label>
-                    <p className="text-[11px] text-[#7D8590] leading-relaxed">
-                      How deep a chain of nested <span className="font-mono text-[#E6EDF3]">Run Workflow</span> calls can go before being stopped. Lower values fail fast; raise this only for legitimate multi-level orchestration patterns (max&nbsp;10).
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Max nesting depth</label>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      How deep a chain of nested <span className="font-mono text-foreground">Run Workflow</span> calls can go before being stopped. Lower values fail fast; raise this only for legitimate multi-level orchestration patterns (max&nbsp;10).
                     </p>
                     <div className="flex items-center gap-2 mt-2">
                       <input
@@ -11995,15 +11995,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                             setSettingsDepthError(null);
                           }
                         }}
-                        className="w-20 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none"
+                        className="w-20 bg-background border border-border focus:border-primary/60 rounded-lg px-2.5 py-1.5 text-xs text-foreground outline-none"
                       />
-                      <span className="text-[10px] text-[#484F58]">default: 5</span>
+                      <span className="text-[10px] text-muted-foreground/60">default: 5</span>
                     </div>
                     {settingsDepthError && (
                       <p className="text-[11px] text-red-400">{settingsDepthError}</p>
                     )}
                   </div>
-                  <div className="pt-2 border-t border-[#30363D]">
+                  <div className="pt-2 border-t border-border">
                     <button
                       onClick={async () => {
                         const v = settingsMaxDepth;
@@ -12013,7 +12013,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         setRightPanelTab(null);
                       }}
                       disabled={settingsMut.isPending || !!settingsDepthError}
-                      className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="w-full px-3 py-1.5 text-xs font-medium bg-primary hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       {settingsMut.isPending ? "Saving…" : "Save Settings"}
                     </button>
@@ -12025,11 +12025,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : rightPanelTab === "history" ? (
                 <div className="overflow-y-auto p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Snapshot History</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Snapshot History</p>
                     {undoHistoryLog.length > 0 && (
                       <button
                         onClick={() => { setUndoHistoryLog([]); historyRef.current = []; redoRef.current = []; setCanUndo(false); setCanRedo(false); }}
-                        className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors"
+                        className="text-[10px] text-muted-foreground/60 hover:text-red-400 transition-colors"
                         title="Clear history"
                       >
                         Clear
@@ -12046,16 +12046,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     return (
                       <div className="space-y-1">
                         {/* Virtual current entry — always at the top */}
-                        <div className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border bg-[#0078D4]/10 border-[#0078D4]/30">
-                          <span className="text-[10px] font-mono text-[#0078D4] flex-shrink-0 w-4 text-right">★</span>
+                        <div className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border bg-primary/10 border-primary/30">
+                          <span className="text-[10px] font-mono text-primary flex-shrink-0 w-4 text-right">★</span>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs truncate text-[#0078D4]">Current canvas</p>
-                            <p className="text-[9px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""}, {edges.length} edge{edges.length !== 1 ? "s" : ""}</p>
+                            <p className="text-xs truncate text-primary">Current canvas</p>
+                            <p className="text-[9px] text-muted-foreground/60">{nodes.length} node{nodes.length !== 1 ? "s" : ""}, {edges.length} edge{edges.length !== 1 ? "s" : ""}</p>
                           </div>
-                          <span className="text-[9px] text-[#0078D4] flex-shrink-0">live</span>
+                          <span className="text-[9px] text-primary flex-shrink-0">live</span>
                         </div>
                         {reversedLog.length === 0 && (
-                          <p className="text-[11px] text-[#484F58] text-center py-4">Make a change to record a snapshot.</p>
+                          <p className="text-[11px] text-muted-foreground/60 text-center py-4">Make a change to record a snapshot.</p>
                         )}
                         {reversedLog.map((entry, idx) => {
                           // 1-based display index: idx=0 → displayN=1
@@ -12082,7 +12082,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                                 if (!target) return;
                                 // Non-destructive: apply snapshot without modifying historyRef
                                 setNodes(target.nodes.map(n => ({ ...n, type: "wfNode" as const })));
-                                setEdges(target.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
+                                setEdges(target.edges.map(e => ({ ...e, style: { stroke: "#232A36", strokeWidth: 2 }, animated: false })));
                                 setIsDirty(true);
                                 setCanUndo(historyRef.current.length > 0);
                               }}
@@ -12090,15 +12090,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                               title={`${entry.nodeCount} node${entry.nodeCount !== 1 ? "s" : ""}${nodeDelta !== 0 ? ` (${nodeDelta > 0 ? "+" : ""}${nodeDelta})` : ""} · ${relTs}`}
                               className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
                                 hasSnapshot
-                                  ? "bg-[#0D1117] border-[#30363D] hover:border-[#484F58] cursor-pointer"
-                                  : "bg-[#0D1117] border-[#30363D] opacity-40 cursor-not-allowed"
+                                  ? "bg-background border-border hover:border-muted-foreground/60 cursor-pointer"
+                                  : "bg-background border-border opacity-40 cursor-not-allowed"
                               }`}
                             >
-                              <span className="text-[10px] font-mono text-[#484F58] flex-shrink-0 w-4 text-right">{displayN}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground/60 flex-shrink-0 w-4 text-right">{displayN}</span>
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs truncate text-[#7D8590]">{entry.label}</p>
+                                <p className="text-xs truncate text-muted-foreground">{entry.label}</p>
                                 <div className="flex items-center gap-2">
-                                  <p className="text-[9px] text-[#484F58]">{relTs}</p>
+                                  <p className="text-[9px] text-muted-foreground/60">{relTs}</p>
                                   {nodeDelta !== 0 && (
                                     <span className={`text-[9px] font-mono ${nodeDelta > 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
                                       {nodeDelta > 0 ? "+" : ""}{nodeDelta}
@@ -12106,7 +12106,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                                   )}
                                 </div>
                               </div>
-                              <svg className="w-3 h-3 text-[#30363D] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3 text-border flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
                               </svg>
                             </button>
@@ -12116,13 +12116,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     );
                   })()}
 
-                  <div className="pt-3 border-t border-[#30363D] space-y-2">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Version History</p>
+                  <div className="pt-3 border-t border-border space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Version History</p>
                     {versions.map(v => (
                       <div key={v.id} className="space-y-1">
                         <button
                           onClick={() => { setCurrentVersionId(v.id); setRightPanelTab(null); }}
-                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-primary/10 border-primary/30 text-primary" : "bg-background border-border text-muted-foreground hover:border-muted-foreground/60"}`}
                         >
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
@@ -12159,11 +12159,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         {/* Right: Collapsed panel strip — visible when panel is closed */}
         {rightPanelTab === null && (
           <div
-            className="w-6 flex-shrink-0 bg-[#0D1117] border-l border-[#30363D] flex items-center justify-center cursor-pointer hover:bg-[#161B22] transition-colors"
+            className="w-6 flex-shrink-0 bg-background border-l border-border flex items-center justify-center cursor-pointer hover:bg-card transition-colors"
             onClick={() => setRightPanelTab(lastRightPanelTabRef.current)}
             title="Open panel"
           >
-            <span className="text-[#484F58] text-sm select-none">›</span>
+            <span className="text-muted-foreground/60 text-sm select-none">›</span>
           </div>
         )}
         </div>{/* closes inner flex-1 flex overflow-hidden */}
@@ -12171,17 +12171,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         {/* ── Bottom Dock ─────────────────────────────────────────────── */}
         {bottomDockOpen && (
           <div
-            className="flex-shrink-0 bg-[#0D1117] border-t border-[#30363D] flex flex-col"
+            className="flex-shrink-0 bg-background border-t border-border flex flex-col"
             style={{ height: bottomDockHeight }}
           >
             {/* Drag-to-resize handle */}
             <div
               onMouseDown={startDockResize}
-              className="h-1.5 bg-[#1C2128] hover:bg-[#0078D4]/50 cursor-ns-resize flex-shrink-0 transition-colors"
+              className="h-1.5 bg-accent hover:bg-primary/50 cursor-ns-resize flex-shrink-0 transition-colors"
               title="Drag to resize dock"
             />
             {/* Tab bar */}
-            <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-[#30363D] bg-[#161B22]">
+            <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-border bg-card">
               {([ 
                 { key: "runoutput", label: "Run Output" },
                 { key: "errors", label: "Errors" },
@@ -12192,7 +12192,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   key={tab.key}
                   onClick={() => setBottomDockTab(tab.key)}
                   className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
-                    bottomDockTab === tab.key ? "bg-[#1C2128] text-[#E6EDF3]" : "text-[#484F58] hover:text-[#7D8590]"
+                    bottomDockTab === tab.key ? "bg-accent text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
                   }`}
                 >
                   {tab.label}
@@ -12202,7 +12202,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     </span>
                   )}
                   {tab.key === "system" && systemLog.length > 0 && (
-                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold bg-[#30363D] text-[#7D8590]">
+                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold bg-border text-muted-foreground">
                       {systemLog.length > 99 ? "99+" : systemLog.length}
                     </span>
                   )}
@@ -12215,7 +12215,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       if (bottomDockTab === "system") setSystemLog([]);
                       else if (bottomDockTab === "aioutput") setAiOutputLog([]);
                     }}
-                    className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                    className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                     title="Clear log"
                   >
                     Clear
@@ -12223,7 +12223,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 )}
                 <button
                   onClick={() => setBottomDockOpen(false)}
-                  className="text-[#484F58] hover:text-[#E6EDF3] text-lg leading-none px-1 transition-colors"
+                  className="text-muted-foreground/60 hover:text-foreground text-lg leading-none px-1 transition-colors"
                   title="Close dock"
                 >
                   ×
@@ -12234,12 +12234,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             <div className="flex-1 overflow-y-auto text-[11px] font-mono">
               {bottomDockTab === "runoutput" ? (
                 lastTestRunId == null ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
-                    <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground/60 font-sans">
+                    <svg className="w-7 h-7 text-border" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
+                    <p className="text-xs">No run yet — click <strong className="text-foreground">Test Run</strong> to see output here.</p>
                   </div>
                 ) : (
                   <RunOutputDock runId={lastTestRunId} />
@@ -12247,7 +12247,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : bottomDockTab === "errors" ? (
                 <div className="p-3 space-y-1.5 font-sans">
                   {workflowIssues.length === 0 ? (
-                    <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
+                    <div className="flex items-center gap-2 text-muted-foreground/60 py-6 justify-center">
                       <span className="text-emerald-400 text-base">✓</span>
                       <span className="text-xs">No issues found in this workflow</span>
                     </div>
@@ -12258,17 +12258,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
                         issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
                         issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
-                        "border-[#30363D] bg-[#0D1117]"
+                        "border-border bg-background"
                       }`}
                     >
-                      <span className={`flex-shrink-0 mt-0.5 font-sans ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                      <span className={`flex-shrink-0 mt-0.5 font-sans ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-muted-foreground"}`}>
                         {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
                       </span>
-                      <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
+                      <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-muted-foreground"}`}>
                         {issue.message}
                       </span>
                       {issue.nodeId && (
-                        <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
+                        <span className="ml-auto text-[9px] font-mono text-muted-foreground/60 flex-shrink-0">{issue.nodeId}</span>
                       )}
                     </div>
                   ))}
@@ -12276,16 +12276,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : bottomDockTab === "system" ? (
                 <div className="p-3 space-y-1">
                   {systemLog.length === 0 ? (
-                    <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
+                    <div className="flex items-center justify-center py-8 text-muted-foreground/60 text-xs font-sans">System log is empty</div>
                   ) : [...systemLog].reverse().map(entry => (
                     <div key={entry.id} className="flex items-start gap-2">
-                      <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
+                      <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-muted-foreground/60"}`}>
                         {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
                       </span>
-                      <span className="text-[#484F58] flex-shrink-0">
+                      <span className="text-muted-foreground/60 flex-shrink-0">
                         {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </span>
-                      <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
+                      <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-muted-foreground"}>
                         {entry.message}
                       </span>
                     </div>
@@ -12294,13 +12294,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : (
                 <div className="p-3 space-y-1">
                   {aiOutputLog.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground/60 font-sans">
                       <span className="text-2xl">🤖</span>
-                      <p className="text-xs text-center">AI generation output appears here.<br />Open <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
+                      <p className="text-xs text-center">AI generation output appears here.<br />Open <strong className="text-foreground">Build with AI</strong> or <strong className="text-foreground">Refine</strong> to start.</p>
                     </div>
                   ) : [...aiOutputLog].reverse().map(entry => (
                     <div key={entry.id} className="flex items-start gap-2">
-                      <span className="text-[#484F58] flex-shrink-0">
+                      <span className="text-muted-foreground/60 flex-shrink-0">
                         {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                       </span>
                       <span className={
@@ -12308,8 +12308,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         entry.line.startsWith("✕") ? "text-red-300" :
                         entry.line.startsWith("⚠") ? "text-amber-300" :
                         entry.line.startsWith("💡") ? "text-violet-300" :
-                        entry.line.startsWith("🤖") ? "text-[#0078D4]" :
-                        "text-[#7D8590]"
+                        entry.line.startsWith("🤖") ? "text-primary" :
+                        "text-muted-foreground"
                       }>
                         {entry.line}
                       </span>
@@ -12329,11 +12329,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           onClick={() => { setShowSearch(false); setSearchQuery(""); }}
         >
           <div
-            className="w-full max-w-xl bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-hidden"
+            className="w-full max-w-xl bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#30363D]">
-              <svg className="w-4 h-4 text-[#484F58] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <svg className="w-4 h-4 text-muted-foreground/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -12341,10 +12341,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search nodes by name or type… (Esc to close)"
-                className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                className="flex-1 bg-transparent text-sm text-foreground placeholder-muted-foreground/60 outline-none"
                 autoFocus
               />
-              <kbd className="text-[9px] text-[#484F58] border border-[#30363D] rounded px-1 py-0.5">Esc</kbd>
+              <kbd className="text-[9px] text-muted-foreground/60 border border-border rounded px-1 py-0.5">Esc</kbd>
             </div>
             <div className="max-h-80 overflow-y-auto">
               {(() => {
@@ -12370,7 +12370,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 const hasResults = filtered.length > 0 || patternFiltered.length > 0;
                 if (!hasResults) {
                   return (
-                    <div className="py-8 text-center text-[#484F58] text-sm">
+                    <div className="py-8 text-center text-muted-foreground/60 text-sm">
                       {q ? `No nodes or patterns matching "${searchQuery}"` : "No nodes in this workflow yet"}
                     </div>
                   );
@@ -12380,7 +12380,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     {filtered.length > 0 && (
                       <>
                         {(q || patternFiltered.length > 0) && (
-                          <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-[#484F58] font-bold border-b border-[#30363D] bg-[#0D1117]">
+                          <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/60 font-bold border-b border-border bg-background">
                             Nodes in this workflow
                           </div>
                         )}
@@ -12398,14 +12398,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                                 setSearchQuery("");
                                 canvasScrollRef.current?.scrollTo({ top: Math.max(0, (n.position?.y ?? 0) - 100), behavior: "smooth" });
                               }}
-                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors text-left"
                             >
                               <span className="text-base flex-shrink-0">{style.icon}</span>
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm text-[#E6EDF3] truncate">{label}</p>
-                                <p className="text-[10px] text-[#484F58]">{nt} · {n.id}</p>
+                                <p className="text-sm text-foreground truncate">{label}</p>
+                                <p className="text-[10px] text-muted-foreground/60">{nt} · {n.id}</p>
                               </div>
-                              <svg className="w-3 h-3 text-[#484F58] ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-3 h-3 text-muted-foreground/60 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
                             </button>
@@ -12415,7 +12415,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     )}
                     {patternFiltered.length > 0 && (
                       <>
-                        <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-[#484F58] font-bold border-b border-[#30363D] bg-[#0D1117]">
+                        <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-muted-foreground/60 font-bold border-b border-border bg-background">
                           Patterns — insert sub-tree
                         </div>
                         {patternFiltered.map((pattern, pi) => (
@@ -12426,12 +12426,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                               setShowSearch(false);
                               setSearchQuery("");
                             }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent transition-colors text-left"
                           >
                             <span className="text-base flex-shrink-0">🧩</span>
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm text-[#E6EDF3] truncate">{pattern.name}</p>
-                              <p className="text-[10px] text-[#484F58] truncate">{pattern.description}</p>
+                              <p className="text-sm text-foreground truncate">{pattern.name}</p>
+                              <p className="text-[10px] text-muted-foreground/60 truncate">{pattern.description}</p>
                             </div>
                             <span className="flex-shrink-0 text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full">insert</span>
                           </button>
@@ -12439,15 +12439,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </>
                     )}
                     {!q && nodes.length === 0 && (
-                      <div className="py-4 text-center text-[#484F58] text-xs">No nodes yet — type to search patterns</div>
+                      <div className="py-4 text-center text-muted-foreground/60 text-xs">No nodes yet — type to search patterns</div>
                     )}
                   </>
                 );
               })()}
             </div>
-            <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
-              <span className="text-[10px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""} · {WORKFLOW_PATTERNS.length} patterns</span>
-              <span className="text-[10px] text-[#484F58]">↵ to select · Esc to close</span>
+            <div className="px-4 py-2 border-t border-border flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground/60">{nodes.length} node{nodes.length !== 1 ? "s" : ""} · {WORKFLOW_PATTERNS.length} patterns</span>
+              <span className="text-[10px] text-muted-foreground/60">↵ to select · Esc to close</span>
             </div>
           </div>
         </div>
@@ -12456,18 +12456,18 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* Publish dialog */}
       {showPublish && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPublish(false)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="font-semibold text-[#E6EDF3]">Publish Version</h2>
-            <p className="text-sm text-[#7D8590]">Save first, then publish to make this the live version for all triggers.</p>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-foreground">Publish Version</h2>
+            <p className="text-sm text-muted-foreground">Save first, then publish to make this the live version for all triggers.</p>
 
             {/* Live version banner — only rendered once versions have loaded to avoid misleading flicker */}
             {versionsFetched && (() => {
               const liveVer = versions.find(v => v.status === "published");
               if (!liveVer) {
                 return (
-                  <div className="flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#484F58] flex-shrink-0" />
-                    <span className="text-xs text-[#7D8590]">No published version — this will be the first</span>
+                  <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 flex-shrink-0" />
+                    <span className="text-xs text-muted-foreground">No published version — this will be the first</span>
                   </div>
                 );
               }
@@ -12485,9 +12485,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               return (
                 <div className="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
-                  <span className="text-xs text-[#E6EDF3]">
+                  <span className="text-xs text-foreground">
                     Currently live: <span className="font-semibold text-emerald-400">{name}</span>
-                    <span className="text-[#7D8590]"> · published {timeAgo} · {liveVer.runCount.toLocaleString()} run{liveVer.runCount !== 1 ? "s" : ""}</span>
+                    <span className="text-muted-foreground"> · published {timeAgo} · {liveVer.runCount.toLocaleString()} run{liveVer.runCount !== 1 ? "s" : ""}</span>
                   </span>
                 </div>
               );
@@ -12497,7 +12497,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               value={publishLabel}
               onChange={e => setPublishLabel(e.target.value)}
               placeholder="Version label (e.g. v1.0 — Lead Qualification)"
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground/60 outline-none focus:border-primary/60"
             />
 
             {/* Diff vs last published version */}
@@ -12519,26 +12519,26 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               });
               if (!added.length && !removed.length && !changed.length) {
                 return (
-                  <div className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-xs text-[#7D8590]">
+                  <div className="bg-background border border-border rounded-lg px-3 py-2.5 text-xs text-muted-foreground">
                     No structural changes from the current published version.
                   </div>
                 );
               }
               return (
-                <div className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 space-y-1.5">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Changes vs current live</p>
+                <div className="bg-background border border-border rounded-lg px-3 py-2.5 space-y-1.5">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60">Changes vs current live</p>
                   {added.map(n => (
                     <div key={n.id} className="flex items-center gap-2 text-xs">
                       <span className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">+</span>
                       <span className="text-emerald-300">{(n.data?.label as string) || n.id}</span>
-                      <span className="text-[#484F58] text-[10px]">{n.id}</span>
+                      <span className="text-muted-foreground/60 text-[10px]">{n.id}</span>
                     </div>
                   ))}
                   {removed.map(n => (
                     <div key={n.id} className="flex items-center gap-2 text-xs">
                       <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 text-red-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">−</span>
                       <span className="text-red-300 line-through">{(n.data?.label as string) || n.id}</span>
-                      <span className="text-[#484F58] text-[10px]">{n.id}</span>
+                      <span className="text-muted-foreground/60 text-[10px]">{n.id}</span>
                     </div>
                   ))}
                   {changed.map(n => {
@@ -12551,7 +12551,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         <div className="flex items-center gap-2 text-xs">
                           <span className="w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">~</span>
                           <span className="text-amber-300">{(n.data?.label as string) || n.id}</span>
-                          <span className="text-[#484F58] text-[10px]">{changedKeys.length} key{changedKeys.length !== 1 ? "s" : ""} changed</span>
+                          <span className="text-muted-foreground/60 text-[10px]">{changedKeys.length} key{changedKeys.length !== 1 ? "s" : ""} changed</span>
                         </div>
                         {changedKeys.slice(0, 5).map(k => {
                           const oldV = JSON.stringify((prev?.data ?? {} as Record<string,unknown>)[k]);
@@ -12559,16 +12559,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                           const trim = (s: string) => s.length > 32 ? s.slice(0, 30) + "…" : s;
                           return (
                             <div key={k} className="ml-5 flex items-center gap-1 text-[10px] font-mono">
-                              <code className="text-[#7D8590] max-w-[60px] truncate">{k}</code>
-                              <span className="text-[#484F58]">:</span>
+                              <code className="text-muted-foreground max-w-[60px] truncate">{k}</code>
+                              <span className="text-muted-foreground/60">:</span>
                               <span className="text-red-400/70 line-through">{trim(oldV ?? "—")}</span>
-                              <span className="text-[#484F58]">→</span>
+                              <span className="text-muted-foreground/60">→</span>
                               <span className="text-emerald-400/70">{trim(newV ?? "—")}</span>
                             </div>
                           );
                         })}
                         {changedKeys.length > 5 && (
-                          <div className="ml-5 text-[10px] text-[#484F58]">+ {changedKeys.length - 5} more…</div>
+                          <div className="ml-5 text-[10px] text-muted-foreground/60">+ {changedKeys.length - 5} more…</div>
                         )}
                       </div>
                     );
@@ -12578,7 +12578,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             })()}
 
             {/* Acknowledgment gate */}
-            <label className="flex items-center gap-2 text-xs text-[#7D8590] cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={publishAcknowledged}
@@ -12589,7 +12589,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </label>
 
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowPublish(false); setPublishAcknowledged(false); }} className="px-4 py-2 text-sm text-[#7D8590]">Cancel</button>
+              <button onClick={() => { setShowPublish(false); setPublishAcknowledged(false); }} className="px-4 py-2 text-sm text-muted-foreground">Cancel</button>
               <button
                 onClick={async () => { await saveMut.mutateAsync(); publishMut.mutate(); }}
                 disabled={publishMut.isPending || saveMut.isPending || !publishAcknowledged}
@@ -12606,10 +12606,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* Keyboard shortcuts cheatsheet */}
       {showShortcuts && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-[#E6EDF3]">Keyboard Shortcuts</h2>
-              <button onClick={() => setShowShortcuts(false)} className="text-[#484F58] hover:text-[#E6EDF3] text-sm">✕</button>
+              <h2 className="font-semibold text-foreground">Keyboard Shortcuts</h2>
+              <button onClick={() => setShowShortcuts(false)} className="text-muted-foreground/60 hover:text-foreground text-sm">✕</button>
             </div>
             <div className="space-y-1">
               {([
@@ -12625,9 +12625,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 ["← / →", "Step backward / forward in Replay mode"],
                 ["Ctrl+\\", "Toggle split view — canvas + console side by side"],
               ] as [string, string][]).map(([key, desc]) => (
-                <div key={key} className="flex items-center justify-between gap-4 py-1.5 border-b border-[#1C2128] last:border-0">
-                  <code className="text-xs text-[#0078D4] bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 font-mono whitespace-nowrap">{key}</code>
-                  <span className="text-xs text-[#7D8590]">{desc}</span>
+                <div key={key} className="flex items-center justify-between gap-4 py-1.5 border-b border-accent last:border-0">
+                  <code className="text-xs text-primary bg-background border border-border rounded px-2 py-0.5 font-mono whitespace-nowrap">{key}</code>
+                  <span className="text-xs text-muted-foreground">{desc}</span>
                 </div>
               ))}
             </div>
@@ -12669,20 +12669,20 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* Health Panel drawer */}
       {showHealthPanel && nodes.length > 1 && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-16" onClick={() => setShowHealthPanel(false)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 max-w-md w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-xl p-5 max-w-md w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 ${healthResult.score >= 80 ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : healthResult.score >= 60 ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-red-500/10 border-red-500 text-red-400"}`}>
                   {healthResult.score}
                 </div>
                 <div>
-                  <h2 className="font-semibold text-[#E6EDF3] text-sm">Workflow Health</h2>
-                  <p className="text-[10px] text-[#484F58]">
+                  <h2 className="font-semibold text-foreground text-sm">Workflow Health</h2>
+                  <p className="text-[10px] text-muted-foreground/60">
                     {healthResult.score >= 80 ? "Good — minor improvements possible" : healthResult.score >= 60 ? "Fair — some issues detected" : "Poor — issues need attention"}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setShowHealthPanel(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
+              <button onClick={() => setShowHealthPanel(false)} className="text-muted-foreground/60 hover:text-foreground">✕</button>
             </div>
 
             {healthResult.issues.length === 0 ? (
@@ -12692,18 +12692,18 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {healthResult.issues.map((issue, i) => (
-                  <div key={i} className={`rounded-lg border p-3 space-y-0.5 ${issue.severity === "high" ? "bg-red-500/5 border-red-500/20" : issue.severity === "medium" ? "bg-amber-500/5 border-amber-500/20" : "bg-[#0D1117] border-[#30363D]"}`}>
+                  <div key={i} className={`rounded-lg border p-3 space-y-0.5 ${issue.severity === "high" ? "bg-red-500/5 border-red-500/20" : issue.severity === "medium" ? "bg-amber-500/5 border-amber-500/20" : "bg-background border-border"}`}>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px]">
                         {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "ℹ"}
                       </span>
-                      <span className={`flex-1 text-xs font-medium ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                      <span className={`flex-1 text-xs font-medium ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-muted-foreground"}`}>
                         {issue.message}
                       </span>
                       {issue.nodeId && (
                         <button
                           onClick={() => { setSelectedNodeId(issue.nodeId!); setShowHealthPanel(false); }}
-                          className="flex-shrink-0 text-[10px] text-[#0078D4] hover:text-[#4DA6F5] underline-offset-2 hover:underline"
+                          className="flex-shrink-0 text-[10px] text-primary hover:text-[#4DA6F5] underline-offset-2 hover:underline"
                           title={`Jump to node ${issue.nodeId}`}
                         >
                           Jump ↗
@@ -12723,15 +12723,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         <div className="fixed inset-0 z-50 flex" onClick={() => setShowHealthReport(false)}>
           <div className="flex-1" />
           <div
-            className="w-80 h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl"
+            className="w-80 h-full bg-card border-l border-border flex flex-col shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                <span className="text-sm font-semibold text-[#E6EDF3]">Health Report</span>
+                <span className="text-sm font-semibold text-foreground">Health Report</span>
                 {workflowIssues.length > 0 && (
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${workflowIssues.some(i => i.severity === "high") ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"}`}>
                     {workflowIssues.length} issue{workflowIssues.length !== 1 ? "s" : ""}
@@ -12740,7 +12740,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </div>
               <button
                 onClick={() => setShowHealthReport(false)}
-                className="w-6 h-6 flex items-center justify-center text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+                className="w-6 h-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -12752,7 +12752,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
                   <span className="text-2xl">✅</span>
                   <p className="text-sm font-medium text-emerald-400">No issues found</p>
-                  <p className="text-xs text-[#7D8590]">This workflow passes all structural checks.</p>
+                  <p className="text-xs text-muted-foreground">This workflow passes all structural checks.</p>
                 </div>
               ) : workflowIssues.map((issue, i) => (
                 <div
@@ -12763,28 +12763,28 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       ? "bg-red-500/5 border-red-500/30 hover:bg-red-500/10 cursor-pointer"
                       : issue.severity === "medium"
                       ? "bg-amber-500/5 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
-                      : "bg-[#0D1117] border-[#30363D]"
+                      : "bg-background border-border"
                   }`}
                 >
-                  <span className={`text-base leading-none mt-0.5 flex-shrink-0 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                  <span className={`text-base leading-none mt-0.5 flex-shrink-0 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-muted-foreground"}`}>
                     {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>{issue.message}</div>
+                    <div className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-muted-foreground"}`}>{issue.message}</div>
                     {issue.nodeId && (
-                      <div className="text-[9px] font-mono text-[#484F58] mt-0.5">{issue.nodeId} — click to inspect</div>
+                      <div className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">{issue.nodeId} — click to inspect</div>
                     )}
                   </div>
                   <span className={`flex-shrink-0 text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
                     issue.severity === "high" ? "border-red-500/30 text-red-400 bg-red-500/10" :
                     issue.severity === "medium" ? "border-amber-500/30 text-amber-400 bg-amber-500/10" :
-                    "border-[#30363D] text-[#484F58]"
+                    "border-border text-muted-foreground/60"
                   }`}>
                     {issue.severity}
                   </span>
                 </div>
               ))}
-              <p className="text-[11px] text-[#484F58] text-center pt-2">
+              <p className="text-[11px] text-muted-foreground/60 text-center pt-2">
                 {workflowIssues.length > 0 ? "Click an issue to jump to the affected node." : "Full scoring engine arrives with #2541 scoreWorkflow()."}
               </p>
             </div>
@@ -12794,43 +12794,43 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
       {/* Trends drawer */}
       {showTrends && (
-        <div className="fixed inset-y-0 right-0 w-96 bg-[#161B22] border-l border-[#30363D] z-40 flex flex-col shadow-2xl">
-          <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
-            <h3 className="font-semibold text-[#E6EDF3] text-sm">Execution Trends (30d)</h3>
-            <button onClick={() => setShowTrends(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
+        <div className="fixed inset-y-0 right-0 w-96 bg-card border-l border-border z-40 flex flex-col shadow-2xl">
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <h3 className="font-semibold text-foreground text-sm">Execution Trends (30d)</h3>
+            <button onClick={() => setShowTrends(false)} className="text-muted-foreground/60 hover:text-foreground">✕</button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-5">
             {(!trendsData || trendsData.dailyStats.length === 0) ? (
-              <div className="text-xs text-[#484F58] text-center pt-8">No run history yet for this workflow.</div>
+              <div className="text-xs text-muted-foreground/60 text-center pt-8">No run history yet for this workflow.</div>
             ) : (
               <>
                 {/* Run count chart */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Daily Runs</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 mb-2">Daily Runs</p>
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
                       <defs>
                         <linearGradient id="runGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#0078D4" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#0078D4" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#2F6FED" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#2F6FED" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#171C26" />
                       <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
                       <YAxis tick={{ fontSize: 9, fill: "#484F58" }} />
                       <Tooltip
-                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
-                        labelStyle={{ color: "#7D8590" }}
-                        itemStyle={{ color: "#0078D4" }}
+                        contentStyle={{ background: "#0A0D12", border: "1px solid #232A36", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#8B94A3" }}
+                        itemStyle={{ color: "#2F6FED" }}
                       />
-                      <Area type="monotone" dataKey="runs" stroke="#0078D4" fill="url(#runGrad)" strokeWidth={2} dot={false} />
+                      <Area type="monotone" dataKey="runs" stroke="#2F6FED" fill="url(#runGrad)" strokeWidth={2} dot={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* Success rate chart */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Success Rate %</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 mb-2">Success Rate %</p>
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
                       <defs>
@@ -12839,12 +12839,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                           <stop offset="95%" stopColor="#22C55E" stopOpacity={0}/>
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#171C26" />
                       <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
                       <YAxis tick={{ fontSize: 9, fill: "#484F58" }} domain={[0, 100]} />
                       <Tooltip
-                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
-                        labelStyle={{ color: "#7D8590" }}
+                        contentStyle={{ background: "#0A0D12", border: "1px solid #232A36", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#8B94A3" }}
                         itemStyle={{ color: "#22C55E" }}
                         formatter={(v: number) => [`${v}%`, "Success"]}
                       />
@@ -12855,15 +12855,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
                 {/* p50 / p95 latency */}
                 <div>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Latency (ms)</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 mb-2">Latency (ms)</p>
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#171C26" />
                       <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
                       <YAxis tick={{ fontSize: 9, fill: "#484F58" }} />
                       <Tooltip
-                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
-                        labelStyle={{ color: "#7D8590" }}
+                        contentStyle={{ background: "#0A0D12", border: "1px solid #232A36", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#8B94A3" }}
                       />
                       <Area type="monotone" dataKey="p50Ms" name="p50" stroke="#00B4D8" fill="none" strokeWidth={1.5} dot={false} />
                       <Area type="monotone" dataKey="p95Ms" name="p95" stroke="#A855F7" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
@@ -12878,11 +12878,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 {/* Top failing nodes */}
                 {trendsData.topFailingNodes.length > 0 && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Top Failing Nodes</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 mb-2">Top Failing Nodes</p>
                     <div className="space-y-1">
                       {trendsData.topFailingNodes.map(n => (
                         <div key={n.nodeId} className="flex items-center justify-between rounded-lg border border-red-500/15 bg-red-500/5 px-3 py-1.5">
-                          <span className="text-xs text-[#E6EDF3] truncate">{n.nodeLabel || n.nodeId}</span>
+                          <span className="text-xs text-foreground truncate">{n.nodeLabel || n.nodeId}</span>
                           <span className="text-xs font-semibold text-red-400 ml-2 flex-shrink-0">{n.errorCount} err{n.errorCount !== 1 ? "s" : ""}</span>
                         </div>
                       ))}
@@ -12898,26 +12898,26 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* AI Narrative modal */}
       {showNarrative && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { if (!narrativeLoading) setShowNarrative(false); }}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-xl p-6 max-w-lg w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-sm">✨</div>
-                <h2 className="font-semibold text-[#E6EDF3]">AI Workflow Narrative</h2>
+                <h2 className="font-semibold text-foreground">AI Workflow Narrative</h2>
               </div>
               {!narrativeLoading && (
-                <button onClick={() => setShowNarrative(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
+                <button onClick={() => setShowNarrative(false)} className="text-muted-foreground/60 hover:text-foreground">✕</button>
               )}
             </div>
 
             {narrativeLoading ? (
               <div className="flex items-center gap-3 py-6 justify-center">
                 <div className="w-5 h-5 border-2 border-violet-500/30 border-t-violet-400 rounded-full animate-spin" />
-                <span className="text-sm text-[#7D8590]">Generating narrative…</span>
+                <span className="text-sm text-muted-foreground">Generating narrative…</span>
               </div>
             ) : (
               <div className="prose prose-invert prose-sm max-w-none">
-                <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-4 max-h-80 overflow-y-auto">
-                  <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{narrativeText}</p>
+                <div className="bg-background border border-border rounded-lg p-4 max-h-80 overflow-y-auto">
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{narrativeText}</p>
                 </div>
               </div>
             )}
@@ -12932,7 +12932,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </button>
                 <button
                   onClick={() => { navigator.clipboard.writeText(narrativeText).catch(() => {}); }}
-                  className="text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg px-3 py-1.5 transition-colors"
+                  className="text-xs text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground/60 rounded-lg px-3 py-1.5 transition-colors"
                 >
                   Copy
                 </button>
@@ -12945,7 +12945,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* Unsaved changes confirmation dialog */}
       {showUnsavedDialog && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-sm w-full mx-4 space-y-4">
+          <div className="bg-card border border-border rounded-xl p-6 max-w-sm w-full mx-4 space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -12953,8 +12953,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </svg>
               </div>
               <div>
-                <h2 className="font-semibold text-[#E6EDF3]">Unsaved changes</h2>
-                <p className="text-sm text-[#7D8590] mt-1">
+                <h2 className="font-semibold text-foreground">Unsaved changes</h2>
+                <p className="text-sm text-muted-foreground mt-1">
                   You have unsaved changes on this canvas. If you go back now they will be lost.
                 </p>
               </div>
@@ -12962,7 +12962,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowUnsavedDialog(false)}
-                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Stay and keep editing
               </button>

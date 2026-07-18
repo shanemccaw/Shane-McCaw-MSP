@@ -53,7 +53,7 @@ interface Props {
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
-  backlog:              { label: "Backlog",              cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]" },
+  backlog:              { label: "Backlog",              cls: "bg-border text-muted-foreground border border-border" },
   in_progress:         { label: "In Progress",          cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20" },
   waiting_on_customer: { label: "Waiting on Customer",  cls: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
   completed:           { label: "Completed",            cls: "bg-green-500/15 text-green-400 border border-green-500/20" },
@@ -63,7 +63,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; cls: string; dot: string 
   critical: { label: "Critical", cls: "bg-red-500/15 text-red-400 border border-red-500/20",      dot: "bg-red-500" },
   high:     { label: "High",     cls: "bg-orange-500/15 text-orange-400 border border-orange-500/20", dot: "bg-orange-500" },
   medium:   { label: "Medium",   cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20",   dot: "bg-blue-500" },
-  low:      { label: "Low",      cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]",   dot: "bg-gray-400" },
+  low:      { label: "Low",      cls: "bg-border text-muted-foreground border border-border",   dot: "bg-gray-400" },
 };
 
 interface EditForm {
@@ -87,8 +87,8 @@ interface StoredClosureData {
 
 function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
   return (
-    <div className="mt-2 bg-[#1C2128] border border-[#0078D4]/20 rounded-lg p-3 space-y-2.5">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-[#0078D4] mb-1.5">
+    <div className="mt-2 bg-accent border border-primary/20 rounded-lg p-3 space-y-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-primary mb-1.5">
         Captured details · {new Date(data.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
       </p>
       {data.schema.map((field) => {
@@ -100,10 +100,10 @@ function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
             {Array.isArray(answer) ? (
               <ul className="space-y-0.5">
                 {answer.map((row, i) => (
-                  <li key={i} className="text-xs text-[#E6EDF3] flex items-start gap-1">
-                    <span className="text-[#0078D4] flex-shrink-0 mt-0.5">·</span>
+                  <li key={i} className="text-xs text-foreground flex items-start gap-1">
+                    <span className="text-primary flex-shrink-0 mt-0.5">·</span>
                     {field.type === "url" ? (
-                      <a href={row} target="_blank" rel="noreferrer" className="underline text-[#0078D4] break-all">{row}</a>
+                      <a href={row} target="_blank" rel="noreferrer" className="underline text-primary break-all">{row}</a>
                     ) : (
                       <span>{row}</span>
                     )}
@@ -111,9 +111,9 @@ function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
                 ))}
               </ul>
             ) : field.type === "url" ? (
-              <a href={answer} target="_blank" rel="noreferrer" className="text-xs text-[#0078D4] underline break-all">{answer}</a>
+              <a href={answer} target="_blank" rel="noreferrer" className="text-xs text-primary underline break-all">{answer}</a>
             ) : (
-              <p className="text-xs text-[#E6EDF3] whitespace-pre-wrap leading-snug">{answer}</p>
+              <p className="text-xs text-foreground whitespace-pre-wrap leading-snug">{answer}</p>
             )}
           </div>
         );
@@ -179,7 +179,7 @@ function AutoSavedScriptResultsSection({
           <p className={`text-[10px] font-bold uppercase tracking-wider ${isFailure ? "text-red-400" : "text-emerald-400"}`}>
             Auto-Run Results · {statusLabel}
           </p>
-          {formattedDate && <span className="text-[9px] text-[#484F58]">{formattedDate}</span>}
+          {formattedDate && <span className="text-[9px] text-muted-foreground/60">{formattedDate}</span>}
         </div>
         <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "16px" }}>
           {open ? "expand_less" : "expand_more"}
@@ -187,11 +187,11 @@ function AutoSavedScriptResultsSection({
       </button>
 
       {open && (
-        <div className="px-4 py-3 border-t border-border/60 space-y-3 bg-[#0D1117]/40">
+        <div className="px-4 py-3 border-t border-border/60 space-y-3 bg-background/40">
           {aiAnalysis?.summary && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Summary</p>
-              <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiAnalysis.summary}</p>
+              <p className="text-xs text-foreground/90 leading-relaxed">{aiAnalysis.summary}</p>
             </div>
           )}
 
@@ -200,7 +200,7 @@ function AutoSavedScriptResultsSection({
               <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Risks</p>
               <ul className="space-y-1">
                 {aiAnalysis!.risks!.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                     <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
                     <span className="leading-relaxed">{r}</span>
                   </li>
@@ -211,10 +211,10 @@ function AutoSavedScriptResultsSection({
 
           {(aiAnalysis?.recommendations?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommendations</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommendations</p>
               <ol className="space-y-1">
                 {aiAnalysis!.recommendations!.map((rec, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                     <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
                     <span className="leading-relaxed">{rec}</span>
                   </li>
@@ -225,10 +225,10 @@ function AutoSavedScriptResultsSection({
 
           {(aiAnalysis?.nextSteps?.length ?? 0) > 0 && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Next Steps</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Next Steps</p>
               <ol className="space-y-1">
                 {aiAnalysis!.nextSteps!.map((step, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                     <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
                     <span className="leading-relaxed">{step}</span>
                   </li>
@@ -241,7 +241,7 @@ function AutoSavedScriptResultsSection({
             <div>
               <button
                 onClick={() => setShowOutput(o => !o)}
-                className="text-[10px] font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors flex items-center gap-1"
+                className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
               >
                 <svg className={`w-3 h-3 transition-transform ${showOutput ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -249,7 +249,7 @@ function AutoSavedScriptResultsSection({
                 {showOutput ? "Hide" : "Show"} raw output
               </button>
               {showOutput && (
-                <pre className="mt-2 text-[10px] text-[#8B949E] bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed">
+                <pre className="mt-2 text-[10px] text-muted-foreground bg-background border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed">
                   {scriptOutput}
                 </pre>
               )}
@@ -277,35 +277,35 @@ function LastRunResultsSection({ result }: { result: LastRunResult }) {
   });
 
   return (
-    <div className="border border-[#0078D4]/20 rounded-lg overflow-hidden">
+    <div className="border border-primary/20 rounded-lg overflow-hidden">
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#0078D4]/8 hover:bg-[#0078D4]/12 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-primary/8 hover:bg-primary/12 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4]">Last Run Results</p>
-          <span className="text-[9px] text-[#484F58]">{savedDate}</span>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Last Run Results</p>
+          <span className="text-[9px] text-muted-foreground/60">{savedDate}</span>
         </div>
-        <span className="material-symbols-outlined text-[#0078D4] flex-shrink-0" style={{ fontSize: "16px" }}>
+        <span className="material-symbols-outlined text-primary flex-shrink-0" style={{ fontSize: "16px" }}>
           {open ? "expand_less" : "expand_more"}
         </span>
       </button>
 
       {open && (
-        <div className="px-4 py-3 border-t border-[#0078D4]/15 space-y-3 bg-[#0D1117]/40">
+        <div className="px-4 py-3 border-t border-primary/15 space-y-3 bg-background/40">
           {!hasFindings && !hasRecs && (
-            <p className="text-xs text-[#484F58] italic">No findings or recommendations were recorded.</p>
+            <p className="text-xs text-muted-foreground/60 italic">No findings or recommendations were recorded.</p>
           )}
 
           {hasFindings && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Findings</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Findings</p>
               <ul className="space-y-1.5">
                 {visibleFindings.map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                     <span className="text-blue-400 mt-0.5 flex-shrink-0">•</span>
                     <span className="leading-relaxed">{f}</span>
                   </li>
@@ -314,7 +314,7 @@ function LastRunResultsSection({ result }: { result: LastRunResult }) {
               {result.findings.length > 5 && (
                 <button
                   onClick={() => setShowAllFindings(v => !v)}
-                  className="mt-1.5 text-[10px] font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+                  className="mt-1.5 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
                 >
                   {showAllFindings ? "Show less" : `Show ${result.findings.length - 5} more`}
                 </button>
@@ -324,10 +324,10 @@ function LastRunResultsSection({ result }: { result: LastRunResult }) {
 
           {hasRecs && (
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Recommendations</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommendations</p>
               <ol className="space-y-1.5">
                 {visibleRecs.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                     <span className="text-green-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
                     <span className="leading-relaxed">{r}</span>
                   </li>
@@ -336,7 +336,7 @@ function LastRunResultsSection({ result }: { result: LastRunResult }) {
               {result.recommendations.length > 5 && (
                 <button
                   onClick={() => setShowAllRecs(v => !v)}
-                  className="mt-1.5 text-[10px] font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+                  className="mt-1.5 text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors"
                 >
                   {showAllRecs ? "Show less" : `Show ${result.recommendations.length - 5} more`}
                 </button>
@@ -435,19 +435,19 @@ function CustomerDownloadSection({
   const currentLinked = (task.taskMetadata as Record<string, unknown> | null | undefined)?.customerDownload as { scriptId: string; scriptTitle: string } | null | undefined;
 
   return (
-    <div className="bg-[#1C2128] border border-border rounded-lg p-4 space-y-3">
+    <div className="bg-accent border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3.5 h-3.5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-[#E6EDF3]">Customer Download</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Customer Download</p>
         </div>
         <button
           type="button"
           disabled={saving}
           onClick={() => void handleToggle(!enabled)}
-          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${enabled ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${enabled ? "bg-primary" : "bg-border"}`}
           role="switch"
           aria-checked={enabled}
         >
@@ -459,7 +459,7 @@ function CustomerDownloadSection({
       </div>
 
       {!enabled && (
-        <p className="text-[10px] text-[#484F58] italic">
+        <p className="text-[10px] text-muted-foreground/60 italic">
           Enable to let the customer download a pre-packaged .ps1 script from this task's card.
         </p>
       )}
@@ -467,11 +467,11 @@ function CustomerDownloadSection({
       {enabled && (
         <>
           {currentLinked?.scriptId && (
-            <div className="flex items-center gap-2 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg px-3 py-2">
-              <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
+              <svg className="w-3.5 h-3.5 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
               </svg>
-              <span className="text-xs text-[#E6EDF3] flex-1 truncate font-medium">{currentLinked.scriptTitle}</span>
+              <span className="text-xs text-foreground flex-1 truncate font-medium">{currentLinked.scriptTitle}</span>
               <button
                 type="button"
                 disabled={saving}
@@ -479,7 +479,7 @@ function CustomerDownloadSection({
                   const ok = await save(null);
                   if (ok) setEnabled(false);
                 }}
-                className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors disabled:opacity-50"
+                className="text-[10px] text-muted-foreground/60 hover:text-red-400 transition-colors disabled:opacity-50"
               >
                 Remove
               </button>
@@ -496,13 +496,13 @@ function CustomerDownloadSection({
               onChange={e => { setQuery(e.target.value); void loadScripts(); }}
               onFocus={() => void loadScripts()}
               placeholder="Search scripts…"
-              className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] bg-[#161B22] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 placeholder:text-[#484F58] mb-2"
+              className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground/60 mb-2"
             />
 
             {loading && (
               <div className="flex items-center gap-2 py-1.5">
-                <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
-                <span className="text-[10px] text-[#484F58]">Loading scripts…</span>
+                <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin" />
+                <span className="text-[10px] text-muted-foreground/60">Loading scripts…</span>
               </div>
             )}
 
@@ -516,22 +516,22 @@ function CustomerDownloadSection({
                     onClick={() => void save({ scriptId: script.id, scriptTitle: script.title })}
                     className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 ${
                       currentLinked?.scriptId === script.id
-                        ? "bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/30"
-                        : "text-[#E6EDF3] hover:bg-[#30363D]"
+                        ? "bg-primary/20 text-primary border border-primary/30"
+                        : "text-foreground hover:bg-border"
                     }`}
                   >
-                    <svg className="w-3 h-3 flex-shrink-0 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-3 h-3 flex-shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
                     </svg>
                     <span className="flex-1 truncate">{script.title}</span>
-                    <span className="flex-shrink-0 text-[9px] text-[#484F58] bg-[#30363D] px-1.5 py-0.5 rounded">{script.category}</span>
+                    <span className="flex-shrink-0 text-[9px] text-muted-foreground/60 bg-border px-1.5 py-0.5 rounded">{script.category}</span>
                   </button>
                 ))}
               </div>
             )}
 
             {!loading && scripts.length > 0 && filteredScripts.length === 0 && (
-              <p className="text-[10px] text-[#484F58] italic">No scripts match your search.</p>
+              <p className="text-[10px] text-muted-foreground/60 italic">No scripts match your search.</p>
             )}
           </div>
         </>
@@ -618,7 +618,7 @@ function EngineerDetailSection({
 
   if (!hasAny && uploadedLocal.length === 0) {
     return (
-      <div className="bg-[#1C2128] border border-border rounded-lg p-4">
+      <div className="bg-accent border border-border rounded-lg p-4">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Engineer Detail</p>
         <p className="text-xs text-muted-foreground italic">No engineer detail has been added to this task's template yet.</p>
       </div>
@@ -626,8 +626,8 @@ function EngineerDetailSection({
   }
 
   return (
-    <div className="bg-[#1C2128] border border-border rounded-lg p-4 space-y-4">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#E6EDF3]">Engineer Detail</p>
+    <div className="bg-accent border border-border rounded-lg p-4 space-y-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground">Engineer Detail</p>
 
       {/* Instructions */}
       {instructions.length > 0 && (
@@ -636,10 +636,10 @@ function EngineerDetailSection({
           <ol className="space-y-1.5">
             {instructions.map((inst, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[9px] font-bold flex items-center justify-center mt-0.5">
+                <span className="flex-shrink-0 w-4 h-4 rounded-full bg-primary/10 text-primary text-[9px] font-bold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
-                <span className="text-xs text-[#E6EDF3] leading-relaxed">{inst}</span>
+                <span className="text-xs text-foreground leading-relaxed">{inst}</span>
               </li>
             ))}
           </ol>
@@ -651,7 +651,7 @@ function EngineerDetailSection({
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Checklist</p>
-            <span className="text-[9px] font-semibold text-muted-foreground bg-[#1C2128] border border-border rounded-full px-2 py-0.5">
+            <span className="text-[9px] font-semibold text-muted-foreground bg-accent border border-border rounded-full px-2 py-0.5">
               {checkedCount}/{checklist.length} done
             </span>
           </div>
@@ -664,7 +664,7 @@ function EngineerDetailSection({
               return (
                 <div key={item.id}>
                   <div
-                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-500/10" : "bg-[#161B22] hover:bg-[#1C2128]"} border ${isChecked ? "border-green-500/20" : "border-border"}`}
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-500/10" : "bg-card hover:bg-accent"} border ${isChecked ? "border-green-500/20" : "border-border"}`}
                   >
                     <button
                       type="button"
@@ -673,7 +673,7 @@ function EngineerDetailSection({
                       className="relative flex-shrink-0 focus:outline-none"
                       aria-label={isChecked ? "Uncheck" : "Check"}
                     >
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-[#30363D] bg-[#1C2128] hover:border-[#0078D4]"}`}>
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-border bg-accent hover:border-primary"}`}>
                         {isToggling ? (
                           <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
                         ) : isChecked ? (
@@ -683,14 +683,14 @@ function EngineerDetailSection({
                         ) : null}
                       </div>
                     </button>
-                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#E6EDF3]"}`}>
+                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-foreground"}`}>
                       {item.label}
                     </span>
                     {capturedData && (
                       <button
                         type="button"
                         onClick={() => setExpandedCaptured(e => ({ ...e, [item.id]: !e[item.id] }))}
-                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 rounded px-1.5 py-0.5 transition-colors"
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 rounded px-1.5 py-0.5 transition-colors"
                         title="View captured details"
                       >
                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -742,7 +742,7 @@ function EngineerDetailSection({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-1.5 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary border border-primary/30 hover:border-primary hover:bg-primary/10 rounded-lg px-3 py-1.5 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -876,7 +876,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
   if (!task || !localTask) return null;
 
-  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]" };
+  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-border text-muted-foreground border border-border" };
   const priorityCfg = localTask.priority ? PRIORITY_CONFIG[localTask.priority] : null;
 
   const handleSave = async () => {
@@ -1058,7 +1058,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     });
   };
 
-  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#1C2128]";
+  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 bg-accent";
   const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
   const meta = (localTask.taskMetadata ?? {}) as Record<string, unknown>;
@@ -1105,7 +1105,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   autoFocus
                 />
               ) : (
-                <DialogTitle className="text-base font-bold text-[#E6EDF3] leading-snug">
+                <DialogTitle className="text-base font-bold text-foreground leading-snug">
                   {localTask.title}
                 </DialogTitle>
               )}
@@ -1212,7 +1212,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             {mode === "admin" && fetchWithAuth && onUpdate && !editing && (
               <button
                 onClick={() => setEditing(true)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 border border-[#0078D4]/30 hover:border-[#0078D4] rounded-lg px-2.5 py-1.5 transition-colors mt-0.5"
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 border border-primary/30 hover:border-primary rounded-lg px-2.5 py-1.5 transition-colors mt-0.5"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1291,7 +1291,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 <button
                   onClick={() => { setEditing(false); setSaveError(null); }}
                   disabled={saving}
-                  className="text-sm font-semibold text-muted-foreground hover:text-[#E6EDF3] px-3 py-2 transition-colors"
+                  className="text-sm font-semibold text-muted-foreground hover:text-foreground px-3 py-2 transition-colors"
                 >
                   Cancel
                 </button>
@@ -1319,7 +1319,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               <div className="border border-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setTaskDetailsOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#1C2128] hover:bg-[#30363D] transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-accent hover:bg-border transition-colors"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
@@ -1330,7 +1330,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       </span>
                     )}
                     {checklist.length > 0 && (
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400" : "bg-[#30363D] text-[#7D8590]"}`}>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400" : "bg-border text-muted-foreground"}`}>
                         {checkedCount}/{checklist.length} done
                       </span>
                     )}
@@ -1360,7 +1360,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
-                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground rounded px-1.5 py-0.5 transition-colors"
                         title="Copy to clipboard"
                       >
                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1372,10 +1372,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                         <button
                           onClick={() => void handleAiSuggest(consolidatedOutput)}
                           disabled={aiSuggestLoading}
-                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-primary hover:text-white bg-primary/10 hover:bg-primary border border-primary/30 hover:border-primary rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
                         >
                           {aiSuggestLoading
-                            ? <div className="w-2 h-2 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                            ? <div className="w-2 h-2 border border-primary/40 border-t-primary rounded-full animate-spin" />
                             : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                           }
                           AI Suggestions
@@ -1383,43 +1383,43 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       )}
                     </div>
                   </div>
-                  <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                  <pre className="text-xs text-foreground bg-accent border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
                     {consolidatedOutput}
                   </pre>
                   {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
-                    <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
-                      <div className="flex items-center gap-2 px-3 py-2 bg-[#0078D4]/8">
-                        {aiSuggestLoading && <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />}
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4]">AI Suggestions</p>
+                    <div className="mt-2 border border-primary/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Suggestions</p>
                         {!aiSuggestLoading && (
                           <button
                             onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
-                            className="ml-auto text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                            className="ml-auto text-[9px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                           >
                             Dismiss
                           </button>
                         )}
                       </div>
                       {aiSuggestLoading && (
-                        <div className="px-3 py-3 text-xs text-[#7D8590]">Analysing output…</div>
+                        <div className="px-3 py-3 text-xs text-muted-foreground">Analysing output…</div>
                       )}
                       {!aiSuggestLoading && aiSuggestError && (
                         <div className="px-3 py-2 flex items-center gap-2">
                           <span className="text-xs text-red-400">{aiSuggestError}</span>
-                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-primary hover:underline">Retry</button>
                         </div>
                       )}
                       {!aiSuggestLoading && aiSuggestions && (
                         <div className="px-3 py-3 space-y-3">
                           {aiSuggestions.analysis && (
-                            <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiSuggestions.analysis}</p>
+                            <p className="text-xs text-foreground/90 leading-relaxed">{aiSuggestions.analysis}</p>
                           )}
                           {aiSuggestions.risks.length > 0 && (
                             <div>
                               <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
                               <ul className="space-y-1">
                                 {aiSuggestions.risks.map((r, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
                                     <span className="leading-relaxed">{r}</span>
                                   </li>
@@ -1429,10 +1429,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                           )}
                           {aiSuggestions.remediationSteps.length > 0 && (
                             <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Remediation Steps</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Remediation Steps</p>
                               <ol className="space-y-1">
                                 {aiSuggestions.remediationSteps.map((s, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
                                     <span className="leading-relaxed">{s}</span>
                                   </li>
@@ -1442,10 +1442,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                           )}
                           {aiSuggestions.nextActions.length > 0 && (
                             <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommended Next Actions</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Next Actions</p>
                               <ul className="space-y-1">
                                 {aiSuggestions.nextActions.map((a, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
                                     <span className="leading-relaxed">{a}</span>
                                   </li>
@@ -1515,7 +1515,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   </span>
                 )}
                 {checklist.length > 0 && (
-                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400 border border-green-500/20" : "bg-[#30363D] text-[#7D8590] border border-[#30363D]"}`}>
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400 border border-green-500/20" : "bg-border text-muted-foreground border border-border"}`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                     </svg>
@@ -1540,7 +1540,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
-                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-muted-foreground hover:text-foreground border border-border hover:border-muted-foreground rounded px-1.5 py-0.5 transition-colors"
                         title="Copy to clipboard"
                       >
                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1552,10 +1552,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                         <button
                           onClick={() => void handleAiSuggest(consolidatedOutput)}
                           disabled={aiSuggestLoading}
-                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-primary hover:text-white bg-primary/10 hover:bg-primary border border-primary/30 hover:border-primary rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
                         >
                           {aiSuggestLoading
-                            ? <div className="w-2 h-2 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                            ? <div className="w-2 h-2 border border-primary/40 border-t-primary rounded-full animate-spin" />
                             : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                           }
                           AI Suggestions
@@ -1563,43 +1563,43 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       )}
                     </div>
                   </div>
-                  <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                  <pre className="text-xs text-foreground bg-accent border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
                     {consolidatedOutput}
                   </pre>
                   {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
-                    <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
-                      <div className="flex items-center gap-2 px-3 py-2 bg-[#0078D4]/8">
-                        {aiSuggestLoading && <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />}
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4]">AI Suggestions</p>
+                    <div className="mt-2 border border-primary/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-primary/40 border-t-primary rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI Suggestions</p>
                         {!aiSuggestLoading && (
                           <button
                             onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
-                            className="ml-auto text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                            className="ml-auto text-[9px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                           >
                             Dismiss
                           </button>
                         )}
                       </div>
                       {aiSuggestLoading && (
-                        <div className="px-3 py-3 text-xs text-[#7D8590]">Analysing output…</div>
+                        <div className="px-3 py-3 text-xs text-muted-foreground">Analysing output…</div>
                       )}
                       {!aiSuggestLoading && aiSuggestError && (
                         <div className="px-3 py-2 flex items-center gap-2">
                           <span className="text-xs text-red-400">{aiSuggestError}</span>
-                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-primary hover:underline">Retry</button>
                         </div>
                       )}
                       {!aiSuggestLoading && aiSuggestions && (
                         <div className="px-3 py-3 space-y-3">
                           {aiSuggestions.analysis && (
-                            <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiSuggestions.analysis}</p>
+                            <p className="text-xs text-foreground/90 leading-relaxed">{aiSuggestions.analysis}</p>
                           )}
                           {aiSuggestions.risks.length > 0 && (
                             <div>
                               <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
                               <ul className="space-y-1">
                                 {aiSuggestions.risks.map((r, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
                                     <span className="leading-relaxed">{r}</span>
                                   </li>
@@ -1609,10 +1609,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                           )}
                           {aiSuggestions.remediationSteps.length > 0 && (
                             <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Remediation Steps</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Remediation Steps</p>
                               <ol className="space-y-1">
                                 {aiSuggestions.remediationSteps.map((s, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
                                     <span className="leading-relaxed">{s}</span>
                                   </li>
@@ -1622,10 +1622,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                           )}
                           {aiSuggestions.nextActions.length > 0 && (
                             <div>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommended Next Actions</p>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Next Actions</p>
                               <ul className="space-y-1">
                                 {aiSuggestions.nextActions.map((a, i) => (
-                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                  <li key={i} className="flex items-start gap-2 text-xs text-foreground/90">
                                     <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
                                     <span className="leading-relaxed">{a}</span>
                                   </li>

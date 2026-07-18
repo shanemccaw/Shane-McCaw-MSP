@@ -79,9 +79,9 @@ function statusBadge(status: string) {
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
-        <h2 className="text-sm font-semibold text-[#E6EDF3]">{title}</h2>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-border bg-accent">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       </div>
       <div className="px-5 py-4 space-y-3">{children}</div>
     </div>
@@ -92,7 +92,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 text-sm">
       <span className="w-44 shrink-0 text-muted-foreground">{label}</span>
-      <span className="text-[#E6EDF3] font-medium break-all">{value ?? "—"}</span>
+      <span className="text-foreground font-medium break-all">{value ?? "—"}</span>
     </div>
   );
 }
@@ -200,7 +200,7 @@ export default function PurchaseDetailPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-32">
-        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -208,7 +208,7 @@ export default function PurchaseDetailPage() {
   if (error || !detail) {
     return (
       <div className="p-4 sm:p-6 max-w-[900px]">
-        <button onClick={() => navigate("/crm/purchases")} className="text-sm text-[#0078D4] hover:underline mb-4 flex items-center gap-1">
+        <button onClick={() => navigate("/crm/purchases")} className="text-sm text-primary hover:underline mb-4 flex items-center gap-1">
           ← Purchases
         </button>
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-sm text-red-400">
@@ -232,13 +232,13 @@ export default function PurchaseDetailPage() {
       <div>
         <button
           onClick={() => navigate("/crm/purchases")}
-          className="text-sm text-[#0078D4] hover:underline mb-4 flex items-center gap-1"
+          className="text-sm text-primary hover:underline mb-4 flex items-center gap-1"
         >
           ← Purchases
         </button>
         <div className="flex items-center gap-3 flex-wrap justify-between">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold text-[#E6EDF3]">{detail.invoiceNumber}</h1>
+            <h1 className="text-xl font-bold text-foreground">{detail.invoiceNumber}</h1>
             <span className={statusBadge(detail.status)}>{detail.status}</span>
           </div>
           <button
@@ -299,7 +299,7 @@ export default function PurchaseDetailPage() {
                     <div key={i} className="flex items-center justify-between px-5 py-3 text-sm">
                       <span className="text-muted-foreground">{s.stepTitle}</span>
                       <div className="flex items-center gap-2 text-right">
-                        <span className="font-medium text-[#E6EDF3]">{s.optionLabel}</span>
+                        <span className="font-medium text-foreground">{s.optionLabel}</span>
                         {s.priceAdjustment !== 0 ? (
                           <span className={`text-xs font-semibold ${s.priceAdjustment > 0 ? "text-green-400" : "text-red-400"}`}>
                             {s.priceAdjustment > 0 ? `+$${s.priceAdjustment}` : `-$${Math.abs(s.priceAdjustment)}`}
@@ -330,7 +330,7 @@ export default function PurchaseDetailPage() {
             value={
               <button
                 onClick={() => navigate(`/crm/projects/${detail.project!.id}`)}
-                className="text-[#0078D4] hover:underline text-left"
+                className="text-primary hover:underline text-left"
               >
                 {detail.project.name}
               </button>
@@ -362,10 +362,10 @@ export default function PurchaseDetailPage() {
               <div className="space-y-3">
                 {blockers ? (
                   <>
-                    <p>This purchase is linked to a project that has associated records. Resolve them first, or use <strong className="text-[#E6EDF3]">Force Delete</strong> to permanently remove everything.</p>
+                    <p>This purchase is linked to a project that has associated records. Resolve them first, or use <strong className="text-foreground">Force Delete</strong> to permanently remove everything.</p>
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[#E6EDF3]">
+                        <span className="text-xs font-semibold text-foreground">
                           Project: {blockers.project.title}
                         </span>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${blockers.project.status === "active" ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"}`}>
@@ -382,7 +382,7 @@ export default function PurchaseDetailPage() {
                       </ul>
                       <button
                         onClick={() => { closeDeleteDialog(); navigate(`/crm/projects/${blockers.project.id}`); }}
-                        className="flex items-center gap-1 text-xs text-[#0078D4] hover:underline mt-1"
+                        className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
                       >
                         <ExternalLink className="w-3 h-3" />
                         Open project to resolve
@@ -406,7 +406,7 @@ export default function PurchaseDetailPage() {
                     )}
                     {isPaid && (
                       <div className="pt-1 space-y-1.5">
-                        <p className="text-xs font-medium text-[#E6EDF3]">
+                        <p className="text-xs font-medium text-foreground">
                           Type the invoice number to confirm:{" "}
                           <span className="font-mono text-red-400">{detail.invoiceNumber}</span>
                         </p>

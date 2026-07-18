@@ -42,9 +42,9 @@ function InboxSearch({ onResults }: { onResults: (msgs: InboxMessage[] | null, q
   }
 
   return (
-    <form onSubmit={handleSearch} className="flex items-center gap-2 px-3 py-2 border-b border-[#30363D] bg-[#161B22]">
+    <form onSubmit={handleSearch} className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card">
       <div className="flex-1 relative">
-        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#7D8590]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
@@ -52,18 +52,18 @@ function InboxSearch({ onResults }: { onResults: (msgs: InboxMessage[] | null, q
           value={localQ}
           onChange={e => setLocalQ(e.target.value)}
           placeholder="Search messages…"
-          className="w-full pl-8 pr-3 py-1 bg-[#0D1117] border border-[#30363D] rounded-md text-xs text-[#E6EDF3] placeholder-[#7D8590] focus:outline-none focus:border-[#0078D4]"
+          className="w-full pl-8 pr-3 py-1 bg-background border border-border rounded-md text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary"
         />
       </div>
       {searching ? (
-        <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin shrink-0" />
+        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
       ) : (
-        <button type="submit" className="px-2.5 py-1 bg-[#0078D4] text-white text-xs rounded-md hover:bg-[#1A90E0] shrink-0">
+        <button type="submit" className="px-2.5 py-1 bg-primary text-white text-xs rounded-md hover:bg-primary/90 shrink-0">
           Search
         </button>
       )}
       {searchQuery && (
-        <button type="button" onClick={handleClear} className="text-[10px] text-[#7D8590] hover:text-[#C9D1D9] shrink-0">
+        <button type="button" onClick={handleClear} className="text-[10px] text-muted-foreground hover:text-foreground/90 shrink-0">
           Clear
         </button>
       )}
@@ -99,12 +99,12 @@ function InboxShell() {
       <InboxFolderPane onCompose={() => openCompose("new")} />
 
       {/* Middle pane: message list + search */}
-      <div className="flex flex-col w-72 shrink-0 border-r border-[#30363D] overflow-hidden">
+      <div className="flex flex-col w-72 shrink-0 border-r border-border overflow-hidden">
         <InboxSearch onResults={handleSearchResults} />
         {isSearching && searchResults !== null && (
-          <div className="px-3 py-1.5 bg-[#0D1117] border-b border-[#30363D]">
-            <p className="text-[10px] text-[#7D8590]">
-              Search results for <span className="text-[#C9D1D9] font-medium">"{searchQuery}"</span> — {searchResults.length} found
+          <div className="px-3 py-1.5 bg-background border-b border-border">
+            <p className="text-[10px] text-muted-foreground">
+              Search results for <span className="text-foreground/90 font-medium">"{searchQuery}"</span> — {searchResults.length} found
             </p>
           </div>
         )}
@@ -124,16 +124,16 @@ function InboxShell() {
 export default function InboxPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-6 py-4 border-b border-[#30363D] bg-[#0D1117] shrink-0">
+      <div className="px-6 py-4 border-b border-border bg-background shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
-            <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+            <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-semibold text-[#E6EDF3]">Inbox</h1>
-            <p className="text-xs text-[#7D8590]">Microsoft 365 mailbox — CRM-integrated</p>
+            <h1 className="text-base font-semibold text-foreground">Inbox</h1>
+            <p className="text-xs text-muted-foreground">Microsoft 365 mailbox — CRM-integrated</p>
           </div>
         </div>
       </div>
