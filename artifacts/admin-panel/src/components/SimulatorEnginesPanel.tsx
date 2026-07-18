@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Loader2, AlertCircle, CheckCircle2, Copy, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useModal } from "@/contexts/ModalContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 
 function getStatusBadgeStyle(status: string): string {
   const s = status ? status.toUpperCase() : "";
@@ -18,12 +19,6 @@ function getStatusBadgeStyle(status: string): string {
     return "bg-emerald-400/10 text-emerald-400 border border-emerald-400/25";
   }
   return "bg-card text-muted-foreground border border-border";
-}
-
-interface Testbed {
-  id: number;
-  name: string;
-  domain?: string;
 }
 
 interface EngineDefSummary {
@@ -48,8 +43,7 @@ interface EngineRunResult {
 export function SimulatorEnginesPanel() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
-  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
-  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
 
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [loadingEngines, setLoadingEngines] = useState(false);
@@ -58,11 +52,6 @@ export function SimulatorEnginesPanel() {
   const [results, setResults] = useState<Record<string, EngineRunResult | { error: string }>>({});
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/testbeds")
-      .then(r => r.json())
-      .then(d => setTestbeds(d.testbeds ?? []))
-      .catch(() => toast.error("Failed to load testbeds"));
-
     setLoadingEngines(true);
     fetchWithAuth("/api/admin/engines")
       .then(r => r.json())
@@ -72,8 +61,8 @@ export function SimulatorEnginesPanel() {
   }, [fetchWithAuth]);
 
   const handleRunEngine = async (key: string) => {
-    if (selectedTestbedId === "") {
-      toast.error("Select a testbed customer first");
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
       return;
     }
     setRunningKey(key);
@@ -81,7 +70,7 @@ export function SimulatorEnginesPanel() {
       const res = await fetchWithAuth(`/api/admin/engines/${key}/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId: Number(selectedTestbedId), debug: true }),
+        body: JSON.stringify({ customerId: selectedCustomerId, debug: true }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -109,23 +98,17 @@ export function SimulatorEnginesPanel() {
             the testbed customer selected here. There is no sample-payload mode.
           </p>
         </div>
-        <div className="w-72">
-          <select
-            value={selectedTestbedId}
-            onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
-          >
-            <option value="">-- Select Testbed Customer --</option>
-            {testbeds.map(tb => (
-              <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
-            ))}
-          </select>
-        </div>
+        {selectedCustomer && (
+          <div className="text-xs text-muted-foreground shrink-0">
+            Target: <span className="text-foreground font-medium">{selectedCustomer.name}</span>
+            <span className="font-mono text-[10px]"> (#{selectedCustomer.id})</span>
+          </div>
+        )}
       </div>
 
-      {selectedTestbedId === "" ? (
+      {selectedCustomerId == null ? (
         <div className="border border-dashed border-border rounded-lg p-10 text-center text-sm text-muted-foreground">
-          Select a testbed customer above — the same one you inject overrides against in the Overrides tab —
+          Select a testbed customer in the header above — the same one the Overrides tab injects against —
           to enable engine runs.
         </div>
       ) : loadingEngines ? (

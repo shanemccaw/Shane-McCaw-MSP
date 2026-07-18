@@ -1367,6 +1367,28 @@ router.post("/simulator/sql/scripts", requireAdmin, async (req: Request, res: Re
 });
 
 /**
+ * @route DELETE /api/admin/engines/simulator/sql/scripts/:id
+ * @desc Deletes a saved SQL utility script
+ */
+router.delete("/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "A valid script id is required." });
+    }
+
+    const [deleted] = await db.delete(savedSqlScripts).where(eq(savedSqlScripts.id, id)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "Script not found." });
+    }
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * @route POST /api/admin/engines/simulator/session-lock
  * @desc Locks/unlocks a testbed MSP so CRON background tasks bypass it during live demos
  */

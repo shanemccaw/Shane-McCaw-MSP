@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, ListFilter, Radio, Trash2, X } from "lucide-react";
+import { Check, ListFilter, Pin, PinOff, Radio, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveStream, type LiveStreamFrame } from "@/hooks/useLiveStream";
 import { useSimulatorActivity } from "@/contexts/SimulatorActivityContext";
@@ -12,6 +13,16 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 // Mirrors the canonical EVENT_TYPES in artifacts/api-server/src/lib/event-bus.ts.
 // The event bus is server-only (no shared package export), so the frontend
@@ -207,11 +218,32 @@ interface LogPaneProps {
   isEventType?: boolean;
   enabledBuckets: Set<LevelBucket>;
   onClose?: () => void;
+  /** Manually pinned lines for this pane — a curated, static addition
+   *  separate from the live `frames` subscription. */
+  pinnedLines: NormalizedLine[];
+  onUnpin: (lineId: string) => void;
+  /** Panes available as "Send to pane" targets, plus a handler to pin into
+   *  one (or create a new one) from a line's context menu. */
+  paneTargets: Array<{ channel: string; title: string }>;
+  onSendToPane: (line: NormalizedLine, targetChannel: string) => void;
+  onSendToNewPane: (line: NormalizedLine) => void;
 }
 
 /** One independently-scrolling live pane. Mounts its own useLiveStream —
  *  the multi-select split view mounts one pane per selected channel. */
-function LogPane({ channel, title, isFirehose, isEventType, enabledBuckets, onClose }: LogPaneProps) {
+function LogPane({
+  channel,
+  title,
+  isFirehose,
+  isEventType,
+  enabledBuckets,
+  onClose,
+  pinnedLines,
+  onUnpin,
+  paneTargets,
+  onSendToPane,
+  onSendToNewPane,
+}: LogPaneProps) {
   const { frames, connected } = useLiveStream(channel);
   // Local (immediate UI-action) studio logs only belong in the firehose pane;
   // the hook must run unconditionally, the merge below is what's conditional.
@@ -273,6 +305,76 @@ function LogPane({ channel, title, isFirehose, isEventType, enabledBuckets, onCl
     setPinned(true);
   };
 
+  const copyLineText = (line: NormalizedLine) => {
+    void navigator.clipboard.writeText(line.text);
+    toast.success("Copied line to clipboard");
+  };
+
+  const copyLineJson = (line: NormalizedLine) => {
+    void navigator.clipboard.writeText(JSON.stringify(line.detail ?? {}, null, 2));
+    toast.success("Copied raw JSON to clipboard");
+  };
+
+  const renderLineRow = (line: NormalizedLine, opts: { pinned?: boolean } = {}) => (
+    <ContextMenu key={`${opts.pinned ? "pin" : "live"}-${line.id}`}>
+      <ContextMenuTrigger asChild>
+        <div
+          className={`px-2 ${line.rowClass} ${line.detail ? "cursor-pointer" : ""} hover:bg-accent/40`}
+          onClick={line.detail ? () => setExpandedId(expandedId === line.id ? null : line.id) : undefined}
+        >
+          <div className="flex items-start gap-2">
+            {opts.pinned && <Pin className="mt-0.5 h-2.5 w-2.5 shrink-0 text-[#58A6FF]" aria-label="Pinned line" />}
+            <span className="shrink-0 select-none tabular-nums text-[#484F58]">{line.time}</span>
+            <span className={`w-7 shrink-0 select-none font-semibold ${line.tagClass}`}>{line.tag}</span>
+            {isFirehose && line.channel && (
+              <span className="shrink-0 select-none text-muted-foreground">[{line.channel}]</span>
+            )}
+            <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${line.msgClass}`}>{line.text}</span>
+            {line.scope && <span className="shrink-0 select-none text-[10px] text-[#484F58]">msp:{line.scope}</span>}
+          </div>
+          {expandedId === line.id && line.detail && (
+            <pre className="my-1 ml-24 overflow-x-auto rounded border border-border bg-card p-2 text-[10px] leading-relaxed text-muted-foreground">
+              {JSON.stringify(line.detail, null, 2)}
+            </pre>
+          )}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52">
+        <ContextMenuItem onSelect={() => copyLineText(line)} className="text-xs">
+          Copy line
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => copyLineJson(line)} className="text-xs">
+          Copy raw JSON
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        {opts.pinned ? (
+          <ContextMenuItem onSelect={() => onUnpin(line.id)} className="gap-2 text-xs">
+            <PinOff className="h-3.5 w-3.5" />
+            Unpin from this pane
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger className="gap-2 text-xs">
+              <Pin className="h-3.5 w-3.5" />
+              Send to pane
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent className="w-48">
+              {paneTargets.map((target) => (
+                <ContextMenuItem key={target.channel} onSelect={() => onSendToPane(line, target.channel)} className="text-xs">
+                  {target.title}
+                </ContextMenuItem>
+              ))}
+              {paneTargets.length > 0 && <ContextMenuSeparator />}
+              <ContextMenuItem onSelect={() => onSendToNewPane(line)} className="text-xs">
+                New pane…
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+
   return (
     <div className="relative flex h-full min-w-0 flex-1 flex-col" style={{ minWidth: 300 }}>
       <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border bg-card px-2 select-none">
@@ -308,33 +410,19 @@ function LogPane({ channel, title, isFirehose, isEventType, enabledBuckets, onCl
       </div>
 
       <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto py-1 font-mono text-[11px] leading-[1.65]">
-        {lines.length === 0 ? (
-          <div className="px-3 py-4 italic text-muted-foreground/70 select-none">
-            {connected ? `Waiting for activity on ${title}…` : "Connecting…"}
+        {pinnedLines.length > 0 && (
+          <div className="mb-1 border-b border-dashed border-border pb-1">
+            {pinnedLines.map((line) => renderLineRow(line, { pinned: true }))}
           </div>
-        ) : (
-          lines.map((line) => (
-            <div
-              key={line.id}
-              className={`px-2 ${line.rowClass} ${line.detail ? "cursor-pointer" : ""} hover:bg-accent/40`}
-              onClick={line.detail ? () => setExpandedId(expandedId === line.id ? null : line.id) : undefined}
-            >
-              <div className="flex items-start gap-2">
-                <span className="shrink-0 select-none tabular-nums text-[#484F58]">{line.time}</span>
-                <span className={`w-7 shrink-0 select-none font-semibold ${line.tagClass}`}>{line.tag}</span>
-                {isFirehose && line.channel && (
-                  <span className="shrink-0 select-none text-muted-foreground">[{line.channel}]</span>
-                )}
-                <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${line.msgClass}`}>{line.text}</span>
-                {line.scope && <span className="shrink-0 select-none text-[10px] text-[#484F58]">msp:{line.scope}</span>}
-              </div>
-              {expandedId === line.id && line.detail && (
-                <pre className="my-1 ml-24 overflow-x-auto rounded border border-border bg-card p-2 text-[10px] leading-relaxed text-muted-foreground">
-                  {JSON.stringify(line.detail, null, 2)}
-                </pre>
-              )}
+        )}
+        {lines.length === 0 ? (
+          pinnedLines.length === 0 && (
+            <div className="px-3 py-4 italic text-muted-foreground/70 select-none">
+              {connected ? `Waiting for activity on ${title}…` : "Connecting…"}
             </div>
-          ))
+          )
+        ) : (
+          lines.map((line) => renderLineRow(line))
         )}
       </div>
 
@@ -379,6 +467,32 @@ export function SimulatorLogStream({ selectedChannels, onChangeChannels }: Simul
     () => new Set<LevelBucket>(["info", "warn", "error"]),
   );
 
+  // "Send to pane" — manually pinned lines, keyed by the pane's channel (the
+  // firehose pane uses "*"). Kept separate from each pane's live `frames`.
+  const [pinnedByChannel, setPinnedByChannel] = useState<Record<string, NormalizedLine[]>>({});
+  // A line queued for pinning once the "New pane…" channel picker selection lands.
+  const pendingPinLineRef = useRef<NormalizedLine | null>(null);
+
+  const pinLineToChannel = (line: NormalizedLine, targetChannel: string) => {
+    setPinnedByChannel((prev) => ({
+      ...prev,
+      [targetChannel]: [...(prev[targetChannel] ?? []), line],
+    }));
+  };
+
+  const unpinLineFromChannel = (targetChannel: string, lineId: string) => {
+    setPinnedByChannel((prev) => ({
+      ...prev,
+      [targetChannel]: (prev[targetChannel] ?? []).filter((l) => l.id !== lineId),
+    }));
+  };
+
+  const handleSendToNewPane = (line: NormalizedLine) => {
+    pendingPinLineRef.current = line;
+    setPickerOpen(true);
+    toast.info("Pick a channel to open a new pane and pin this line into it");
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -398,11 +512,15 @@ export function SimulatorLogStream({ selectedChannels, onChangeChannels }: Simul
   }, []);
 
   const toggleChannel = (ch: string) => {
+    const alreadySelected = selectedChannels.includes(ch);
     onChangeChannels(
-      selectedChannels.includes(ch)
-        ? selectedChannels.filter((c) => c !== ch)
-        : [...selectedChannels, ch],
+      alreadySelected ? selectedChannels.filter((c) => c !== ch) : [...selectedChannels, ch],
     );
+    if (!alreadySelected && pendingPinLineRef.current) {
+      pinLineToChannel(pendingPinLineRef.current, ch);
+      pendingPinLineRef.current = null;
+      setPickerOpen(false);
+    }
   };
 
   const toggleBucket = (bucket: LevelBucket) => {
@@ -515,7 +633,17 @@ export function SimulatorLogStream({ selectedChannels, onChangeChannels }: Simul
       {/* Pane grid — one pane per selected channel, or a single firehose pane */}
       <div className="flex min-h-0 flex-1 divide-x divide-border overflow-x-auto">
         {selectedChannels.length === 0 ? (
-          <LogPane channel="*" title="all channels" isFirehose enabledBuckets={enabledBuckets} />
+          <LogPane
+            channel="*"
+            title="all channels"
+            isFirehose
+            enabledBuckets={enabledBuckets}
+            pinnedLines={pinnedByChannel["*"] ?? []}
+            onUnpin={(lineId) => unpinLineFromChannel("*", lineId)}
+            paneTargets={[]}
+            onSendToPane={pinLineToChannel}
+            onSendToNewPane={handleSendToNewPane}
+          />
         ) : (
           selectedChannels.map((ch) => (
             <LogPane
@@ -525,6 +653,11 @@ export function SimulatorLogStream({ selectedChannels, onChangeChannels }: Simul
               isEventType={EVENT_TYPE_SET.has(ch)}
               enabledBuckets={enabledBuckets}
               onClose={selectedChannels.length > 1 ? () => toggleChannel(ch) : undefined}
+              pinnedLines={pinnedByChannel[ch] ?? []}
+              onUnpin={(lineId) => unpinLineFromChannel(ch, lineId)}
+              paneTargets={selectedChannels.filter((other) => other !== ch).map((other) => ({ channel: other, title: other }))}
+              onSendToPane={pinLineToChannel}
+              onSendToNewPane={handleSendToNewPane}
             />
           ))
         )}

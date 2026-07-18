@@ -15,8 +15,16 @@ import {
   FileCode,
   Edit2,
   Sparkles,
+  Play,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 interface EventDef {
   id: string;
@@ -35,11 +43,7 @@ interface SavedScript {
   isDestructive: boolean;
 }
 
-export function SimulatorLeftTree(props?: {
-  selectedCustomerId?: string;
-  onSelectCustomer?: (id: string) => void;
-  currentStep?: number;
-}) {
+export function SimulatorLeftTree() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
@@ -174,6 +178,26 @@ export function SimulatorLeftTree(props?: {
     window.dispatchEvent(new CustomEvent("simulator-load-script", { detail: script }));
   };
 
+  const handleScriptRun = (script: SavedScript) => {
+    window.dispatchEvent(new CustomEvent("simulator-run-script", { detail: script }));
+  };
+
+  const handleScriptDelete = async (script: SavedScript) => {
+    if (!confirm(`Delete saved script "${script.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/simulator/sql/scripts/${script.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Script deleted");
+        window.dispatchEvent(new CustomEvent("simulator-scripts-updated"));
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to delete script");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error deleting script");
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-xs select-none">
       {/* Explorer header */}
@@ -199,6 +223,8 @@ export function SimulatorLeftTree(props?: {
       </div>
 
       {/* Tree content */}
+      <ContextMenu>
+      <ContextMenuTrigger asChild>
       <div className="flex-1 space-y-1 overflow-y-auto py-1">
         {/* Section 1: Simulation Scenarios */}
         <div>
@@ -241,17 +267,26 @@ export function SimulatorLeftTree(props?: {
                   {expandedCats[cat] && (
                     <div className="ml-[22px] border-l border-[#21262D]">
                       {scenariosByCategory[cat].map((event) => (
-                        <div
-                          key={event.id}
-                          onClick={() => openModal("execute-scenario", { event })}
-                          className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
-                        >
-                          <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-[#58A6FF]" />
-                          <span className="flex-1 truncate" title={event.description || event.name}>
-                            {event.name}
-                          </span>
-                          <span className="hidden shrink-0 group-hover:inline">{getCategoryIcon(event.category)}</span>
-                        </div>
+                        <ContextMenu key={event.id}>
+                          <ContextMenuTrigger asChild>
+                            <div
+                              onClick={() => openModal("execute-scenario", { event })}
+                              className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
+                            >
+                              <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-[#58A6FF]" />
+                              <span className="flex-1 truncate" title={event.description || event.name}>
+                                {event.name}
+                              </span>
+                              <span className="hidden shrink-0 group-hover:inline">{getCategoryIcon(event.category)}</span>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent className="w-44">
+                            <ContextMenuItem onSelect={() => openModal("execute-scenario", { event })} className="gap-2 text-xs">
+                              <Play className="h-3.5 w-3.5" />
+                              Execute
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
                       ))}
                     </div>
                   )}
@@ -301,27 +336,45 @@ export function SimulatorLeftTree(props?: {
                     {expandedCats[cat] && (
                       <div className="ml-[22px] border-l border-[#21262D]">
                         {scriptsByCategory[cat].map((script) => (
-                          <div
-                            key={script.id}
-                            className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
-                          >
-                            <div className="flex min-w-0 flex-1 items-center gap-1.5" onClick={() => handleScriptClick(script)}>
-                              <FileCode
-                                className={`h-3.5 w-3.5 shrink-0 ${script.isDestructive ? "text-destructive" : "text-muted-foreground"}`}
-                                aria-label={script.isDestructive ? "Destructive script" : undefined}
-                              />
-                              <span className="truncate font-mono text-[11px]" title={script.name}>
-                                {script.name}
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => openModal("edit-script", { script })}
-                              className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100"
-                              title="Edit script details"
-                            >
-                              <Edit2 className="h-3 w-3" />
-                            </button>
-                          </div>
+                          <ContextMenu key={script.id}>
+                            <ContextMenuTrigger asChild>
+                              <div className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground">
+                                <div className="flex min-w-0 flex-1 items-center gap-1.5" onClick={() => handleScriptClick(script)}>
+                                  <FileCode
+                                    className={`h-3.5 w-3.5 shrink-0 ${script.isDestructive ? "text-destructive" : "text-muted-foreground"}`}
+                                    aria-label={script.isDestructive ? "Destructive script" : undefined}
+                                  />
+                                  <span className="truncate font-mono text-[11px]" title={script.name}>
+                                    {script.name}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => openModal("edit-script", { script })}
+                                  className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100"
+                                  title="Edit script details"
+                                >
+                                  <Edit2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-44">
+                              <ContextMenuItem onSelect={() => handleScriptRun(script)} className="gap-2 text-xs">
+                                <Play className="h-3.5 w-3.5" />
+                                Execute
+                              </ContextMenuItem>
+                              <ContextMenuItem onSelect={() => openModal("edit-script", { script })} className="gap-2 text-xs">
+                                <Edit2 className="h-3.5 w-3.5" />
+                                Edit
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onSelect={() => handleScriptDelete(script)}
+                                className="gap-2 text-xs text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         ))}
                       </div>
                     )}
@@ -332,6 +385,14 @@ export function SimulatorLeftTree(props?: {
           )}
         </div>
       </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        <ContextMenuItem onSelect={() => openModal("new-script")} className="gap-2 text-xs">
+          <Plus className="h-3.5 w-3.5" />
+          New Script
+        </ContextMenuItem>
+      </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
 }

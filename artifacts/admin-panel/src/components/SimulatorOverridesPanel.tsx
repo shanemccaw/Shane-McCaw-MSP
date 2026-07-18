@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,12 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-interface Testbed {
-  id: number;
-  name: string;
-  domain?: string;
-}
 
 interface MonitorCheck {
   key: string;
@@ -40,8 +35,7 @@ interface Override {
 
 export function SimulatorOverridesPanel() {
   const { fetchWithAuth } = useAuth();
-  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
-  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
 
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
   
@@ -60,12 +54,6 @@ export function SimulatorOverridesPanel() {
   const [checkResult, setCheckResult] = useState<any>(null);
 
   useEffect(() => {
-    // Fetch testbeds
-    fetchWithAuth("/api/admin/testbeds")
-      .then(r => r.json())
-      .then(d => setTestbeds(d.testbeds ?? []))
-      .catch(err => toast.error("Failed to load testbeds"));
-
     // Fetch monitor checks
     fetchWithAuth("/api/admin/monitor-checks")
       .then(r => r.json())
@@ -74,13 +62,13 @@ export function SimulatorOverridesPanel() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    if (selectedTestbedId !== "") {
-      loadOverrides(Number(selectedTestbedId));
+    if (selectedCustomerId != null) {
+      loadOverrides(selectedCustomerId);
     } else {
       setOverrides([]);
       setCheckResult(null);
     }
-  }, [selectedTestbedId]);
+  }, [selectedCustomerId]);
 
   const loadOverrides = async (testbedId: number) => {
     setLoadingOverrides(true);
@@ -101,7 +89,7 @@ export function SimulatorOverridesPanel() {
 
   const handleCreateOverride = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedTestbedId === "" || !selectedCheckKey || !fieldPath || !injectedValueText) {
+    if (selectedCustomerId == null || !selectedCheckKey || !fieldPath || !injectedValueText) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -120,7 +108,7 @@ export function SimulatorOverridesPanel() {
     setIsSubmitting(true);
     try {
       const payload = {
-        testbedCustomerId: Number(selectedTestbedId),
+        testbedCustomerId: selectedCustomerId,
         monitorCheckKey: check.key,
         graphEndpoint: check.endpoint,
         fieldPath,
@@ -139,7 +127,7 @@ export function SimulatorOverridesPanel() {
         setFieldPath("");
         setInjectedValueText("");
         setExpiresAt("");
-        loadOverrides(Number(selectedTestbedId));
+        loadOverrides(selectedCustomerId);
       } else {
         const data = await res.json();
         toast.error(data.error || "Failed to create override");
@@ -158,7 +146,7 @@ export function SimulatorOverridesPanel() {
       });
       if (res.ok) {
         toast.success("Override deleted");
-        if (selectedTestbedId !== "") loadOverrides(Number(selectedTestbedId));
+        if (selectedCustomerId != null) loadOverrides(selectedCustomerId);
       } else {
         toast.error("Failed to delete override");
       }
@@ -168,14 +156,14 @@ export function SimulatorOverridesPanel() {
   };
 
   const handleRunNow = async (checkKey: string) => {
-    if (selectedTestbedId === "") return;
+    if (selectedCustomerId == null) return;
     setRunningCheck(checkKey);
     setCheckResult(null);
     try {
       const res = await fetchWithAuth(`/api/admin/simulator/monitor-checks/${checkKey}/run-now`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testbedCustomerId: Number(selectedTestbedId) }),
+        body: JSON.stringify({ testbedCustomerId: selectedCustomerId }),
       });
       
       const data = await res.json();
@@ -198,24 +186,18 @@ export function SimulatorOverridesPanel() {
     <div className="flex-1 flex flex-col min-h-0 bg-background font-sans text-foreground/90">
       <div className="p-4 overflow-y-auto space-y-5 flex-1">
 
-        {/* Top Section: Picker */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground">Testbed Customer Selection</h3>
-          <div className="w-80">
-            <select
-              value={selectedTestbedId}
-              onChange={e => setSelectedTestbedId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
-            >
-              <option value="">-- Select Testbed Customer --</option>
-              {testbeds.map(tb => (
-                <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
-              ))}
-            </select>
+        {selectedCustomerId == null ? (
+          <div className="border border-dashed border-border rounded-lg p-10 text-center text-sm text-muted-foreground">
+            Select a testbed customer in the header above to inject overrides against it.
           </div>
-        </div>
+        ) : (
+          <div className="text-xs text-muted-foreground">
+            Target: <span className="text-foreground font-medium">{selectedCustomer?.name ?? `Customer #${selectedCustomerId}`}</span>
+            <span className="font-mono text-[10px]"> (#{selectedCustomerId})</span>
+          </div>
+        )}
 
-        {selectedTestbedId !== "" && (
+        {selectedCustomerId != null && (
           <>
             {/* Create Override Form */}
             <div className="bg-card border border-border rounded-lg p-4 space-y-4">

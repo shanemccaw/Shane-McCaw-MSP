@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 import { toast } from "sonner";
 import { 
   Play, 
@@ -166,51 +167,19 @@ function EngineTraceModal() {
 }
 
 // ─── Modal 1: ExecuteScenarioModal ───────────────────────────────────────────
-interface TestbedCustomer {
-  id: number;
-  name: string;
-  domain?: string;
-  isTestbed: boolean;
-  testbedMetadata: any;
-}
-
 function ExecuteScenarioModal() {
   const { modalData, closeModal } = useModal();
   const { fetchWithAuth } = useAuth();
   const { startOperation, endOperation } = useSimulatorActivity();
-  const [testbeds, setTestbeds] = useState<TestbedCustomer[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
-  const [loadingTestbeds, setLoadingTestbeds] = useState(false);
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
   const [executing, setExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
 
   const event = modalData?.event;
 
-  useEffect(() => {
-    async function loadTestbeds() {
-      setLoadingTestbeds(true);
-      try {
-        const res = await fetchWithAuth("/api/admin/testbeds");
-        if (res.ok) {
-          const data = await res.json();
-          const list = data.testbeds || [];
-          setTestbeds(list);
-          if (list.length > 0) {
-            setSelectedCustomerId(String(list[0].id));
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load testbeds", err);
-      } finally {
-        setLoadingTestbeds(false);
-      }
-    }
-    loadTestbeds();
-  }, [fetchWithAuth]);
-
   const handleExecute = async () => {
-    if (!selectedCustomerId) {
-      toast.error("Please select a target testbed customer");
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the Simulator Studio header first");
       return;
     }
     setExecuting(true);
@@ -222,7 +191,7 @@ function ExecuteScenarioModal() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId: event.id,
-          testbedCustomerId: Number(selectedCustomerId),
+          testbedCustomerId: selectedCustomerId,
           params: {}
         }),
       });
@@ -306,29 +275,18 @@ function ExecuteScenarioModal() {
       </div>
 
       <div className="space-y-3">
-        <Label className="text-xs font-medium text-muted-foreground">Select Target Testbed Customer</Label>
-        {loadingTestbeds ? (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading testbeds...
-          </div>
-        ) : testbeds.length === 0 ? (
+        <Label className="text-xs font-medium text-muted-foreground">Target Testbed Customer</Label>
+        {selectedCustomerId == null ? (
           <div className="bg-destructive/10 border border-destructive/40 rounded-lg p-3.5 text-xs text-destructive flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            No testbed customers (is_testbed = true) exist in the system. Go to platform settings to flag one.
+            No testbed customer selected — pick an MSP and customer in the Simulator Studio header first.
           </div>
         ) : (
-          <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-10">
-              <SelectValue placeholder="Select target testbed customer" />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border text-foreground text-xs">
-              {testbeds.map((tb) => (
-                <SelectItem key={tb.id} value={String(tb.id)}>
-                  {tb.name} {tb.domain ? `(${tb.domain})` : ""} (Customer ID: {tb.id})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="bg-background border border-border rounded-lg px-3 py-2.5 text-xs text-foreground">
+            {selectedCustomer?.name ?? `Customer #${selectedCustomerId}`}
+            {selectedCustomer?.domain ? ` (${selectedCustomer.domain})` : ""}
+            <span className="text-muted-foreground"> (Customer ID: {selectedCustomerId})</span>
+          </div>
         )}
       </div>
 
@@ -369,7 +327,7 @@ function ExecuteScenarioModal() {
         </Button>
         <Button
           onClick={handleExecute}
-          disabled={executing || testbeds.length === 0}
+          disabled={executing || selectedCustomerId == null}
           className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 px-4"
         >
           {executing ? (

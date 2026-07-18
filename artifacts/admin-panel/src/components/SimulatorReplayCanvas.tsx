@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Play, Pause, SkipForward, RotateCcw, Loader2 } from "lucide-react";
-
-interface Testbed {
-  id: number;
-  name: string;
-  domain?: string;
-}
 
 interface EngineDefSummary {
   key: string;
@@ -76,8 +71,7 @@ function ScoreRing({ label, score, hasError }: { label: string; score: number | 
 
 export function SimulatorReplayCanvas() {
   const { fetchWithAuth } = useAuth();
-  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
-  const [selectedTestbedId, setSelectedTestbedId] = useState<number | "">("");
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
 
   const [startDate, setStartDate] = useState(() => {
@@ -98,13 +92,12 @@ export function SimulatorReplayCanvas() {
   const playRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/testbeds").then(r => r.json()).then(d => setTestbeds(d.testbeds ?? [])).catch(() => toast.error("Failed to load testbeds"));
     fetchWithAuth("/api/admin/engines").then(r => r.json()).then(d => setEngines(d.engines ?? [])).catch(() => toast.error("Failed to load engine registry"));
   }, [fetchWithAuth]);
 
   const runReplay = async () => {
-    if (selectedTestbedId === "") {
-      toast.error("Select a testbed customer first");
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
       return;
     }
     setLoadingReplay(true);
@@ -118,7 +111,7 @@ export function SimulatorReplayCanvas() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          testbedCustomerId: Number(selectedTestbedId),
+          testbedCustomerId: selectedCustomerId,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate).toISOString(),
           stepDays: Number(stepDays),
@@ -178,16 +171,12 @@ export function SimulatorReplayCanvas() {
       {/* Controls */}
       <div className="shrink-0 border-b border-slate-900 p-4 space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <select
-            value={selectedTestbedId}
-            onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-          >
-            <option value="">-- Testbed Customer --</option>
-            {testbeds.map(tb => (
-              <option key={tb.id} value={tb.id}>{tb.name} {tb.domain ? `(${tb.domain})` : ""}</option>
-            ))}
-          </select>
+          <span className="text-xs text-slate-400">
+            Testbed:{" "}
+            <span className="text-slate-200 font-medium">
+              {selectedCustomer ? selectedCustomer.name : "none selected"}
+            </span>
+          </span>
           <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-36 h-8 bg-slate-900 border-slate-800 text-slate-200 text-xs [color-scheme:dark]" />
           <span className="text-slate-600 text-xs">to</span>
           <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-36 h-8 bg-slate-900 border-slate-800 text-slate-200 text-xs [color-scheme:dark]" />
@@ -232,7 +221,7 @@ export function SimulatorReplayCanvas() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {steps.length === 0 ? (
           <div className="border border-dashed border-slate-800 rounded-xl p-10 text-center text-sm text-slate-500">
-            Select a testbed customer and load a replay to see engine scores evolve across the compressed timeline.
+            Select a testbed customer in the header and load a replay to see engine scores evolve across the compressed timeline.
           </div>
         ) : (
           <>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 import { toast } from "sonner";
 import {
   RefreshCw,
@@ -8,12 +9,6 @@ import {
   AlertTriangle,
   Gauge,
 } from "lucide-react";
-
-interface Testbed {
-  id: number;
-  name: string;
-  domain?: string;
-}
 
 interface EngineSnapshot {
   engineKey: string;
@@ -47,8 +42,7 @@ function scoreColor(score: number | null): string {
  */
 export function SimulatorPortalSnapshot() {
   const { fetchWithAuth } = useAuth();
-  const [testbeds, setTestbeds] = useState<Testbed[]>([]);
-  const [selectedId, setSelectedId] = useState<number | "">("");
+  const { selectedCustomerId } = useTestbedContext();
   const [snapshot, setSnapshot] = useState<PortalSnapshot | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,13 +50,6 @@ export function SimulatorPortalSnapshot() {
   // Monotonic request id — a slow response for a previously-selected testbed
   // must not overwrite the snapshot of the currently-selected one.
   const requestSeq = useRef(0);
-
-  useEffect(() => {
-    fetchWithAuth("/api/admin/testbeds")
-      .then((r) => r.json())
-      .then((d) => setTestbeds(d.testbeds ?? []))
-      .catch(() => toast.error("Failed to load testbeds"));
-  }, [fetchWithAuth]);
 
   const loadSnapshot = useCallback(
     async (id: number) => {
@@ -87,25 +74,25 @@ export function SimulatorPortalSnapshot() {
   );
 
   useEffect(() => {
-    if (selectedId === "") {
+    if (selectedCustomerId == null) {
       setSnapshot(null);
       return;
     }
-    loadSnapshot(selectedId);
-  }, [selectedId, loadSnapshot]);
+    loadSnapshot(selectedCustomerId);
+  }, [selectedCustomerId, loadSnapshot]);
 
   // Fresh single-use token per click — tokens are consumed on first exchange,
   // so re-using one across opens can never work. Same-host path routing means
   // the portal is always at /portal on this origin (see .replit-artifact
   // manifests) — no hand-typed base URL.
   const openPortal = async () => {
-    if (selectedId === "") return;
+    if (selectedCustomerId == null) return;
     setOpening(true);
     // Open the tab synchronously inside the click gesture — popup blockers
     // reject window.open calls that happen after an await.
     const tab = window.open("", "_blank");
     try {
-      const res = await fetchWithAuth(`/api/admin/simulator/testbeds/${selectedId}/portal-mirror-token`, {
+      const res = await fetchWithAuth(`/api/admin/simulator/testbeds/${selectedCustomerId}/portal-mirror-token`, {
         method: "POST",
       });
       const data = await res.json();
@@ -124,23 +111,10 @@ export function SimulatorPortalSnapshot() {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background text-xs">
       <div className="shrink-0 space-y-2 border-b border-border p-2.5">
-        <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value === "" ? "" : Number(e.target.value))}
-          className="w-full rounded border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:border-ring focus:outline-none"
-        >
-          <option value="">Select testbed customer…</option>
-          {testbeds.map((tb) => (
-            <option key={tb.id} value={tb.id}>
-              {tb.name}
-              {tb.domain ? ` (${tb.domain})` : ""}
-            </option>
-          ))}
-        </select>
         <div className="flex gap-1.5">
           <button
-            onClick={() => selectedId !== "" && loadSnapshot(selectedId)}
-            disabled={selectedId === "" || loading}
+            onClick={() => selectedCustomerId != null && loadSnapshot(selectedCustomerId)}
+            disabled={selectedCustomerId == null || loading}
             className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded border border-border bg-card text-foreground transition-colors hover:bg-accent disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
@@ -148,7 +122,7 @@ export function SimulatorPortalSnapshot() {
           </button>
           <button
             onClick={openPortal}
-            disabled={selectedId === "" || opening || (snapshot !== null && !snapshot.hasPortalUser)}
+            disabled={selectedCustomerId == null || opening || (snapshot !== null && !snapshot.hasPortalUser)}
             title="Issues a fresh single-use impersonation token and opens the customer portal in a new tab"
             className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
@@ -159,11 +133,11 @@ export function SimulatorPortalSnapshot() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-        {selectedId === "" ? (
+        {selectedCustomerId == null ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <Gauge className="h-6 w-6 opacity-40" />
             <p className="max-w-[220px] leading-relaxed">
-              Select a testbed customer to see a snapshot of the state their portal dashboard renders.
+              Select a testbed customer in the header to see a snapshot of the state their portal dashboard renders.
             </p>
           </div>
         ) : loading && !snapshot ? (
