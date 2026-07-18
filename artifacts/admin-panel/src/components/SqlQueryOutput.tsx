@@ -1,6 +1,31 @@
 import { useState } from "react";
-import { Clock, Loader2, Table as TableIcon } from "lucide-react";
+import { Check, Clock, Copy, Loader2, Table as TableIcon } from "lucide-react";
 import type { SqlOutput } from "./SqlQueryCanvas";
+
+function CopyButton({
+  value,
+  title = "Copy",
+  className = "shrink-0 text-destructive/70 hover:text-destructive transition-colors",
+}: {
+  value: string;
+  title?: string;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        void navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className={className}
+      title={title}
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
+  );
+}
 
 // The bottom panel's Query Output tab — renders whatever the center canvas's
 // SQL Query editor (SqlQueryCanvas) last executed. Output state lives in
@@ -52,8 +77,11 @@ export function SqlQueryOutput({ output }: { output: SqlOutput }) {
         )}
 
         {!isExecuting && error && (
-          <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-[10px] text-destructive">
-            <strong>Query error:</strong> {error}
+          <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-[10px] text-destructive flex items-start justify-between gap-2">
+            <div>
+              <strong>Query error:</strong> {error}
+            </div>
+            <CopyButton value={error} title="Copy error" />
           </div>
         )}
 
@@ -62,7 +90,14 @@ export function SqlQueryOutput({ output }: { output: SqlOutput }) {
         )}
 
         {!isExecuting && !error && results && results.rows.length > 0 && view === "json" && (
-          <pre className="whitespace-pre leading-[1.65] text-foreground/90">{JSON.stringify(results.rows, null, 2)}</pre>
+          <div className="relative">
+            <CopyButton
+              value={JSON.stringify(results.rows, null, 2)}
+              title="Copy JSON"
+              className="absolute top-1 right-1 text-muted-foreground hover:text-foreground transition-colors"
+            />
+            <pre className="whitespace-pre leading-[1.65] text-foreground/90">{JSON.stringify(results.rows, null, 2)}</pre>
+          </div>
         )}
 
         {!isExecuting && !error && results && results.rows.length > 0 && view === "table" && (
