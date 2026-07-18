@@ -2626,6 +2626,7 @@ export const policyRulesTable = pgTable("policy_rules", {
   eventName: text("event_name").notNull(),
   cooldownMinutes: integer("cooldown_minutes").notNull().default(1440),
   escalationRules: jsonb("escalation_rules").$type<{ level: number; afterMinutes: number; eventName: string }[]>(),
+  resolvedEventName: text("resolved_event_name"),
   isActive: boolean("is_active").notNull().default(true),
   ruleVersion: integer("rule_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
