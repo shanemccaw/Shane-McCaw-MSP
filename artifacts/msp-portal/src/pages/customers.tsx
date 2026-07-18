@@ -672,6 +672,32 @@ export default function CustomersPage() {
                             <Edit className="size-4 mr-2 text-amber-400" />
                             Edit Customer
                           </DropdownMenuItem>
+                          {isPlatformAdmin && (
+                            <DropdownMenuItem
+                              disabled={!c.mspId}
+                              onClick={() => {
+                                if (!c.mspId) return;
+                                fetchWithAuth(`/api/msp/${c.mspId}/customers/${c.id}/impersonate`, {
+                                  method: "POST",
+                                })
+                                  .then(async (res) => {
+                                    if (!res.ok) return;
+                                    const data = (await res.json()) as { token?: string; targetSlug?: string };
+                                    if (data.token && data.targetSlug) {
+                                      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                                      window.open(
+                                        `${base}/?impersonation_token=${encodeURIComponent(data.token)}&target_slug=${encodeURIComponent(data.targetSlug)}`,
+                                        "_blank",
+                                      );
+                                    }
+                                  })
+                                  .catch(() => {});
+                              }}
+                            >
+                              <ShieldCheck className="size-4 mr-2 text-emerald-400" />
+                              Connect to Customer
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
