@@ -23,17 +23,25 @@ import {
   mspsTable,
   mspCustomersTable,
   mspEventStoreTable,
+  mspUsersTable,
   notificationsTable,
   messagesTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, desc, count, gte, like } from "drizzle-orm";
+import { eq, and, or, desc, count, gte, like } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-channels.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
+
+/**
+ * Shane's own MSP. CustomerUser escalations from this MSP route to platform
+ * admins (Shane's team runs it directly), same as MSP-staff escalations —
+ * see the routing table in escalateToAdmin().
+ */
+const PLATFORM_MSP_ID = 1;
 
 const log = logger.child({ channel: "growth.booking" });
 
@@ -176,6 +184,75 @@ Keep replies concise and professional. Use bullet points for lists.`;
 
 // ── Escalation helper ─────────────────────────────────────────────────────────
 
+/**
+ * A resolved escalation recipient. `mspUserId` is set for MSP-routed recipients
+ * (CustomerUser → their MSP's admins) so the notification row carries
+ * recipientType "msp_user" + mspId; `userId` is set for platform-admin
+ * recipients (recipientType "platform_admin"), matching the two fan-out
+ * patterns in workflow-executor.ts's approval-gate handler.
+ */
+type EscalationRecipient =
+  | { kind: "platform_admin"; userId: number; email: string | null }
+  | { kind: "msp_user"; mspUserId: number; mspId: number; email: string | null };
+
+/**
+ * Load every platform-admin user (role = "admin"). Fan-out to ALL of them, not
+ * a single arbitrary one — mirrors workflow-executor.ts's all-platform-admin
+ * branch (no .limit(1)).
+ */
+async function loadPlatformAdminRecipients(): Promise<EscalationRecipient[]> {
+  const admins = await db
+    .select({ id: usersTable.id, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.role, "admin"));
+  return admins.map((a) => ({ kind: "platform_admin" as const, userId: a.id, email: a.email }));
+}
+
+/**
+ * Resolve who a given escalation should notify, per the routing table:
+ *   - MSP staff (MSPAdmin/MSPOperator)                → all platform admins
+ *   - CustomerUser on the platform MSP (id === 1)      → all platform admins
+ *   - CustomerUser on any other MSP                    → that MSP's active MSPAdmins
+ *   - CustomerUser MSP with zero active MSPAdmins      → fall back to platform admins
+ *   - no resolvable mspId                              → all platform admins
+ * Mirrors the MSP-scoped fan-out query in workflow-executor.ts (active
+ * MSPAdmin / canApprovePurchases members joined to usersTable for email).
+ */
+async function resolveEscalationRecipients(opts: {
+  mspId: number | null;
+  isCustomerUser: boolean;
+}): Promise<EscalationRecipient[]> {
+  const routeToMsp =
+    opts.isCustomerUser && opts.mspId != null && opts.mspId !== PLATFORM_MSP_ID;
+
+  if (!routeToMsp) {
+    return loadPlatformAdminRecipients();
+  }
+
+  const mspId = opts.mspId as number;
+  const mspAdmins = await db
+    .select({ userId: mspUsersTable.userId, email: usersTable.email })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
+    .where(and(
+      eq(mspUsersTable.mspId, mspId),
+      eq(mspUsersTable.isActive, true),
+      or(eq(mspUsersTable.mspRole, "MSPAdmin"), eq(mspUsersTable.canApprovePurchases, true)),
+    ));
+
+  if (mspAdmins.length === 0) {
+    log.warn({ mspId }, "support-chat: MSP escalation with no active MSPAdmin — falling back to platform admins");
+    return loadPlatformAdminRecipients();
+  }
+
+  return mspAdmins.map((a) => ({
+    kind: "msp_user" as const,
+    mspUserId: a.userId,
+    mspId,
+    email: a.email,
+  }));
+}
+
 async function escalateToAdmin(opts: {
   question: string;
   aiReply: string;
@@ -187,48 +264,76 @@ async function escalateToAdmin(opts: {
 }): Promise<void> {
   try {
     const body = `Question: "${opts.question.slice(0, 300)}${opts.question.length > 300 ? "…" : ""}"\n\nAI reply: ${opts.aiReply.replace(/\[ESCALATE_TO_HUMAN\]/gi, "").trim().slice(0, 300)}`;
+    const displayName = opts.userName || opts.userEmail;
+    const title = `Support escalation from ${displayName}`;
 
-    const [adminUser] = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.role, "admin"))
-      .limit(1);
+    const recipients = await resolveEscalationRecipients(opts);
 
-    if (!adminUser) {
-      log.warn("support-chat: no admin user found for escalation");
+    if (recipients.length === 0) {
+      log.warn("support-chat: no recipients resolved for escalation");
       return;
     }
 
-    const displayName = opts.userName || opts.userEmail;
+    // One notification row per recipient (fan-out), matching the recipientType
+    // convention: "msp_user" carries mspUserId + mspId, "platform_admin"
+    // carries userId. See workflow-executor.ts's approval-gate handler.
+    const inserted = await db.insert(notificationsTable).values(
+      recipients.map((r) =>
+        r.kind === "msp_user"
+          ? {
+              mspUserId: r.mspUserId,
+              mspId: r.mspId,
+              recipientType: "msp_user" as const,
+              title,
+              body,
+              type: "message" as const,
+              category: "message",
+              severity: "warning" as const,
+              feedType: "personal" as const,
+            }
+          : {
+              userId: r.userId,
+              recipientType: "platform_admin" as const,
+              title,
+              body,
+              type: "message" as const,
+              category: "message",
+              severity: "warning" as const,
+              feedType: "personal" as const,
+              ...(opts.mspId ? { mspId: opts.mspId } : {}),
+            },
+      ),
+    ).returning({ id: notificationsTable.id, userId: notificationsTable.userId, createdAt: notificationsTable.createdAt });
 
-    const [notif] = await db.insert(notificationsTable).values({
-      userId: adminUser.id,
-      title: `Support escalation from ${displayName}`,
-      body,
-      type: "message",
-      category: "message",
-      severity: "warning",
-      feedType: "personal",
-      recipientType: "platform_admin",
-      ...(opts.mspId ? { mspId: opts.mspId } : {}),
-    }).returning({ id: notificationsTable.id, createdAt: notificationsTable.createdAt });
-
-    if (notif) {
-      broadcastNotification(adminUser.id, {
-        id: notif.id,
-        title: `Support escalation from ${displayName}`,
+    // SSE push to each platform-admin recipient's stream (SSE channels are keyed
+    // on usersTable.id, which only platform-admin rows carry here).
+    for (const row of inserted) {
+      if (row.userId == null) continue;
+      broadcastNotification(row.userId, {
+        id: row.id,
+        title,
         body,
         type: "message",
         category: "message",
         severity: "warning",
         feedType: "personal",
         read: false,
-        createdAt: notif.createdAt.toISOString(),
+        createdAt: row.createdAt.toISOString(),
       });
-      broadcastUnreadCount(adminUser.id, 1);
+      broadcastUnreadCount(row.userId, 1);
     }
 
-    // For CustomerUser: create a messagesTable row so Shane can reply in-thread
+    // Email every resolved recipient via Exchange Online / Microsoft Graph.
+    // Dynamic import (like workflow-executor.ts's approval-gate handler) so the
+    // mailer's Graph transport chain isn't pulled into this route's static
+    // import graph. sendEmail routes through mailer.ts → Graph; never Resend.
+    const { sendEmail } = await import("../lib/mailer.ts");
+    const emailBodyHtml = `<p>${title}</p><p style="white-space:pre-wrap">${body}</p><p>Log in to review and reply.</p>`;
+    for (const r of recipients) {
+      if (r.email) void sendEmail(r.email, title, emailBodyHtml, { templateName: "support-escalation" });
+    }
+
+    // For CustomerUser: create a messagesTable row so it shows in the inbox thread.
     if (opts.isCustomerUser && opts.userId) {
       await db.insert(messagesTable).values({
         clientUserId: opts.userId,
@@ -241,6 +346,28 @@ async function escalateToAdmin(opts: {
   } catch (err) {
     log.error({ err }, "support-chat: escalation error");
   }
+}
+
+/**
+ * Support chat is a tenant-scoped tool (MSP staff or customer users asking about
+ * their own MSP's data). A PlatformAdmin with no resolvable MSP context has no
+ * tenant to ground answers in, so the endpoints reject rather than fall back to
+ * an un-grounded "platform administrator" persona. Returns true when the request
+ * was rejected (response already sent).
+ */
+function rejectPlatformAdminWithoutMsp(
+  user: NonNullable<Request["user"]>,
+  mspId: number | null,
+  res: Response,
+): boolean {
+  const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+  if (isPlatformAdmin && mspId == null) {
+    res.status(403).json({
+      error: "Support chat isn't available for PlatformAdmin. Select or impersonate a specific MSP to use it.",
+    });
+    return true;
+  }
+  return false;
 }
 
 // ── POST /api/msp/support/chat ────────────────────────────────────────────────
@@ -264,6 +391,8 @@ router.post(
     const customerId = user.customerId ?? null;
     const isCustomerUser = user.mspRole === "CustomerUser";
 
+    if (rejectPlatformAdminWithoutMsp(user, mspId, res)) return;
+
     let groundedCtx: GroundedContext;
     try {
       if (isCustomerUser && customerId) {
@@ -271,10 +400,9 @@ router.post(
       } else if (mspId) {
         groundedCtx = await buildMspContext(mspId);
       } else {
-        groundedCtx = {
-          identity: "platform administrator",
-          summary: "You have full platform access. Answer platform-level questions from your general knowledge of the system.",
-        };
+        // Non-admin user with no resolvable MSP context (e.g. a malformed/legacy
+        // account). The PlatformAdmin case is already rejected above.
+        groundedCtx = { identity: "platform user", summary: "Platform data temporarily unavailable." };
       }
     } catch (err) {
       log.error({ err }, "support-chat: failed to build grounded context");
@@ -343,6 +471,8 @@ router.post(
 
     const mspId = await resolveMspId(req);
     const isCustomerUser = user.mspRole === "CustomerUser";
+
+    if (rejectPlatformAdminWithoutMsp(user, mspId, res)) return;
 
     await escalateToAdmin({
       question: question ?? "(no question provided)",

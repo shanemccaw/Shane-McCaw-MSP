@@ -21,6 +21,7 @@ import {
   ArrowRight,
   MessageCircle,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -225,6 +226,25 @@ export default function SupportChatPage() {
   };
 
   const isEmpty = messages.filter((m) => m.role === "user").length === 0;
+
+  // Support chat is tenant-scoped; PlatformAdmin has no MSP context to ground
+  // answers in (the backend rejects chat/escalate with 403). Show a clear
+  // notice instead of the chat UI — matches the settings-page convention.
+  // Placed after all hooks so hook order stays stable across renders.
+  const isPlatformAdmin = user?.role === "admin" || user?.mspRole === "PlatformAdmin";
+  if (isPlatformAdmin) {
+    return (
+      <AppShell>
+        <div className="max-w-md mx-auto mt-16 rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+          <Lock className="h-10 w-10 mx-auto text-destructive mb-3" />
+          <h3 className="text-lg font-semibold text-foreground mb-1">Support chat isn't available for PlatformAdmin</h3>
+          <p className="text-sm text-muted-foreground">
+            Support chat is scoped to a specific MSP's data. Select or impersonate an MSP to use it.
+          </p>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
