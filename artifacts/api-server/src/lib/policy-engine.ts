@@ -19,6 +19,16 @@ import { emitWorkflowEvent } from "./workflow-executor";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.policy" });
 
+function computeRuleCategory(rule: { conditionType: string; signalKeyPrefix: string | null; engineKey: string | null }): string {
+  if (rule.conditionType === "signal" && rule.signalKeyPrefix) {
+    return rule.signalKeyPrefix.split(":")[0];
+  }
+  if (rule.conditionType === "score_threshold" && rule.engineKey) {
+    return rule.engineKey;
+  }
+  return "uncategorized";
+}
+
 async function evaluatePoliciesForCustomer(
   customerId: number,
   mspId: number,
@@ -130,7 +140,7 @@ async function evaluatePoliciesForCustomer(
         if (!openIncident) {
           const level1 = [...rule.escalationRules].sort((a, b) => a.level - b.level)[0];
           await emitWorkflowEvent(level1.eventName, {
-            customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: level1.level,
+            customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: level1.level, category: computeRuleCategory(rule),
           });
           await db.insert(policyRuleIncidentsTable).values({
             ruleId: rule.id, customerId, mspId, status: "open", currentLevel: level1.level, lastEscalatedAt: new Date(),
@@ -144,7 +154,7 @@ async function evaluatePoliciesForCustomer(
             const minutesSince = sinceLastEscalation / 60000;
             if (minutesSince >= nextLevel.afterMinutes) {
               await emitWorkflowEvent(nextLevel.eventName, {
-                customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: nextLevel.level,
+                customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: nextLevel.level, category: computeRuleCategory(rule),
               });
               await db
                 .update(policyRuleIncidentsTable)
@@ -171,6 +181,7 @@ async function evaluatePoliciesForCustomer(
           ruleName: rule.name,
           severity: rule.severity,
           conditionType: rule.conditionType,
+          category: computeRuleCategory(rule),
         });
 
         await db.insert(policyRuleFiringsTable).values({
@@ -193,6 +204,9 @@ async function evaluatePoliciesForCustomer(
       .select({
         incident: policyRuleIncidentsTable,
         resolvedEventName: policyRulesTable.resolvedEventName,
+        conditionType: policyRulesTable.conditionType,
+        signalKeyPrefix: policyRulesTable.signalKeyPrefix,
+        engineKey: policyRulesTable.engineKey,
       })
       .from(policyRuleIncidentsTable)
       .innerJoin(policyRulesTable, eq(policyRuleIncidentsTable.ruleId, policyRulesTable.id))
@@ -200,11 +214,11 @@ async function evaluatePoliciesForCustomer(
         eq(policyRuleIncidentsTable.customerId, customerId),
         eq(policyRuleIncidentsTable.status, "open"),
       ));
-    for (const { incident, resolvedEventName } of openIncidents) {
+    for (const { incident, resolvedEventName, conditionType, signalKeyPrefix, engineKey } of openIncidents) {
       if (!matchedRuleIds.has(incident.ruleId)) {
         if (resolvedEventName) {
           await emitWorkflowEvent(resolvedEventName, {
-            customerId, mspId, ruleId: incident.ruleId, incidentId: incident.id,
+            customerId, mspId, ruleId: incident.ruleId, incidentId: incident.id, category: computeRuleCategory({ conditionType, signalKeyPrefix, engineKey }),
           });
         }
         await db
