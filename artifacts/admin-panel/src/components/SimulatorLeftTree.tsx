@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   ListChecks,
   Loader2,
+  Cpu,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -64,6 +65,14 @@ interface TestSuite {
   updatedAt: string;
 }
 
+interface EngineDefSummary {
+  key: string;
+  label: string;
+  description: string;
+  categoryPrefix: string;
+  tenantScoped: boolean;
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -76,11 +85,14 @@ export function SimulatorLeftTree() {
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [suites, setSuites] = useState<TestSuite[]>([]);
+  const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [triggeringException, setTriggeringException] = useState(false);
   // Suites with an in-flight run — spinner on the row, re-run blocked.
   const [runningSuites, setRunningSuites] = useState<Record<number, boolean>>({});
+  // Engines with an in-flight run — spinner on the row, re-run blocked.
+  const [runningEngines, setRunningEngines] = useState<Record<string, boolean>>({});
   const pollTimersRef = useRef<number[]>([]);
 
   // Tree toggle states
@@ -88,6 +100,7 @@ export function SimulatorLeftTree() {
   const [scriptsOpen, setScriptsOpen] = useState(true);
   const [exceptionsOpen, setExceptionsOpen] = useState(true);
   const [suitesOpen, setSuitesOpen] = useState(true);
+  const [enginesOpen, setEnginesOpen] = useState(true);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
@@ -157,6 +170,13 @@ export function SimulatorLeftTree() {
       if (suitesRes.ok) {
         const suitesData = await suitesRes.json();
         setSuites(suitesData.suites || []);
+      }
+
+      // 4. Fetch engine registry
+      const enginesRes = await fetchWithAuth("/api/admin/engines");
+      if (enginesRes.ok) {
+        const enginesData = await enginesRes.json();
+        setEngines(enginesData.engines || []);
       }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
@@ -351,6 +371,32 @@ export function SimulatorLeftTree() {
     } catch (err: any) {
       setRunningSuites((prev) => ({ ...prev, [suite.id]: false }));
       toast.error(err.message || "Network error starting suite run");
+    }
+  };
+
+  const handleEngineRun = async (engine: EngineDefSummary) => {
+    if (runningEngines[engine.key]) return;
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
+      return;
+    }
+    setRunningEngines((prev) => ({ ...prev, [engine.key]: true }));
+    try {
+      const res = await fetchWithAuth(`/api/admin/engines/${engine.key}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: selectedCustomerId, debug: true }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`${engine.key} ran against real tenant data`);
+      } else {
+        toast.error(data.error || "Engine run failed");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error running engine");
+    } finally {
+      setRunningEngines((prev) => ({ ...prev, [engine.key]: false }));
     }
   };
 
@@ -691,6 +737,64 @@ export function SimulatorLeftTree() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 5: Engines */}
+        <div>
+          <div
+            onClick={() => setEnginesOpen(!enginesOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {enginesOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span className="truncate">Engines</span>
+          </div>
+
+          {enginesOpen && (
+            <div>
+              {engines.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No engines</div>
+              ) : (
+                engines.map((engine) => {
+                  const isRunning = !!runningEngines[engine.key];
+                  return (
+                    <ContextMenu key={engine.key}>
+                      <ContextMenuTrigger asChild>
+                        <div
+                          onClick={() => handleEngineRun(engine)}
+                          className={`group flex h-[22px] items-center gap-1.5 pl-4 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground ${
+                            isRunning ? "cursor-default opacity-60" : "cursor-pointer"
+                          }`}
+                        >
+                          {isRunning ? (
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-label="Engine run in progress" />
+                          ) : (
+                            <Cpu className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+                          )}
+                          <span className="flex-1 truncate" title={engine.description || engine.label}>
+                            {engine.label}
+                          </span>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-44">
+                        <ContextMenuItem
+                          onSelect={() => handleEngineRun(engine)}
+                          disabled={isRunning}
+                          className="gap-2 text-xs"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          Run
                         </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
