@@ -29,6 +29,12 @@ import {
 } from "@workspace/dashboard-canvas";
 import { EyeOff, Loader2, LayoutDashboard, Pencil, RotateCcw, Save, X } from "lucide-react";
 
+// Dashboard Designer lives in the admin-panel app, not here — same-origin,
+// path-prefixed deployment (see ImpersonationBanner's "/admin-panel/..." exit
+// route for the existing precedent), so a plain cross-app href is correct;
+// client-side routing can't cross the app boundary.
+const DASHBOARD_DESIGNER_URL = `${window.location.origin}/admin-panel/content/dashboard-designer`;
+
 interface ResolvedDashboard {
   configured: boolean;
   editable?: boolean;
@@ -45,8 +51,14 @@ export interface DashboardViewProps {
 }
 
 export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps) {
-  const { fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth } = useAuth();
   const fetcher = useMemo(() => createDashboardDataFetcher(fetchWithAuth), [fetchWithAuth]);
+
+  // Only roles that can plausibly go build a template get the CTA — a
+  // CustomerUser can only edit within a template already assigned to them
+  // (see the constrained-editing note in this file's header comment).
+  const effectiveRole = user?.role === "admin" ? "PlatformAdmin" : user?.mspRole;
+  const canCreateDashboard = effectiveRole === "PlatformAdmin" || effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator";
 
   const [resolved, setResolved] = useState<ResolvedDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,8 +185,18 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
         <LayoutDashboard className="size-10 text-muted-foreground/30 mb-3" />
         <p className="font-medium text-sm text-muted-foreground">No dashboard configured yet</p>
         <p className="text-xs text-muted-foreground/80 mt-1 max-w-xs">
-          Your MSP hasn't set up a dashboard for this view yet. Check back later.
+          {canCreateDashboard
+            ? "Build a dashboard template in the Designer to get started."
+            : "Your MSP hasn't set up a dashboard for this view yet. Check back later."}
         </p>
+        {canCreateDashboard && (
+          <Button asChild size="sm" className="mt-4">
+            <a href={DASHBOARD_DESIGNER_URL}>
+              <LayoutDashboard className="size-3.5" />
+              Create Dashboard
+            </a>
+          </Button>
+        )}
       </div>
     );
   }

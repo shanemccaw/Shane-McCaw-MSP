@@ -36,6 +36,7 @@ import {
   Radio,
   Inbox as InboxIcon,
   ListChecks,
+  ListFilter,
   Package,
   Gauge,
   FileStack,
@@ -263,6 +264,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "del-activity", label: "Activity Logs", path: "/delivery/activity-logs", icon: Activity },
           { id: "del-hub-storage", label: "Hub Storage", path: "/delivery/hub-storage", icon: Database },
           { id: "del-tenant-signals", label: "Tenant Signals", path: "/delivery/tenant-signals", icon: Radio },
+          { id: "del-signal-rules", label: "Signal Rules", path: "/delivery/signal-rules", icon: ListFilter },
         ],
       },
       {
@@ -370,6 +372,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "con-email-templates", label: "Email Templates", path: "/content/email-templates", icon: MailPlus },
           { id: "con-contract-templates", label: "Contract Templates", path: "/content/contract-templates", icon: FileSignature },
           { id: "con-template-library", label: "Template Library", path: "/content/template-library", icon: Library },
+          { id: "con-dashboard-designer", label: "Dashboard Designer", path: "/content/dashboard-designer", icon: LayoutDashboard },
         ],
       },
       {
@@ -415,7 +418,6 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-platform-revenue", label: "Platform Revenue", path: "/system/platform-revenue", icon: DollarSign },
           { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
           { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
-          { id: "sys-dashboard-designer", label: "Dashboard Designer", path: "/system/dashboard-designer", icon: LayoutDashboard },
         ],
       },
       {

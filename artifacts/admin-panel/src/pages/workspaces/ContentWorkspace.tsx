@@ -6,6 +6,7 @@ import EmailTemplatesPage from "@/pages/EmailTemplates";
 import ContractTemplatesPage from "@/pages/ContractTemplates";
 import TemplateLibraryPage from "@/pages/templates/TemplateLibrary";
 import InstructionSetsPage from "@/pages/asset-library/InstructionSetsPage";
+import DashboardDesignerPage from "@/pages/dashboard-designer";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -15,6 +16,7 @@ function getContent(section: string): ReactNode {
     case "contract-templates":    return <ContractTemplatesPage />;
     case "template-library":      return <TemplateLibraryPage />;
     case "asset-library":         return <InstructionSetsPage />;
+    case "dashboard-designer":    return <DashboardDesignerPage />;
     default:                      return <ArticlesPage />;
   }
 }

@@ -174,6 +174,10 @@ function Router() {
       <Route path="/system">
         <Redirect to="/system/inbox" />
       </Route>
+      {/* Dashboard Designer moved to Content & Offers workspace — old bookmarks redirect */}
+      <Route path="/system/dashboard-designer">
+        <Redirect to="/content/dashboard-designer" />
+      </Route>
       <Route path="/system/:section">
         {(params) => (
           <AdminRoute>
