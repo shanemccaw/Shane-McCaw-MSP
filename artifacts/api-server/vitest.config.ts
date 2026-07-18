@@ -74,6 +74,7 @@ export default defineConfig({
       "src/routes/portal-retainer-billing.test.ts",
       "src/routes/dashboard-data.test.ts",
       "src/routes/dashboard-templates.test.ts",
+      "src/routes/dashboard-overrides.test.ts",
     ],
     coverage: {
       provider: "v8",

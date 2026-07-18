@@ -446,6 +446,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
+      {
+        icon: LayoutDashboard,
+        label: "Widget Dashboard",
+        href: "/msp-dashboard",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
     ],
   },
   {
@@ -455,6 +461,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Home,
         label: "Home",
         href: "/customer-home",
+        roles: ["CustomerUser"],
+      },
+      {
+        icon: LayoutDashboard,
+        label: "Dashboard",
+        href: "/customer-dashboard",
         roles: ["CustomerUser"],
       },
       {

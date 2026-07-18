@@ -69,6 +69,8 @@ import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
+import MspWidgetDashboardPage from "@/pages/msp-dashboard";
+import CustomerDashboardPage from "@/pages/customer-dashboard";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -216,6 +218,9 @@ function SlugInnerSwitch() {
       <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
       </Route>
+      <Route path="/msp-dashboard">
+        <ProtectedRoute component={MspWidgetDashboardPage} />
+      </Route>
       <Route path="/customers/:id">
         <ProtectedRoute component={CustomerDetailPage} />
       </Route>
@@ -316,6 +321,9 @@ function SlugInnerSwitch() {
       {/* Customer-facing pages */}
       <Route path="/customer-home">
         <ProtectedRoute component={CustomerHomePage} />
+      </Route>
+      <Route path="/customer-dashboard">
+        <ProtectedRoute component={CustomerDashboardPage} />
       </Route>
       <Route path="/command-center">
         <ProtectedRoute component={CommandCenterPage} />
