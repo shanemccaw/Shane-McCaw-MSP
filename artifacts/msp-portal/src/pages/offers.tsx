@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useMspSlug } from "@/lib/slug-context";
+import { useMspSlug, useMspId } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -660,6 +660,7 @@ function PipelineStats({ offers }: { offers: SalesOffer[] }) {
 export default function OffersPage() {
   const { fetchWithAuth, accessToken } = useAuth();
   const mspSlug = useMspSlug();
+  const mspId = useMspId();
   const [offers, setOffers] = useState<SalesOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [stateFilter, setStateFilter] = useState<string>("all");
@@ -670,13 +671,13 @@ export default function OffersPage() {
 
   const loadOffers = useCallback(
     async (silent = false) => {
+      if (!mspId) return;
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
         const params = new URLSearchParams({ limit: "200" });
         if (stateFilter !== "all") params.set("state", stateFilter);
-        if (mspSlug) params.set("slug", mspSlug);
-        const res = await fetchWithAuth(`/api/msp/sales-offers?${params}`);
+        const res = await fetchWithAuth(`/api/msp/${mspId}/sales-offers?${params}`);
         if (!res.ok) return;
         const data = (await res.json()) as { offers: SalesOffer[] };
         setOffers(data.offers ?? []);
@@ -687,7 +688,7 @@ export default function OffersPage() {
         setRefreshing(false);
       }
     },
-    [fetchWithAuth, mspSlug, stateFilter],
+    [fetchWithAuth, mspId, stateFilter],
   );
 
   useEffect(() => {

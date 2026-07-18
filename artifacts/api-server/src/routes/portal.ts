@@ -3,7 +3,6 @@ import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTab
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
-import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -14028,21 +14027,24 @@ router.patch("/admin/fulfillment-queue/:id/status", requireAdmin, async (req: Re
   }
 });
 
-// GET /api/msp/fulfillment-queue
+// GET /api/msp/:mspId/fulfillment-queue
 // MSP-scoped Chargeback ledger — everything this MSP has purchased across all
 // three fulfillment_queue source types (offer/sow/bundle), with per-item
 // wholesaleChargedCents (owed to the platform) and customerQuoteCents (what
 // the MSP charged their own customer) shown side by side.
 //
-// Hard multi-tenant boundary: for MSPAdmin/MSPOperator, resolveMspId() reads
-// mspId directly off the verified JWT claim — the query string is never
-// consulted for these roles, so a forged ?mspId= is silently ignored. Only
-// PlatformAdmin/legacy admin may pass ?mspId= (or ?slug=) to inspect a
-// specific MSP, matching the existing /msp/sows override precedent.
-router.get("/msp/fulfillment-queue", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+// Hard multi-tenant boundary: requireMspScope enforces that MSPAdmin/MSPOperator
+// can only request their own :mspId (403 on mismatch, pure JWT comparison, no DB
+// lookup). PlatformAdmin/legacy admin bypass the scope check and may pass any
+// :mspId to inspect a specific MSP.
+router.get(
+  "/msp/:mspId/fulfillment-queue",
+  requireRole("MSPOperator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
   try {
-    const mspId = await resolveMspId(req);
-    if (!mspId) { res.status(403).json({ error: "MSP scope required" }); return; }
+    const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+    if (isNaN(mspId)) { res.status(400).json({ error: "Invalid mspId" }); return; }
 
     const { status, sourceType, overdue, q, from, to } = req.query as Record<string, string | undefined>;
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? ""), 10) || 20));

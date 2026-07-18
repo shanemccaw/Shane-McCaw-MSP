@@ -4,14 +4,14 @@
  * Shows everything this MSP has purchased across all three fulfillment_queue
  * source types (offer/sow/bundle), with wholesaleChargedCents (what the MSP
  * owes the platform) and customerQuoteCents (what the MSP charged their own
- * customer) shown side by side per row. Backed by GET /api/msp/fulfillment-queue,
- * which is hard-scoped server-side to the caller's mspId.
+ * customer) shown side by side per row. Backed by GET /api/msp/:mspId/fulfillment-queue,
+ * which is hard-scoped server-side via requireMspScope.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
-import { useMspSlug } from "@/lib/slug-context";
+import { useMspId } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -125,7 +125,7 @@ const PAGE_SIZE = 20;
 
 export default function ChargebackPage() {
   const { fetchWithAuth } = useAuth();
-  const mspSlug = useMspSlug();
+  const mspId = useMspId();
 
   const [items, setItems] = useState<ChargebackItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -146,6 +146,7 @@ export default function ChargebackPage() {
 
   const fetchItems = useCallback(
     async (p = page) => {
+      if (!mspId) return;
       setLoading(true);
       setError(null);
       try {
@@ -159,9 +160,8 @@ export default function ChargebackPage() {
         if (overdueOnly) params.set("overdue", "1");
         if (dateFrom) params.set("from", dateFrom);
         if (dateTo) params.set("to", dateTo);
-        if (mspSlug) params.set("slug", mspSlug);
 
-        const res = await fetchWithAuth(`/api/msp/fulfillment-queue?${params}`);
+        const res = await fetchWithAuth(`/api/msp/${mspId}/fulfillment-queue?${params}`);
         if (!res.ok) {
           setError("Failed to load your purchase ledger. Please try again.");
           setItems([]);
@@ -183,7 +183,7 @@ export default function ChargebackPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fetchWithAuth, mspSlug, search, statusFilter, sourceTypeFilter, overdueOnly, dateFrom, dateTo],
+    [fetchWithAuth, mspId, search, statusFilter, sourceTypeFilter, overdueOnly, dateFrom, dateTo],
   );
 
   useEffect(() => { void fetchItems(page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps

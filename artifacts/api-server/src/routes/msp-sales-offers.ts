@@ -6,10 +6,12 @@
  * Auth: requireRole("MSPOperator") — MSP JWT with at least MSPOperator role.
  * Plan: requirePlanFeature("sales_offers") on write operations.
  * Scope: all queries are automatically filtered to the caller's mspId.
- *        PlatformAdmin may pass ?mspId= to operate on any MSP's offers.
  *
  * Routes:
- *   GET    /api/msp/sales-offers              — list offers for this MSP
+ *   GET    /api/msp/:mspId/sales-offers       — list offers for this MSP
+ *                                                (requireMspScope: PlatformAdmin may
+ *                                                pass any :mspId; everyone else must
+ *                                                match their own JWT mspId)
  *   GET    /api/msp/sales-offers/sse          — SSE stream for real-time updates
  *   POST   /api/msp/sales-offers/generate     — run engine + persist drafts
  *   POST   /api/msp/sales-offers/expire-stale — expire overdue sent offers
@@ -30,7 +32,7 @@ import {
   type SalesOfferState,
 } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, requireMspScope } from "../middlewares/requireAuth";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -60,14 +62,15 @@ function apiErr(res: Response, status: number, message: string): void {
 /** Resolve the calling MSP's id from the JWT.
  *  PlatformAdmin can override with ?mspId= query param. */
 
-// ── GET /api/msp/sales-offers ─────────────────────────────────────────────────
+// ── GET /api/msp/:mspId/sales-offers ──────────────────────────────────────────
 
 router.get(
-  "/msp/sales-offers",
+  "/msp/:mspId/sales-offers",
   requireRole("MSPOperator"),
+  requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
-    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+    const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+    if (isNaN(mspId)) { apiErr(res, 400, "mspId must be a number"); return; }
 
     try {
       const state = req.query["state"] as SalesOfferState | undefined;
@@ -89,7 +92,7 @@ router.get(
 
       res.json({ offers, limit, offset });
     } catch (err) {
-      log.error({ err, mspId }, "GET /api/msp/sales-offers failed");
+      log.error({ err, mspId }, "GET /api/msp/:mspId/sales-offers failed");
       apiErr(res, 500, "Failed to list offers");
     }
   },

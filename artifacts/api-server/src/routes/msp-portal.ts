@@ -1,6 +1,9 @@
 /**
  * MSP Portal routes — scoped to authenticated MSP users.
  *
+ * Identity:
+ *   GET  /api/msp/resolve-slug/:slug — resolve a tenant slug to its numeric mspId
+ *
  * Dashboard:
  *   GET  /api/msp/dashboard          — KPIs: signals fired, offer acceptance, revenue
  *
@@ -23,6 +26,9 @@ import { getAiBalance } from "../lib/ai-billing.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
+import { logger } from "../lib/logger.ts";
+
+const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
 
@@ -48,6 +54,37 @@ function startOfMonth(): Date {
 }
 
 /** Returns the mspId to use for the request — throws if none available. */
+
+// ── GET /api/msp/resolve-slug/:slug ────────────────────────────────────────────
+// Resolves a tenant slug to its numeric mspId. Used by the frontend SlugProvider
+// so slug-scoped pages can call the numeric /msps/:mspId/... + requireMspScope
+// convention instead of leaking the slug into query params.
+// Any authenticated portal user may resolve any slug — no tenant-membership check —
+// requireMspScope on the downstream route is what actually enforces tenant isolation.
+
+router.get(
+  "/msp/resolve-slug/:slug",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const slug = String(req.params.slug ?? "").trim();
+      if (!slug) { apiError(res, 400, ApiErrorCode.VALIDATION, "slug is required"); return; }
+
+      const [row] = await db
+        .select({ id: mspsTable.id })
+        .from(mspsTable)
+        .where(eq(mspsTable.slug, slug))
+        .limit(1);
+
+      if (!row) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "Tenant not found"); return; }
+      res.json({ mspId: row.id });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/resolve-slug/:slug failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  },
+);
 
 // ── GET /api/msp/portfolio-risk ────────────────────────────────────────────────
 
