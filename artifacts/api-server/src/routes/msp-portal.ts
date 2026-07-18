@@ -59,8 +59,9 @@ function startOfMonth(): Date {
 // Resolves a tenant slug to its numeric mspId. Used by the frontend SlugProvider
 // so slug-scoped pages can call the numeric /msps/:mspId/... + requireMspScope
 // convention instead of leaking the slug into query params.
-// Any authenticated portal user may resolve any slug — no tenant-membership check —
-// requireMspScope on the downstream route is what actually enforces tenant isolation.
+// PlatformAdmin may resolve any slug (cross-tenant); every other role may only
+// resolve a slug that belongs to their own session mspId. This mirrors the
+// tenant-isolation enforced by requireMspScope on the downstream numeric routes.
 
 router.get(
   "/msp/resolve-slug/:slug",
@@ -77,6 +78,17 @@ router.get(
         .limit(1);
 
       if (!row) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "Tenant not found"); return; }
+
+      // Tenant isolation: PlatformAdmin (legacy role === "admin" or mspRole ===
+      // "PlatformAdmin") may resolve any slug; everyone else may only resolve a
+      // slug whose mspId matches their own session mspId.
+      const user = req.user!;
+      const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+      if (!isPlatformAdmin && row.id !== user.mspId) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this tenant is not permitted");
+        return;
+      }
+
       res.json({ mspId: row.id });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/resolve-slug/:slug failed");

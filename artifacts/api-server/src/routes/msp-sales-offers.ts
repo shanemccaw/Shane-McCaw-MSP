@@ -14,8 +14,10 @@
  *                                                match their own JWT mspId)
  *   GET    /api/msp/sales-offers/sse          — SSE stream for real-time updates
  *   POST   /api/msp/sales-offers/generate     — run engine + persist drafts
- *   POST   /api/msp/sales-offers/expire-stale — expire overdue sent offers
- *   GET    /api/msp/sales-offers/:id          — get single offer
+ *   POST   /api/msp/:mspId/sales-offers/expire-stale — expire overdue sent offers
+ *                                                (requireMspScope, path-based mspId)
+ *   GET    /api/msp/:mspId/sales-offers/:id    — get single offer
+ *                                                (requireMspScope, path-based mspId)
  *   GET    /api/msp/sales-offers/:id/events   — get offer event log
  *   PATCH  /api/msp/sales-offers/:id          — edit title / rationale (draft only)
  *   PATCH  /api/msp/sales-offers/:id/state    — transition offer state
@@ -194,34 +196,36 @@ router.post(
   },
 );
 
-// ── POST /api/msp/sales-offers/expire-stale ──────────────────────────────────
+// ── POST /api/msp/:mspId/sales-offers/expire-stale ───────────────────────────
 
 router.post(
-  "/msp/sales-offers/expire-stale",
+  "/msp/:mspId/sales-offers/expire-stale",
   requireRole("MSPOperator"),
+  requireMspScope("params"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
-    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+    const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+    if (isNaN(mspId)) { apiErr(res, 400, "mspId must be a number"); return; }
 
     try {
-      const expired = await expireStaleSalesOffers();
+      const expired = await expireStaleSalesOffers(mspId);
       res.json({ expired });
     } catch (err) {
-      log.error({ err, mspId }, "POST /api/msp/sales-offers/expire-stale failed");
+      log.error({ err, mspId }, "POST /api/msp/:mspId/sales-offers/expire-stale failed");
       apiErr(res, 500, "Failed to expire stale offers");
     }
   },
 );
 
-// ── GET /api/msp/sales-offers/:id ────────────────────────────────────────────
+// ── GET /api/msp/:mspId/sales-offers/:id ─────────────────────────────────────
 
 router.get(
-  "/msp/sales-offers/:id",
+  "/msp/:mspId/sales-offers/:id",
   requireRole("MSPOperator"),
+  requireMspScope("params"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = await resolveMspId(req);
-    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+    const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+    if (isNaN(mspId)) { apiErr(res, 400, "mspId must be a number"); return; }
 
     try {
       const id = parseInt(String(req.params["id"] ?? ""), 10);
@@ -236,7 +240,7 @@ router.get(
       if (!offer) { apiErr(res, 404, "Offer not found"); return; }
       res.json({ offer });
     } catch (err) {
-      log.error({ err, mspId }, "GET /api/msp/sales-offers/:id failed");
+      log.error({ err, mspId }, "GET /api/msp/:mspId/sales-offers/:id failed");
       apiErr(res, 500, "Failed to fetch offer");
     }
   },

@@ -393,17 +393,22 @@ export async function transitionOfferState(
 /**
  * Mark sent offers whose expiresAt has passed as expired.
  * Safe to call on a schedule — all updates are idempotent.
+ *
+ * @param mspId When provided, scopes the sweep to that MSP's offers only.
+ *   When omitted, sweeps every MSP's overdue offers platform-wide — this
+ *   unscoped mode is intended solely for the platform-admin sweep route.
  */
-export async function expireStaleSalesOffers(): Promise<number> {
+export async function expireStaleSalesOffers(mspId?: number): Promise<number> {
+  const conditions = [
+    eq(salesOffersTable.state, "sent"),
+    sql`expires_at IS NOT NULL AND expires_at < NOW()`,
+  ];
+  if (mspId != null) conditions.push(eq(salesOffersTable.mspId, mspId));
+
   const rows = await db
     .update(salesOffersTable)
     .set({ state: "expired", closedAt: new Date(), updatedAt: new Date() })
-    .where(
-      and(
-        eq(salesOffersTable.state, "sent"),
-        sql`expires_at IS NOT NULL AND expires_at < NOW()`,
-      ),
-    )
+    .where(and(...conditions))
     .returning({ id: salesOffersTable.id });
 
   for (const row of rows) {

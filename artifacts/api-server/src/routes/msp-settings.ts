@@ -654,6 +654,14 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
 
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: mspUsersTable.id })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
   await writeAuditLog({
     req,
     actionType: "user.password.reset_email_sent",
@@ -669,6 +677,14 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: mspUsersTable.id })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
   const tempPassword = `Temp-${randomBytes(6).toString("hex")}`;
 
@@ -687,6 +703,14 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: mspUsersTable.id })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
   await writeAuditLog({
     req,
@@ -751,6 +775,14 @@ router.delete("/msp/settings/users/:userId/sessions", requireRole("MSPAdmin"), a
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
   if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  // Ownership check: the target user must belong to the caller's MSP.
+  const [target] = await db
+    .select({ id: mspUsersTable.id })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
   await writeAuditLog({
     req,
