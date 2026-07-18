@@ -22,7 +22,7 @@ import {
   History,
 } from "lucide-react";
 
-import type { Invoice, StripeReceipt, Subscription, MspProfile } from "@/components/billing/billing-types";
+import type { BillingInterval, Invoice, RetainerIntervalInfo, StripeReceipt, Subscription, MspProfile } from "@/components/billing/billing-types";
 import { BillingSummaryCards } from "@/components/billing/BillingSummaryCards";
 import { SubscriptionList } from "@/components/billing/SubscriptionList";
 import { InvoiceHistory } from "@/components/billing/InvoiceHistory";
@@ -142,6 +142,84 @@ function ResumeDialog({
   );
 }
 
+function SwitchIntervalDialog({
+  sub,
+  target,
+  open,
+  onConfirm,
+  onClose,
+  loading,
+}: {
+  sub: Subscription;
+  target: BillingInterval;
+  open: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+  loading: boolean;
+}) {
+  const info = sub.intervalInfo;
+  const priceCents = target === "year" ? info?.annualPriceCents ?? null : info?.monthlyPriceCents ?? null;
+  const effectiveDate = sub.stripe?.currentPeriodEnd ? formatDate(sub.stripe.currentPeriodEnd) : null;
+  const savingsCents =
+    target === "year" && info?.monthlyPriceCents != null && info?.annualPriceCents != null
+      ? info.monthlyPriceCents * 12 - info.annualPriceCents
+      : null;
+  const targetLabel = target === "year" ? "yearly" : "monthly";
+
+  return (
+    <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <AlertDialogContent className="sm:max-w-[425px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-xl">Switch to {targetLabel} billing?</AlertDialogTitle>
+          <AlertDialogDescription className="text-slate-500">
+            Your <strong className="text-slate-800 dark:text-slate-200">{sub.serviceName}</strong> retainer
+            will switch to {targetLabel} billing at the start of your next billing cycle
+            {effectiveDate ? <> on <strong className="text-slate-800 dark:text-slate-200">{effectiveDate}</strong></> : null}.
+            Nothing changes until then — no mid-cycle charges, no proration.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="px-1 py-4">
+          <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800/50 px-5 py-4 space-y-2">
+            {priceCents != null && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">New price</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {formatCurrency(priceCents / 100, "usd")}/{target === "year" ? "year" : "month"}
+                </span>
+              </div>
+            )}
+            {effectiveDate && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Takes effect</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{effectiveDate}</span>
+              </div>
+            )}
+            {savingsCents != null && savingsCents > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Yearly savings</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(savingsCents / 100, "usd")}/year
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={loading} className="rounded-full">Never mind</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => { e.preventDefault(); onConfirm(); }}
+            disabled={loading}
+            className="rounded-full border-none"
+          >
+            {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+            Switch to {targetLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomerBillingPage() {
@@ -165,6 +243,10 @@ export default function CustomerBillingPage() {
   const [resuming, setResuming] = useState(false);
   const [undoTarget, setUndoTarget] = useState<{ id: number; name: string; expiresAt: number } | null>(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  const [intervalInfoMap, setIntervalInfoMap] = useState<Record<number, RetainerIntervalInfo>>({});
+  const [switchTarget, setSwitchTarget] = useState<{ sub: Subscription; target: BillingInterval } | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [switchBusyId, setSwitchBusyId] = useState<number | null>(null);
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const UNDO_WINDOW_MS = 30_000;
@@ -184,6 +266,19 @@ export default function CustomerBillingPage() {
       .then((d) => setSubscriptions(d as Subscription[]))
       .catch(() => null)
       .finally(() => setSubLoading(false));
+  }, [fetchWithAuth, isPlatformBilled]);
+
+  useEffect(() => {
+    if (!isPlatformBilled) return;
+    fetchWithAuth("/api/portal/billing/retainer-intervals")
+      .then((r) => (r.ok ? (r.json() as Promise<RetainerIntervalInfo[]>) : null))
+      .then((rows) => {
+        if (!rows) return;
+        const map: Record<number, RetainerIntervalInfo> = {};
+        for (const row of rows) map[row.clientServiceId] = row;
+        setIntervalInfoMap(map);
+      })
+      .catch(() => null);
   }, [fetchWithAuth, isPlatformBilled]);
 
   useEffect(() => {
@@ -296,6 +391,70 @@ export default function CustomerBillingPage() {
     }
   }, [undoTarget, fetchWithAuth]);
 
+  const handleSwitchConfirm = useCallback(async () => {
+    if (!switchTarget) return;
+    setSwitching(true);
+    setSwitchBusyId(switchTarget.sub.id);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${switchTarget.sub.id}/switch-interval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetInterval: switchTarget.target }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { effectiveAt: string; pendingBillingInterval: BillingInterval };
+        setIntervalInfoMap((prev) => {
+          const existing = prev[switchTarget.sub.id];
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [switchTarget.sub.id]: { ...existing, pendingBillingInterval: data.pendingBillingInterval, hasPendingSwitch: true },
+          };
+        });
+        const effectiveDate = new Date(data.effectiveAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        setAlert({
+          type: "success",
+          message: `Your ${switchTarget.sub.serviceName} retainer switches to ${switchTarget.target === "year" ? "yearly" : "monthly"} billing on ${effectiveDate}. Nothing changes until then.`,
+        });
+        setSwitchTarget(null);
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not schedule the billing change. Please try again." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setSwitching(false);
+      setSwitchBusyId(null);
+    }
+  }, [switchTarget, fetchWithAuth]);
+
+  const handleCancelSwitch = useCallback(async (sub: Subscription) => {
+    setSwitchBusyId(sub.id);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${sub.id}/cancel-interval-switch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        setIntervalInfoMap((prev) => {
+          const existing = prev[sub.id];
+          if (!existing) return prev;
+          return { ...prev, [sub.id]: { ...existing, pendingBillingInterval: null, hasPendingSwitch: false } };
+        });
+        const currentLabel = sub.intervalInfo?.billingInterval === "year" ? "yearly" : "monthly";
+        setAlert({ type: "success", message: `Billing change cancelled — your ${sub.serviceName} retainer stays on ${currentLabel} billing.` });
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not cancel the billing change. Please contact support." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setSwitchBusyId(null);
+    }
+  }, [fetchWithAuth]);
+
   const handleResumeConfirm = useCallback(async () => {
     if (!resumeTarget) return;
     setResuming(true);
@@ -393,7 +552,7 @@ export default function CustomerBillingPage() {
                 <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">Active Retainers</h2>
               </div>
               <SubscriptionList
-                subscriptions={subscriptions}
+                subscriptions={subscriptions.map((s) => ({ ...s, intervalInfo: intervalInfoMap[s.id] ?? null }))}
                 loading={subLoading}
                 onCancel={setCancelTarget}
                 onResume={setResumeTarget}
@@ -403,6 +562,9 @@ export default function CustomerBillingPage() {
                 undoTarget={undoTarget}
                 onUndo={handleUndoCancel}
                 undoLoading={undoLoading}
+                onSwitchInterval={(sub, target) => setSwitchTarget({ sub, target })}
+                onCancelSwitch={(sub) => void handleCancelSwitch(sub)}
+                switchBusyId={switchBusyId}
               />
             </div>
           )}
@@ -444,6 +606,16 @@ export default function CustomerBillingPage() {
             onConfirm={() => void handleResumeConfirm()}
             onClose={() => setResumeTarget(null)}
             loading={resuming}
+          />
+        )}
+        {switchTarget && (
+          <SwitchIntervalDialog
+            sub={{ ...switchTarget.sub, intervalInfo: intervalInfoMap[switchTarget.sub.id] ?? null }}
+            target={switchTarget.target}
+            open={!!switchTarget}
+            onConfirm={() => void handleSwitchConfirm()}
+            onClose={() => setSwitchTarget(null)}
+            loading={switching}
           />
         )}
       </div>

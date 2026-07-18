@@ -21,6 +21,18 @@ export interface StripeReceipt {
   invoicePdf: string | null;
 }
 
+export type BillingInterval = "month" | "year";
+
+/** Row from GET /api/portal/billing/retainer-intervals, keyed by clientServiceId. */
+export interface RetainerIntervalInfo {
+  clientServiceId: number;
+  billingInterval: BillingInterval;
+  pendingBillingInterval: BillingInterval | null;
+  hasPendingSwitch: boolean;
+  monthlyPriceCents: number | null;
+  annualPriceCents: number | null;
+}
+
 export interface Subscription {
   id: number;
   serviceId: number;
@@ -39,6 +51,8 @@ export interface Subscription {
     amount: number | null;
     currency: string | null;
   } | null;
+  /** Merged client-side from /billing/retainer-intervals; null until loaded. */
+  intervalInfo?: RetainerIntervalInfo | null;
 }
 
 export interface MspProfile {

@@ -70,6 +70,8 @@ export default defineConfig({
       "src/lib/msp-plan-pricing.test.ts",
       "src/routes/msp-plan-self-service.test.ts",
       "src/routes/msp-billing-webhook.test.ts",
+      "src/lib/retainer-pricing.test.ts",
+      "src/routes/portal-retainer-billing.test.ts",
     ],
     coverage: {
       provider: "v8",

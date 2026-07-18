@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, CreditCard, Undo2, Package } from "lucide-react";
-import type { Subscription } from "./billing-types";
+import { Loader2, RefreshCw, CreditCard, Undo2, Package, CalendarClock } from "lucide-react";
+import type { BillingInterval, Subscription } from "./billing-types";
 
 // Helper functions (could be moved to a utils file but kept here for self-containment)
 function formatCurrency(amount: string | number, currency: string): string {
@@ -34,6 +34,9 @@ interface SubscriptionCardProps {
   undoExpiresAt: number | null;
   onUndo: () => void;
   undoLoading: boolean;
+  onSwitchInterval: (sub: Subscription, target: BillingInterval) => void;
+  onCancelSwitch: (sub: Subscription) => void;
+  switchBusy: boolean;
 }
 
 function SubscriptionCard({
@@ -46,6 +49,9 @@ function SubscriptionCard({
   undoExpiresAt,
   onUndo,
   undoLoading,
+  onSwitchInterval,
+  onCancelSwitch,
+  switchBusy,
 }: SubscriptionCardProps) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [resubLoading, setResubLoading] = useState(false);
@@ -78,6 +84,16 @@ function SubscriptionCard({
   const nextBilling = stripe?.currentPeriodEnd
     ? formatDate(stripe.currentPeriodEnd)
     : nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+
+  const intervalInfo = sub.intervalInfo ?? null;
+  const billingInterval = intervalInfo?.billingInterval ?? "month";
+  const hasPendingSwitch = intervalInfo?.hasPendingSwitch === true && intervalInfo.pendingBillingInterval != null;
+  const pendingIntervalLabel = intervalInfo?.pendingBillingInterval === "year" ? "yearly" : "monthly";
+  const canSwitchInterval =
+    intervalInfo != null &&
+    !hasPendingSwitch &&
+    (billingInterval === "year" || intervalInfo.annualPriceCents != null);
+  const switchTargetInterval: BillingInterval = billingInterval === "month" ? "year" : "month";
 
   const handleManagePayment = async () => {
     setPortalLoading(true);
@@ -129,6 +145,25 @@ function SubscriptionCard({
       {/* Glow effect on hover */}
       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
+      {hasPendingSwitch && !isCanceled && (
+        <div className="flex items-center justify-between gap-3 px-5 py-3 bg-blue-500/10 border-b border-blue-500/20">
+          <p className="text-xs text-blue-700 dark:text-blue-400 font-medium flex items-center gap-1.5">
+            <CalendarClock className="w-3.5 h-3.5 flex-shrink-0" />
+            Switching to {pendingIntervalLabel} billing{nextBilling ? ` on ${nextBilling}` : " at the next billing cycle"}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs rounded-full px-3 flex-shrink-0"
+            onClick={() => onCancelSwitch(sub)}
+            disabled={switchBusy}
+          >
+            {switchBusy ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+            Cancel switch
+          </Button>
+        </div>
+      )}
+
       {showUndoBanner && (
         <div className="flex items-center justify-between gap-3 px-5 py-3 bg-amber-500/10 border-b border-amber-500/20">
           <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
@@ -179,7 +214,7 @@ function SubscriptionCard({
             {amount !== null && amount !== undefined && (
               <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-300">
                 <CreditCard className="w-4 h-4 text-slate-400" />
-                {formatCurrency(amount / 100, currency)}<span className="text-xs text-slate-400 font-normal">/month</span>
+                {formatCurrency(amount / 100, currency)}<span className="text-xs text-slate-400 font-normal">/{billingInterval === "year" ? "year" : "month"}</span>
               </div>
             )}
             {!isCancelPending && !isCanceled && nextBilling && isActive && (
@@ -211,6 +246,18 @@ function SubscriptionCard({
           )}
           {!isCancelPending && !isCanceled && isActive && sub.stripeSubscriptionId && (
             <>
+              {canSwitchInterval && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full px-4"
+                  onClick={() => onSwitchInterval(sub, switchTargetInterval)}
+                  disabled={switchBusy}
+                >
+                  {switchBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                  Switch to {switchTargetInterval === "year" ? "yearly" : "monthly"} billing
+                </Button>
+              )}
               <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => void handleManagePayment()} disabled={portalLoading}>
                 {portalLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
                 Manage payment
@@ -243,6 +290,9 @@ export function SubscriptionList({
   undoTarget,
   onUndo,
   undoLoading,
+  onSwitchInterval,
+  onCancelSwitch,
+  switchBusyId,
 }: {
   subscriptions: Subscription[];
   loading: boolean;
@@ -254,6 +304,9 @@ export function SubscriptionList({
   undoTarget: { id: number; name: string; expiresAt: number } | null;
   onUndo: () => void;
   undoLoading: boolean;
+  onSwitchInterval: (sub: Subscription, target: BillingInterval) => void;
+  onCancelSwitch: (sub: Subscription) => void;
+  switchBusyId: number | null;
 }) {
   const subsArray = Array.isArray(subscriptions) ? subscriptions : [];
 
@@ -295,6 +348,9 @@ export function SubscriptionList({
           undoExpiresAt={undoTarget?.id === sub.id ? undoTarget.expiresAt : null}
           onUndo={onUndo}
           undoLoading={undoLoading && undoTarget?.id === sub.id}
+          onSwitchInterval={onSwitchInterval}
+          onCancelSwitch={onCancelSwitch}
+          switchBusy={switchBusyId === sub.id}
         />
       ))}
     </div>

@@ -269,6 +269,12 @@ export const projectsTable = pgTable("projects", {
 export type InsertProject = typeof projectsTable.$inferInsert;
 export type Project = typeof projectsTable.$inferSelect;
 
+// Billing interval of a direct-customer recurring service ('month' or 'year').
+// Mirrors MSP_BILLING_INTERVALS in msp.ts, but defined here to keep the
+// direct-customer channel independent of the MSP schema module.
+export const CLIENT_BILLING_INTERVALS = ["month", "year"] as const;
+export type ClientBillingInterval = typeof CLIENT_BILLING_INTERVALS[number];
+
 // Client-assigned services
 export const clientServicesTable = pgTable("client_services", {
   id: serial("id").primaryKey(),
@@ -282,6 +288,14 @@ export const clientServicesTable = pgTable("client_services", {
   nextMilestoneDate: timestamp("next_milestone_date"),
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // Billing interval of the currently ACTIVE Stripe price for this retainer.
+  billingInterval: text("billing_interval", { enum: CLIENT_BILLING_INTERVALS }).notNull().default("month"),
+  // Self-service interval switch (portal-retainer-billing.ts): set while a
+  // monthly⟷yearly switch is scheduled via a Stripe Subscription Schedule to
+  // take effect at the next period start. Cleared when the schedule completes
+  // or is canceled.
+  stripeScheduleId: text("stripe_schedule_id"),
+  pendingBillingInterval: text("pending_billing_interval", { enum: CLIENT_BILLING_INTERVALS }),
 });
 
 export type InsertClientService = typeof clientServicesTable.$inferInsert;

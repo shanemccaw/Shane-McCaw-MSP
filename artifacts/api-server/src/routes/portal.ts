@@ -12,6 +12,12 @@ import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getStripeKey } from "../lib/stripe.ts";
+import {
+  handleRetainerScheduleUpdated,
+  handleRetainerScheduleCompleted,
+  handleRetainerScheduleReleased,
+  handleRetainerScheduleCanceled,
+} from "./portal-retainer-billing.ts";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph.ts";
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
@@ -5665,6 +5671,16 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         }
       }
     }
+  } else if (event.type === "subscription_schedule.updated") {
+    // Retainer billing-interval switch (portal-retainer-billing.ts) — no-op for
+    // schedules that don't belong to a client_services row.
+    await handleRetainerScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+  } else if (event.type === "subscription_schedule.completed") {
+    await handleRetainerScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+  } else if (event.type === "subscription_schedule.released") {
+    await handleRetainerScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+  } else if (event.type === "subscription_schedule.canceled") {
+    await handleRetainerScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
   }
   } catch (err) {
     req.log.error(

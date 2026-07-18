@@ -108,6 +108,7 @@ import adminObservabilityRouter from "./admin-observability";
 import adminExceptionsRouter from "./admin-exceptions";
 import adminLiveStreamRouter from "./admin-live-stream";
 import portalCheckoutRouter from "./portal-checkout";
+import portalRetainerBillingRouter from "./portal-retainer-billing";
 
 import pccRouter from "./pcc.js";
 
@@ -230,6 +231,7 @@ router.use(adminObservabilityRouter);
 router.use(adminExceptionsRouter);
 router.use(adminLiveStreamRouter);
 router.use(portalCheckoutRouter);
+router.use(portalRetainerBillingRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
