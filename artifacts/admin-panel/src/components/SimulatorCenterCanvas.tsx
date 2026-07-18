@@ -55,6 +55,14 @@ interface Msp {
   isTestbed: boolean;
 }
 
+interface TestbedCustomer {
+  id: number;
+  mspId: number;
+  name: string;
+  domain: string | null;
+  isTestbed: boolean;
+}
+
 export function SimulatorCenterCanvas(props?: {
   customerId?: string;
   simDate?: string;
@@ -75,6 +83,9 @@ export function SimulatorCenterCanvas(props?: {
   const [msps, setMsps] = useState<Msp[]>([]);
   const [loadingTestbeds, setLoadingTestbeds] = useState(false);
   const [sessionLocks, setSessionLocks] = useState<Record<number, boolean>>({});
+  const [selectedMspId, setSelectedMspId] = useState<number | null>(null);
+  const [testbedCustomers, setTestbedCustomers] = useState<TestbedCustomer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
 
   useEffect(() => {
     // Listen for custom load-script events from SimulatorLeftTree
@@ -92,11 +103,11 @@ export function SimulatorCenterCanvas(props?: {
     };
   }, []);
 
-  // Fetch MSP testbeds list
+  // Fetch testbed-flagged MSPs
   const loadMsps = async () => {
     setLoadingTestbeds(true);
     try {
-      const res = await fetchWithAuth("/api/admin/msps?limit=100");
+      const res = await fetchWithAuth("/api/admin/msps?limit=100&isTestbed=true");
       if (res.ok) {
         const data = await res.json();
         setMsps(data.msps || []);
@@ -109,11 +120,36 @@ export function SimulatorCenterCanvas(props?: {
     }
   };
 
+  // Fetch testbed customers under a given MSP
+  const loadTestbedCustomers = async (mspId: number) => {
+    setLoadingCustomers(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/testbeds?mspId=${mspId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTestbedCustomers(data.testbeds || []);
+      }
+    } catch (err) {
+      console.error("Failed to load testbed customers", err);
+      toast.error("Failed to load testbed customers");
+    } finally {
+      setLoadingCustomers(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "testbeds") {
       loadMsps();
     }
   }, [activeTab, fetchWithAuth]);
+
+  useEffect(() => {
+    if (selectedMspId != null) {
+      loadTestbedCustomers(selectedMspId);
+    } else {
+      setTestbedCustomers([]);
+    }
+  }, [selectedMspId]);
 
   // Run SQL Query
   const handleRunQuery = async () => {
@@ -494,8 +530,13 @@ export function SimulatorCenterCanvas(props?: {
                   <TableBody>
                     {msps.map((msp) => {
                       const isLocked = sessionLocks[msp.id] || false;
+                      const isSelected = selectedMspId === msp.id;
                       return (
-                        <TableRow key={msp.id} className="hover:bg-accent/30">
+                        <TableRow
+                          key={msp.id}
+                          onClick={() => setSelectedMspId(isSelected ? null : msp.id)}
+                          className={`cursor-pointer hover:bg-accent/30 ${isSelected ? "bg-accent/40" : ""}`}
+                        >
                           <TableCell className="font-medium py-2.5 text-foreground">
                             <div className="flex flex-col">
                               <span>{msp.name}</span>
@@ -531,7 +572,7 @@ export function SimulatorCenterCanvas(props?: {
                             <div className="flex items-center justify-center">
                               {msp.isTestbed ? (
                                 <button
-                                  onClick={() => handleToggleLock(msp.id, isLocked)}
+                                  onClick={(e) => { e.stopPropagation(); handleToggleLock(msp.id, isLocked); }}
                                   className={`p-1.5 rounded-md border text-xs flex items-center gap-1.5 transition-all select-none font-mono text-[10px] ${
                                     isLocked
                                       ? "text-amber-400 border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/10"
@@ -559,7 +600,7 @@ export function SimulatorCenterCanvas(props?: {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleToggleStatus(msp)}
+                                  onClick={(e) => { e.stopPropagation(); handleToggleStatus(msp); }}
                                   className={`h-7 text-[11px] font-mono ${
                                     msp.status === "suspended"
                                       ? "text-emerald-400 hover:text-emerald-300"
@@ -572,14 +613,17 @@ export function SimulatorCenterCanvas(props?: {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => openModal("execute-scenario", {
-                                  event: {
-                                    id: "FACTORY_RESET",
-                                    name: "Factory Reset Testbed",
-                                    description: "Wipes telemetry logs, clears suspensions, and restores baseline score definitions.",
-                                    category: "crm"
-                                  }
-                                })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openModal("execute-scenario", {
+                                    event: {
+                                      id: "FACTORY_RESET",
+                                      name: "Factory Reset Testbed",
+                                      description: "Wipes telemetry logs, clears suspensions, and restores baseline score definitions.",
+                                      category: "crm"
+                                    }
+                                  });
+                                }}
                                 className="h-7 text-[11px] font-mono"
                               >
                                 Reset
@@ -591,6 +635,47 @@ export function SimulatorCenterCanvas(props?: {
                     })}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+
+            {selectedMspId != null && (
+              <div className="border border-border rounded-lg overflow-hidden bg-background">
+                <div className="px-3 py-2 bg-card border-b border-border">
+                  <h4 className="text-xs font-semibold text-foreground">
+                    Testbed Customers — {msps.find(m => m.id === selectedMspId)?.name ?? `MSP ${selectedMspId}`}
+                  </h4>
+                </div>
+                {loadingCustomers ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  </div>
+                ) : testbedCustomers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-xs">
+                    No testbed customers for this MSP.
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader className="bg-card select-none">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-xs font-semibold py-2.5">Customer Name</TableHead>
+                        <TableHead className="text-xs font-semibold py-2.5">Domain</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {testbedCustomers.map((customer) => (
+                        <TableRow key={customer.id} className="hover:bg-accent/30">
+                          <TableCell className="py-2 text-foreground">
+                            <div className="flex flex-col">
+                              <span>{customer.name}</span>
+                              <span className="text-[10px] text-muted-foreground/70 font-mono">ID: {customer.id}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-2 text-muted-foreground font-mono text-[11px]">{customer.domain ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
             )}
           </div>)}

@@ -101,18 +101,30 @@ router.get("/admin/plan-features", requireAdmin, (_req: Request, res: Response) 
 // ── GET /api/admin/testbeds ──────────────────────────────────────────────────
 // Returns all customers where is_testbed is true.
 
-router.get("/admin/testbeds", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/testbeds", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const mspIdStr = typeof req.query.mspId === "string" ? req.query.mspId : undefined;
+    const conditions = [eq(mspCustomersTable.isTestbed, true)];
+    if (mspIdStr) {
+      const mspId = parseInt(mspIdStr, 10);
+      if (isNaN(mspId)) {
+        res.status(400).json({ error: "Invalid mspId" });
+        return;
+      }
+      conditions.push(eq(mspCustomersTable.mspId, mspId));
+    }
+
     const testbeds = await db
       .select({
         id: mspCustomersTable.id,
+        mspId: mspCustomersTable.mspId,
         name: mspCustomersTable.name,
         domain: mspCustomersTable.domain,
         isTestbed: mspCustomersTable.isTestbed,
         testbedMetadata: mspCustomersTable.testbedMetadata,
       })
       .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.isTestbed, true));
+      .where(and(...conditions));
     res.json({ testbeds });
   } catch (err) {
     log.error({ err }, "admin-engines: failed to list testbeds");

@@ -89,6 +89,7 @@ router.get("/admin/msps", requireAdmin, async (req: Request, res: Response) => {
   const offset = (page - 1) * limit;
   const search = p(req.query["search"] as string | undefined);
   const status = p(req.query["status"] as string | undefined);
+  const isTestbed = p(req.query["isTestbed"] as string | undefined);
 
   const conditions = [];
   if (search) {
@@ -102,6 +103,9 @@ router.get("/admin/msps", requireAdmin, async (req: Request, res: Response) => {
   }
   if (status && ["active", "suspended", "trial"].includes(status)) {
     conditions.push(eq(mspsTable.status, status as "active" | "suspended" | "trial"));
+  }
+  if (isTestbed === "true") {
+    conditions.push(eq(mspsTable.isTestbed, true));
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
