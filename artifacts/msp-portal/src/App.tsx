@@ -447,6 +447,15 @@ function RootRedirect() {
   // The target /login route renders the form optimistically and its own
   // useEffect handles the redirect-to-dashboard if the user is authenticated.
   useEffect(() => {
+    // Impersonation tabs open at the flat root with ?impersonation_token=...
+    // AuthProvider's boot effect owns that case entirely (exchange + redirect
+    // to the target tenant). If we navigate here we'd win the child-effect race
+    // and wipe the token from the URL before the async exchange reads it — the
+    // original bug. So bail out and let AuthProvider drive.
+    if (new URLSearchParams(window.location.search).get("impersonation_token")) {
+      return;
+    }
+
     const stored = getStoredSlug();
     if (stored) {
       // User has a known slug — go to the slug-scoped login.

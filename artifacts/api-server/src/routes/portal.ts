@@ -6286,12 +6286,26 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
   if (isNaN(mspId)) { res.status(400).json({ error: "Invalid MSP ID" }); return; }
 
   const [msp] = await db.select().from(mspsTable).where(eq(mspsTable.id, mspId)).limit(1);
-  if (!msp) { res.status(404).json({ error: "MSP not found" }); return; }
+  if (!msp) {
+    log.warn(
+      { actorUserId: req.user!.id, targetMspId: mspId },
+      "impersonate_msp: MSP not found",
+    );
+    res.status(404).json({ error: "MSP not found" });
+    return;
+  }
 
   const [mspAdmin] = await db.select().from(mspUsersTable)
     .where(and(eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.mspRole, "MSPAdmin")))
     .limit(1);
-  if (!mspAdmin) { res.status(404).json({ error: "No MSPAdmin user found for this MSP" }); return; }
+  if (!mspAdmin) {
+    log.warn(
+      { actorUserId: req.user!.id, targetMspId: mspId, targetSlug: msp.slug },
+      "impersonate_msp: no MSPAdmin user found for MSP",
+    );
+    res.status(404).json({ error: "No MSPAdmin user found for this MSP" });
+    return;
+  }
 
   const impersonateAdminId = req.user!.id;
   const { randomBytes: randomBytesMsp } = await import("crypto");
@@ -6315,7 +6329,21 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
     entityLabel: msp.name,
   });
 
-  res.json({ token: mspToken, msp: { id: msp.id, name: msp.name, slug: msp.slug } });
+  log.info(
+    {
+      actorUserId: impersonateAdminId,
+      targetMspId: msp.id,
+      targetSlug: msp.slug,
+      targetUserId: mspAdmin.userId,
+    },
+    "impersonate_msp: impersonation token issued",
+  );
+
+  res.json({
+    token: mspToken,
+    targetSlug: msp.slug,
+    msp: { id: msp.id, name: msp.name, slug: msp.slug },
+  });
 });
 
 // ─── MSP: Impersonation ──────────────────────────────────────────────────────
@@ -6342,7 +6370,28 @@ router.post(
       .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.mspId, mspId)))
       .limit(1);
     if (!customer) {
+      log.warn(
+        { actorUserId: req.user!.id, mspId, customerId },
+        "impersonate_customer: customer not found for MSP",
+      );
       res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    // Resolve the slug of the MSP that owns this customer. For a PlatformAdmin
+    // impersonating cross-MSP, this is the *target* MSP's slug, not the actor's
+    // — the new tab must land on the customer's own MSP-scoped URL.
+    const [ownerMsp] = await db
+      .select({ slug: mspsTable.slug })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspId))
+      .limit(1);
+    if (!ownerMsp) {
+      log.warn(
+        { actorUserId: req.user!.id, mspId, customerId },
+        "impersonate_customer: owning MSP not found",
+      );
+      res.status(404).json({ error: "MSP not found" });
       return;
     }
 
@@ -6353,6 +6402,10 @@ router.post(
       .where(eq(mspUsersTable.customerId, customerId))
       .limit(1);
     if (!mspUserRow) {
+      log.warn(
+        { actorUserId: req.user!.id, mspId, customerId, targetSlug: ownerMsp.slug },
+        "impersonate_customer: no portal user found for customer",
+      );
       res.status(404).json({ error: "No portal user found for this customer" });
       return;
     }
@@ -6363,6 +6416,10 @@ router.post(
       .where(eq(usersTable.id, mspUserRow.userId))
       .limit(1);
     if (!targetUser) {
+      log.warn(
+        { actorUserId: req.user!.id, mspId, customerId, targetSlug: ownerMsp.slug },
+        "impersonate_customer: target user not found",
+      );
       res.status(404).json({ error: "Target user not found" });
       return;
     }
@@ -6400,8 +6457,20 @@ router.post(
       // Audit log is non-fatal — never interrupt the impersonation flow
     }
 
+    log.info(
+      {
+        actorUserId: actorId,
+        mspId,
+        customerId,
+        targetSlug: ownerMsp.slug,
+        targetUserId: targetUser.id,
+      },
+      "impersonate_customer: impersonation token issued",
+    );
+
     res.json({
       token,
+      targetSlug: ownerMsp.slug,
       customer: { id: customer.id, name: customer.name },
       targetUser: { id: targetUser.id, email: targetUser.email, name: targetUser.name },
     });

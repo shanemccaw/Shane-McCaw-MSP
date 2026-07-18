@@ -226,6 +226,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // and consume it BEFORE any normal silent-refresh boot flow runs.
     const params = new URLSearchParams(window.location.search);
     const impersonationToken = params.get("impersonation_token");
+    // The tenant switcher (and the MSP list / MSP detail impersonate buttons)
+    // carry the target MSP/customer slug alongside the token so this tab can
+    // land on the CORRECT tenant's URL. Without it we cannot own the redirect
+    // and would fall back to the opener's inherited slug (the original bug).
+    const targetSlug = params.get("target_slug");
 
     if (impersonationToken) {
       // This tab may have inherited the opener's sessionStorage (same-origin
@@ -254,9 +259,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               isExpiringSoon: false,
               isImpersonating: true,
             });
-            const url = new URL(window.location.href);
-            url.searchParams.delete("impersonation_token");
-            window.history.replaceState({}, "", url.toString());
+
+            // Own the FULL redirect here. RootRedirect early-returns whenever
+            // an impersonation_token is present (see App.tsx), so this is the
+            // only code that decides where the impersonated tab lands. A hard
+            // navigation would wipe the in-memory access token (impersonation
+            // sessions have no refresh token), so we navigate client-side by
+            // pushing the target URL and letting wouter re-render.
+            if (targetSlug) {
+              // CustomerUser lands on the customer home; MSP-side roles land on
+              // the dashboard. mspRole is the impersonated identity's role.
+              const landing =
+                data.user.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
+              const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+              const target = `${base}/${targetSlug}/${landing}`;
+              window.history.pushState({}, "", target);
+              // wouter's browser location hook patches pushState to emit its
+              // own event, so this push triggers a client-side route change
+              // without a full reload.
+            } else {
+              // Defensive: post-fix every impersonation URL carries target_slug.
+              // If it's missing we cannot safely pick a tenant, so surface it
+              // and just strip the token from the URL. NOTE: there is no
+              // frontend→backend telemetry beacon in this app today, so this
+              // canary is toast-only — see the flagged gap in the task notes.
+              toast.error(
+                "Impersonation started but the target tenant was missing — please navigate manually.",
+              );
+              const url = new URL(window.location.href);
+              url.searchParams.delete("impersonation_token");
+              url.searchParams.delete("target_slug");
+              window.history.replaceState({}, "", url.toString());
+            }
           } else {
             setState((s) => ({ ...s, isLoading: false }));
           }

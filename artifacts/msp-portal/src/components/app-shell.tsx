@@ -814,10 +814,13 @@ function TenantSwitcher({
                   fetchWithAuth(`/api/admin/msps/${t.id}/impersonate`, { method: "POST" })
                     .then(async (res) => {
                       if (!res.ok) return;
-                      const data = (await res.json()) as { token?: string };
-                      if (data.token) {
+                      const data = (await res.json()) as { token?: string; targetSlug?: string };
+                      if (data.token && data.targetSlug) {
                         const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                        window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                        window.open(
+                          `${base}/?impersonation_token=${encodeURIComponent(data.token)}&target_slug=${encodeURIComponent(data.targetSlug)}`,
+                          "_blank",
+                        );
                       }
                     })
                     .catch(() => {});
@@ -833,10 +836,13 @@ function TenantSwitcher({
                 })
                   .then(async (res) => {
                     if (!res.ok) return;
-                    const data = (await res.json()) as { token?: string };
-                    if (data.token) {
+                    const data = (await res.json()) as { token?: string; targetSlug?: string };
+                    if (data.token && data.targetSlug) {
                       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-                      window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                      window.open(
+                        `${base}/?impersonation_token=${encodeURIComponent(data.token)}&target_slug=${encodeURIComponent(data.targetSlug)}`,
+                        "_blank",
+                      );
                     }
                   })
                   .catch(() => {});
