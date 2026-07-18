@@ -18,6 +18,9 @@
 
 import { db, usersTable, mspUsersTable, mspCustomersTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { logger } from "./logger.ts";
+
+const log = logger.child({ channel: "tenant.msp-admin" });
 import {
   computeTenantSignals,
   getDisabledSignalKeys,
@@ -300,15 +303,13 @@ export async function handleMspScoreSnapshot(payload: Record<string, unknown>): 
         mspId: msp.id,
         ownerType: "platform",
       }).catch((err: unknown) => {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.warn(`[handleMspScoreSnapshot] Failed to insert canonical event for MSP ${msp.id}: ${errMsg}`);
+        log.warn({ err, mspId: msp.id }, "handleMspScoreSnapshot: failed to insert canonical event");
       });
 
       successCount++;
     } catch (err: unknown) {
       // Log the error but continue executing for other MSPs
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.warn(`[handleMspScoreSnapshot] Failed to compute/record risk for MSP ${msp.id}: ${errMsg}`);
+      log.warn({ err, mspId: msp.id }, "handleMspScoreSnapshot: failed to compute/record risk");
     }
   }
 

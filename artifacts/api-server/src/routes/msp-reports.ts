@@ -856,7 +856,6 @@ router.post(
 
       res.json({ success: true, recipient: recipientEmail, customerId: targetCustomerId });
     } catch (err) {
-      console.error("EXPLICIT ROUTE ERROR:", err);
       log.error({ err }, "msp-reports: POST canvases/:id/send-test failed");
       res.status(500).json({ error: "Failed to send test email" });
     }

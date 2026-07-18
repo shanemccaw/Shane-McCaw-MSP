@@ -1187,7 +1187,7 @@ router.post("/simulator/fire-event", requireAdmin, async (req: Request, res: Res
       timestamp: new Date().toISOString()
     });
   } catch (err: any) {
-    console.error("[Simulator Event Error]:", err);
+    log.error({ err }, "Simulator event failed");
     return res.status(500).json({ error: err.message || "Failed to fire event" });
   }
 });
@@ -1289,7 +1289,7 @@ router.get("/simulator/db-schema", requireAdmin, async (_req: Request, res: Resp
 
     return res.json({ tables });
   } catch (err: any) {
-    console.error("[DB Schema Inspector Error]:", err);
+    log.error({ err }, "DB schema inspector failed");
     return res.status(500).json({ error: err.message || "Failed to fetch DB schema" });
   }
 });
@@ -1323,7 +1323,7 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
       executionMs
     });
   } catch (err: any) {
-    console.error("[SQL Console Error]:", err);
+    log.error({ err, query: req.body?.query }, "SQL console execute failed");
     return res.status(500).json({ error: err.message || "Failed to execute query" });
   }
 });

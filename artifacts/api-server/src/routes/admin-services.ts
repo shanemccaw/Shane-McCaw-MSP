@@ -8,6 +8,9 @@ import path from "path";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
 import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig";
+import { logger } from "../lib/logger.ts";
+
+const log = logger.child({ channel: "admin.content" });
 
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
@@ -52,7 +55,7 @@ router.get("/admin/services", requireAdmin, async (_req: Request, res: Response)
       })
     })));
   } catch (err) {
-    console.error("Error fetching services:", err);
+    log.error({ err }, "Error fetching services");
     res.status(500).json({ error: "Failed to fetch services" });
   }
 });

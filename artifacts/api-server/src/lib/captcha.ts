@@ -1,3 +1,7 @@
+import { logger } from "./logger.ts";
+
+const log = logger.child({ channel: "auth" });
+
 export async function verifyCaptchaToken(token: string) {
   if (!process.env.TURNSTILE_SECRET_KEY) {
     console.warn("WARN: TURNSTILE_SECRET_KEY is missing/empty. Bypassing CAPTCHA verification.");
@@ -16,7 +20,7 @@ export async function verifyCaptchaToken(token: string) {
     const data = await res.json() as { success: boolean };
     return { success: data.success, bypassed: false, raw: data };
   } catch (error) {
-    console.error("Failed to verify CAPTCHA token:", error);
+    log.error({ err: error }, "Failed to verify CAPTCHA token");
     return { success: false, bypassed: false, error };
   }
 }

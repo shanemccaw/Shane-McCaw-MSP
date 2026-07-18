@@ -8,6 +8,8 @@ async function main() {
 }
 
 main().catch((err) => {
+  // Deliberate exception: standalone CLI script, runs outside the live server
+  // process, so the SSE hub / Log Stream have no listener when this fires.
   console.error("[seed-marketing] Failed:", err);
   process.exit(1);
 });
