@@ -1418,6 +1418,13 @@
       "when": 1784163644561,
       "tag": "0198_add_exception_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1784163644562,
+      "tag": "0199_add_fulfillment_wholesale_columns",
+      "breakpoints": true
     }
   ]
 }
