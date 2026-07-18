@@ -90,7 +90,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       fulfillmentTypeKey, triggeringSignalKeys,
       serviceClass, deliveryType, fulfillmentType,
       typeAttributes,
-      priceCents, internalCostCents,
+      priceCents, internalCostCents, annualPriceCents,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -156,6 +156,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
         priceCents: priceCents != null ? Number(priceCents) : null,
         internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
+        annualPriceCents: annualPriceCents != null ? Number(annualPriceCents) : null,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
@@ -177,7 +178,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey, priceCents, internalCostCents } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey, priceCents, internalCostCents, annualPriceCents } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -224,6 +225,7 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
           : undefined,
         priceCents: priceCents != null ? Number(priceCents) : null,
         internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
+        annualPriceCents: annualPriceCents != null ? Number(annualPriceCents) : null,
       })
       .returning();
     res.status(201).json({

@@ -139,6 +139,10 @@ export const servicesTable = pgTable("services", {
   maxPrice: numeric("max_price", { precision: 10, scale: 2 }),
   internalCostCents: integer("internal_cost_cents"),
   priceCents: integer("price_cents"),
+  // Yearly price for MSP platform tiers (fulfillmentType = "msp_monthly_subscription"),
+  // in integer cents. Set to monthly × 10 (2 months free) by default at creation,
+  // but stored explicitly so the multiplier can be overridden per tier.
+  annualPriceCents: integer("annual_price_cents"),
   orderWorkflow: jsonb("order_workflow").$type<WizardStep[]>(),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),

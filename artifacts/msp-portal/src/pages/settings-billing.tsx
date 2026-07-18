@@ -165,6 +165,14 @@ export default function SettingsBillingPage() {
                     </div>
                   )}
                 </dl>
+                <div className="mt-4">
+                  <Link href="/settings/plan">
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      <RefreshCw className="size-3.5" />
+                      Change Plan or Billing Interval
+                    </Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
 

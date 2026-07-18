@@ -132,6 +132,22 @@ export function requirePlanFeature(feature: string) {
 }
 
 /**
+ * Counts the MSP's active customer tenants. Single source of truth for the
+ * tenant-count query used by allowance checks (including the self-service
+ * plan-change downgrade guardrail in msp-plan-self-service.ts).
+ */
+export async function countActiveTenants(mspId: number): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(mspCustomersTable)
+    .where(and(
+      eq(mspCustomersTable.mspId, mspId),
+      eq(mspCustomersTable.status, "active"),
+    ));
+  return Number(row?.n ?? 0);
+}
+
+/**
  * Checks whether the MSP has exceeded their tenant allowance (hard cap = allowance × 2).
  * Overage is metered — it never hard-blocks onboarding unless the MSP is 2× over.
  *
@@ -145,28 +161,12 @@ export async function checkTenantAllowance(mspId: number): Promise<{
   overageCount: number;
 }> {
   const tier = await loadTier(mspId);
+  const current = await countActiveTenants(mspId);
 
   // No subscription or unlimited allowance (0 = unlimited) → always ok
   if (!tier || !tier.tenantAllowance) {
-    const [row] = await db
-      .select({ n: count() })
-      .from(mspCustomersTable)
-      .where(and(
-        eq(mspCustomersTable.mspId, mspId),
-        eq(mspCustomersTable.status, "active"),
-      ));
-    const current = Number(row?.n ?? 0);
     return { current, allowance: 0, isOverage: false, overageCount: 0 };
   }
-
-  const [row] = await db
-    .select({ n: count() })
-    .from(mspCustomersTable)
-    .where(and(
-      eq(mspCustomersTable.mspId, mspId),
-      eq(mspCustomersTable.status, "active"),
-    ));
-  const current = Number(row?.n ?? 0);
   const allowance = tier.tenantAllowance;
   const hardCap = allowance * 2;
 

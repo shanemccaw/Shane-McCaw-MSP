@@ -67,6 +67,9 @@ export default defineConfig({
       "src/routes/portal-customer-offboard.test.ts",
       "src/routes/pcc.test.ts",
       "src/lib/config-pack-graph.test.ts",
+      "src/lib/msp-plan-pricing.test.ts",
+      "src/routes/msp-plan-self-service.test.ts",
+      "src/routes/msp-billing-webhook.test.ts",
     ],
     coverage: {
       provider: "v8",

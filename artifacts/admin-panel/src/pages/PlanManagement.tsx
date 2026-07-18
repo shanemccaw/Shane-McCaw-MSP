@@ -77,6 +77,11 @@ export default function PlanManagementPage() {
   const [migrations, setMigrations] = useState<MigrationResponse | null>(null);
   const [loadingMigrations, setLoadingMigrations] = useState(false);
   const [newPriceForm, setNewPriceForm] = useState({ priceCents: "", nickname: "" });
+  // Full services row for the selected tier (annualPriceCents lives on the
+  // services table and is read/saved via the admin services API).
+  const [tierService, setTierService] = useState<Record<string, unknown> | null>(null);
+  const [annualPriceInput, setAnnualPriceInput] = useState("");
+  const [savingAnnual, setSavingAnnual] = useState(false);
   const [showNewPrice, setShowNewPrice] = useState(false);
   const [creatingPrice, setCreatingPrice] = useState(false);
   const [migratingId, setMigratingId] = useState<number | null>(null);
@@ -110,10 +115,52 @@ export default function PlanManagementPage() {
     }
   }
 
+  /** Default yearly price: monthly × 10 (2 months free), in cents. */
+  function defaultAnnualCents(service: Record<string, unknown>): number | null {
+    const monthly = parseFloat(String(service.price ?? ""));
+    if (isNaN(monthly) || monthly <= 0) return null;
+    return Math.round(monthly * 10 * 100);
+  }
+
+  async function loadTierService(tierId: number) {
+    setTierService(null);
+    setAnnualPriceInput("");
+    const res = await adminFetch(`/api/admin/services/${tierId}`);
+    if (!res.ok) return;
+    const service = (await res.json()) as Record<string, unknown>;
+    setTierService(service);
+    // Default-populate 10× monthly when no annual price is set yet; Shane can override.
+    const current = service.annualPriceCents != null ? Number(service.annualPriceCents) : defaultAnnualCents(service);
+    setAnnualPriceInput(current != null ? String(current) : "");
+  }
+
   async function handleSelectTier(tier: Tier) {
     setSelectedTier(tier);
     setMigrations(null);
-    await loadMigrations(tier.id);
+    await Promise.all([loadMigrations(tier.id), loadTierService(tier.id)]);
+  }
+
+  async function handleSaveAnnualPrice() {
+    if (!selectedTier || !tierService) return;
+    const cents = parseInt(annualPriceInput, 10);
+    if (isNaN(cents) || cents < 100) { toast.error("Annual price must be at least 100 cents"); return; }
+    setSavingAnnual(true);
+    try {
+      const res = await adminFetch(`/api/admin/services/${selectedTier.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...tierService, annualPriceCents: cents }),
+      });
+      if (res.ok) {
+        setTierService((s) => (s ? { ...s, annualPriceCents: cents } : s));
+        toast.success(`Annual price saved ($${(cents / 100).toFixed(2)}/yr)`);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Failed to save annual price");
+      }
+    } finally {
+      setSavingAnnual(false);
+    }
   }
 
   async function handleNewPrice(e: React.FormEvent) {
@@ -337,6 +384,39 @@ export default function PlanManagementPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {/* Annual price — powers the yearly option in MSP self-service plan change */}
+                  <div className="mb-4 pb-4 border-b border-border space-y-1.5">
+                    <Label htmlFor="annual-price-cents" className="text-xs">Annual Price (cents)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="annual-price-cents"
+                        type="number"
+                        min={100}
+                        value={annualPriceInput}
+                        onChange={(e) => setAnnualPriceInput(e.target.value)}
+                        placeholder={tierService ? String(defaultAnnualCents(tierService) ?? "") : ""}
+                        disabled={!tierService}
+                        className="h-8 text-sm max-w-[180px]"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={savingAnnual || !tierService}
+                        onClick={() => void handleSaveAnnualPrice()}
+                        className="gap-1.5"
+                      >
+                        {savingAnnual ? <Loader2 className="size-3 animate-spin" /> : null}
+                        Save
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {annualPriceInput && !isNaN(parseInt(annualPriceInput))
+                        ? `= $${(parseInt(annualPriceInput) / 100).toFixed(2)}/year. `
+                        : ""}
+                      Default is 10× monthly (2 months free). Used by MSP self-service yearly billing.
+                    </p>
+                  </div>
+
                   {loadingMigrations ? (
                     <Skeleton className="h-16 w-full" />
                   ) : migrations ? (

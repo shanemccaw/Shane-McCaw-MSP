@@ -16,9 +16,10 @@ vi.mock("@workspace/db", () => ({
   mspCustomersTable: {},
 }));
 
-vi.mock("./logger.ts", () => ({
-  logger: { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} },
-}));
+vi.mock("./logger.ts", () => {
+  const noop = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };
+  return { logger: { ...noop, child: () => noop } };
+});
 
 import { compareTierRank, TIER_RANK } from "./msp-entitlement";
 

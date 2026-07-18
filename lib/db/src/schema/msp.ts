@@ -995,6 +995,9 @@ export type InsertMspAiPurchase = typeof mspAiPurchasesTable.$inferInsert;
 export const MSP_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "canceled", "unpaid"] as const;
 export type MspSubscriptionStatus = typeof MSP_SUBSCRIPTION_STATUSES[number];
 
+export const MSP_BILLING_INTERVALS = ["month", "year"] as const;
+export type MspBillingInterval = typeof MSP_BILLING_INTERVALS[number];
+
 export const MSP_DUNNING_STATES = ["reminder_sent", "suspended", "access_revoked", "archival_flagged"] as const;
 export type MspDunningState = typeof MSP_DUNNING_STATES[number];
 
@@ -1010,6 +1013,14 @@ export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripePriceId: text("stripe_price_id"),
+  // Billing interval of the currently ACTIVE Stripe price ('month' or 'year').
+  billingInterval: text("billing_interval", { enum: MSP_BILLING_INTERVALS }).notNull().default("month"),
+  // Self-service plan change (msp-plan-self-service.ts): set while a tier and/or
+  // interval change is scheduled via a Stripe Subscription Schedule to take effect
+  // at the next period start. Cleared when the schedule completes or is canceled.
+  stripeScheduleId: text("stripe_schedule_id"),
+  pendingServiceId: integer("pending_service_id"),
+  pendingBillingInterval: text("pending_billing_interval", { enum: MSP_BILLING_INTERVALS }),
   // Subscription lifecycle
   status: text("status", { enum: MSP_SUBSCRIPTION_STATUSES }).notNull().default("trialing"),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),

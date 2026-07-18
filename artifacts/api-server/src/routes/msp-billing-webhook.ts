@@ -14,6 +14,10 @@
  *   customer.subscription.deleted      — cancel subscription, suspend MSP
  *   invoice.payment_succeeded          — clear dunning, update period
  *   invoice.payment_failed             — start dunning clock
+ *   subscription_schedule.updated      — self-service plan change: finalize when the target phase becomes current
+ *   subscription_schedule.completed    — self-service plan change: backstop finalize
+ *   subscription_schedule.released     — self-service plan change: finalize or clear stale pending state
+ *   subscription_schedule.canceled     — self-service plan change: clear stale pending state
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -91,6 +95,22 @@ router.post("/msp/stripe/webhook", async (req: Request, res: Response) => {
 
       case "invoice.payment_failed":
         await handlePaymentFailed(event.data.object as import("stripe").Stripe.Invoice);
+        break;
+
+      case "subscription_schedule.updated":
+        await handleScheduleUpdated(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.completed":
+        await handleScheduleCompleted(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.released":
+        await handleScheduleReleased(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
+        break;
+
+      case "subscription_schedule.canceled":
+        await handleScheduleCanceled(event.data.object as import("stripe").Stripe.SubscriptionSchedule);
         break;
 
       default:
@@ -554,6 +574,162 @@ async function handlePaymentFailed(invoice: import("stripe").Stripe.Invoice): Pr
     { subscriptionId, mspId: sub.mspId, paymentFailedAt: failedAt.toISOString() },
     "msp-billing-webhook: payment failed — dunning clock started",
   );
+}
+
+// ── Self-service plan change: schedule transition handling ────────────────────
+//
+// Mechanism (see msp-plan-self-service.ts / lib/msp-plan-pricing.ts): a plan
+// change is a two-phase Stripe Subscription Schedule — phase 1 = current price
+// until current_period_end, phase 2 = target price for one iteration, with
+// end_behavior "release". The msp_subscriptions row stores the schedule ID and
+// the pending target (pendingServiceId / pendingBillingInterval) until the
+// change actually takes effect. The DB flip is driven entirely by the events
+// below — each handler is idempotent (a row is only found while its
+// stripeScheduleId is still set):
+//
+//   subscription_schedule.updated   — Stripe advances phases at the period
+//     boundary. When the FINAL phase (the target plan) has become the current
+//     phase, the change is live → finalize. Updates fired by our own phase
+//     edits at scheduling time are ignored (phase 1 is still current).
+//   subscription_schedule.completed — all phases done → backstop finalize.
+//   subscription_schedule.released  — the schedule detached from the
+//     subscription. Our own cancel endpoint clears the row before this event
+//     arrives (lookup finds nothing → no-op). If pending state remains, the
+//     release happened outside the app: finalize when the target phase already
+//     started (change took effect), otherwise clear the stale pending state.
+//   subscription_schedule.canceled  — canceled outside the app before taking
+//     effect → clear the stale pending state, log a warning.
+
+type StripeSchedule = import("stripe").Stripe.SubscriptionSchedule;
+
+/** Extracts the price ID from a schedule phase item (string or expanded object). */
+function phasePriceId(phase: import("stripe").Stripe.SubscriptionSchedule.Phase | undefined): string | null {
+  const price = phase?.items?.[0]?.price;
+  if (!price) return null;
+  return typeof price === "string" ? price : price.id;
+}
+
+/** True once the schedule's final phase (the target plan) has begun. */
+function finalPhaseStarted(schedule: StripeSchedule): boolean {
+  const lastPhase = schedule.phases[schedule.phases.length - 1];
+  if (!lastPhase?.start_date) return false;
+  if (schedule.current_phase) {
+    return schedule.current_phase.start_date === lastPhase.start_date;
+  }
+  // No current phase (completed/released schedules) — compare against now.
+  return lastPhase.start_date * 1000 <= Date.now();
+}
+
+/** Looks up the subscription row that owns this schedule, or null. */
+async function findSubscriptionBySchedule(scheduleId: string) {
+  const [sub] = await db
+    .select({
+      id: mspSubscriptionsTable.id,
+      mspId: mspSubscriptionsTable.mspId,
+      serviceId: mspSubscriptionsTable.serviceId,
+      billingInterval: mspSubscriptionsTable.billingInterval,
+      pendingServiceId: mspSubscriptionsTable.pendingServiceId,
+      pendingBillingInterval: mspSubscriptionsTable.pendingBillingInterval,
+    })
+    .from(mspSubscriptionsTable)
+    .where(eq(mspSubscriptionsTable.stripeScheduleId, scheduleId))
+    .limit(1);
+  return sub ?? null;
+}
+
+/**
+ * The scheduled change has taken effect: move pendingServiceId /
+ * pendingBillingInterval onto the live columns, sync stripePriceId to the
+ * target phase's price, and clear all pending state.
+ */
+async function applyScheduledPlanChange(schedule: StripeSchedule): Promise<void> {
+  const sub = await findSubscriptionBySchedule(schedule.id);
+  if (!sub) return; // not a self-service schedule, or already finalized/canceled
+
+  const newServiceId = sub.pendingServiceId ?? sub.serviceId;
+  const newInterval = sub.pendingBillingInterval ?? sub.billingInterval;
+  const newPriceId = phasePriceId(schedule.phases[schedule.phases.length - 1]);
+
+  await db.update(mspSubscriptionsTable).set({
+    serviceId: newServiceId,
+    billingInterval: newInterval,
+    ...(newPriceId ? { stripePriceId: newPriceId } : {}),
+    stripeScheduleId: null,
+    pendingServiceId: null,
+    pendingBillingInterval: null,
+    updatedAt: new Date(),
+  }).where(eq(mspSubscriptionsTable.id, sub.id));
+
+  await db.insert(mspEventStoreTable).values({
+    eventType: "msp.subscription.plan_changed",
+    source: "msp-billing-webhook",
+    actor: { id: "system", role: "system", type: "system" },
+    meta: { tenant: { mspId: sub.mspId, customerId: null } },
+    payload: {
+      scheduleId: schedule.id,
+      fromServiceId: sub.serviceId,
+      toServiceId: newServiceId,
+      fromInterval: sub.billingInterval,
+      toInterval: newInterval,
+      newPriceId,
+    },
+    mspId: sub.mspId,
+    ownerType: "platform",
+  });
+
+  log.info(
+    { scheduleId: schedule.id, mspId: sub.mspId, newServiceId, newInterval, newPriceId },
+    "msp-billing-webhook: scheduled plan change applied",
+  );
+}
+
+/** The schedule went away without the change taking effect — clear pending state. */
+async function clearStalePendingPlanChange(schedule: StripeSchedule, reason: string): Promise<void> {
+  const sub = await findSubscriptionBySchedule(schedule.id);
+  if (!sub) return;
+
+  await db.update(mspSubscriptionsTable).set({
+    stripeScheduleId: null,
+    pendingServiceId: null,
+    pendingBillingInterval: null,
+    updatedAt: new Date(),
+  }).where(eq(mspSubscriptionsTable.id, sub.id));
+
+  log.warn(
+    {
+      scheduleId: schedule.id,
+      mspId: sub.mspId,
+      droppedPendingServiceId: sub.pendingServiceId,
+      droppedPendingInterval: sub.pendingBillingInterval,
+      reason,
+    },
+    "msp-billing-webhook: schedule ended outside the app — pending plan change cleared",
+  );
+}
+
+export async function handleScheduleUpdated(schedule: StripeSchedule): Promise<void> {
+  // Only act when Stripe has advanced into the final (target) phase. Updates
+  // fired by our own scheduling edits arrive while phase 1 is still current.
+  if (!schedule.current_phase || !finalPhaseStarted(schedule)) return;
+  await applyScheduledPlanChange(schedule);
+}
+
+export async function handleScheduleCompleted(schedule: StripeSchedule): Promise<void> {
+  await applyScheduledPlanChange(schedule);
+}
+
+export async function handleScheduleReleased(schedule: StripeSchedule): Promise<void> {
+  if (finalPhaseStarted(schedule)) {
+    // Natural release after the target phase ran (end_behavior: "release"),
+    // or a manual release after the transition — the change is live.
+    await applyScheduledPlanChange(schedule);
+  } else {
+    await clearStalePendingPlanChange(schedule, "released before the target phase started");
+  }
+}
+
+export async function handleScheduleCanceled(schedule: StripeSchedule): Promise<void> {
+  await clearStalePendingPlanChange(schedule, "schedule canceled");
 }
 
 export default router;
