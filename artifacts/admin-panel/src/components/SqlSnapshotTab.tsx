@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Play, PanelLeftClose, PanelLeft, Clock, Table as TableIcon } from "lucide-react";
 import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
 
 // Inline sibling of SqlRunnerModal.tsx — same endpoint, same request/response
-// shape, same results-table rendering, just laid out for the footer drawer's
+// shape, same results-table rendering, just laid out for the bottom panel's
 // compact strip instead of a full-height modal dialog. The Monaco editor from
 // the modal doesn't fit this panel's vertical space, so the query input here is
 // a plain compact textarea; the execute call and result handling are unchanged.
@@ -41,35 +41,35 @@ export function SqlSnapshotTab() {
   };
 
   return (
-    <div className="h-full flex font-mono text-[11px] text-purple-300">
+    <div className="flex h-full bg-background font-mono text-[11px] text-foreground">
       {showSchemaTree && (
-        <div className="w-56 shrink-0 h-full border-r border-slate-800/80 overflow-hidden">
+        <div className="h-full w-56 shrink-0 overflow-hidden border-r border-border">
           <LiveDbSchemaTree />
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 h-full">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* Compact toolbar */}
-        <div className="flex-shrink-0 flex items-center gap-2 px-2 py-1 border-b border-slate-900/80">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-2 py-1 select-none">
           <button
             onClick={() => setShowSchemaTree(!showSchemaTree)}
-            className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
-            title={showSchemaTree ? "Hide Schema Explorer" : "Show Schema Explorer"}
+            className="rounded border border-border bg-background p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title={showSchemaTree ? "Hide schema explorer" : "Show schema explorer"}
           >
-            {showSchemaTree ? <PanelLeftClose className="w-3 h-3" /> : <PanelLeft className="w-3 h-3" />}
+            {showSchemaTree ? <PanelLeftClose className="h-3 w-3" /> : <PanelLeft className="h-3 w-3" />}
           </button>
           <button
             onClick={handleExecute}
             disabled={isExecuting}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-[10px] font-bold uppercase tracking-wide"
-            title="Run Query (Ctrl/Cmd + Enter)"
+            className="flex items-center gap-1 rounded bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            title="Run query (Ctrl/Cmd + Enter)"
           >
-            <Play className={`w-3 h-3 ${isExecuting ? "animate-spin" : ""}`} />
-            {isExecuting ? "Running..." : "Run"}
+            <Play className={`h-3 w-3 ${isExecuting ? "animate-spin" : ""}`} />
+            {isExecuting ? "Running…" : "Run"}
           </button>
           {results && (
-            <span className="flex items-center gap-1 text-[10px] text-slate-500 ml-1">
-              <Clock className="w-3 h-3 text-emerald-400" />
+            <span className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Clock className="h-3 w-3 text-emerald-400" />
               {results.executionMs}ms · {results.rowCount} rows
             </span>
           )}
@@ -82,46 +82,45 @@ export function SqlSnapshotTab() {
           onKeyDown={handleKeyDown}
           spellCheck={false}
           rows={2}
-          className="flex-shrink-0 w-full resize-none bg-slate-950 border-b border-slate-800/80 text-purple-200 text-[11px] px-2.5 py-1.5 outline-none focus:bg-slate-900/40"
-          placeholder="SELECT ..."
+          className="w-full shrink-0 resize-none border-b border-border bg-background px-2.5 py-1.5 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-card/60"
+          placeholder="SELECT …"
         />
 
         {/* Results */}
         <div className="flex-1 overflow-auto p-2">
           {error && (
-            <div className="p-2 bg-red-950/50 border border-red-800 text-red-300 rounded text-[10px]">
-              <strong>Query Error:</strong> {error}
+            <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-[10px] text-destructive">
+              <strong>Query error:</strong> {error}
             </div>
           )}
 
           {!error && results && results.rows.length === 0 && (
-            <div className="text-slate-500 text-center py-2">Query executed successfully. 0 rows returned.</div>
+            <div className="py-2 text-center text-muted-foreground">Query executed successfully. 0 rows returned.</div>
           )}
 
           {!error && results && results.rows.length > 0 && (
-            <div className="border border-slate-800 rounded overflow-hidden">
-              <table className="w-full text-left border-collapse text-[10px]">
+            <div className="max-w-full overflow-x-auto rounded border border-border">
+              <table className="w-full border-collapse text-left text-[10px]">
                 <thead>
-                  <tr className="bg-slate-900 border-b border-slate-800 text-slate-400">
+                  <tr className="border-b border-border bg-card text-muted-foreground">
                     {results.fields.map((f) => (
-                      <th key={f} className="p-1 border-r border-slate-800 font-semibold truncate">{f}</th>
+                      <th key={f} className="truncate border-r border-border p-1 font-semibold">
+                        {f}
+                      </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-border/60">
                   {results.rows.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/40">
-                      {results.fields.map((f) => (
-                        <td key={f} className="p-1 border-r border-slate-800/50 text-slate-300 max-w-[160px] truncate">
-                          {row[f] === null ? (
-                            <span className="text-slate-600 italic">null</span>
-                          ) : typeof row[f] === "object" ? (
-                            JSON.stringify(row[f])
-                          ) : (
-                            String(row[f])
-                          )}
-                        </td>
-                      ))}
+                    <tr key={idx} className="hover:bg-accent/40">
+                      {results.fields.map((f) => {
+                        const display = row[f] === null ? "null" : typeof row[f] === "object" ? JSON.stringify(row[f]) : String(row[f]);
+                        return (
+                          <td key={f} title={display} className="max-w-[160px] truncate border-r border-border/50 p-1 text-foreground/90">
+                            {row[f] === null ? <span className="italic text-muted-foreground/60">null</span> : display}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -130,8 +129,8 @@ export function SqlSnapshotTab() {
           )}
 
           {!error && !results && (
-            <div className="text-slate-600 text-center flex items-center justify-center gap-2 py-2">
-              <TableIcon className="w-3.5 h-3.5 text-slate-800" />
+            <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
+              <TableIcon className="h-3.5 w-3.5 opacity-50" />
               <span>Run a query above to inspect testbed data.</span>
             </div>
           )}

@@ -9,15 +9,15 @@ import { useModal } from "@/contexts/ModalContext";
 function getStatusBadgeStyle(status: string): string {
   const s = status ? status.toUpperCase() : "";
   if (s.includes("CRITICAL") || s.includes("RISK") || s.includes("EXPANSION") || s.includes("BREACH") || s.includes("FAIL")) {
-    return "bg-rose-950/40 text-rose-400 border border-rose-500/25";
+    return "bg-destructive/10 text-destructive border border-destructive/25";
   }
   if (s.includes("WARN") || s.includes("ATTENTION") || s.includes("ACCELERATING") || s.includes("ENGAGEMENT")) {
-    return "bg-amber-950/40 text-amber-400 border border-amber-500/25";
+    return "bg-amber-400/10 text-amber-400 border border-amber-400/25";
   }
   if (s.includes("HEALTHY") || s.includes("SECURE") || s.includes("OPTIMIZED") || s.includes("COMPLIANT") || s.includes("STABLE")) {
-    return "bg-emerald-950/40 text-emerald-400 border border-emerald-500/25";
+    return "bg-emerald-400/10 text-emerald-400 border border-emerald-400/25";
   }
-  return "bg-slate-900 text-slate-400 border border-slate-800";
+  return "bg-card text-muted-foreground border border-border";
 }
 
 interface Testbed {
@@ -100,12 +100,12 @@ export function SimulatorEnginesPanel() {
   };
 
   return (
-    <div className="p-6 space-y-6 overflow-y-auto h-full">
+    <div className="p-4 space-y-4 overflow-y-auto h-full bg-background">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-200">Run Engines</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Every run below calls the real production path — <code className="text-indigo-400">runForTenant()</code> against
+          <h2 className="text-sm font-semibold text-foreground">Run Engines</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Every run below calls the real production path — <code className="text-[#58A6FF]">runForTenant()</code> against
             the testbed customer selected here. There is no sample-payload mode.
           </p>
         </div>
@@ -113,7 +113,7 @@ export function SimulatorEnginesPanel() {
           <select
             value={selectedTestbedId}
             onChange={e => setSelectedTestbedId(e.target.value === "" ? "" : Number(e.target.value))}
-            className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
           >
             <option value="">-- Select Testbed Customer --</option>
             {testbeds.map(tb => (
@@ -124,16 +124,16 @@ export function SimulatorEnginesPanel() {
       </div>
 
       {selectedTestbedId === "" ? (
-        <div className="border border-dashed border-slate-800 rounded-xl p-10 text-center text-sm text-slate-500">
+        <div className="border border-dashed border-border rounded-lg p-10 text-center text-sm text-muted-foreground">
           Select a testbed customer above — the same one you inject overrides against in the Overrides tab —
           to enable engine runs.
         </div>
       ) : loadingEngines ? (
         <div className="flex justify-center py-10">
-          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {engines.map(engine => {
             const result = results[engine.key];
             const isRunning = runningKey === engine.key;
@@ -141,31 +141,31 @@ export function SimulatorEnginesPanel() {
             return (
               <div
                 key={engine.key}
-                className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3"
+                className="bg-card border border-border rounded-lg p-3.5 space-y-3"
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-sm font-semibold text-slate-200">{engine.label}</div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">{engine.key}</div>
+                    <div className="text-sm font-semibold text-foreground">{engine.label}</div>
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{engine.key}</div>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => handleRunEngine(engine.key)}
                     disabled={isRunning}
-                    className="h-8 px-3 border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
+                    className="h-7 px-3 shrink-0"
                   >
                     {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                   </Button>
                 </div>
-                <p className="text-xs text-slate-500">{engine.description}</p>
+                <p className="text-xs text-muted-foreground">{engine.description}</p>
 
                 {result && (
                   <div
-                    className={`p-3 rounded border text-xs ${
+                    className={`p-3 rounded-md border text-xs ${
                       isError
-                        ? "bg-rose-950/20 border-rose-900/50 text-rose-300"
-                        : "bg-[#0b101c] border-slate-800 text-slate-300"
+                        ? "bg-destructive/10 border-destructive/40 text-destructive"
+                        : "bg-background border-border text-foreground/90"
                     }`}
                   >
                     {isError ? (
@@ -176,14 +176,14 @@ export function SimulatorEnginesPanel() {
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-emerald-400 font-semibold text-[10px] uppercase tracking-wider">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <CheckCircle2 className="w-3.5 h-3.5" />
                             Customer #{(result as EngineRunResult).customerId} Succeeded
                           </div>
                           <div className="flex gap-1 shrink-0">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-6 w-6 hover:bg-slate-800 hover:text-slate-100 text-slate-400" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
                               onClick={() => {
                                 const data = (result as EngineRunResult).output;
                                 navigator.clipboard.writeText(JSON.stringify(data, null, 2));
@@ -193,10 +193,10 @@ export function SimulatorEnginesPanel() {
                             >
                               <Copy className="h-3 w-3" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-6 w-6 hover:bg-slate-800 hover:text-slate-100 text-slate-400" 
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
                               onClick={() => {
                                 const data = (result as EngineRunResult).output as any;
                                 openModal("engine-trace", { engineName: engine.label, data });
@@ -209,9 +209,9 @@ export function SimulatorEnginesPanel() {
                         </div>
 
                         {/* Human Readable Premium Preview Card */}
-                        <div className="bg-[#050810] border border-slate-800/80 rounded-lg p-3 space-y-2.5">
-                          <div className="flex items-center justify-between border-b border-slate-900 pb-1.5">
-                            <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wide">
+                        <div className="bg-background border border-border rounded-md p-3 space-y-2.5">
+                          <div className="flex items-center justify-between border-b border-border pb-1.5">
+                            <span className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
                               {((result as EngineRunResult).output as any)?.display?.title || engine.label}
                             </span>
                             {((result as EngineRunResult).output as any)?.display?.status && (
@@ -224,12 +224,12 @@ export function SimulatorEnginesPanel() {
                           </div>
                           <div className="space-y-1 text-[11px]">
                             <div className="flex gap-1.5 items-start">
-                              <span className="text-slate-500 font-bold tracking-wide select-none">IMPACT:</span>
-                              <span className="text-slate-300 leading-normal">{((result as EngineRunResult).output as any)?.display?.impact || "No active signals detected."}</span>
+                              <span className="text-muted-foreground font-semibold tracking-wide select-none">IMPACT:</span>
+                              <span className="text-foreground/90 leading-normal">{((result as EngineRunResult).output as any)?.display?.impact || "No active signals detected."}</span>
                             </div>
                             <div className="flex gap-1.5 items-start">
-                              <span className="text-slate-500 font-bold tracking-wide select-none">ACTION:</span>
-                              <span className="text-slate-300 leading-normal">{((result as EngineRunResult).output as any)?.display?.recommendation || "Review baseline configurations."}</span>
+                              <span className="text-muted-foreground font-semibold tracking-wide select-none">ACTION:</span>
+                              <span className="text-foreground/90 leading-normal">{((result as EngineRunResult).output as any)?.display?.recommendation || "Review baseline configurations."}</span>
                             </div>
                           </div>
                         </div>

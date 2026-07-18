@@ -1,22 +1,20 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useModal } from "@/contexts/ModalContext";
-import { 
-  ChevronRight, 
-  ChevronDown, 
-  CreditCard, 
-  Shield, 
-  Clock, 
-  RefreshCw, 
-  Database, 
-  Terminal, 
-  Plus, 
-  Folder, 
+import {
+  ChevronRight,
+  ChevronDown,
+  CreditCard,
+  Shield,
+  Clock,
+  RefreshCw,
+  Database,
+  Plus,
+  Folder,
   FolderOpen,
   FileCode,
   Edit2,
-  Trash2,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +42,7 @@ export function SimulatorLeftTree(props?: {
 }) {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
-  
+
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [loading, setLoading] = useState(false);
@@ -52,7 +50,7 @@ export function SimulatorLeftTree(props?: {
   // Tree toggle states
   const [scenariosOpen, setScenariosOpen] = useState(true);
   const [scriptsOpen, setScriptsOpen] = useState(true);
-  
+
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
     billing: true,
@@ -60,11 +58,11 @@ export function SimulatorLeftTree(props?: {
     sla: true,
     crm: true,
     "QA Asserts": true,
-    "Maintenance": true,
+    Maintenance: true,
   });
 
   const toggleCat = (catName: string) => {
-    setExpandedCats(prev => ({ ...prev, [catName]: !prev[catName] }));
+    setExpandedCats((prev) => ({ ...prev, [catName]: !prev[catName] }));
   };
 
   const loadData = async () => {
@@ -83,29 +81,29 @@ export function SimulatorLeftTree(props?: {
             name: "Simulate Unpaid Bill (>7 Days)",
             icon: "CreditCard",
             category: "billing",
-            description: "Fast-forwards the MSP's suspended_at date to trigger the red lock-out banner in the portal."
+            description: "Fast-forwards the MSP's suspended_at date to trigger the red lock-out banner in the portal.",
           },
           {
             id: "INJECT_MFA_DRIFT",
             name: "Fire MFA Disabled Alert",
             icon: "ShieldAlert",
             category: "security",
-            description: "Injects an active MFA_DISABLED signal directly into the tenant to trigger a score drop."
+            description: "Injects an active MFA_DISABLED signal directly into the tenant to trigger a score drop.",
           },
           {
             id: "SLA_BREACH_TICKETS",
             name: "Age Open Tickets (SLA Breach)",
             icon: "Clock",
             category: "sla",
-            description: "Ages all open Kanban tasks for this MSP past 48 hours to trigger escalation rules."
+            description: "Ages all open Kanban tasks for this MSP past 48 hours to trigger escalation rules.",
           },
           {
             id: "FACTORY_RESET",
             name: "Factory Reset Testbed",
             icon: "RefreshCcw",
             category: "crm",
-            description: "Wipes all generated signals, clears suspensions, and restores baseline health scores."
-          }
+            description: "Wipes all generated signals, clears suspensions, and restores baseline health scores.",
+          },
         ]);
       }
 
@@ -137,27 +135,37 @@ export function SimulatorLeftTree(props?: {
   }, [fetchWithAuth]);
 
   // Group events by category
-  const scenariosByCategory = scenarios.reduce((acc, event) => {
-    const cat = event.category || "crm";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(event);
-    return acc;
-  }, {} as Record<string, EventDef[]>);
+  const scenariosByCategory = scenarios.reduce(
+    (acc, event) => {
+      const cat = event.category || "crm";
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(event);
+      return acc;
+    },
+    {} as Record<string, EventDef[]>,
+  );
 
   // Group scripts by category
-  const scriptsByCategory = scripts.reduce((acc, script) => {
-    const cat = script.category || "Uncategorized";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(script);
-    return acc;
-  }, {} as Record<string, SavedScript[]>);
+  const scriptsByCategory = scripts.reduce(
+    (acc, script) => {
+      const cat = script.category || "Uncategorized";
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(script);
+      return acc;
+    },
+    {} as Record<string, SavedScript[]>,
+  );
 
   const getCategoryIcon = (cat: string) => {
     switch (cat.toLowerCase()) {
-      case "billing": return <CreditCard className="w-3.5 h-3.5 text-rose-400" />;
-      case "security": return <Shield className="w-3.5 h-3.5 text-emerald-400" />;
-      case "sla": return <Clock className="w-3.5 h-3.5 text-amber-400" />;
-      default: return <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />;
+      case "billing":
+        return <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />;
+      case "security":
+        return <Shield className="h-3.5 w-3.5 text-muted-foreground" />;
+      case "sla":
+        return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
+      default:
+        return <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />;
     }
   };
 
@@ -167,69 +175,82 @@ export function SimulatorLeftTree(props?: {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-mono text-xs select-none">
-      {/* Search / Tree Utilities */}
-      <div className="p-3 border-b border-slate-900 flex items-center justify-between gap-2 shrink-0">
-        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Explorer</span>
-        <div className="flex items-center gap-1.5">
-          <button 
+    <div className="flex h-full min-h-0 flex-col bg-background text-xs select-none">
+      {/* Explorer header */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Explorer</span>
+        <div className="flex items-center gap-0.5">
+          <button
             onClick={() => openModal("new-script")}
-            className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
-            title="New SQL Script"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="New SQL script"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
-          <button 
+          <button
             onClick={loadData}
             disabled={loading}
-            className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors disabled:opacity-50"
-            title="Refresh Explorer"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title="Refresh explorer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
-      {/* Tree Content */}
-      <div className="flex-1 overflow-y-auto py-2 pr-1 space-y-2.5">
-        
-        {/* Section 1: Demo Scenarios */}
-        <div className="space-y-1">
-          <div 
+      {/* Tree content */}
+      <div className="flex-1 space-y-1 overflow-y-auto py-1">
+        {/* Section 1: Simulation Scenarios */}
+        <div>
+          <div
             onClick={() => setScenariosOpen(!scenariosOpen)}
-            className="flex items-center gap-1.5 px-3 py-1 cursor-pointer hover:bg-slate-900 text-slate-300 font-bold tracking-wide"
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {scenariosOpen ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
-            {scenariosOpen ? <FolderOpen className="w-4 h-4 text-indigo-400 fill-indigo-400/20" /> : <Folder className="w-4 h-4 text-indigo-400 fill-indigo-400/20" />}
+            {scenariosOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
             <span className="truncate">Simulation Scenarios</span>
           </div>
 
           {scenariosOpen && (
-            <div className="pl-4 space-y-1">
-              {Object.keys(scenariosByCategory).map(cat => (
-                <div key={cat} className="space-y-0.5">
-                  <div 
+            <div>
+              {Object.keys(scenariosByCategory).map((cat) => (
+                <div key={cat}>
+                  <div
                     onClick={() => toggleCat(cat)}
-                    className="flex items-center gap-1.5 px-3 py-0.5 cursor-pointer hover:bg-slate-900/60 text-slate-400 text-[11px]"
+                    className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                   >
-                    {expandedCats[cat] ? <ChevronDown className="w-3 h-3 text-slate-600" /> : <ChevronRight className="w-3 h-3 text-slate-600" />}
-                    {getCategoryIcon(cat)}
-                    <span className="capitalize truncate">{cat}</span>
-                    <span className="text-[9px] text-slate-600 ml-auto">({scenariosByCategory[cat].length})</span>
+                    {expandedCats[cat] ? (
+                      <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                    )}
+                    {expandedCats[cat] ? (
+                      <FolderOpen className="h-3.5 w-3.5 text-[#58A6FF]" />
+                    ) : (
+                      <Folder className="h-3.5 w-3.5 text-[#58A6FF]" />
+                    )}
+                    <span className="truncate capitalize">{cat}</span>
+                    <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
+                      {scenariosByCategory[cat].length}
+                    </span>
                   </div>
 
                   {expandedCats[cat] && (
-                    <div className="pl-4 space-y-0.5 border-l border-slate-900/80 ml-4.5 my-0.5">
-                      {scenariosByCategory[cat].map(event => (
-                        <div 
+                    <div className="ml-[22px] border-l border-[#21262D]">
+                      {scenariosByCategory[cat].map((event) => (
+                        <div
                           key={event.id}
                           onClick={() => openModal("execute-scenario", { event })}
-                          className="group flex items-center gap-2 pl-3 pr-2 py-1 cursor-pointer rounded hover:bg-slate-900 text-slate-300 transition-colors"
+                          className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
                         >
-                          <Sparkles className="w-3 h-3 text-indigo-500/80 group-hover:text-indigo-400 shrink-0" />
-                          <span className="truncate flex-1 group-hover:text-indigo-200" title={event.name}>
+                          <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-[#58A6FF]" />
+                          <span className="flex-1 truncate" title={event.description || event.name}>
                             {event.name}
                           </span>
+                          <span className="hidden shrink-0 group-hover:inline">{getCategoryIcon(event.category)}</span>
                         </div>
                       ))}
                     </div>
@@ -240,58 +261,65 @@ export function SimulatorLeftTree(props?: {
           )}
         </div>
 
-        {/* Section 2: Saved Scripts */}
-        <div className="space-y-1">
-          <div 
+        {/* Section 2: Saved SQL Scripts */}
+        <div>
+          <div
             onClick={() => setScriptsOpen(!scriptsOpen)}
-            className="flex items-center gap-1.5 px-3 py-1 cursor-pointer hover:bg-slate-900 text-slate-300 font-bold tracking-wide"
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
           >
-            {scriptsOpen ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
-            {scriptsOpen ? <FolderOpen className="w-4 h-4 text-cyan-400 fill-cyan-400/20" /> : <Folder className="w-4 h-4 text-cyan-400 fill-cyan-400/20" />}
+            {scriptsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
             <span className="truncate">Saved SQL Scripts</span>
           </div>
 
           {scriptsOpen && (
-            <div className="pl-4 space-y-1">
+            <div>
               {Object.keys(scriptsByCategory).length === 0 ? (
-                <div className="text-[10px] text-slate-600 px-3 py-1 italic">
-                  No saved scripts
-                </div>
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No saved scripts</div>
               ) : (
-                Object.keys(scriptsByCategory).map(cat => (
-                  <div key={cat} className="space-y-0.5">
-                    <div 
+                Object.keys(scriptsByCategory).map((cat) => (
+                  <div key={cat}>
+                    <div
                       onClick={() => toggleCat(cat)}
-                      className="flex items-center gap-1.5 px-3 py-0.5 cursor-pointer hover:bg-slate-900/60 text-slate-400 text-[11px]"
+                      className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                     >
-                      {expandedCats[cat] ? <ChevronDown className="w-3 h-3 text-slate-600" /> : <ChevronRight className="w-3 h-3 text-slate-600" />}
-                      <Database className="w-3.5 h-3.5 text-cyan-500" />
+                      {expandedCats[cat] ? (
+                        <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                      ) : (
+                        <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                      )}
+                      <Database className="h-3.5 w-3.5 text-[#58A6FF]" />
                       <span className="truncate">{cat}</span>
-                      <span className="text-[9px] text-slate-600 ml-auto">({scriptsByCategory[cat].length})</span>
+                      <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
+                        {scriptsByCategory[cat].length}
+                      </span>
                     </div>
 
                     {expandedCats[cat] && (
-                      <div className="pl-4 space-y-0.5 border-l border-slate-900/80 ml-4.5 my-0.5">
-                        {scriptsByCategory[cat].map(script => (
-                          <div 
+                      <div className="ml-[22px] border-l border-[#21262D]">
+                        {scriptsByCategory[cat].map((script) => (
+                          <div
                             key={script.id}
-                            className="group flex items-center gap-2 pl-3 pr-2 py-1 cursor-pointer rounded hover:bg-slate-900 text-slate-300 transition-colors"
+                            className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
                           >
-                            <div 
-                              className="flex-1 flex items-center gap-2 min-w-0"
-                              onClick={() => handleScriptClick(script)}
-                            >
-                              <FileCode className={`w-3.5 h-3.5 shrink-0 ${script.isDestructive ? 'text-rose-500' : 'text-slate-400'}`} />
-                              <span className="truncate hover:text-cyan-400" title={script.name}>
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5" onClick={() => handleScriptClick(script)}>
+                              <FileCode
+                                className={`h-3.5 w-3.5 shrink-0 ${script.isDestructive ? "text-destructive" : "text-muted-foreground"}`}
+                                aria-label={script.isDestructive ? "Destructive script" : undefined}
+                              />
+                              <span className="truncate font-mono text-[11px]" title={script.name}>
                                 {script.name}
                               </span>
                             </div>
-                            <button 
+                            <button
                               onClick={() => openModal("edit-script", { script })}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-500 hover:text-slate-200 transition-all shrink-0"
-                              title="Edit Script Details"
+                              className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-all hover:text-foreground group-hover:opacity-100"
+                              title="Edit script details"
                             >
-                              <Edit2 className="w-3 h-3" />
+                              <Edit2 className="h-3 w-3" />
                             </button>
                           </div>
                         ))}

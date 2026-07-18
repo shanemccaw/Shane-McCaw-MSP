@@ -195,17 +195,17 @@ export function SimulatorOverridesPanel() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans text-slate-300">
-      <div className="p-6 overflow-y-auto space-y-8 flex-1">
-        
+    <div className="flex-1 flex flex-col min-h-0 bg-background font-sans text-foreground/90">
+      <div className="p-4 overflow-y-auto space-y-5 flex-1">
+
         {/* Top Section: Picker */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-slate-200">Testbed Customer Selection</h3>
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">Testbed Customer Selection</h3>
           <div className="w-80">
             <select
               value={selectedTestbedId}
               onChange={e => setSelectedTestbedId(e.target.value ? Number(e.target.value) : "")}
-              className="w-full bg-slate-900 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
             >
               <option value="">-- Select Testbed Customer --</option>
               {testbeds.map(tb => (
@@ -218,18 +218,18 @@ export function SimulatorOverridesPanel() {
         {selectedTestbedId !== "" && (
           <>
             {/* Create Override Form */}
-            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2">Create Simulator Override</h3>
-              
+            <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">Create Simulator Override</h3>
+
               <form onSubmit={handleCreateOverride} className="space-y-4">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-400">Monitor Check</label>
+                    <label className="text-xs font-medium text-muted-foreground">Monitor Check</label>
                     <div className="flex gap-2">
                       <select
                         value={selectedCheckKey}
                         onChange={e => setSelectedCheckKey(e.target.value)}
-                        className="flex-1 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+                        className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
                       >
                         <option value="">-- Select Check --</option>
                         {checks.map(c => (
@@ -242,24 +242,24 @@ export function SimulatorOverridesPanel() {
                           variant="outline"
                           onClick={() => handleRunNow(selectedCheckKey)}
                           disabled={runningCheck === selectedCheckKey}
-                          className="h-10 px-3 border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 shrink-0"
+                          className="h-10 px-3 shrink-0"
                         >
                           {runningCheck === selectedCheckKey ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                         </Button>
                       )}
                     </div>
                     {checkResult && selectedCheckKey === checkResult.checkKey && (
-                      <div className={`mt-2 p-3 rounded border text-xs ${checkResult.error ? 'bg-rose-950/20 border-rose-900/50 text-rose-300' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
+                      <div className={`mt-2 p-3 rounded-md border text-xs ${checkResult.error ? 'bg-destructive/10 border-destructive/40 text-destructive' : 'bg-background border-border text-foreground/90'}`}>
                         {checkResult.error ? (
                           <div className="flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {checkResult.error}</div>
                         ) : (
                           <div className="space-y-1 font-mono text-[11px]">
                             <div className="flex items-center justify-between">
-                              <span className="font-semibold text-indigo-400">Status: {checkResult.status}</span>
-                              <span className="text-slate-500">Items: {checkResult.itemCount}</span>
+                              <span className="font-semibold text-[#58A6FF]">Status: {checkResult.status}</span>
+                              <span className="text-muted-foreground">Items: {checkResult.itemCount}</span>
                             </div>
                             {checkResult.severityMatched && (
-                              <div className="text-rose-400">Severity: {checkResult.severityMatched}</div>
+                              <div className="text-destructive">Severity: {checkResult.severityMatched}</div>
                             )}
                             {checkResult.errorMessage && (
                               <div className="text-amber-400 mt-1">Error: {checkResult.errorMessage}</div>
@@ -269,34 +269,34 @@ export function SimulatorOverridesPanel() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-400">Field Path</label>
+                    <label className="text-xs font-medium text-muted-foreground">Field Path</label>
                     <Input
                       placeholder="e.g. value[0].isMfaRegistered"
                       value={fieldPath}
                       onChange={e => setFieldPath(e.target.value)}
-                      className="bg-slate-950 border-slate-800 text-slate-200 focus-visible:ring-indigo-500 font-mono text-xs"
+                      className="bg-background font-mono text-xs"
                     />
                   </div>
 
                   <div className="space-y-2 col-span-2">
-                    <label className="text-xs font-medium text-slate-400">Injected Value (JSON)</label>
+                    <label className="text-xs font-medium text-muted-foreground">Injected Value (JSON)</label>
                     <textarea
                       placeholder={'e.g. false, 42, "string", or {"key": "value"}'}
                       value={injectedValueText}
                       onChange={e => setInjectedValueText(e.target.value)}
-                      className="w-full h-24 bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                      className="w-full h-24 bg-background border border-border rounded-md px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:border-ring"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-400">Expires At (Optional)</label>
+                    <label className="text-xs font-medium text-muted-foreground">Expires At (Optional)</label>
                     <Input
                       type="datetime-local"
                       value={expiresAt}
                       onChange={e => setExpiresAt(e.target.value)}
-                      className="bg-slate-950 border-slate-800 text-slate-200 focus-visible:ring-indigo-500 [color-scheme:dark]"
+                      className="bg-background [color-scheme:dark]"
                     />
                   </div>
                 </div>
@@ -305,7 +305,7 @@ export function SimulatorOverridesPanel() {
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-4"
+                    className="text-xs px-4"
                   >
                     {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                     Create Override
@@ -315,16 +315,16 @@ export function SimulatorOverridesPanel() {
             </div>
 
             {/* Overrides Table */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-200 flex items-center justify-between">
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center justify-between">
                 <span>Active Overrides</span>
-                <Badge variant="outline" className="border-slate-800 text-slate-400">{overrides.length} Total</Badge>
+                <Badge variant="outline" className="text-muted-foreground">{overrides.length} Total</Badge>
               </h3>
-              
-              <div className="border border-slate-900 rounded-xl overflow-hidden bg-slate-950">
+
+              <div className="border border-border rounded-lg overflow-hidden bg-background">
                 <Table>
-                  <TableHeader className="bg-slate-900/50 border-slate-900">
-                    <TableRow className="border-slate-900 hover:bg-transparent">
+                  <TableHeader className="bg-card">
+                    <TableRow className="hover:bg-transparent">
                       <TableHead className="text-xs font-semibold py-3">Endpoint</TableHead>
                       <TableHead className="text-xs font-semibold py-3">Field Path</TableHead>
                       <TableHead className="text-xs font-semibold py-3">Injected Value</TableHead>
@@ -336,50 +336,50 @@ export function SimulatorOverridesPanel() {
                     {loadingOverrides && overrides.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="h-24 text-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-indigo-500 mx-auto" />
+                          <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" />
                         </TableCell>
                       </TableRow>
                     ) : overrides.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-slate-500 text-sm">
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground text-sm">
                           No overrides found for this testbed.
                         </TableCell>
                       </TableRow>
                     ) : (
                       overrides.map(ov => (
-                        <TableRow key={ov.id} className="border-slate-900 hover:bg-slate-900/20">
-                          <TableCell className="py-3 font-mono text-xs text-slate-300">
+                        <TableRow key={ov.id} className="hover:bg-accent/30">
+                          <TableCell className="py-2.5 font-mono text-xs text-foreground/90">
                             <div className="flex flex-col">
-                              <span className="text-indigo-400">{ov.monitorCheckKey}</span>
-                              <span className="text-[10px] text-slate-500">{ov.graphEndpoint}</span>
+                              <span className="text-[#58A6FF]">{ov.monitorCheckKey}</span>
+                              <span className="text-[10px] text-muted-foreground">{ov.graphEndpoint}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="py-3 font-mono text-xs text-slate-300">{ov.fieldPath}</TableCell>
-                          <TableCell className="py-3 font-mono text-[11px] text-emerald-400">
+                          <TableCell className="py-2.5 font-mono text-xs text-foreground/90">{ov.fieldPath}</TableCell>
+                          <TableCell className="py-2.5 font-mono text-[11px] text-emerald-400">
                             <pre className="whitespace-pre-wrap max-w-xs">{JSON.stringify(ov.injectedValue, null, 2)}</pre>
                           </TableCell>
-                          <TableCell className="py-3">
-                            <Badge 
+                          <TableCell className="py-2.5">
+                            <Badge
                               className={`rounded-full px-2 py-0.5 text-[10px] font-semibold font-mono border ${
-                                ov.isActive 
-                                  ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" 
-                                  : "text-slate-400 border-slate-700 bg-slate-800/50"
+                                ov.isActive
+                                  ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
+                                  : "text-muted-foreground border-border bg-card"
                               }`}
                             >
                               {ov.isActive ? "ACTIVE" : "EXPIRED"}
                             </Badge>
                             {ov.expiresAt && (
-                              <div className="text-[9px] text-slate-500 mt-1">
+                              <div className="text-[9px] text-muted-foreground mt-1">
                                 Exp: {new Date(ov.expiresAt).toLocaleString()}
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="py-3 text-right">
+                          <TableCell className="py-2.5 text-right">
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteOverride(ov.id)}
-                              className="h-8 w-8 p-0 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>

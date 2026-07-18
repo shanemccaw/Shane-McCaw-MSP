@@ -429,6 +429,88 @@ router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", require
   }
 });
 
+// ── GET /api/admin/simulator/testbeds/:customerId/portal-snapshot ───────────
+// Read-only mirror of what the customer portal dashboard renders for this
+// testbed customer: latest tenant_engine_snapshots row per engineKey (the same
+// source GET /portal/dashboard reduces), plus whether an active portal user
+// exists to impersonate. Powers Simulator Studio's Portal Snapshot panel — the
+// reliable replacement for the retired live-iframe portal mirror.
+
+router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = Number(req.params.customerId);
+  if (isNaN(customerId)) {
+    return res.status(400).json({ error: "Invalid customer id" });
+  }
+  try {
+    const [customer] = await db
+      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain })
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+    if (!customer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const [portalUser] = await db
+      .select({ userId: mspUsersTable.userId })
+      .from(mspUsersTable)
+      .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+      .limit(1);
+
+    const snapshots = await db
+      .select({
+        engineKey: tenantEngineSnapshotsTable.engineKey,
+        score: tenantEngineSnapshotsTable.score,
+        breakdown: tenantEngineSnapshotsTable.breakdown,
+        capturedAt: tenantEngineSnapshotsTable.capturedAt,
+      })
+      .from(tenantEngineSnapshotsTable)
+      .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
+      .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
+
+    // Latest snapshot per engine, findings pulled out of breakdown the same way
+    // /portal/dashboard does so the panel shows what the customer would see.
+    const engines: Array<{ engineKey: string; score: number | null; capturedAt: string | null; findings: string[] }> = [];
+    const seen = new Set<string>();
+    for (const snap of snapshots) {
+      if (seen.has(snap.engineKey)) continue;
+      seen.add(snap.engineKey);
+      const findings: string[] = [];
+      const breakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
+      for (const item of breakdown) {
+        if (typeof item === "object" && item !== null) {
+          const b = item as Record<string, unknown>;
+          if (b.finding) findings.push(String(b.finding));
+          else if (b.message) findings.push(String(b.message));
+          else if (b.label) findings.push(String(b.label));
+        }
+      }
+      engines.push({
+        engineKey: snap.engineKey,
+        score: snap.score,
+        capturedAt: snap.capturedAt ? snap.capturedAt.toISOString() : null,
+        findings: findings.slice(0, 3),
+      });
+    }
+
+    const scored = engines.filter(e => e.score !== null);
+    const compositeScore = scored.length > 0
+      ? Math.round(scored.reduce((s, e) => s + (e.score as number), 0) / scored.length)
+      : null;
+
+    return res.json({
+      customer,
+      hasPortalUser: !!portalUser,
+      compositeScore,
+      engines,
+      capturedAt: engines[0]?.capturedAt ?? null,
+    });
+  } catch (err) {
+    log.error({ err, customerId }, "admin-engines: portal-snapshot failed");
+    return res.status(500).json({ error: "Failed to load portal snapshot" });
+  }
+});
+
 // ── POST /api/admin/engines/:key/test ───────────────────────────────────────
 // Test against a real tenant ({ tenantId }) or a sample payload
 // ({ payload: { profileUpdates, parsedFindings } }). Every run is logged to

@@ -20,6 +20,16 @@ import {
 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@codemirror/view";
+
+// One Dark's own #282c34 background clashes with the app's GitHub-dark canvas;
+// keep its syntax palette but repaint the editor surfaces with app tokens.
+const editorSurfaceTheme = EditorView.theme({
+  "&": { backgroundColor: "#0D1117" },
+  ".cm-gutters": { backgroundColor: "#0D1117", borderRight: "1px solid #21262D" },
+  ".cm-activeLine": { backgroundColor: "#161B2280" },
+  ".cm-activeLineGutter": { backgroundColor: "#161B2280" },
+});
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -234,62 +244,31 @@ export function SimulatorCenterCanvas(props?: {
     }
   };
 
+  const TABS: Array<{ key: typeof activeTab; label: string }> = [
+    { key: "sql", label: "SQL Query" },
+    { key: "testbeds", label: "Testbeds" },
+    { key: "overrides", label: "Overrides" },
+    { key: "engines", label: "Run Engines" },
+    { key: "schema", label: "DB Schema" },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-slate-950 font-sans">
-      {/* Navigation Tabs */}
-      <div className="flex-shrink-0 flex items-center bg-slate-950 border-b border-slate-900 px-4 h-11 justify-between select-none">
-        <div className="flex items-center gap-1">
+    <div className="flex-1 flex flex-col min-h-0 h-full bg-background font-sans">
+      {/* Editor-style tab strip */}
+      <div className="flex-shrink-0 flex items-end bg-card border-b border-border select-none">
+        {TABS.map(({ key, label }) => (
           <button
-            onClick={() => setActiveTab("sql")}
-            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
-              activeTab === "sql"
-                ? "bg-slate-900 text-indigo-400 border border-slate-800"
-                : "text-slate-400 hover:text-slate-200"
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`relative h-9 px-3.5 text-xs border-r border-border transition-colors ${
+              activeTab === key
+                ? "bg-background text-foreground before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            SQL Query Canvas
+            {label}
           </button>
-          <button
-            onClick={() => setActiveTab("testbeds")}
-            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
-              activeTab === "testbeds"
-                ? "bg-slate-900 text-indigo-400 border border-slate-800"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Testbeds Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab("overrides")}
-            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
-              activeTab === "overrides"
-                ? "bg-slate-900 text-indigo-400 border border-slate-800"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Overrides Engine
-          </button>
-          <button
-            onClick={() => setActiveTab("engines")}
-            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
-              activeTab === "engines"
-                ? "bg-slate-900 text-indigo-400 border border-slate-800"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Run Engines
-          </button>
-          <button
-            onClick={() => setActiveTab("schema")}
-            className={`px-3 py-1.5 rounded-md text-xs font-mono font-medium transition-all ${
-              activeTab === "schema"
-                ? "bg-slate-900 text-indigo-400 border border-slate-800"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            Live DB Schema
-          </button>
-        </div>
+        ))}
       </div>
 
       {/* Workspace Area */}
@@ -299,14 +278,14 @@ export function SimulatorCenterCanvas(props?: {
         {activeTab === "sql" && (
           <div className="flex-1 flex flex-col min-h-0">
             {/* Toolbar */}
-            <div className="px-4 py-2 bg-slate-950/60 border-b border-slate-900 flex items-center justify-between gap-4 select-none">
-              <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">
+            <div className="px-3 py-1.5 bg-background border-b border-border flex items-center justify-between gap-4 select-none">
+              <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
                 <Database className="w-3.5 h-3.5" />
                 <span>Target: local_testbed_db</span>
                 {currentScript && (
                   <>
-                    <span className="text-slate-700">|</span>
-                    <span className="text-indigo-400">File: {currentScript.name}</span>
+                    <span className="text-muted-foreground/50">|</span>
+                    <span className="text-[#58A6FF]">File: {currentScript.name}</span>
                   </>
                 )}
               </div>
@@ -319,7 +298,7 @@ export function SimulatorCenterCanvas(props?: {
                     setCurrentScript(null);
                     setResults(null);
                   }}
-                  className="h-8 border-slate-800 hover:bg-slate-900 bg-transparent text-slate-400 hover:text-slate-100 text-xs px-2.5 font-mono"
+                  className="h-7 text-xs px-2.5"
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Clear
                 </Button>
@@ -333,7 +312,7 @@ export function SimulatorCenterCanvas(props?: {
                       openModal("new-script", { script: { query, category: "QA Asserts" } });
                     }
                   }}
-                  className="h-8 border-slate-800 hover:bg-slate-900 bg-transparent text-slate-400 hover:text-slate-100 text-xs px-2.5 font-mono"
+                  className="h-7 text-xs px-2.5"
                 >
                   <Save className="w-3.5 h-3.5 mr-1.5" /> Save Script
                 </Button>
@@ -341,7 +320,7 @@ export function SimulatorCenterCanvas(props?: {
                   size="sm"
                   onClick={handleRunQuery}
                   disabled={running}
-                  className="h-8 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 font-mono shadow-md shadow-indigo-600/10"
+                  className="h-7 text-xs px-3"
                 >
                   {running ? (
                     <>
@@ -357,11 +336,12 @@ export function SimulatorCenterCanvas(props?: {
             </div>
 
             {/* CodeMirror Editor */}
-            <div className="flex-1 min-h-[160px] border-b border-slate-900 overflow-y-auto bg-[#282c34]">
+            <div className="flex-1 min-h-[160px] border-b border-border overflow-y-auto bg-background">
               <CodeMirror
                 value={query}
                 height="100%"
                 theme={oneDark}
+                extensions={[editorSurfaceTheme]}
                 onChange={(val) => {
                   setQuery(val);
                   if (currentScript && val !== currentScript.query) {
@@ -381,30 +361,30 @@ export function SimulatorCenterCanvas(props?: {
             </div>
 
             {/* Results Grid Container */}
-            <div className="h-64 flex flex-col min-h-0 bg-slate-950 font-mono text-xs">
-              <div className="px-4 py-2 border-b border-slate-900 flex items-center justify-between shrink-0 select-none bg-slate-950/80">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Query Output</span>
+            <div className="h-64 flex flex-col min-h-0 bg-background font-mono text-xs">
+              <div className="px-3 py-1.5 border-b border-border flex items-center justify-between shrink-0 select-none bg-card">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Query Output</span>
                 {results && results.success && (
-                  <span className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                    <Clock className="w-3 h-3 text-slate-500" /> {results.executionMs}ms
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" /> {results.executionMs}ms
                   </span>
                 )}
               </div>
-              <div className="flex-1 overflow-auto p-4 min-h-0">
+              <div className="flex-1 overflow-auto p-3 min-h-0">
                 {!results && !running && (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-600 italic">
-                    <Terminal className="w-8 h-8 text-slate-800 mb-2" />
+                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground/70 italic">
+                    <Terminal className="w-8 h-8 opacity-40 mb-2" />
                     <span>Run a SQL query above to see outputs.</span>
                   </div>
                 )}
                 {running && (
-                  <div className="h-full flex items-center justify-center text-slate-400 gap-2 font-semibold">
-                    <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                  <div className="h-full flex items-center justify-center text-muted-foreground gap-2 font-semibold">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     <span>Executing database queries...</span>
                   </div>
                 )}
                 {results && !results.success && (
-                  <div className="bg-rose-950/15 border border-rose-900/30 rounded-lg p-4 text-rose-400 flex gap-2.5 max-w-full">
+                  <div className="bg-destructive/10 border border-destructive/40 rounded-md p-3 text-destructive flex gap-2.5 max-w-full">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-semibold text-xs mb-0.5">Database Error</h4>
@@ -415,17 +395,17 @@ export function SimulatorCenterCanvas(props?: {
                 {results && results.success && (
                   <div className="space-y-3 min-w-full">
                     {results.rows.length === 0 ? (
-                      <div className="bg-emerald-950/15 border border-emerald-900/30 rounded-lg p-4 text-emerald-300 flex items-center gap-2">
+                      <div className="bg-emerald-400/10 border border-emerald-400/30 rounded-md p-3 text-emerald-400 flex items-center gap-2">
                         <CheckCircle className="w-4 h-4" />
                         <span>Query completed. 0 rows returned. (Mutated rows: {results.mutatedRows ?? 0})</span>
                       </div>
                     ) : (
-                      <div className="border border-slate-900 rounded-lg overflow-x-auto max-w-full">
+                      <div className="border border-border rounded-md overflow-x-auto max-w-full">
                         <Table>
-                          <TableHeader className="bg-slate-900/60 border-slate-900">
-                            <TableRow className="border-slate-900 hover:bg-transparent">
+                          <TableHeader className="bg-card">
+                            <TableRow className="hover:bg-transparent">
                               {results.fields.map((field: string) => (
-                                <TableHead key={field} className="text-[10px] text-slate-400 py-2.5 px-3 font-semibold font-mono uppercase tracking-wider select-none">
+                                <TableHead key={field} className="text-[10px] text-muted-foreground py-2 px-3 font-semibold font-mono uppercase tracking-wider select-none">
                                   {field}
                                 </TableHead>
                               ))}
@@ -433,7 +413,7 @@ export function SimulatorCenterCanvas(props?: {
                           </TableHeader>
                           <TableBody>
                             {results.rows.map((row: any, idx: number) => (
-                              <TableRow key={idx} className="border-slate-900 hover:bg-slate-900/40">
+                              <TableRow key={idx} className="hover:bg-accent/40">
                                 {results.fields.map((field: string) => {
                                   const val = row[field];
                                   let displayVal = "";
@@ -445,10 +425,10 @@ export function SimulatorCenterCanvas(props?: {
                                     displayVal = String(val);
                                   }
                                   return (
-                                    <TableCell 
-                                      key={field} 
-                                      className={`py-2 px-3 truncate max-w-[200px] border-slate-900 font-mono text-[11px] ${
-                                        val === null ? 'text-slate-600 italic' : 'text-slate-300'
+                                    <TableCell
+                                      key={field}
+                                      className={`py-1.5 px-3 truncate max-w-[200px] font-mono text-[11px] ${
+                                        val === null ? 'text-muted-foreground/60 italic' : 'text-foreground/90'
                                       }`}
                                       title={displayVal}
                                     >
@@ -471,18 +451,18 @@ export function SimulatorCenterCanvas(props?: {
 
         {/* Tab 2: Testbeds Dashboard */}
         {activeTab === "testbeds" && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-200">Registered Platform MSP Tenants</h3>
-                <p className="text-xs text-slate-500">Configure simulated status and locks for local development testing.</p>
+                <h3 className="text-sm font-semibold text-foreground">Registered Platform MSP Tenants</h3>
+                <p className="text-xs text-muted-foreground">Configure simulated status and locks for local development testing.</p>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={loadMsps}
                 disabled={loadingTestbeds}
-                className="h-8 border-slate-800 hover:bg-slate-900 bg-transparent text-slate-400 hover:text-slate-100 text-xs px-2.5"
+                className="h-7 text-xs px-2.5"
               >
                 <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingTestbeds ? 'animate-spin' : ''}`} /> Refresh
               </Button>
@@ -490,19 +470,19 @@ export function SimulatorCenterCanvas(props?: {
 
             {loadingTestbeds && msps.length === 0 ? (
               <div className="flex justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
             ) : msps.length === 0 ? (
-              <div className="text-center py-12 text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                <Building2 className="w-12 h-12 text-slate-800 mx-auto mb-3" />
-                <h4 className="font-semibold text-slate-400">No MSPs Registered</h4>
+              <div className="text-center py-12 text-muted-foreground border border-dashed border-border rounded-lg">
+                <Building2 className="w-12 h-12 opacity-30 mx-auto mb-3" />
+                <h4 className="font-semibold text-foreground/80">No MSPs Registered</h4>
                 <p className="text-xs max-w-sm mx-auto mt-1">Please populate the database or create active MSP organizations via command dashboards.</p>
               </div>
             ) : (
-              <div className="border border-slate-900 rounded-xl overflow-hidden bg-slate-950">
+              <div className="border border-border rounded-lg overflow-hidden bg-background">
                 <Table>
-                  <TableHeader className="bg-slate-900/50 border-slate-900 select-none">
-                    <TableRow className="border-slate-900 hover:bg-transparent">
+                  <TableHeader className="bg-card select-none">
+                    <TableRow className="hover:bg-transparent">
                       <TableHead className="text-xs font-semibold py-3">MSP Name</TableHead>
                       <TableHead className="text-xs font-semibold py-3">Slug</TableHead>
                       <TableHead className="text-xs font-semibold py-3 text-center">Status</TableHead>
@@ -515,75 +495,75 @@ export function SimulatorCenterCanvas(props?: {
                     {msps.map((msp) => {
                       const isLocked = sessionLocks[msp.id] || false;
                       return (
-                        <TableRow key={msp.id} className="border-slate-900 hover:bg-slate-900/20">
-                          <TableCell className="font-medium py-3 text-slate-200">
+                        <TableRow key={msp.id} className="hover:bg-accent/30">
+                          <TableCell className="font-medium py-2.5 text-foreground">
                             <div className="flex flex-col">
                               <span>{msp.name}</span>
-                              <span className="text-[10px] text-slate-600 font-mono">ID: {msp.id}</span>
+                              <span className="text-[10px] text-muted-foreground/70 font-mono">ID: {msp.id}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="py-3 text-slate-400 font-mono text-[11px]">{msp.slug}</TableCell>
-                          <TableCell className="py-3 text-center">
-                            <Badge 
+                          <TableCell className="py-2.5 text-muted-foreground font-mono text-[11px]">{msp.slug}</TableCell>
+                          <TableCell className="py-2.5 text-center">
+                            <Badge
                               className={`rounded-full px-2.5 py-0.5 border text-[10px] font-semibold capitalize font-mono ${
-                                msp.status === "active" 
-                                  ? "text-emerald-400 border-emerald-500/25 bg-emerald-500/10" 
-                                  : msp.status === "suspended" 
-                                  ? "text-rose-400 border-rose-500/25 bg-rose-500/10" 
-                                  : "text-amber-400 border-amber-500/25 bg-amber-500/10"
+                                msp.status === "active"
+                                  ? "text-emerald-400 border-emerald-400/25 bg-emerald-400/10"
+                                  : msp.status === "suspended"
+                                  ? "text-destructive border-destructive/25 bg-destructive/10"
+                                  : "text-amber-400 border-amber-400/25 bg-amber-400/10"
                               }`}
                             >
                               {msp.status}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-3 text-center">
-                            <Badge 
+                          <TableCell className="py-2.5 text-center">
+                            <Badge
                               className={`rounded px-1.5 py-0.5 text-[9px] font-bold font-mono ${
-                                msp.isTestbed 
-                                  ? "text-indigo-400 border border-indigo-500/20 bg-indigo-500/10" 
-                                  : "text-slate-600 border border-slate-800 bg-slate-900/50"
+                                msp.isTestbed
+                                  ? "text-[#58A6FF] border border-primary/25 bg-primary/10"
+                                  : "text-muted-foreground/70 border border-border bg-card"
                               }`}
                             >
                               {msp.isTestbed ? "TRUE" : "FALSE"}
                             </Badge>
                           </TableCell>
-                          <TableCell className="py-3 text-center">
+                          <TableCell className="py-2.5 text-center">
                             <div className="flex items-center justify-center">
                               {msp.isTestbed ? (
                                 <button
                                   onClick={() => handleToggleLock(msp.id, isLocked)}
-                                  className={`p-1.5 rounded-lg border text-xs flex items-center gap-1.5 transition-all select-none font-mono text-[10px] ${
-                                    isLocked 
-                                      ? "text-amber-400 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10" 
-                                      : "text-slate-400 border-slate-800 bg-slate-900/35 hover:bg-slate-900/60"
+                                  className={`p-1.5 rounded-md border text-xs flex items-center gap-1.5 transition-all select-none font-mono text-[10px] ${
+                                    isLocked
+                                      ? "text-amber-400 border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/10"
+                                      : "text-muted-foreground border-border bg-card hover:bg-accent"
                                   }`}
                                 >
                                   {isLocked ? (
                                     <>
-                                      <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" /> LOCKED
+                                      <Lock className="w-3.5 h-3.5 shrink-0" /> LOCKED
                                     </>
                                   ) : (
                                     <>
-                                      <Unlock className="w-3.5 h-3.5 text-slate-500 shrink-0" /> UNLOCKED
+                                      <Unlock className="w-3.5 h-3.5 shrink-0" /> UNLOCKED
                                     </>
                                   )}
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-slate-600 italic font-mono">-</span>
+                                <span className="text-[10px] text-muted-foreground/60 italic font-mono">-</span>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell className="py-3 text-right">
+                          <TableCell className="py-2.5 text-right">
                             <div className="flex justify-end gap-2">
                               {msp.isTestbed && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleToggleStatus(msp)}
-                                  className={`h-7 border-slate-800 bg-transparent text-[11px] font-mono ${
+                                  className={`h-7 text-[11px] font-mono ${
                                     msp.status === "suspended"
-                                      ? "text-emerald-400 hover:text-emerald-300 hover:bg-slate-900"
-                                      : "text-rose-400 hover:text-rose-300 hover:bg-slate-900"
+                                      ? "text-emerald-400 hover:text-emerald-300"
+                                      : "text-destructive hover:text-destructive/80"
                                   }`}
                                 >
                                   {msp.status === "suspended" ? "Reactivate" : "Suspend"}
@@ -592,7 +572,7 @@ export function SimulatorCenterCanvas(props?: {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => openModal("execute-scenario", { 
+                                onClick={() => openModal("execute-scenario", {
                                   event: {
                                     id: "FACTORY_RESET",
                                     name: "Factory Reset Testbed",
@@ -600,7 +580,7 @@ export function SimulatorCenterCanvas(props?: {
                                     category: "crm"
                                   }
                                 })}
-                                className="h-7 border-slate-800 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-slate-200 text-[11px] font-mono"
+                                className="h-7 text-[11px] font-mono"
                               >
                                 Reset
                               </Button>

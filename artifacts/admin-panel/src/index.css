@@ -91,7 +91,7 @@
   --sidebar-accent-foreground: 213 29% 93%;
 
   --app-font-sans: 'Inter', sans-serif;
-  --app-font-mono: Menlo, monospace;
+  --app-font-mono: ui-monospace, 'Cascadia Code', 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
   --radius: 0.5rem;
 }
 

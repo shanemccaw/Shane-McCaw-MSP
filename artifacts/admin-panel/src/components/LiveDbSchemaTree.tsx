@@ -52,17 +52,17 @@ export function LiveDbSchemaTree() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 border-r border-slate-800 font-mono text-xs text-slate-300">
+    <div className="flex flex-col h-full bg-background font-mono text-xs text-foreground/90">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900/50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
         <div className="flex items-center space-x-2">
-          <Database className="w-4 h-4 text-indigo-400" />
-          <span className="font-semibold uppercase tracking-wider text-[11px] text-slate-400">Live DB Schema</span>
-          <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-700">
+          <Database className="w-3.5 h-3.5 text-[#58A6FF]" />
+          <span className="font-semibold uppercase tracking-wider text-[10px] text-muted-foreground">Live DB Schema</span>
+          <Badge variant="outline" className="text-[10px] text-muted-foreground">
             {tables.length} Tables
           </Badge>
         </div>
-        <Button size="icon" variant="ghost" className="h-6 w-6 text-slate-400 hover:text-white" onClick={fetchSchema} disabled={isLoading}>
+        <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={fetchSchema} disabled={isLoading}>
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -70,7 +70,7 @@ export function LiveDbSchemaTree() {
       {/* Tree Area */}
       <ScrollArea className="flex-1 p-2">
         {error && (
-          <div className="p-3 text-red-400 flex items-center space-x-2 bg-red-950/30 rounded border border-red-900/50 my-2">
+          <div className="p-3 text-destructive flex items-center space-x-2 bg-destructive/10 rounded border border-destructive/40 my-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -79,46 +79,46 @@ export function LiveDbSchemaTree() {
         {tables.map((tbl) => {
           const isExpanded = !!expandedTables[tbl.name];
           return (
-            <div key={tbl.name} className="mb-1">
+            <div key={tbl.name} className="mb-0.5">
               {/* Table Node */}
               <button
                 onClick={() => toggleTable(tbl.name)}
-                className="w-full flex items-center justify-between p-1.5 rounded hover:bg-slate-900 text-left transition-colors group"
+                className="w-full flex items-center justify-between px-1.5 py-1 rounded hover:bg-accent text-left transition-colors group"
               >
                 <div className="flex items-center space-x-1.5 truncate">
                   {isExpanded ? (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   ) : (
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   )}
-                  <Table className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                  <span className="font-semibold text-slate-200 group-hover:text-white truncate">{tbl.name}</span>
+                  <Table className="w-3.5 h-3.5 text-[#58A6FF] shrink-0" />
+                  <span className="font-semibold text-foreground truncate">{tbl.name}</span>
                 </div>
-                <span className="text-[10px] text-slate-600 ml-2">{tbl.columns.length} cols</span>
+                <span className="text-[10px] text-muted-foreground/70 ml-2">{tbl.columns.length} cols</span>
               </button>
 
               {/* Column Children Nodes */}
               {isExpanded && (
-                <div className="ml-5 pl-2 border-l border-slate-800 space-y-1 my-1">
+                <div className="ml-5 pl-2 border-l border-[#21262D] my-0.5">
                   {tbl.columns.map((col) => (
-                    <div key={col.name} className="flex items-start justify-between py-1 px-1.5 rounded hover:bg-slate-900/60">
+                    <div key={col.name} className="flex items-start justify-between py-0.5 px-1.5 rounded hover:bg-accent/60">
                       <div className="flex items-center space-x-1.5 min-w-0">
                         {col.isPk ? (
                           <span title="Primary Key"><Key className="w-3 h-3 text-amber-400 shrink-0" /></span>
                         ) : col.foreignKey ? (
-                          <span title={col.foreignKey}><LinkIcon className="w-3 h-3 text-cyan-400 shrink-0" /></span>
+                          <span title={col.foreignKey}><LinkIcon className="w-3 h-3 text-[#58A6FF] shrink-0" /></span>
                         ) : (
                           <div className="w-3 h-3 shrink-0" />
                         )}
-                        <span className={`truncate ${col.isPk ? "text-amber-300 font-medium" : "text-slate-300"}`}>
+                        <span className={`truncate ${col.isPk ? "text-amber-400 font-medium" : "text-foreground/85"}`}>
                           {col.name}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-center space-x-2 shrink-0 ml-2">
-                        <span className="text-[10px] text-slate-500">{col.dataType}</span>
+                        <span className="text-[10px] text-muted-foreground">{col.dataType}</span>
                         {!col.isNullable && (
-                          <span className="text-[9px] text-red-400/80 font-bold" title="NOT NULL">NN</span>
+                          <span className="text-[9px] text-destructive/80 font-bold" title="NOT NULL">NN</span>
                         )}
                       </div>
                     </div>

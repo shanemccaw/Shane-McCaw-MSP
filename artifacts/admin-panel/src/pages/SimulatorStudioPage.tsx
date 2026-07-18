@@ -1,65 +1,110 @@
 // artifacts/admin-panel/src/pages/SimulatorStudioPage.tsx
+//
+// VS Code-style IDE shell for the Simulator Studio, on the app's GitHub-dark
+// token system (bg-background / bg-card / border-border / #0078D4 primary):
+//   left    — Explorer tree (scenarios + saved SQL scripts)
+//   center  — working canvas (SQL / testbeds / overrides / engines / schema)
+//   right   — collapsible Portal Snapshot panel (collapsed by default)
+//   bottom  — Log Stream (multi-channel split panes) + SQL Console
+//   footer  — status bar
 
-import React, { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
   Pause,
   SkipForward,
   RotateCcw,
-  Terminal,
-  Radio,
-  Activity,
-  Layers,
-  Sliders,
-  Monitor,
   Clock,
-  Cpu
+  PanelRight,
+  PanelBottom,
+  ChevronDown,
+  X,
 } from "lucide-react";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Progress } from "../components/ui/progress";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../components/ui/resizable";
 import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
-import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
+import { SimulatorPortalSnapshot } from "../components/SimulatorPortalSnapshot";
+import { SimulatorLogStream } from "../components/SimulatorLogStream";
+import { SqlSnapshotTab } from "../components/SqlSnapshotTab";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
-import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
-import { EventBusStreamTab } from "../components/EventBusStreamTab";
-import { EnginesStreamTab } from "../components/EnginesStreamTab";
-import { SqlSnapshotTab } from "../components/SqlSnapshotTab";
+
+const RIGHT_PANEL_KEY = "simulator-right-panel-open";
+const LOG_CHANNELS_KEY = "simulator-log-channels";
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export function SimulatorStudioPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [timeMultiplier, setTimeMultiplier] = useState<number>(1);
-  const [simDate, setSimDate] = useState<string>(new Date().toISOString());
+
+  // Derived, not state — deriving it in a follow-up effect made every clock
+  // step dispatch twice (first with the previous day's date).
+  const simDate = useMemo(() => {
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() - 90 + currentStep);
+    return baseDate.toLocaleDateString() + " " + baseDate.toLocaleTimeString();
+  }, [currentStep]);
+
+  const [bottomTab, setBottomTab] = useState<"logs" | "sql">("logs");
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const bottomPanelRef = useRef<ImperativePanelHandle>(null);
+
+  const [rightOpen, setRightOpen] = useState<boolean>(() => readJson(RIGHT_PANEL_KEY, false));
+  const [selectedChannels, setSelectedChannels] = useState<string[]>(() => readJson(LOG_CHANNELS_KEY, []));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RIGHT_PANEL_KEY, JSON.stringify(rightOpen));
+    } catch {}
+  }, [rightOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOG_CHANNELS_KEY, JSON.stringify(selectedChannels));
+    } catch {}
+  }, [selectedChannels]);
 
   // Step change dispatch log effect
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent("simulator-log", {
-      detail: {
-        type: "info",
-        message: `Simulation clock advanced: Day ${currentStep} (${simDate})`
-      }
-    }));
+    window.dispatchEvent(
+      new CustomEvent("simulator-log", {
+        detail: {
+          type: "info",
+          message: `Simulation clock advanced: Day ${currentStep} (${simDate})`,
+        },
+      }),
+    );
   }, [currentStep, simDate]);
 
   // Simulation ticking effect
   useEffect(() => {
     let timer: any = null;
     if (isReplaying) {
-      const intervalMs = timeMultiplier === 60 ? 1000 : (timeMultiplier === 10 ? 3000 : 5000);
+      const intervalMs = timeMultiplier === 60 ? 1000 : timeMultiplier === 10 ? 3000 : 5000;
       timer = setInterval(() => {
-        setCurrentStep(prev => {
+        setCurrentStep((prev) => {
           if (prev >= 90) {
             setIsReplaying(false);
-            window.dispatchEvent(new CustomEvent("simulator-log", {
-              detail: {
-                type: "success",
-                message: "Simulation run completed (Day 90 reached)."
-              }
-            }));
+            window.dispatchEvent(
+              new CustomEvent("simulator-log", {
+                detail: {
+                  type: "success",
+                  message: "Simulation run completed (Day 90 reached).",
+                },
+              }),
+            );
             return prev;
           }
           return prev + 1;
@@ -71,211 +116,238 @@ export function SimulatorStudioPage() {
     };
   }, [isReplaying, timeMultiplier]);
 
-  // Calculate dynamic simDate based on currentStep
-  useEffect(() => {
-    const baseDate = new Date();
-    baseDate.setDate(baseDate.getDate() - 90 + currentStep);
-    setSimDate(baseDate.toLocaleDateString() + " " + baseDate.toLocaleTimeString());
-  }, [currentStep]);
+  const toggleBottomPanel = () => {
+    const panel = bottomPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) panel.expand();
+    else panel.collapse();
+  };
 
   return (
     <SimulatorActivityProvider>
       <ModalProvider>
-        <div className="flex h-screen w-screen flex-col overflow-hidden bg-[#090d16] font-mono text-slate-200 antialiased select-none">
-
-          {/* 1. TOP HEADER MISSION CONTROL RIBBON */}
-          <header className="flex h-12 w-full items-center justify-between border-b border-slate-800 bg-[#0c1222] px-4 shadow-sm z-20">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-2 w-2">
-                <span className={`absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 ${isReplaying ? 'animate-ping' : ''}`}></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-xs uppercase tracking-wider font-black text-slate-100">SIMULATOR ENGINE STUDIO</span>
-                <span className="text-[10px] text-slate-500 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded font-bold">PLATFORM_ADMIN ONLY</span>
-              </div>
+        <div className="flex h-full w-full flex-col overflow-hidden bg-background font-sans text-foreground">
+          {/* ── Studio toolbar ── */}
+          <header className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-card px-3 select-none">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-2 w-2">
+                {isReplaying && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${isReplaying ? "bg-emerald-400" : "bg-[#484F58]"}`} />
+              </span>
+              <span className="text-[11px] font-semibold tracking-wide text-foreground">Simulator Studio</span>
+              <span className="rounded-sm border border-border bg-background px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                Platform admin
+              </span>
             </div>
 
-            {/* Unified Clock Dynamics Node Control Area */}
-            <div className="flex items-center gap-4 bg-[#060a12] border border-slate-800/80 rounded-md px-3 py-1 text-xs">
-              <div className="flex items-center gap-2 border-r border-slate-800 pr-3">
-                <Clock className="h-3.5 w-3.5 text-cyan-400" />
-                <span className="text-slate-400 text-[11px]">VIRTUAL CLOCK:</span>
-                <span className="text-cyan-400 font-bold tracking-tight">{simDate}</span>
+            <div className="flex items-center gap-3">
+              {/* Virtual clock + replay transport */}
+              <div className="flex items-center gap-2 text-[11px]">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-mono tabular-nums text-[#58A6FF]">{simDate}</span>
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                  Day {currentStep}/90
+                </span>
+                <div className="h-1 w-20 overflow-hidden rounded-full bg-accent">
+                  <div className="h-full bg-primary transition-all" style={{ width: `${(currentStep / 90) * 100}%` }} />
+                </div>
               </div>
 
-              {/* Hardware Style Controls */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => setIsReplaying(!isReplaying)}
-                  className={`p-1 rounded transition-colors ${isReplaying ? 'bg-amber-950/50 text-amber-400 border border-amber-800' : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-100'}`}
-                  title={isReplaying ? "Pause Simulation" : "Start Acceleration Replay"}
+                  className={`rounded p-1 transition-colors ${
+                    isReplaying ? "bg-accent text-amber-400" : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                  title={isReplaying ? "Pause simulation" : "Start accelerated replay"}
                 >
                   {isReplaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                 </button>
                 <button
-                  onClick={() => setCurrentStep(prev => prev + 1)}
-                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
-                  title="Step Day Context Lookback"
+                  onClick={() => setCurrentStep((prev) => prev + 1)}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  title="Step one day"
                 >
                   <SkipForward className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => { setCurrentStep(0); setIsReplaying(false); }}
-                  className="p-1 rounded bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
-                  title="Reset Testbed State Engine Records"
+                  onClick={() => {
+                    setCurrentStep(0);
+                    setIsReplaying(false);
+                  }}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+                  title="Reset simulation clock"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                 </button>
-              </div>
-
-              <div className="flex items-center gap-1.5 border-l border-slate-800 pl-3">
-                <span className="text-[10px] text-slate-500">SPEED:</span>
                 <select
                   value={timeMultiplier}
                   onChange={(e) => setTimeMultiplier(Number(e.target.value))}
-                  className="bg-slate-900 border border-slate-800 text-slate-300 text-[11px] rounded px-1 py-0.5 outline-none focus:border-cyan-500 font-bold"
+                  className="ml-1 rounded border border-border bg-background px-1 py-0.5 text-[10px] text-foreground focus:border-ring focus:outline-none"
+                  title="Replay speed"
                 >
-                  <option value={1}>1x (Realtime Mode)</option>
-                  <option value={10}>10x (90 Days / 30m)</option>
-                  <option value={60}>60x (90 Days / 5m)</option>
+                  <option value={1}>1×</option>
+                  <option value={10}>10×</option>
+                  <option value={60}>60×</option>
                 </select>
+              </div>
+
+              <div className="h-4 w-px bg-border" />
+
+              {/* Layout controls — VS Code's top-right cluster */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={toggleBottomPanel}
+                  className={`rounded p-1 transition-colors ${
+                    !bottomCollapsed ? "text-[#58A6FF]" : "text-muted-foreground hover:text-foreground"
+                  } hover:bg-accent`}
+                  title="Toggle bottom panel"
+                >
+                  <PanelBottom className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setRightOpen(!rightOpen)}
+                  className={`rounded p-1 transition-colors ${
+                    rightOpen ? "text-[#58A6FF]" : "text-muted-foreground hover:text-foreground"
+                  } hover:bg-accent`}
+                  title="Toggle Portal Snapshot panel"
+                >
+                  <PanelRight className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </header>
 
-          {/* 2. THE THREE-COLUMN INTEGRATED SPLIT STUDIO CANVAS */}
-          <div className="flex flex-1 w-full overflow-hidden relative">
-
-            {/* PANEL A: LEFT PANEL — TESTBED TREE EXPLORER & OVERRIDES */}
-            <aside className="w-80 h-full flex flex-col border-r border-slate-800 bg-[#0a0f1d] flex-shrink-0">
-              <div className="flex items-center gap-2 border-b border-slate-800 bg-[#0c1222] px-3 py-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-                <Sliders className="h-3 w-3 text-cyan-400" />
-                <span>Testbed & API Overrides</span>
-              </div>
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 p-2">
+          {/* ── Main working area ── */}
+          <div className="min-h-0 flex-1">
+            {/* id/order on every panel: the right panel renders conditionally,
+                and without them react-resizable-panels rebuilds the layout from
+                defaults on each toggle, wiping the user's dragged sizes. */}
+            <ResizablePanelGroup direction="horizontal" autoSaveId="simulator-studio-h">
+              {/* Explorer */}
+              <ResizablePanel id="explorer" order={1} defaultSize={17} minSize={12} maxSize={30}>
                 <SimulatorLeftTree
                   selectedCustomerId={selectedCustomerId}
                   onSelectCustomer={setSelectedCustomerId}
                   currentStep={currentStep}
                 />
-              </div>
-            </aside>
+              </ResizablePanel>
+              <ResizableHandle className="w-px bg-border" />
 
-            {/* PANEL B: CENTER PANEL — LIVE TIMELINE REPLAY & TRACE STREAM */}
-            <main className="flex-1 h-full flex flex-col bg-[#070b14] min-w-0">
-              {/* Time Compression Timeline Bar */}
-              <div className="bg-[#0b101c] border-b border-slate-800/60 p-2.5 flex flex-col gap-1.5 flex-shrink-0">
-                <div className="flex justify-between items-center text-[10px] text-slate-400">
-                  <span className="flex items-center gap-1"><Activity className="h-3 w-3 text-emerald-400" /> TIMELINE REPLAY TIMEFRAME STATE PROGRESS</span>
-                  <span className="font-bold text-cyan-400">Day {currentStep} / Day 90</span>
-                </div>
-                <Progress value={(currentStep / 90) * 100} className="h-1.5 bg-slate-900" />
-              </div>
+              {/* Center canvas + bottom panel */}
+              <ResizablePanel id="center" order={2} defaultSize={rightOpen ? 59 : 83} minSize={30}>
+                <ResizablePanelGroup direction="vertical" autoSaveId="simulator-studio-v">
+                  <ResizablePanel id="canvas" order={1} defaultSize={62} minSize={20}>
+                    <SimulatorCenterCanvas
+                      customerId={selectedCustomerId}
+                      simDate={simDate}
+                      isReplaying={isReplaying}
+                    />
+                  </ResizablePanel>
+                  <ResizableHandle className="h-px bg-border" />
+                  <ResizablePanel
+                    ref={bottomPanelRef}
+                    id="bottom-panel"
+                    order={2}
+                    defaultSize={38}
+                    minSize={15}
+                    collapsible
+                    collapsedSize={0}
+                    onCollapse={() => setBottomCollapsed(true)}
+                    onExpand={() => setBottomCollapsed(false)}
+                  >
+                    <div className="flex h-full min-h-0 flex-col bg-background">
+                      {/* Panel tab strip */}
+                      <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card px-2 select-none">
+                        <div className="flex h-full items-center gap-1">
+                          {(
+                            [
+                              { key: "logs", label: "Log Stream" },
+                              { key: "sql", label: "SQL Console" },
+                            ] as const
+                          ).map(({ key, label }) => (
+                            <button
+                              key={key}
+                              onClick={() => setBottomTab(key)}
+                              className={`relative h-full px-2.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                                bottomTab === key
+                                  ? "text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={toggleBottomPanel}
+                          className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title="Collapse panel"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
 
-              {/* Core Engine Scoring Grid and Evaluation Trace Container */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 p-4 space-y-4">
-                <SimulatorCenterCanvas
-                  customerId={selectedCustomerId}
-                  simDate={simDate}
-                  isReplaying={isReplaying}
-                />
-              </div>
-            </main>
+                      {/* Both tabs stay mounted so live streams and query state
+                          survive tab switches — only visibility toggles. */}
+                      <div className={`min-h-0 flex-1 ${bottomTab === "logs" ? "flex flex-col" : "hidden"}`}>
+                        <SimulatorLogStream selectedChannels={selectedChannels} onChangeChannels={setSelectedChannels} />
+                      </div>
+                      <div className={`min-h-0 flex-1 ${bottomTab === "sql" ? "flex flex-col" : "hidden"}`}>
+                        <SqlSnapshotTab />
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </ResizablePanel>
 
-            {/* PANEL C: RIGHT PANEL — LIVE RECONCILED CUSTOMER PORTAL VIEW MIRROR */}
-            <aside className="w-[480px] h-full flex flex-col border-l border-slate-800 bg-[#080d19] flex-shrink-0">
-              <div className="flex items-center justify-between border-b border-slate-800 bg-[#0c1222] px-3 py-2">
-                <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-                  <Monitor className="h-3 w-3 text-emerald-400" />
-                  <span>Customer Portal View Mirror</span>
-                </div>
-                <span className="text-[9px] text-emerald-400 bg-emerald-950/60 border border-emerald-800 rounded px-1.5 font-bold tracking-tight">
-                  LIVE AUTOMATIC SYNC
-                </span>
-              </div>
-
-              {/* Boundary-Locked Client Rendering Sandbox Frame Mirror Area */}
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 p-3 bg-[#050810]">
-                <SimulatorPortalMirror
-                  customerId={selectedCustomerId}
-                  simDate={simDate}
-                />
-              </div>
-            </aside>
-
+              {/* Portal Snapshot side panel — collapsed by default */}
+              {rightOpen && (
+                <>
+                  <ResizableHandle className="w-px bg-border" />
+                  <ResizablePanel id="portal-snapshot" order={3} defaultSize={24} minSize={16} maxSize={40}>
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card px-2.5 select-none">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Portal Snapshot
+                        </span>
+                        <button
+                          onClick={() => setRightOpen(false)}
+                          className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          title="Close panel"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1">
+                        <SimulatorPortalSnapshot />
+                      </div>
+                    </div>
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           </div>
 
-          {/* 3. BOTTOM DRAWER PANEL — DB INSPECTION TERMINAL & SIGNAL ENGINE BUS */}
-          <footer className="h-44 w-full border-t border-slate-800 bg-[#070b13] flex-shrink-0 flex flex-col z-10">
-            <Tabs defaultValue="stdout" className="w-full h-full flex flex-col">
-
-              {/* Drawer Navigation Headers */}
-              <div className="bg-[#0b101c] border-b border-slate-800 h-7 flex items-center justify-between px-2">
-                <TabsList className="bg-transparent h-full p-0 flex gap-1">
-                  <TabsTrigger
-                    value="stdout"
-                    className="text-[10px] tracking-wide font-bold uppercase h-full px-3 data-[state=active]:bg-[#070b13] data-[state=active]:text-slate-100 border-x border-slate-800/40 rounded-t-sm"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Terminal className="h-3 w-3 text-cyan-400" />
-                      <span>Telemetry Log Stream</span>
-                    </div>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="sql_terminal"
-                    className="text-[10px] tracking-wide font-bold uppercase h-full px-3 data-[state=active]:bg-[#070b13] data-[state=active]:text-slate-100 border-x border-slate-800/40 rounded-t-sm"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Layers className="h-3 w-3 text-purple-400" />
-                      <span>SQL Snapshot Inspection</span>
-                    </div>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="event_bus"
-                    className="text-[10px] tracking-wide font-bold uppercase h-full px-3 data-[state=active]:bg-[#070b13] data-[state=active]:text-slate-100 border-x border-slate-800/40 rounded-t-sm"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Radio className="h-3 w-3 text-amber-400" />
-                      <span>Signal Engine Bus Output</span>
-                    </div>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="engines"
-                    className="text-[10px] tracking-wide font-bold uppercase h-full px-3 data-[state=active]:bg-[#070b13] data-[state=active]:text-slate-100 border-x border-slate-800/40 rounded-t-sm"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Cpu className="h-3 w-3 text-teal-400" />
-                      <span>Engines</span>
-                    </div>
-                  </TabsTrigger>
-                </TabsList>
-
-                <div className="text-[9px] text-slate-500 pr-2">
-                  SESSIONID: <span className="text-slate-400">SES_TRACE_{selectedCustomerId || 'UNSET'}</span>
-                </div>
-              </div>
-
-              {/* Bound Drawer Output Scrollers */}
-              <div className="flex-1 bg-[#04060c] min-h-0 relative">
-                <TabsContent value="stdout" className="mt-0 focus-visible:outline-none h-full">
-                  <SqlTerminalPanel />
-                </TabsContent>
-
-                <TabsContent value="sql_terminal" className="mt-0 focus-visible:outline-none h-full">
-                  <SqlSnapshotTab />
-                </TabsContent>
-
-                <TabsContent value="event_bus" className="mt-0 focus-visible:outline-none h-full">
-                  <EventBusStreamTab />
-                </TabsContent>
-
-                <TabsContent value="engines" className="mt-0 focus-visible:outline-none h-full">
-                  <EnginesStreamTab />
-                </TabsContent>
-              </div>
-
-            </Tabs>
+          {/* ── Status bar ── */}
+          <footer className="flex h-6 shrink-0 items-center justify-between border-t border-border bg-card px-3 text-[10px] text-muted-foreground select-none">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {selectedChannels.length === 0
+                  ? "log stream: firehose"
+                  : `log stream: ${selectedChannels.length} channel${selectedChannels.length > 1 ? "s" : ""}`}
+              </span>
+              <span className="font-mono">
+                SES_TRACE_<span className="text-foreground/70">{selectedCustomerId || "UNSET"}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="font-mono tabular-nums">
+                Day {currentStep}/90 · {timeMultiplier}×
+              </span>
+              <span className="uppercase tracking-wider">Platform admin</span>
+            </div>
           </footer>
         </div>
       </ModalProvider>

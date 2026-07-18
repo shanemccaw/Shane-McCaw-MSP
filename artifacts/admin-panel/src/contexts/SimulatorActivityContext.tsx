@@ -54,6 +54,8 @@ export function SimulatorActivityProvider({ children }: { children: ReactNode })
   const isOperationActive = useCallback((id: string) => activeOperations.has(id), [activeOperations]);
 
   const addLog = useCallback((type: "info" | "success" | "error", message: string) => {
+    // Cap the buffer — accelerated replay emits a log per simulated day, and an
+    // uncapped array grows without bound over a long studio session.
     setLogs(prev => [
       ...prev,
       {
@@ -63,7 +65,7 @@ export function SimulatorActivityProvider({ children }: { children: ReactNode })
         timestamp: new Date().toLocaleTimeString(),
         at: Date.now(),
       }
-    ]);
+    ].slice(-500));
   }, []);
 
   const clearLogs = useCallback(() => {
