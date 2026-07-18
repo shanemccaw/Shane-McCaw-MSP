@@ -12,7 +12,8 @@ import {
   Layers,
   Sliders,
   Monitor,
-  Clock
+  Clock,
+  Cpu
 } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -23,6 +24,9 @@ import { SimulatorPortalMirror } from "../components/SimulatorPortalMirror";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
 import { SqlTerminalPanel } from "../components/SqlTerminalPanel";
+import { EventBusStreamTab } from "../components/EventBusStreamTab";
+import { EnginesStreamTab } from "../components/EnginesStreamTab";
+import { SqlSnapshotTab } from "../components/SqlSnapshotTab";
 
 export function SimulatorStudioPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -236,6 +240,15 @@ export function SimulatorStudioPage() {
                       <span>Signal Engine Bus Output</span>
                     </div>
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="engines"
+                    className="text-[10px] tracking-wide font-bold uppercase h-full px-3 data-[state=active]:bg-[#070b13] data-[state=active]:text-slate-100 border-x border-slate-800/40 rounded-t-sm"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Cpu className="h-3 w-3 text-teal-400" />
+                      <span>Engines</span>
+                    </div>
+                  </TabsTrigger>
                 </TabsList>
 
                 <div className="text-[9px] text-slate-500 pr-2">
@@ -249,16 +262,16 @@ export function SimulatorStudioPage() {
                   <SqlTerminalPanel />
                 </TabsContent>
 
-                <TabsContent value="sql_terminal" className="mt-0 focus-visible:outline-none p-2.5 font-mono text-[11px] text-purple-400 overflow-y-auto h-full scrollbar-thin scrollbar-thumb-slate-900">
-                  <div><span className="text-slate-500">studio-db-snapshot-inspect#</span> SELECT customer_id, captured_at, engine_scores FROM tenant_engine_snapshots WHERE is_testbed = true ORDER BY captured_at DESC;</div>
-                  <div className="text-slate-400 mt-1 font-sans text-[10px]">
-                    {"(0 rows returned - Select verified testbed picker item node from left explorer hierarchy)"}
-                  </div>
+                <TabsContent value="sql_terminal" className="mt-0 focus-visible:outline-none h-full">
+                  <SqlSnapshotTab />
                 </TabsContent>
 
-                <TabsContent value="event_bus" className="mt-0 focus-visible:outline-none p-2.5 font-mono text-[11px] text-amber-400 overflow-y-auto h-full scrollbar-thin scrollbar-thumb-slate-900">
-                  <div>{"[EVENT BUS] Awaiting active generation cycle execution..."}</div>
-                  <div className="text-slate-500">{"// Published fired signals will auto-buffer package and bundle metrics targets down here natively."}</div>
+                <TabsContent value="event_bus" className="mt-0 focus-visible:outline-none h-full">
+                  <EventBusStreamTab />
+                </TabsContent>
+
+                <TabsContent value="engines" className="mt-0 focus-visible:outline-none h-full">
+                  <EnginesStreamTab />
                 </TabsContent>
               </div>
 

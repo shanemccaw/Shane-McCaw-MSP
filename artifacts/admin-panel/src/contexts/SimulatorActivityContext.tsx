@@ -5,6 +5,8 @@ export interface LogEntry {
   type: "info" | "success" | "error";
   message: string;
   timestamp: string;
+  /** Epoch ms, for merge-sorting against other timestamped sources (e.g. the live SSE stream). */
+  at: number;
 }
 
 interface SimulatorActivityContextType {
@@ -33,6 +35,7 @@ export function SimulatorActivityProvider({ children }: { children: ReactNode })
       type: "info",
       message: "Simulator Studio log terminal initialized. Ready for database & telemetry triggers.",
       timestamp: new Date().toLocaleTimeString(),
+      at: Date.now(),
     }
   ]);
 
@@ -58,6 +61,7 @@ export function SimulatorActivityProvider({ children }: { children: ReactNode })
         type,
         message,
         timestamp: new Date().toLocaleTimeString(),
+        at: Date.now(),
       }
     ]);
   }, []);

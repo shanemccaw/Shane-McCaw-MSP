@@ -31,7 +31,6 @@ const CHANNEL_TAXONOMY = [
   "engine.sla",
   "growth.booking",
   "growth.quiz",
-  "inbox",
   "integration.azure",
   "notification",
   "system.core",
