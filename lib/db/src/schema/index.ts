@@ -2681,6 +2681,22 @@ export const policyRuleIncidentsTable = pgTable("policy_rule_incidents", {
 export type InsertPolicyRuleIncident = typeof policyRuleIncidentsTable.$inferInsert;
 export type PolicyRuleIncident = typeof policyRuleIncidentsTable.$inferSelect;
 
+export const policyRuleSuppressionsTable = pgTable("policy_rule_suppressions", {
+  id: serial("id").primaryKey(),
+  ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  reason: text("reason"),
+  suppressedByUserId: integer("suppressed_by_user_id"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  ruleCustomerMspIdx: index("policy_rule_suppressions_rule_customer_msp_idx").on(table.ruleId, table.customerId, table.mspId),
+}));
+
+export type InsertPolicyRuleSuppression = typeof policyRuleSuppressionsTable.$inferInsert;
+export type PolicyRuleSuppression = typeof policyRuleSuppressionsTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
