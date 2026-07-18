@@ -13973,6 +13973,22 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       log.error({ err, sourceType, sourceId }, "admin: fulfillment-queue sync insert failed");
     };
 
+    // Resolve mspId/customerId for a batch of client user ids via the canonical
+    // client_user_id -> msp_users join (same pattern as ensureClientMspUser /
+    // getMspIdFromRequest). Returns a map keyed by userId; a userId with no
+    // msp_users row is simply absent, and the caller logs a warning + inserts
+    // mspId NULL rather than failing (so orphaned rows are visible, not silent).
+    const resolveMspLinks = async (
+      userIds: number[],
+    ): Promise<Map<number, { mspId: number | null; customerId: number | null }>> => {
+      if (userIds.length === 0) return new Map();
+      const rows = await db
+        .select({ userId: mspUsersTable.userId, mspId: mspUsersTable.mspId, customerId: mspUsersTable.customerId })
+        .from(mspUsersTable)
+        .where(inArray(mspUsersTable.userId, userIds));
+      return new Map(rows.map(r => [r.userId, { mspId: r.mspId, customerId: r.customerId }]));
+    };
+
     // ── 1. OFFER path — paid invoices ────────────────────────────────────────
     const paidInvoices = await db
       .select({
@@ -13994,9 +14010,15 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           .from(usersTable).where(inArray(usersTable.id, offerClientIds))
       : [];
     const offerClientMap = new Map(offerClients.map(c => [c.id, c]));
+    const offerMspLinks = await resolveMspLinks(offerClientIds);
 
     for (const inv of paidInvoices) {
       const client = inv.clientUserId ? offerClientMap.get(inv.clientUserId) : null;
+      const mspLink = inv.clientUserId != null ? offerMspLinks.get(inv.clientUserId) : undefined;
+      if (inv.clientUserId != null && !mspLink) {
+        log.warn({ clientUserId: inv.clientUserId, sourceType: "offer", sourceId: String(inv.id) },
+          "admin: fulfillment-queue sync — no msp_users row for clientUserId; inserting with mspId NULL");
+      }
       const purchasedAt = inv.paidAt ? new Date(inv.paidAt) : null;
       const threshold = thresholds["offer"] ?? thresholds["default"] ?? 7;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
@@ -14010,6 +14032,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           sourceType: "offer",
           sourceId: String(inv.id),
           clientUserId: inv.clientUserId ?? null,
+          mspId: mspLink?.mspId ?? null,
+          customerId: mspLink?.customerId ?? null,
           clientName: client?.name ?? null,
           clientEmail: client?.email ?? null,
           itemTitle: inv.description ?? inv.invoiceNumber ?? `Invoice #${inv.id}`,
@@ -14048,9 +14072,15 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           .from(usersTable).where(inArray(usersTable.id, sowClientIds))
       : [];
     const sowClientMap = new Map(sowClients.map(c => [c.id, c]));
+    const sowMspLinks = await resolveMspLinks(sowClientIds);
 
     for (const pres of signedPresentations) {
       const client = pres.clientUserId ? sowClientMap.get(pres.clientUserId) : null;
+      const mspLink = pres.clientUserId != null ? sowMspLinks.get(pres.clientUserId) : undefined;
+      if (pres.clientUserId != null && !mspLink) {
+        log.warn({ clientUserId: pres.clientUserId, sourceType: "sow", sourceId: String(pres.id) },
+          "admin: fulfillment-queue sync — no msp_users row for clientUserId; inserting with mspId NULL");
+      }
       const purchasedAt = pres.signedAt ? new Date(pres.signedAt) : null;
       const threshold = thresholds["sow"] ?? thresholds["default"] ?? 14;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
@@ -14064,6 +14094,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           sourceType: "sow",
           sourceId: String(pres.id),
           clientUserId: pres.clientUserId ?? null,
+          mspId: mspLink?.mspId ?? null,
+          customerId: mspLink?.customerId ?? null,
           clientName: client?.name ?? pres.signerName ?? null,
           clientEmail: client?.email ?? null,
           itemTitle: `SOW — ${clientLabel}`,
@@ -14117,10 +14149,16 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
 
     const bundleClientMap = new Map(bundleClients.map(c => [c.id, c]));
     const bundleServiceMap = new Map(bundleServices.map(s => [s.id, s]));
+    const bundleMspLinks = await resolveMspLinks(bundleClientIds);
 
     for (const svc of activeServices) {
       const client = svc.clientUserId ? bundleClientMap.get(svc.clientUserId) : null;
       const service = svc.serviceId ? bundleServiceMap.get(svc.serviceId) : null;
+      const mspLink = svc.clientUserId != null ? bundleMspLinks.get(svc.clientUserId) : undefined;
+      if (svc.clientUserId != null && !mspLink) {
+        log.warn({ clientUserId: svc.clientUserId, sourceType: "bundle", sourceId: String(svc.id) },
+          "admin: fulfillment-queue sync — no msp_users row for clientUserId; inserting with mspId NULL");
+      }
       const purchasedAt = svc.purchasedAt ? new Date(String(svc.purchasedAt)) : null;
       const threshold = thresholds["bundle"] ?? thresholds["default"] ?? 10;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
@@ -14136,6 +14174,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
           sourceType: "bundle",
           sourceId: String(svc.id),
           clientUserId: svc.clientUserId ?? null,
+          mspId: mspLink?.mspId ?? null,
+          customerId: mspLink?.customerId ?? null,
           clientName: client?.name ?? null,
           clientEmail: client?.email ?? null,
           itemTitle: service?.name ?? `Service #${svc.serviceId}`,
