@@ -103,6 +103,19 @@ async function evaluatePoliciesForCustomer(
       if (!conditionMet) continue;
       matchedRuleIds.add(rule.id);
 
+      const activeSuppression = await db.execute(sql`
+        SELECT id FROM policy_rule_suppressions
+        WHERE rule_id = ${rule.id}
+          AND msp_id = ${mspId}
+          AND (customer_id = ${customerId} OR customer_id IS NULL)
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1
+      `);
+      if (activeSuppression.rows.length > 0) {
+        log.info({ ruleId: rule.id, customerId, mspId }, "policy-engine: rule suppressed — skipping firing/escalation");
+        continue;
+      }
+
       if (rule.escalationRules && rule.escalationRules.length > 0) {
         const [openIncident] = await db
           .select()
