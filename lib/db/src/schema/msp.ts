@@ -2180,3 +2180,59 @@ export const insertMspReportScheduleSchema = createInsertSchema(mspReportSchedul
 export type MspReportSchedule = typeof mspReportSchedulesTable.$inferSelect;
 export type InsertMspReportSchedule = typeof mspReportSchedulesTable.$inferInsert;
 
+// ── Dashboard / Web Part System (Phase 0: schema only) ─────────────────────────
+//
+// Live, drag/resize, customer-configurable dashboards. Distinct from
+// msp_report_canvases above (which feeds scheduled email/PDF report generation) —
+// dashboard_templates renders live in the app. Both share the same widget shape
+// convention: canvasLayout as {i, x, y, w, h, type, properties}[].
+//
+// Runtime code lands in later phases: Phase 2 (rendering engine) and Phase 7
+// (backend resolvers) bind their logger via logger.child({ channel: "engine.dashboard" }).
+
+export const DASHBOARD_TEMPLATE_TYPES = ["assessment", "project", "monitoring_package", "msp_overview", "customer_default"] as const;
+export type DashboardTemplateType = typeof DASHBOARD_TEMPLATE_TYPES[number];
+
+export const dashboardTemplatesTable = pgTable("dashboard_templates", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  templateType: text("template_type", { enum: DASHBOARD_TEMPLATE_TYPES }).notNull(),
+  // e.g. assessment slug or monitoring package key; null when templateType = "msp_overview"
+  targetKey: text("target_key"),
+  canvasLayout: jsonb("canvas_layout").$type<Array<{ i: string; x: number; y: number; w: number; h: number; type: string; properties: Record<string, unknown> }>>().notNull().default([]),
+  allowCustomerEdit: boolean("allow_customer_edit").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("dashboard_templates_msp_id_idx").on(t.mspId),
+]);
+
+export const insertDashboardTemplateSchema = createInsertSchema(dashboardTemplatesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type DashboardTemplate = typeof dashboardTemplatesTable.$inferSelect;
+export type InsertDashboardTemplate = typeof dashboardTemplatesTable.$inferInsert;
+
+export const DASHBOARD_OVERRIDE_SCOPE_TYPES = ["customer", "msp_user"] as const;
+export type DashboardOverrideScopeType = typeof DASHBOARD_OVERRIDE_SCOPE_TYPES[number];
+
+export const dashboardOverridesTable = pgTable("dashboard_overrides", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").notNull().references(() => dashboardTemplatesTable.id, { onDelete: "cascade" }),
+  scopeType: text("scope_type", { enum: DASHBOARD_OVERRIDE_SCOPE_TYPES }).notNull(),
+  // References mspCustomers.id when scopeType = "customer", mspUsers.id when
+  // scopeType = "msp_user". No FK constraint here — the target table varies
+  // by scopeType, and Postgres FKs can't conditionally reference two tables.
+  scopeId: integer("scope_id").notNull(),
+  // Partial deltas only (visibility/position/size changes) — never a full layout copy.
+  overrideLayout: jsonb("override_layout").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("dashboard_overrides_template_id_idx").on(t.templateId),
+  uniqueIndex("dashboard_overrides_template_scope_unique_idx").on(t.templateId, t.scopeType, t.scopeId),
+]);
+
+export const insertDashboardOverrideSchema = createInsertSchema(dashboardOverridesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type DashboardOverride = typeof dashboardOverridesTable.$inferSelect;
+export type InsertDashboardOverride = typeof dashboardOverridesTable.$inferInsert;
+
