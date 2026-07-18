@@ -30,3 +30,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Portal Dashboard Designer | 7c5215ba |
 | 2026-07-18 | ✅ DONE | sales-offers list + fulfillment-queue mspId path migration | 47679db4 | |
 | 2026-07-18 | ✅ DONE | resolve-slug tenant restriction + settings ownership checks + sales-offers dead-route cleanup | ec4d68a3 |
+| 2026-07-18 | ⏳ IN FLIGHT | Wire Remediation Offers dashboard metric to sales_offers | — |
