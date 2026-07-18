@@ -47,6 +47,68 @@ interface AuditResponse {
 
 const PAGE_SIZE = 30;
 
+function humanizeLabel(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime()) && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return parsed.toLocaleString();
+    }
+    return value;
+  }
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value) || typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function MetadataDetail({ metadata }: { metadata: Record<string, unknown> }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const entries = Object.keys(metadata).map((key) => ({
+    key,
+    label: humanizeLabel(key),
+    value: formatMetadataValue(metadata[key]),
+  }));
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded border border-border divide-y divide-border">
+        {entries.map(({ key, label, value }) => (
+          <div key={key} className="flex items-start gap-3 px-3 py-2 text-xs">
+            <span className="w-40 shrink-0 text-muted-foreground">{label}</span>
+            <span className="break-all">{value}</span>
+          </div>
+        ))}
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-2 text-xs text-muted-foreground"
+        onClick={() => setShowRaw((v) => !v)}
+      >
+        {showRaw ? "Hide raw JSON" : "View raw JSON"}
+      </Button>
+      {showRaw && (
+        <pre className="rounded bg-muted px-3 py-2 text-[11px] overflow-auto whitespace-pre-wrap max-h-96">
+          {JSON.stringify(metadata, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function OutcomeBadge({ outcome }: { outcome: Outcome | null }) {
   if (!outcome) return <span className="text-muted-foreground text-xs">—</span>;
   const styles: Record<Outcome, string> = {
@@ -232,9 +294,7 @@ export default function AuditPage() {
       <DialogHeader>
         <DialogTitle className="text-base font-semibold">Audit Entry Detail</DialogTitle>
       </DialogHeader>
-      <pre className="rounded bg-muted px-3 py-2 text-[11px] overflow-auto whitespace-pre-wrap max-h-96">
-        {JSON.stringify(detailEntry.metadata, null, 2)}
-      </pre>
+      {detailEntry.metadata && <MetadataDetail metadata={detailEntry.metadata} />}
     </DialogContent>
   </Dialog>
 )}
