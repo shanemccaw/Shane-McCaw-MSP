@@ -2613,6 +2613,42 @@ export const engineScoreDailyRollupTable = pgTable("engine_score_daily_rollup", 
 export type InsertEngineScoreDailyRollup = typeof engineScoreDailyRollupTable.$inferInsert;
 export type EngineScoreDailyRollup = typeof engineScoreDailyRollupTable.$inferSelect;
 
+export const policyRulesTable = pgTable("policy_rules", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  conditionType: text("condition_type", { enum: ["signal", "score_threshold"] }).notNull(),
+  signalKeyPrefix: text("signal_key_prefix"),
+  engineKey: text("engine_key"),
+  scoreOperator: text("score_operator", { enum: ["lt", "gt"] }),
+  scoreThreshold: integer("score_threshold"),
+  severity: text("severity", { enum: ["info", "warning", "critical"] }).notNull().default("info"),
+  eventName: text("event_name").notNull(),
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(1440),
+  isActive: boolean("is_active").notNull().default(true),
+  ruleVersion: integer("rule_version"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  activeLookupIdx: index("policy_rules_active_lookup_idx").on(table.mspId, table.conditionType, table.isActive),
+}));
+
+export type InsertPolicyRule = typeof policyRulesTable.$inferInsert;
+export type PolicyRule = typeof policyRulesTable.$inferSelect;
+
+export const policyRuleAuditLogTable = pgTable("policy_rule_audit_log", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  ruleId: integer("rule_id"),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  adminUserId: integer("admin_user_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type PolicyRuleAuditLog = typeof policyRuleAuditLogTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
