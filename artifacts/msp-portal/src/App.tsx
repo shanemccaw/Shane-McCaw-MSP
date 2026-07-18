@@ -53,6 +53,7 @@ import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
+import ChargebackPage from "@/pages/chargeback";
 import CustomerOffersPage from "@/pages/customer-offers";
 import CustomerPrivacyPage from "@/pages/customer-privacy";
 import CustomerBillingPage from "@/pages/customer-billing";
@@ -360,6 +361,11 @@ function SlugInnerSwitch() {
       {/* Offer Pipeline — MSP-facing */}
       <Route path="/offers">
         <ProtectedRoute component={OffersPage} />
+      </Route>
+
+      {/* Chargeback — MSP-scoped purchase ledger (wholesale vs. customer-quote pricing) */}
+      <Route path="/chargeback">
+        <ProtectedRoute component={ChargebackPage} />
       </Route>
 
       {/* Customer Offers — customer-facing */}

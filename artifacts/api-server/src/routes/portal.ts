@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
-import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
+import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -13939,6 +13940,117 @@ router.patch("/admin/fulfillment-queue/:id/status", requireAdmin, async (req: Re
   } catch (err) {
     req.log.error({ err }, "admin: fulfillment status update failed");
     res.status(500).json({ error: "Failed to update fulfillment status" });
+  }
+});
+
+// GET /api/msp/fulfillment-queue
+// MSP-scoped Chargeback ledger — everything this MSP has purchased across all
+// three fulfillment_queue source types (offer/sow/bundle), with per-item
+// wholesaleChargedCents (owed to the platform) and customerQuoteCents (what
+// the MSP charged their own customer) shown side by side.
+//
+// Hard multi-tenant boundary: for MSPAdmin/MSPOperator, resolveMspId() reads
+// mspId directly off the verified JWT claim — the query string is never
+// consulted for these roles, so a forged ?mspId= is silently ignored. Only
+// PlatformAdmin/legacy admin may pass ?mspId= (or ?slug=) to inspect a
+// specific MSP, matching the existing /msp/sows override precedent.
+router.get("/msp/fulfillment-queue", requireRole("MSPOperator"), async (req: Request, res: Response) => {
+  try {
+    const mspId = await resolveMspId(req);
+    if (!mspId) { res.status(403).json({ error: "MSP scope required" }); return; }
+
+    const { status, sourceType, overdue, q, from, to } = req.query as Record<string, string | undefined>;
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? ""), 10) || 20));
+    const offset = Math.max(0, parseInt(String(req.query.offset ?? ""), 10) || 0);
+
+    // Every condition below is ANDed with this mspId scope — nothing in this
+    // handler ever queries fulfillment_queue without it.
+    const conditions: SQL[] = [eq(fulfillmentQueueTable.mspId, mspId)];
+
+    if (status && (FULFILLMENT_DELIVERY_STATUSES as readonly string[]).includes(status)) {
+      conditions.push(eq(fulfillmentQueueTable.deliveryStatus, status as FulfillmentDeliveryStatus));
+    }
+    if (sourceType && (FULFILLMENT_SOURCE_TYPES as readonly string[]).includes(sourceType)) {
+      conditions.push(eq(fulfillmentQueueTable.sourceType, sourceType as typeof FULFILLMENT_SOURCE_TYPES[number]));
+    }
+    if (from) {
+      const d = new Date(from);
+      if (!isNaN(d.getTime())) conditions.push(gte(fulfillmentQueueTable.purchasedAt, d));
+    }
+    if (to) {
+      const d = new Date(to);
+      if (!isNaN(d.getTime())) {
+        d.setHours(23, 59, 59, 999);
+        conditions.push(lte(fulfillmentQueueTable.purchasedAt, d));
+      }
+    }
+    const ql = q?.trim();
+    if (ql) {
+      conditions.push(
+        or(
+          ilike(fulfillmentQueueTable.clientName, `%${ql}%`),
+          ilike(fulfillmentQueueTable.clientEmail, `%${ql}%`),
+          ilike(fulfillmentQueueTable.customerName, `%${ql}%`),
+          ilike(fulfillmentQueueTable.itemTitle, `%${ql}%`),
+        ) as SQL,
+      );
+    }
+
+    const now = new Date();
+    // "Overdue" as a SQL predicate (not in-memory) so it composes correctly
+    // with LIMIT/OFFSET pagination — an in-memory filter after paging would
+    // make `total` and the returned page inconsistent.
+    const overdueConditions: SQL[] = [
+      isNotNull(fulfillmentQueueTable.slaDueAt),
+      lt(fulfillmentQueueTable.slaDueAt, now),
+      ne(fulfillmentQueueTable.deliveryStatus, "delivered"),
+    ];
+    const listConditions = overdue === "1" ? [...conditions, ...overdueConditions] : conditions;
+
+    const [rows, [totalRow], [overdueRow]] = await Promise.all([
+      db.select({
+        id: fulfillmentQueueTable.id,
+        sourceType: fulfillmentQueueTable.sourceType,
+        sourceId: fulfillmentQueueTable.sourceId,
+        customerId: fulfillmentQueueTable.customerId,
+        clientName: fulfillmentQueueTable.clientName,
+        clientEmail: fulfillmentQueueTable.clientEmail,
+        itemTitle: fulfillmentQueueTable.itemTitle,
+        itemDescription: fulfillmentQueueTable.itemDescription,
+        purchasedAt: fulfillmentQueueTable.purchasedAt,
+        purchaseAmountCents: fulfillmentQueueTable.purchaseAmountCents,
+        wholesaleChargedCents: fulfillmentQueueTable.wholesaleChargedCents,
+        customerQuoteCents: fulfillmentQueueTable.customerQuoteCents,
+        deliveryStatus: fulfillmentQueueTable.deliveryStatus,
+        statusNote: fulfillmentQueueTable.statusNote,
+        slaDueAt: fulfillmentQueueTable.slaDueAt,
+        slaThresholdDays: fulfillmentQueueTable.slaThresholdDays,
+        createdAt: fulfillmentQueueTable.createdAt,
+      })
+        .from(fulfillmentQueueTable)
+        .where(and(...listConditions))
+        .orderBy(desc(fulfillmentQueueTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ n: count() }).from(fulfillmentQueueTable).where(and(...listConditions)),
+      db.select({ n: count() }).from(fulfillmentQueueTable).where(and(...conditions, ...overdueConditions)),
+    ]);
+
+    const enriched = rows.map(r => ({
+      ...r,
+      isOverdue: r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered",
+    }));
+
+    res.json({
+      items: enriched,
+      total: totalRow?.n ?? 0,
+      overdueCount: overdueRow?.n ?? 0,
+      limit,
+      offset,
+    });
+  } catch (err) {
+    req.log.error({ err }, "msp: fulfillment-queue list failed");
+    res.status(500).json({ error: "Failed to load fulfillment queue" });
   }
 });
 
