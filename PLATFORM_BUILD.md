@@ -28,4 +28,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | #6 Portal 404 Redesign + Audit Logging | ffe0f36d |
 | 2026-07-18 | ✅ DONE | #B Portal Favicon Fix | fbc3a616 |
 | 2026-07-18 | ⏳ IN FLIGHT | Portal Dashboard Designer | |
-| 2026-07-18 | ⏳ IN FLIGHT | sales-offers list + fulfillment-queue mspId path migration | |
+| 2026-07-18 | ✅ DONE | sales-offers list + fulfillment-queue mspId path migration | 47679db4 |
