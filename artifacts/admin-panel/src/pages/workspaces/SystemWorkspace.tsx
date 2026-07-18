@@ -10,6 +10,7 @@ import ObservabilityDashboard from "@/pages/ObservabilityDashboard";
 import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
 import ExceptionTracking from "@/pages/ExceptionTracking";
+import DashboardDesignerPage from "@/pages/dashboard-designer";
 
 function getContent(section: string): ReactNode {
   switch (section) {
@@ -23,6 +24,7 @@ function getContent(section: string): ReactNode {
     case "platform-agreements":   return <PlatformAgreementsPage />;
     case "simulator":             return <SimulatorStudioPage />;
     case "pcc":                   return <PccDashboard />;
+    case "dashboard-designer":    return <DashboardDesignerPage />;
     default:                      return <InboxPage />;
   }
 }

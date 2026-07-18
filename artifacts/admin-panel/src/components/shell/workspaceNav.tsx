@@ -415,6 +415,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "sys-platform-revenue", label: "Platform Revenue", path: "/system/platform-revenue", icon: DollarSign },
           { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
           { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
+          { id: "sys-dashboard-designer", label: "Dashboard Designer", path: "/system/dashboard-designer", icon: LayoutDashboard },
         ],
       },
       {

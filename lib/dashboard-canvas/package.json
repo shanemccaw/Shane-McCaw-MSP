@@ -1,0 +1,30 @@
+{
+  "name": "@workspace/dashboard-canvas",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "dependencies": {
+    "@nivo/core": "^0.99.0",
+    "@nivo/line": "^0.99.0",
+    "@nivo/bar": "^0.99.0",
+    "@nivo/pie": "^0.99.0",
+    "@nivo/radar": "^0.99.0",
+    "@nivo/heatmap": "^0.99.0",
+    "@workspace/dashboard-registry": "workspace:*",
+    "lucide-react": "catalog:",
+    "react-grid-layout": "^2.2.3",
+    "react-resizable": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/react-grid-layout": "^2.1.0"
+  }
+}

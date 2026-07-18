@@ -2234,7 +2234,20 @@ export const dashboardTemplatesTable = pgTable("dashboard_templates", {
   templateType: text("template_type", { enum: DASHBOARD_TEMPLATE_TYPES }).notNull(),
   // e.g. assessment slug or monitoring package key; null when templateType = "msp_overview"
   targetKey: text("target_key"),
-  canvasLayout: jsonb("canvas_layout").$type<Array<{ i: string; x: number; y: number; w: number; h: number; type: string; properties: Record<string, unknown> }>>().notNull().default([]),
+  // Shape matches WidgetInstance in @workspace/dashboard-canvas (metricKey/rendererType,
+  // not a generic "type" — this table has no consumers yet, so this annotation is free
+  // to describe the real contract rather than an earlier placeholder guess).
+  canvasLayout: jsonb("canvas_layout").$type<Array<{
+    i: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    metricKey: string;
+    rendererType: string;
+    displayMode?: "count" | "percentage";
+    properties?: Record<string, unknown>;
+  }>>().notNull().default([]),
   allowCustomerEdit: boolean("allow_customer_edit").notNull().default(true),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

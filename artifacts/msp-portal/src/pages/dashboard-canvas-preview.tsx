@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
-import { DashboardCanvas, createDashboardDataFetcher, type WidgetInstance } from "@/components/dashboard-canvas";
+import { DashboardCanvas, createDashboardDataFetcher, type WidgetInstance } from "@workspace/dashboard-canvas";
 
 // One sample widget per renderer type, chosen so each metric's shape/flags
 // satisfy that renderer's acceptance rules in getValidRenderersForMetric:

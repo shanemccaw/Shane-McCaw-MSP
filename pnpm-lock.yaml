@@ -345,6 +345,12 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/dashboard-canvas':
+        specifier: workspace:*
+        version: link:../../lib/dashboard-canvas
+      '@workspace/dashboard-registry':
+        specifier: workspace:*
+        version: link:../../lib/dashboard-registry
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1004,25 +1010,6 @@ importers:
         version: 3.25.76
 
   artifacts/msp-portal:
-    dependencies:
-      '@nivo/bar':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@nivo/core':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@nivo/heatmap':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@nivo/line':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@nivo/pie':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      '@nivo/radar':
-        specifier: ^0.99.0
-        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0
@@ -1147,9 +1134,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
-      '@workspace/dashboard-registry':
+      '@workspace/dashboard-canvas':
         specifier: workspace:*
-        version: link:../../lib/dashboard-registry
+        version: link:../../lib/dashboard-canvas
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1596,6 +1583,49 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/dashboard-canvas:
+    dependencies:
+      '@nivo/bar':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@nivo/core':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@nivo/heatmap':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@nivo/line':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@nivo/pie':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@nivo/radar':
+        specifier: ^0.99.0
+        version: 0.99.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@workspace/dashboard-registry':
+        specifier: workspace:*
+        version: link:../dashboard-registry
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.545.0(react@19.1.0)
+      react-grid-layout:
+        specifier: ^2.2.3
+        version: 2.2.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react-resizable:
+        specifier: ^4.0.2
+        version: 4.0.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.14)
+      '@types/react-grid-layout':
+        specifier: ^2.1.0
+        version: 2.1.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
 
   lib/dashboard-registry:
     devDependencies:

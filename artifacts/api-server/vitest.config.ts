@@ -73,6 +73,7 @@ export default defineConfig({
       "src/lib/retainer-pricing.test.ts",
       "src/routes/portal-retainer-billing.test.ts",
       "src/routes/dashboard-data.test.ts",
+      "src/routes/dashboard-templates.test.ts",
     ],
     coverage: {
       provider: "v8",
