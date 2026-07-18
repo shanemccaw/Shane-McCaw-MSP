@@ -70,6 +70,7 @@ import ProjectKanbanPage from "@/pages/project-kanban";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
+import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
@@ -220,6 +221,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/msp-dashboard">
         <ProtectedRoute component={MspWidgetDashboardPage} />
+      </Route>
+      <Route path="/dashboard-designer">
+        <ProtectedRoute component={DashboardDesignerPage} />
       </Route>
       <Route path="/customers/:id">
         <ProtectedRoute component={CustomerDetailPage} />

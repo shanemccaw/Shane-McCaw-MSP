@@ -18,6 +18,7 @@
  * (`customer_default`) pages — same component, different `scope` prop.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,11 +30,13 @@ import {
 } from "@workspace/dashboard-canvas";
 import { EyeOff, Loader2, LayoutDashboard, Pencil, RotateCcw, Save, X } from "lucide-react";
 
-// Dashboard Designer lives in the admin-panel app, not here — same-origin,
-// path-prefixed deployment (see ImpersonationBanner's "/admin-panel/..." exit
-// route for the existing precedent), so a plain cross-app href is correct;
-// client-side routing can't cross the app boundary.
-const DASHBOARD_DESIGNER_URL = `${window.location.origin}/admin-panel/content/dashboard-designer`;
+// PlatformAdmin's Designer stays in admin-panel (cross-MSP oversight/support
+// surface) — same-origin, path-prefixed deployment (see ImpersonationBanner's
+// "/admin-panel/..." exit route for the existing precedent), so a plain
+// cross-app href is correct there; client-side routing can't cross the app
+// boundary. MSPAdmin/MSPOperator now have their own in-app Designer (this
+// same app, /dashboard-designer) — see the role branch below.
+const ADMIN_PANEL_DASHBOARD_DESIGNER_URL = `${window.location.origin}/admin-panel/content/dashboard-designer`;
 
 interface ResolvedDashboard {
   configured: boolean;
@@ -189,13 +192,21 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
             ? "Build a dashboard template in the Designer to get started."
             : "Your MSP hasn't set up a dashboard for this view yet. Check back later."}
         </p>
-        {canCreateDashboard && (
+        {canCreateDashboard && effectiveRole === "PlatformAdmin" && (
           <Button asChild size="sm" className="mt-4">
-            <a href={DASHBOARD_DESIGNER_URL}>
+            <a href={ADMIN_PANEL_DASHBOARD_DESIGNER_URL}>
               <LayoutDashboard className="size-3.5" />
               Create Dashboard
             </a>
           </Button>
+        )}
+        {canCreateDashboard && effectiveRole !== "PlatformAdmin" && (
+          <Link href="/dashboard-designer">
+            <Button size="sm" className="mt-4">
+              <LayoutDashboard className="size-3.5" />
+              Create Dashboard
+            </Button>
+          </Link>
         )}
       </div>
     );
