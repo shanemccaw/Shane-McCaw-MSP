@@ -115,7 +115,7 @@ function TenantEntryPage() {
 // ── Agreement gate ────────────────────────────────────────────────────────────
 
 function useAgreementGate(): { loading: boolean; required: boolean } {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, isImpersonating } = useAuth();
   const [loading, setLoading] = useState(true);
   const [required, setRequired] = useState(false);
 
@@ -126,7 +126,11 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
       return;
     }
     // PlatformAdmin never needs agreement gating — skip the fetch entirely.
-    if (user.role === "admin" || !user.mspRole) {
+    // Also skip during impersonation: the impersonated identity's own
+    // acceptance status must never block the admin's preview session, since
+    // accepting would require a write that requireAuth blocks while
+    // impersonating (payload.impersonatedBy check).
+    if (user.role === "admin" || !user.mspRole || isImpersonating) {
       setLoading(false);
       setRequired(false);
       return;
@@ -148,7 +152,7 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
         setRequired(false);
       })
       .finally(() => setLoading(false));
-  }, [user, fetchWithAuth]);
+  }, [user, fetchWithAuth, isImpersonating]);
 
   return { loading, required };
 }
