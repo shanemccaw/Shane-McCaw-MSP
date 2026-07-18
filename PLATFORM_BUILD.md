@@ -30,3 +30,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ⏳ IN FLIGHT | Portal Dashboard Designer | |
 | 2026-07-18 | ✅ DONE | sales-offers list + fulfillment-queue mspId path migration | 47679db4 |
 | 2026-07-18 | ⏳ IN FLIGHT | #21 Stripe Product Metadata Key Standardization | |
+| 2026-07-18 | ⏳ IN FLIGHT | resolve-slug tenant restriction + settings ownership checks + sales-offers dead-route cleanup | |
