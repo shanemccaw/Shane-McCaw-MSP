@@ -19,3 +19,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Events tree node | 9d77b61d |
 | 2026-07-18 | ✅ DONE | Engines tree node | 9d65f853 |
 | 2026-07-18 | ✅ DONE | policy-engine category tagging | aa493fd0 |
+| 2026-07-18 | ⏳ IN FLIGHT | #2 Smart Widget State Logic | |
