@@ -54,3 +54,4 @@ data/uploads/documents/*.pdf
 # Prompt paste files (auto-created by Replit when pasting into chat)
 attached_assets/*.txt
 artifacts/api-server/src/lib/workflow-executor.ts
+CLAUDE.md
