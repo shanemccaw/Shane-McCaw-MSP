@@ -107,6 +107,13 @@ export interface WidgetState {
   data?: WidgetData;
   /** Human-readable note — MetricResult.reason/detail for not_available, or the error message. */
   message?: string;
+  /**
+   * Recent history (oldest→newest) carried through from an opted-in
+   * MetricResult.history. Only populated for metrics whose widget requested it
+   * (Smart widgets). The DashboardCanvas Smart branch runs resolveSmartState
+   * over this to decide remediation vs complete + build the sparkline.
+   */
+  history?: { t: string; value: number }[];
 }
 
 // ── Smart renderer's explicit banding state (decision logic is a later step) ───
@@ -140,6 +147,9 @@ export interface MetricResult {
   reason?: string;
   detail?: string;
   error?: string;
+  /** Present only when the request opted this metric into `includeHistory` and a
+   *  series exists — feeds the Smart renderer's sparkline + hysteresis. */
+  history?: { t: string; value: number }[];
 }
 
 export interface DashboardResolveScope {
@@ -152,10 +162,15 @@ export interface DashboardResolveScope {
  * scope and returns the raw MetricResult per key, keyed by metricKey. Kept
  * injectable (not hardcoded) so the canvas stays testable against a fixture
  * fetcher; the real implementation lives in `data-fetcher.ts`.
+ *
+ * `historyKeys` (Step 5) is the subset of `metricKeys` for which the result
+ * should also carry `history` — the Smart renderer needs it, other renderers
+ * don't. Optional so existing callers/fixtures that ignore it keep working.
  */
 export type DashboardDataFetcher = (
   metricKeys: string[],
   scope: DashboardResolveScope,
+  historyKeys?: string[],
 ) => Promise<Record<string, MetricResult>>;
 
 export type { MetricDef };

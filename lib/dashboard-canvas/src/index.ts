@@ -1,5 +1,7 @@
 export { DashboardCanvas } from "./DashboardCanvas";
 export { createDashboardDataFetcher, resolveWidgetStates } from "./data-fetcher";
 export { mockDashboardDataFetcher } from "./mock-data-fetcher";
+export { resolveSmartState, inferDirection } from "./smart-state";
+export type { SmartDirection, SmartHistoryPoint, SmartStateResult } from "./smart-state";
 export * from "./types";
 export * from "./renderers";

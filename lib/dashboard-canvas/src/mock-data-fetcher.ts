@@ -31,7 +31,7 @@ function seededRandom(seed: string): number {
   return (Math.abs(h) % 1000) / 1000;
 }
 
-function mockScalarResult(metricKey: string): MetricResult {
+function mockScalarResult(metricKey: string, withHistory = false): MetricResult {
   const r = seededRandom(metricKey);
   const metric = getMetric(metricKey);
   const value = Math.round(r * 500);
@@ -39,7 +39,32 @@ function mockScalarResult(metricKey: string): MetricResult {
   if (metric?.denominatorMetric) {
     data.percentage = Math.round(r * 1000) / 10;
   }
-  return { metricKey, status: "ok", shape: "scalar", data };
+  const result: MetricResult = { metricKey, status: "ok", shape: "scalar", data };
+  if (withHistory) {
+    result.history = mockSmartHistory(metricKey, value);
+  }
+  return result;
+}
+
+/**
+ * Fabricate a plausible recovery history (oldest→newest) ending at `current`.
+ * A deterministic subset (~1 in 3) includes a mid-window dip so the designer
+ * preview exercises the hysteresis "recovering" path, not just clean series.
+ */
+function mockSmartHistory(metricKey: string, current: number): { t: string; value: number }[] {
+  const r = seededRandom(`hist:${metricKey}`);
+  const withDip = r < 0.33;
+  const today = new Date();
+  const n = 8;
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (n - 1 - i));
+    // Ramp from ~40% of current up to current; optional dip near the middle.
+    const ramp = 0.4 + (0.6 * i) / (n - 1);
+    let value = current * ramp;
+    if (withDip && i === Math.floor(n / 2)) value = current * 0.2;
+    return { t: d.toISOString(), value: Math.round(value * 10) / 10 };
+  });
 }
 
 function mockTrendResult(metricKey: string): MetricResult {
@@ -93,7 +118,7 @@ function shouldMockNotAvailable(metricKey: string): boolean {
   return seededRandom(`na:${metricKey}`) < 0.15;
 }
 
-function mockResultFor(metricKey: string): MetricResult {
+function mockResultFor(metricKey: string, withHistory = false): MetricResult {
   const metric = getMetric(metricKey);
   if (!metric) {
     return { metricKey, status: "error", error: "unknown metric key" };
@@ -103,7 +128,7 @@ function mockResultFor(metricKey: string): MetricResult {
   }
   switch (metric.shape) {
     case "scalar":
-      return mockScalarResult(metricKey);
+      return mockScalarResult(metricKey, withHistory);
     case "trend":
       return mockTrendResult(metricKey);
     case "distribution":
@@ -122,11 +147,12 @@ function mockResultFor(metricKey: string): MetricResult {
  * keep the loading state's code path exercised) with fabricated data shaped
  * per each metric's real registry shape.
  */
-export const mockDashboardDataFetcher: DashboardDataFetcher = async (metricKeys) => {
+export const mockDashboardDataFetcher: DashboardDataFetcher = async (metricKeys, _scope, historyKeys) => {
   await new Promise((resolve) => setTimeout(resolve, 150));
+  const wantsHistory = new Set(historyKeys ?? []);
   const results: Record<string, MetricResult> = {};
   for (const key of metricKeys) {
-    results[key] = mockResultFor(key);
+    results[key] = mockResultFor(key, wantsHistory.has(key));
   }
   return results;
 };

@@ -8,15 +8,28 @@
  *   POST /api/dashboard/resolve
  *
  *   Body: {
- *     metrics: string[]        // MetricDef.key values to resolve (required, 1..200)
- *     customerId?: number      // required for MSPOperator resolving customer-scope
- *                              // metrics; ignored/validated for CustomerUser
- *     windowDays?: number      // look-back for trend/heatmap/timeline (default 30)
+ *     metrics: string[]         // MetricDef.key values to resolve (required, 1..200)
+ *     customerId?: number       // required for MSPOperator resolving customer-scope
+ *                               // metrics; ignored/validated for CustomerUser
+ *     windowDays?: number       // look-back for trend/heatmap/timeline + Smart
+ *                               // history (default 30)
+ *     includeHistory?: string[] // Step 5 (Smart widget state): a SUBSET of
+ *                               // `metrics` for which the ok result should also
+ *                               // carry `history: { t, value }[]` (oldest→newest).
+ *                               // The Smart renderer needs recent history for its
+ *                               // sparkline + stateless hysteresis; other renderers
+ *                               // don't, so history is opt-in per metric to avoid
+ *                               // the extra query for the common case. Keys not in
+ *                               // this list resolve exactly as before — no `history`
+ *                               // field, no extra query — so the default response is
+ *                               // unchanged and this addition is backward compatible.
  *   }
  *
  *   Response 200: {
  *     scope: { role, mspId, customerId | null },
- *     results: Record<metricKey, MetricResult>   // keyed by metric key
+ *     results: Record<metricKey, MetricResult>   // keyed by metric key; an
+ *                                                // opted-in ok result additionally
+ *                                                // carries `history` when a series exists
  *   }
  *
  * A single call resolves many metrics in one round-trip so a 20-widget canvas
@@ -41,7 +54,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireRole, assertCustomerAccess } from "../middlewares/requireAuth";
 import { getMetric } from "@workspace/dashboard-registry";
-import { resolveMetric, type MetricResult, type ResolveContext } from "../lib/dashboard-resolvers.ts";
+import { resolveMetric, resolveMetricHistory, type MetricResult, type ResolveContext } from "../lib/dashboard-resolvers.ts";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -55,7 +68,7 @@ router.post(
   requireRole("CustomerUser"),
   async (req: Request, res: Response): Promise<void> => {
     const user = req.user!;
-    const body = (req.body ?? {}) as { metrics?: unknown; customerId?: unknown; windowDays?: unknown };
+    const body = (req.body ?? {}) as { metrics?: unknown; customerId?: unknown; windowDays?: unknown; includeHistory?: unknown };
 
     // ── Validate metric keys ──
     if (!Array.isArray(body.metrics) || body.metrics.length === 0) {
@@ -67,6 +80,16 @@ router.post(
       return;
     }
     const metricKeys = body.metrics.filter((m): m is string => typeof m === "string");
+
+    // Opt-in subset for Smart-widget history. Restricted to keys that were also
+    // requested in `metrics` — asking for history on a metric you didn't resolve
+    // is meaningless.
+    const requestedKeys = new Set(metricKeys);
+    const includeHistory = new Set(
+      Array.isArray(body.includeHistory)
+        ? body.includeHistory.filter((m): m is string => typeof m === "string" && requestedKeys.has(m))
+        : [],
+    );
 
     const windowDays =
       typeof body.windowDays === "number" && body.windowDays > 0 && body.windowDays <= 365
@@ -143,7 +166,15 @@ router.post(
           results[key] = { metricKey: key, status: "not_available", reason: "scope_forbidden", detail: "msp-scope metric not available to customer" };
           return;
         }
-        results[key] = await resolveMetric(def, ctx);
+        const result = await resolveMetric(def, ctx);
+        // Attach Smart-widget history only when opted-in AND the metric resolved
+        // ok. A history fetch never fails the metric — resolveMetricHistory
+        // swallows its own errors and returns null.
+        if (result.status === "ok" && includeHistory.has(key)) {
+          const history = await resolveMetricHistory(def, ctx);
+          if (history) result.history = history;
+        }
+        results[key] = result;
       }),
     );
 

@@ -29,11 +29,12 @@ import type {
 export function createDashboardDataFetcher(
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): DashboardDataFetcher {
-  return async (metricKeys, scope) => {
+  return async (metricKeys, scope, historyKeys) => {
     if (metricKeys.length === 0) return {};
 
     const body: Record<string, unknown> = { metrics: metricKeys };
     if (scope.type === "customer") body.customerId = scope.id;
+    if (historyKeys && historyKeys.length > 0) body.includeHistory = historyKeys;
 
     const res = await fetchWithAuth("/api/dashboard/resolve", {
       method: "POST",
@@ -82,6 +83,9 @@ function toWidgetState(metricKey: string, result: MetricResult | undefined): Wid
       return {
         status: "ok",
         data: { shape: "scalar", value: Number.isFinite(value as number) ? (value as number) : null, percentage, label },
+        // Carry opted-in history through (Smart widgets). Absent for every other
+        // metric — the field is simply undefined.
+        ...(Array.isArray(result.history) ? { history: result.history } : {}),
       };
     }
     case "trend": {
@@ -133,11 +137,13 @@ export async function resolveWidgetStates(
   fetcher: DashboardDataFetcher,
   metricKeys: string[],
   scope: DashboardResolveScope,
+  historyKeys?: string[],
 ): Promise<Record<string, WidgetState>> {
   const uniqueKeys = [...new Set(metricKeys)];
+  const uniqueHistoryKeys = historyKeys ? [...new Set(historyKeys)].filter((k) => uniqueKeys.includes(k)) : undefined;
   let results: Record<string, MetricResult>;
   try {
-    results = await fetcher(uniqueKeys, scope);
+    results = await fetcher(uniqueKeys, scope, uniqueHistoryKeys);
   } catch (err) {
     const message = err instanceof Error ? err.message : "fetch failed";
     const fallback: Record<string, WidgetState> = {};

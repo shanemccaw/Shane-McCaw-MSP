@@ -45,6 +45,19 @@
  *   - point-in-time flags → MOST-RECENT wins
  * Platform-native MSP metrics (financial, ai, workflow-run, alert-rule) are
  * already MSP-scoped in their own tables and need no per-tenant fan-out.
+ *
+ * ── History (Step 5, Smart widget state) ──────────────────────────────────────
+ * The Smart renderer needs recent history (for the remediation sparkline + the
+ * stateless hysteresis lookback), not just a metric's current value.
+ * `resolveMetricHistory` serves that as a `{ t, value }[]` series (oldest→newest)
+ * for the two source types that can produce a per-point scalar over time:
+ *   engine_snapshot  — reuses getRecentEngineSnapshots(N).
+ *   monitor_profile  — reuses monitorHistoryForTenant(N), the last-N variant of
+ *                      the single-latest-row scalar path (same mapping lookup).
+ * It is only meaningful for customer-scope smart-eligible scalar metrics; every
+ * other combination returns null and the route simply omits `history` for that
+ * key. This is additive: a request that doesn't ask for history (the default)
+ * never triggers any of this and its response is byte-for-byte unchanged.
  */
 
 import { db } from "@workspace/db";
@@ -108,6 +121,14 @@ export interface MetricResultOk extends MetricResultBase {
    */
   data: Record<string, unknown>;
   meta?: Record<string, unknown>;
+  /**
+   * Recent `{ t, value }[]` history (oldest→newest), present ONLY when the
+   * request opted this metric into `includeHistory` AND a history series exists
+   * (see resolveMetricHistory). Feeds the Smart renderer's sparkline + the
+   * stateless hysteresis lookback. Absent on every non-opted-in request, so the
+   * default response shape is unchanged.
+   */
+  history?: { t: string; value: number }[];
 }
 
 export interface MetricResultNotAvailable extends MetricResultBase {
@@ -384,6 +405,49 @@ async function monitorScalarForTenant(tenantId: string, checkKey: string): Promi
   if (!props) return null;
   const mapping = await loadCheckMapping(checkKey);
   return checkNumericValue(props, mapping);
+}
+
+/**
+ * Fetch the last N (tenantId, checkKey) rows by collectedAt and reduce each to
+ * its canonical numeric value — the history variant of monitorScalarForTenant.
+ * Reuses the same mapping-lookup + checkNumericValue path per row so a history
+ * point means exactly what the single-value scalar means. Returned oldest→newest
+ * so it plugs straight into a sparkline; rows with no numeric value are dropped.
+ */
+async function monitorHistoryForTenant(
+  tenantId: string,
+  checkKey: string,
+  limit: number,
+  since: Date,
+): Promise<{ t: string; value: number }[]> {
+  const rows = await db
+    .select({
+      extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+      collectedAt: tenantMonitorProfilesTable.collectedAt,
+    })
+    .from(tenantMonitorProfilesTable)
+    .where(
+      and(
+        eq(tenantMonitorProfilesTable.tenantId, tenantId),
+        eq(tenantMonitorProfilesTable.checkKey, checkKey),
+        gte(tenantMonitorProfilesTable.collectedAt, since),
+      ),
+    )
+    .orderBy(desc(tenantMonitorProfilesTable.collectedAt))
+    .limit(limit);
+  if (rows.length === 0) return [];
+  // One mapping lookup for the whole check (mapping is per-check, not per-row).
+  const mapping = await loadCheckMapping(checkKey);
+  const points: { t: string; value: number }[] = [];
+  // rows come newest→oldest; walk in reverse to emit oldest→newest.
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const row = rows[i];
+    const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+    const value = checkNumericValue(props, mapping);
+    if (value == null || row.collectedAt == null) continue;
+    points.push({ t: row.collectedAt.toISOString(), value });
+  }
+  return points;
 }
 
 async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promise<MetricResult> {
@@ -1064,6 +1128,63 @@ async function platformScoreVsIndustry(def: MetricDef, ctx: ResolveContext): Pro
     }));
   if (buckets.length === 0) return notAvailable(def, "no_data", "no comparable pillar scores");
   return ok(def, { buckets }, { note: "benchmark keyed by pillar (no industry segmentation)" });
+}
+
+// =============================================================================
+// History (Smart widget sparkline + hysteresis lookback)
+// =============================================================================
+
+/** Max history points fetched per metric (a generous cap over the default window). */
+const MAX_HISTORY_ROWS = 90;
+
+/**
+ * Recent `{ t, value }[]` history (oldest→newest) for a metric, for the Smart
+ * renderer. Only customer-scope smart-eligible SCALAR metrics backed by an
+ * engine_snapshot or monitor_profile can produce a per-point value over time;
+ * anything else returns null (the route omits `history` for that key).
+ *
+ * Never throws — a history fetch failing must not fail the metric's own resolve
+ * (the value still comes back; the widget just falls back to no-sparkline).
+ */
+export async function resolveMetricHistory(
+  def: MetricDef,
+  ctx: ResolveContext,
+): Promise<{ t: string; value: number }[] | null> {
+  // Only smart-eligible scalar customer metrics get a sparkline history.
+  if (!def.smartEligible || def.shape !== "scalar" || def.scope !== "customer") return null;
+  if (def.status === "not_collected" || def.sourceKey.startsWith("not_collected:")) return null;
+  if (ctx.customerId == null) return null;
+
+  const since = windowStart(ctx);
+  try {
+    if (def.sourceType === "engine_snapshot") {
+      // SLA / scope-creep snapshots are lossy (they store only a composite/zero
+      // score), so their live-computed scalars have no trustworthy per-point
+      // history to draw — skip rather than plot a misleading line.
+      if (!SNAPSHOT_ENGINE_KEYS.has(def.sourceKey) || def.sourceKey === "sla" || def.sourceKey === "scope_creep" || def.sourceKey === "scope-creep") {
+        return null;
+      }
+      const snaps = await getRecentEngineSnapshots(ctx.customerId, def.sourceKey, MAX_HISTORY_ROWS);
+      const points = snaps
+        .filter((s) => s.capturedAt >= since)
+        .slice()
+        .reverse() // getRecentEngineSnapshots returns newest→oldest
+        .map((s) => ({ t: s.capturedAt.toISOString(), value: s.score ?? 0 }));
+      return points.length > 0 ? points : null;
+    }
+
+    if (def.sourceType === "monitor_profile") {
+      const tenantId = await resolveTenantId(ctx.customerId);
+      if (!tenantId) return null;
+      const points = await monitorHistoryForTenant(tenantId, def.sourceKey, MAX_HISTORY_ROWS, since);
+      return points.length > 0 ? points : null;
+    }
+
+    return null; // platform_table smart scalars have no per-point history path here
+  } catch (err) {
+    log.warn({ err, metricKey: def.key }, "dashboard: history fetch failed (metric value unaffected)");
+    return null;
+  }
 }
 
 // =============================================================================

@@ -237,6 +237,76 @@ describe("POST /api/dashboard/resolve", () => {
     expect(r.reason).toBe("scope_forbidden");
   });
 
+  // ── includeHistory (Step 5, Smart widget state) ──
+  it("attaches engine_snapshot history when includeHistory names the metric", async () => {
+    // Within the default 30-day window (engine history filters out stale points).
+    const older = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    const newer = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    mockResultQueue = [
+      // resolveMetric → getRecentEngineSnapshots(1) → latest row
+      [{ score: 87, capturedAt: newer }],
+      // resolveMetricHistory → getRecentEngineSnapshots(90) → newest→oldest
+      [
+        { score: 87, capturedAt: newer },
+        { score: 60, capturedAt: older },
+      ],
+    ];
+    const res = await resolve(customerToken(), {
+      metrics: ["engine.healthScore"],
+      includeHistory: ["engine.healthScore"],
+    });
+    expect(res.status).toBe(200);
+    const r = res.body.results["engine.healthScore"];
+    expect(r.status).toBe("ok");
+    // History returned oldest→newest.
+    expect(r.history).toEqual([
+      { t: older.toISOString(), value: 60 },
+      { t: newer.toISOString(), value: 87 },
+    ]);
+  });
+
+  it("attaches monitor_profile history via the last-N variant", async () => {
+    const t1 = new Date("2026-01-01T00:00:00Z");
+    const t2 = new Date("2026-01-05T00:00:00Z");
+    mockResultQueue = [
+      // resolveMetric path
+      [{ tenantId: "tenant-guid-abc" }], // resolveTenantId
+      [{ extractedProperties: { _itemCount: 90 }, rawResponse: null, collectedAt: t2, status: "ok" }], // latestCheckProps
+      [{ mapping: [{ targetField: "registeredCount" }] }], // loadCheckMapping (scalar path)
+      // resolveMetricHistory path
+      [{ tenantId: "tenant-guid-abc" }], // resolveTenantId (again)
+      [ // monitorHistoryForTenant rows, newest→oldest
+        { extractedProperties: { _itemCount: 90 }, collectedAt: t2 },
+        { extractedProperties: { _itemCount: 40 }, collectedAt: t1 },
+      ],
+      [{ mapping: [{ targetField: "registeredCount" }] }], // loadCheckMapping inside history
+    ];
+    const res = await resolve(customerToken(), {
+      metrics: ["identity.mfaRegisteredCount"],
+      includeHistory: ["identity.mfaRegisteredCount"],
+    });
+    expect(res.status).toBe(200);
+    const r = res.body.results["identity.mfaRegisteredCount"];
+    expect(r.status).toBe("ok");
+    expect(r.data.value).toBe(90);
+    // oldest→newest, falling back to _itemCount per row.
+    expect(r.history).toEqual([
+      { t: t1.toISOString(), value: 40 },
+      { t: t2.toISOString(), value: 90 },
+    ]);
+  });
+
+  it("does NOT attach history when includeHistory is absent (backward compatible)", async () => {
+    // Only the resolveMetric queue entry — no history query is issued.
+    mockResultQueue = [[{ score: 87, capturedAt: new Date("2026-01-10T00:00:00Z") }]];
+    const res = await resolve(customerToken(), { metrics: ["engine.healthScore"] });
+    expect(res.status).toBe(200);
+    const r = res.body.results["engine.healthScore"];
+    expect(r.status).toBe("ok");
+    expect(r.data.value).toBe(87);
+    expect(r.history).toBeUndefined();
+  });
+
   // ── unknown metric + batch isolation ──
   it("isolates unknown/failed metrics without failing the batch", async () => {
     mockResultQueue = [[{ score: 50, capturedAt: new Date() }]]; // for engine.healthScore

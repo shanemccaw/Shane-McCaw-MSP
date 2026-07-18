@@ -29,6 +29,7 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { getMetric } from "@workspace/dashboard-registry";
 import { resolveWidgetStates } from "./data-fetcher";
+import { resolveSmartState } from "./smart-state";
 import { WidgetTileLoading, WidgetTileNotAvailable, WidgetTileError } from "./WidgetTile";
 import { Stat, Gauge, Trend, Distribution, Bar, Heatmap, Timeline, Radar, ScoreRing, Smart } from "./renderers";
 import type {
@@ -95,11 +96,42 @@ function RenderWidgetBody({ widget, state }: { widget: WidgetInstance; state: Wi
     case "Smart": {
       if (data.shape !== "scalar") return <WidgetTileError message={`Smart cannot render "${data.shape}" data`} />;
       const scalar = data as ScalarWidgetData;
-      // Banding decision logic is a later step — a placed Smart widget with no
-      // banding wired up yet defaults to "remediation" (the more informative
-      // of the two states) rather than silently claiming "complete".
-      const smartState = (widget.properties?.smartState as "remediation" | "complete" | undefined) ?? "remediation";
-      return <Smart state={smartState} data={scalar} />;
+      const metric = getMetric(widget.metricKey);
+      // The value the state is judged against — the percentage when the metric is
+      // denominator-based (matches what the Smart component displays), else the value.
+      const judgedValue = scalar.percentage ?? scalar.value;
+      const history = state.history ?? [];
+
+      // Compute remediation vs complete from the metric's bands + history. If the
+      // metric isn't smart-eligible or its bands don't infer a clean direction,
+      // resolveSmartState throws — we default to "remediation" (the more
+      // informative of the two states) rather than crash or falsely claim
+      // "complete". A missing value also can't be judged → remediation.
+      let smartState: "remediation" | "complete" = "remediation";
+      let previousValue: number | null = null;
+      if (metric && judgedValue != null) {
+        try {
+          const resolved = resolveSmartState(
+            metric,
+            judgedValue,
+            history,
+          );
+          smartState = resolved.state;
+          // previousValue drives the delta text: earliest point in the window.
+          previousValue = resolved.deltaFromStart != null ? judgedValue - resolved.deltaFromStart : null;
+        } catch {
+          smartState = "remediation";
+        }
+      }
+
+      return (
+        <Smart
+          state={smartState}
+          data={scalar}
+          previousValue={previousValue}
+          history={history.map((p) => ({ date: p.t, value: p.value }))}
+        />
+      );
     }
     default:
       return <WidgetTileError message={`Unknown renderer type "${widget.rendererType}"`} />;
@@ -129,6 +161,13 @@ export function DashboardCanvas({ widgets, editable, scope, fetcher, onLayoutCha
   const [states, setStates] = useState<Record<string, WidgetState>>({});
 
   const metricKeys = useMemo(() => widgets.map((w) => w.metricKey), [widgets]);
+  // Metric keys of Smart-rendered widgets — the only ones that need history
+  // (the sparkline + hysteresis lookback). Requesting it just for these keeps
+  // the extra query off every non-Smart widget.
+  const historyKeys = useMemo(
+    () => widgets.filter((w) => w.rendererType === "Smart").map((w) => w.metricKey),
+    [widgets],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -139,14 +178,14 @@ export function DashboardCanvas({ widgets, editable, scope, fetcher, onLayoutCha
       }
       return next;
     });
-    void resolveWidgetStates(fetcher, metricKeys, scope).then((resolved) => {
+    void resolveWidgetStates(fetcher, metricKeys, scope, historyKeys).then((resolved) => {
       if (!cancelled) setStates(resolved);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metricKeys.join(","), scope.type, scope.id, refreshKey]);
+  }, [metricKeys.join(","), historyKeys.join(","), scope.type, scope.id, refreshKey]);
 
   const layout: LayoutItem[] = widgets.map((w) => ({ i: w.i, x: w.x, y: w.y, w: w.w, h: w.h }));
 
