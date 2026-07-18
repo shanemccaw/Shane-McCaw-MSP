@@ -1812,6 +1812,39 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     }
   },
+  // ── Platform Log Stream Retention Prune ─────────────────────────────────────
+  {
+    name: "Platform Log Stream Retention Prune",
+    description: "Runs nightly at 02:00 UTC. Deletes platform_log_stream rows older than the configured retention window (default 7 days). Scope is the debug/log firehose only — exception tracking and business events are explicitly excluded and have their own, separate (currently unset) retention policies.",
+    triggerType: "schedule",
+    cron: "0 2 * * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Daily 02:00 UTC" },
+        },
+        {
+          id: "prune",
+          type: "platform_log_stream_prune",
+          position: { x: 300, y: 180 },
+          data: { nodeType: "platform_log_stream_prune", label: "Prune log stream", retentionDays: 7 },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 300 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "prune" },
+        { id: "e2", source: "prune", target: "end" },
+      ],
+    },
+  },
   // ── MSP Portfolio Risk Snapshot ─────────────────────────────────────────────
   {
     name: "__system__: MSP Portfolio Risk Snapshot",

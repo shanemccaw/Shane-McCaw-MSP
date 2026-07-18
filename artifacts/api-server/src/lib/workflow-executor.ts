@@ -94,6 +94,7 @@ import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueued
 import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
+import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -999,6 +1000,11 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "msp_overage_meter":
       return { dryRun: true, subscriptionsChecked: 0, metered: 0, totalOverageTenants: 0, note: "dry run — overage metering skipped" };
+
+    case "platform_log_stream_prune": {
+      const retentionDaysDry = Number((node.data.retentionDays as number | undefined) ?? 7);
+      return { dryRun: true, retentionDays: retentionDaysDry, rowsDeleted: 0, note: "dry run — prune skipped" };
+    }
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -5861,6 +5867,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "msp_score_snapshot": {
         // Promoted node type: calculates and snapshots MSP portfolio risk daily.
         output = await handleMspScoreSnapshot(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "platform_log_stream_prune": {
+        // Promoted node type: deletes platform_log_stream rows past retention.
+        output = await handlePlatformLogStreamPrune(node.data as Record<string, unknown>);
         break;
       }
 

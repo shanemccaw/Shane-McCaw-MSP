@@ -18,6 +18,7 @@ export default defineConfig({
       "src/lib/workflow-executor-comms.test.ts",
       "src/lib/workflow-executor-content.test.ts",
       "src/lib/workflow-executor-integrations.test.ts",
+      "src/lib/telemetry-retention-nodes.test.ts",
       "src/lib/tenant-signals.test.ts",
       "src/lib/drift-engine.test.ts",
       "src/lib/forecasting-engine.test.ts",

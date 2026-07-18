@@ -658,6 +658,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Daily snapshot of all MSP portfolio risk scores — no AI",
   },
+  {
+    nodeType: "platform_log_stream_prune",
+    isAIDependent: false,
+    description: "Deletes platform_log_stream rows older than the retention window — no AI",
+  },
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

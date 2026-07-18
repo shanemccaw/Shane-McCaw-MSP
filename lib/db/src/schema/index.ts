@@ -2104,6 +2104,8 @@ export interface WfNode {
     | "sales_offer_escalate" | "sales_offer_resolve"
     // MSP Score Snapshot
     | "msp_score_snapshot"
+    // Telemetry Retention
+    | "platform_log_stream_prune"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template"
     // Utilities

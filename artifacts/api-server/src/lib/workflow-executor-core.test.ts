@@ -729,6 +729,30 @@ describe("msp_overage_meter — dry-run skips execution", () => {
 });
 
 // =============================================================================
+// platform_log_stream_prune — dry-run
+// =============================================================================
+
+describe("platform_log_stream_prune — dry-run skips deletion", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("platform_log_stream_prune", { retentionDays: 7 }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.rowsDeleted is 0 — nothing is deleted on a dry run", () => {
+    expect(capturedOutput().rowsDeleted).toBe(0);
+  });
+
+  it("output.retentionDays reflects the configured value", () => {
+    expect(capturedOutput().retentionDays).toBe(7);
+  });
+});
+
+// =============================================================================
 // delay — dry-run (avoids actual sleep)
 // =============================================================================
 
