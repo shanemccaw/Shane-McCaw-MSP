@@ -19,6 +19,7 @@ import React, {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { reportClientEvent } from "./report-client-event";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -280,11 +281,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } else {
               // Defensive: post-fix every impersonation URL carries target_slug.
               // If it's missing we cannot safely pick a tenant, so surface it
-              // and just strip the token from the URL. NOTE: there is no
-              // frontend→backend telemetry beacon in this app today, so this
-              // canary is toast-only — see the flagged gap in the task notes.
+              // and just strip the token from the URL.
               toast.error(
                 "Impersonation started but the target tenant was missing — please navigate manually.",
+              );
+              reportClientEvent(
+                data.accessToken,
+                "ImpersonationMissingTargetSlug",
+                "Impersonation exchange succeeded but target_slug was missing from the URL",
+                "client.frontend",
+                { mspRole: data.user.mspRole, isImpersonating: true },
               );
               const url = new URL(window.location.href);
               url.searchParams.delete("impersonation_token");
