@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Trash2, Loader2, Play, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,10 +16,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+interface MappingRule {
+  sourceField: string;
+  targetField: string;
+  transform?: string;
+}
+
 interface MonitorCheck {
   key: string;
   label: string;
   endpoint: string;
+  properties?: string[];
+  mapping?: MappingRule[];
 }
 
 interface Override {
@@ -33,19 +42,62 @@ interface Override {
   createdAt: string;
 }
 
+const CUSTOM_FIELD = "__custom__";
+
+type FieldType = "boolean" | "number" | "string" | "unknown";
+
+/**
+ * Infer the expected value type for a Graph source field. Transforms that
+ * count truthy/falsy values imply a boolean source; otherwise fall back to
+ * Graph naming conventions. Returns "unknown" when nothing matches, which
+ * keeps the raw JSON textarea as the input.
+ */
+function inferFieldType(field: string, transform?: string): FieldType {
+  if (transform === "countTruthy" || transform === "countFalse") return "boolean";
+  const leaf = field.split(".").pop() ?? field;
+  if (/^(is|has)[A-Z]/.test(leaf) || /(Enabled|Disabled|Registered|Compliant|Capable|Required|Licensed)$/.test(leaf)) {
+    return "boolean";
+  }
+  if (/(count|size|days|total|number|quantity|score|percent)/i.test(leaf)) return "number";
+  if (/(DateTime|Date|At|On)$/.test(leaf) || /(name|mail|id|state|status|type|version|sku|principal|domain)/i.test(leaf)) {
+    return "string";
+  }
+  return "unknown";
+}
+
+function formatInjectedValue(v: any): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "boolean" || typeof v === "number" || v === null) return String(v);
+  return JSON.stringify(v);
+}
+
+function formatExpiry(expiresAt: string, now: number): string {
+  const ms = new Date(expiresAt).getTime() - now;
+  if (ms <= 0) return "expired";
+  const mins = Math.floor(ms / 60000);
+  const days = Math.floor(mins / 1440);
+  const hrs = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (days > 0) return `expires in ${days}d ${hrs}h`;
+  if (hrs > 0) return `expires in ${hrs}h ${m}m`;
+  return `expires in ${m}m`;
+}
+
 export function SimulatorOverridesPanel() {
   const { fetchWithAuth } = useAuth();
   const { selectedCustomerId, selectedCustomer } = useTestbedContext();
 
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
-  
+
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [loadingOverrides, setLoadingOverrides] = useState(false);
 
   // Form state
   const [selectedCheckKey, setSelectedCheckKey] = useState<string>("");
-  const [fieldPath, setFieldPath] = useState("");
-  const [injectedValueText, setInjectedValueText] = useState("");
+  const [selectedField, setSelectedField] = useState<string>("");
+  const [customFieldPath, setCustomFieldPath] = useState("");
+  const [boolValue, setBoolValue] = useState(false);
+  const [valueText, setValueText] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,8 +105,15 @@ export function SimulatorOverridesPanel() {
   const [runningCheck, setRunningCheck] = useState<string | null>(null);
   const [checkResult, setCheckResult] = useState<any>(null);
 
+  // Tick every 30s so expiry countdowns stay current
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    // Fetch monitor checks
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    // Fetch monitor checks — full rows, including properties + mapping
     fetchWithAuth("/api/admin/monitor-checks")
       .then(r => r.json())
       .then(d => setChecks(d.checks ?? []))
@@ -69,6 +128,39 @@ export function SimulatorOverridesPanel() {
       setCheckResult(null);
     }
   }, [selectedCustomerId]);
+
+  const selectedCheck = useMemo(
+    () => checks.find(c => c.key === selectedCheckKey),
+    [checks, selectedCheckKey]
+  );
+
+  // Fields the user can target: mapping sourceFields, else raw properties
+  const fieldOptions = useMemo(() => {
+    if (!selectedCheck) return [];
+    const fromMapping = (selectedCheck.mapping ?? []).map(m => m.sourceField).filter(Boolean);
+    const source = fromMapping.length > 0 ? fromMapping : (selectedCheck.properties ?? []);
+    return [...new Set(source)];
+  }, [selectedCheck]);
+
+  const fieldType: FieldType = useMemo(() => {
+    if (!selectedField || selectedField === CUSTOM_FIELD) return "unknown";
+    const rule = (selectedCheck?.mapping ?? []).find(m => m.sourceField === selectedField);
+    return inferFieldType(selectedField, rule?.transform);
+  }, [selectedCheck, selectedField]);
+
+  const handleCheckChange = (key: string) => {
+    setSelectedCheckKey(key);
+    setSelectedField("");
+    setCustomFieldPath("");
+    setBoolValue(false);
+    setValueText("");
+  };
+
+  const handleFieldChange = (field: string) => {
+    setSelectedField(field);
+    setBoolValue(false);
+    setValueText("");
+  };
 
   const loadOverrides = async (testbedId: number) => {
     setLoadingOverrides(true);
@@ -89,17 +181,51 @@ export function SimulatorOverridesPanel() {
 
   const handleCreateOverride = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedCustomerId == null || !selectedCheckKey || !fieldPath || !injectedValueText) {
+    if (selectedCustomerId == null || !selectedCheckKey || !selectedField) {
       toast.error("Please fill in all required fields");
       return;
     }
 
-    let injectedValue: any;
-    try {
-      injectedValue = JSON.parse(injectedValueText);
-    } catch (err) {
-      toast.error("Invalid JSON in Injected Value");
+    const isCustom = selectedField === CUSTOM_FIELD;
+    const fieldPath = isCustom ? customFieldPath.trim() : `value[0].${selectedField}`;
+    if (!fieldPath) {
+      toast.error("Please enter a field path");
       return;
+    }
+
+    let injectedValue: any;
+    switch (fieldType) {
+      case "boolean":
+        injectedValue = boolValue;
+        break;
+      case "number": {
+        if (valueText.trim() === "" || Number.isNaN(Number(valueText))) {
+          toast.error("Please enter a valid number");
+          return;
+        }
+        injectedValue = Number(valueText);
+        break;
+      }
+      case "string": {
+        if (valueText === "") {
+          toast.error("Please enter a value");
+          return;
+        }
+        injectedValue = valueText;
+        break;
+      }
+      default: {
+        if (!valueText.trim()) {
+          toast.error("Please enter a value");
+          return;
+        }
+        try {
+          injectedValue = JSON.parse(valueText);
+        } catch (err) {
+          toast.error("Invalid JSON in Injected Value");
+          return;
+        }
+      }
     }
 
     const check = checks.find(c => c.key === selectedCheckKey);
@@ -124,8 +250,10 @@ export function SimulatorOverridesPanel() {
 
       if (res.ok) {
         toast.success("Override created");
-        setFieldPath("");
-        setInjectedValueText("");
+        setSelectedField("");
+        setCustomFieldPath("");
+        setBoolValue(false);
+        setValueText("");
         setExpiresAt("");
         loadOverrides(selectedCustomerId);
       } else {
@@ -145,10 +273,10 @@ export function SimulatorOverridesPanel() {
         method: "DELETE",
       });
       if (res.ok) {
-        toast.success("Override deleted");
+        toast.success("Override cleared");
         if (selectedCustomerId != null) loadOverrides(selectedCustomerId);
       } else {
-        toast.error("Failed to delete override");
+        toast.error("Failed to clear override");
       }
     } catch (err) {
       toast.error("Network error");
@@ -165,7 +293,7 @@ export function SimulatorOverridesPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ testbedCustomerId: selectedCustomerId }),
       });
-      
+
       const data = await res.json();
       if (res.ok) {
         toast.success("Monitor check executed");
@@ -180,6 +308,51 @@ export function SimulatorOverridesPanel() {
     } finally {
       setRunningCheck(null);
     }
+  };
+
+  const checkLabelFor = (key: string) => checks.find(c => c.key === key)?.label ?? key;
+
+  const fieldNameFor = (fieldPath: string) => fieldPath.replace(/^value\[\d+\]\./, "");
+
+  const renderValueInput = () => {
+    if (fieldType === "boolean") {
+      return (
+        <div className="flex items-center gap-3 h-10">
+          <Switch checked={boolValue} onCheckedChange={setBoolValue} />
+          <span className="font-mono text-xs text-foreground/90">{boolValue ? "true" : "false"}</span>
+        </div>
+      );
+    }
+    if (fieldType === "number") {
+      return (
+        <Input
+          type="number"
+          step="any"
+          placeholder="e.g. 42"
+          value={valueText}
+          onChange={e => setValueText(e.target.value)}
+          className="bg-background font-mono text-xs"
+        />
+      );
+    }
+    if (fieldType === "string") {
+      return (
+        <Input
+          placeholder="e.g. user@contoso.com"
+          value={valueText}
+          onChange={e => setValueText(e.target.value)}
+          className="bg-background font-mono text-xs"
+        />
+      );
+    }
+    return (
+      <textarea
+        placeholder={'e.g. false, 42, "string", or {"key": "value"}'}
+        value={valueText}
+        onChange={e => setValueText(e.target.value)}
+        className="w-full h-24 bg-background border border-border rounded-md px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:border-ring"
+      />
+    );
   };
 
   return (
@@ -210,7 +383,7 @@ export function SimulatorOverridesPanel() {
                     <div className="flex gap-2">
                       <select
                         value={selectedCheckKey}
-                        onChange={e => setSelectedCheckKey(e.target.value)}
+                        onChange={e => handleCheckChange(e.target.value)}
                         className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
                       >
                         <option value="">-- Select Check --</option>
@@ -253,23 +426,45 @@ export function SimulatorOverridesPanel() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Field Path</label>
-                    <Input
-                      placeholder="e.g. value[0].isMfaRegistered"
-                      value={fieldPath}
-                      onChange={e => setFieldPath(e.target.value)}
-                      className="bg-background font-mono text-xs"
-                    />
+                    <label className="text-xs font-medium text-muted-foreground">Field</label>
+                    <select
+                      value={selectedField}
+                      onChange={e => handleFieldChange(e.target.value)}
+                      disabled={!selectedCheckKey}
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring disabled:opacity-50"
+                    >
+                      <option value="">{selectedCheckKey ? "-- Select Field --" : "Select a check first"}</option>
+                      {fieldOptions.map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                      {selectedCheckKey && <option value={CUSTOM_FIELD}>Custom field path…</option>}
+                    </select>
+                    {selectedField && selectedField !== CUSTOM_FIELD && (
+                      <div className="text-[10px] font-mono text-muted-foreground">
+                        Path: value[0].{selectedField}
+                      </div>
+                    )}
+                    {selectedField === CUSTOM_FIELD && (
+                      <Input
+                        placeholder="e.g. value[0].isMfaRegistered"
+                        value={customFieldPath}
+                        onChange={e => setCustomFieldPath(e.target.value)}
+                        className="bg-background font-mono text-xs"
+                      />
+                    )}
                   </div>
 
                   <div className="space-y-2 col-span-2">
-                    <label className="text-xs font-medium text-muted-foreground">Injected Value (JSON)</label>
-                    <textarea
-                      placeholder={'e.g. false, 42, "string", or {"key": "value"}'}
-                      value={injectedValueText}
-                      onChange={e => setInjectedValueText(e.target.value)}
-                      className="w-full h-24 bg-background border border-border rounded-md px-3 py-2 text-xs font-mono text-foreground focus:outline-none focus:border-ring"
-                    />
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Injected Value
+                      {fieldType !== "unknown" && (
+                        <span className="ml-2 text-[10px] font-mono text-primary/70">({fieldType})</span>
+                      )}
+                      {fieldType === "unknown" && selectedField && (
+                        <span className="ml-2 text-[10px] font-mono text-muted-foreground/70">(JSON)</span>
+                      )}
+                    </label>
+                    {renderValueInput()}
                   </div>
 
                   <div className="space-y-2">
@@ -307,8 +502,8 @@ export function SimulatorOverridesPanel() {
                 <Table>
                   <TableHeader className="bg-card">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs font-semibold py-3">Endpoint</TableHead>
-                      <TableHead className="text-xs font-semibold py-3">Field Path</TableHead>
+                      <TableHead className="text-xs font-semibold py-3">Check</TableHead>
+                      <TableHead className="text-xs font-semibold py-3">Field</TableHead>
                       <TableHead className="text-xs font-semibold py-3">Injected Value</TableHead>
                       <TableHead className="text-xs font-semibold py-3">Status</TableHead>
                       <TableHead className="text-xs font-semibold py-3 text-right">Actions</TableHead>
@@ -330,15 +525,17 @@ export function SimulatorOverridesPanel() {
                     ) : (
                       overrides.map(ov => (
                         <TableRow key={ov.id} className="hover:bg-accent/30">
-                          <TableCell className="py-2.5 font-mono text-xs text-foreground/90">
+                          <TableCell className="py-2.5 text-xs text-foreground/90">
                             <div className="flex flex-col">
-                              <span className="text-primary">{ov.monitorCheckKey}</span>
-                              <span className="text-[10px] text-muted-foreground">{ov.graphEndpoint}</span>
+                              <span className="font-medium">{checkLabelFor(ov.monitorCheckKey)}</span>
+                              <span className="text-[10px] font-mono text-muted-foreground">{ov.monitorCheckKey}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="py-2.5 font-mono text-xs text-foreground/90">{ov.fieldPath}</TableCell>
+                          <TableCell className="py-2.5 font-mono text-xs text-foreground/90">
+                            <span title={ov.fieldPath}>{fieldNameFor(ov.fieldPath)}</span>
+                          </TableCell>
                           <TableCell className="py-2.5 font-mono text-[11px] text-emerald-400">
-                            <pre className="whitespace-pre-wrap max-w-xs">{JSON.stringify(ov.injectedValue, null, 2)}</pre>
+                            <span className="break-all">{formatInjectedValue(ov.injectedValue)}</span>
                           </TableCell>
                           <TableCell className="py-2.5">
                             <Badge
@@ -351,8 +548,8 @@ export function SimulatorOverridesPanel() {
                               {ov.isActive ? "ACTIVE" : "EXPIRED"}
                             </Badge>
                             {ov.expiresAt && (
-                              <div className="text-[9px] text-muted-foreground mt-1">
-                                Exp: {new Date(ov.expiresAt).toLocaleString()}
+                              <div className="text-[9px] text-muted-foreground mt-1" title={new Date(ov.expiresAt).toLocaleString()}>
+                                {formatExpiry(ov.expiresAt, now)}
                               </div>
                             )}
                           </TableCell>
@@ -361,6 +558,7 @@ export function SimulatorOverridesPanel() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeleteOverride(ov.id)}
+                              title="Clear override"
                               className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 className="w-4 h-4" />
