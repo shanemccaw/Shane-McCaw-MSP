@@ -381,8 +381,11 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
     }
     setSaving(true);
     try {
-      const res = await fetchWithAuth("/api/simulator/sql/scripts", {
-        method: "POST",
+      const url = isNew
+        ? "/api/simulator/sql/scripts"
+        : `/api/simulator/sql/scripts/${modalData?.script?.id}`;
+      const res = await fetchWithAuth(url, {
+        method: isNew ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,

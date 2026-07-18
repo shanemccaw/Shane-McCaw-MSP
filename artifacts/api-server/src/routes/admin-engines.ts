@@ -1332,7 +1332,7 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
  * @route GET /api/admin/engines/simulator/sql/scripts
  * @desc Gets all saved, categorized SQL utility scripts
  */
-router.get("/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/engines/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const scripts = await db.select().from(savedSqlScripts);
     return res.json({ scripts });
@@ -1345,7 +1345,7 @@ router.get("/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Re
  * @route POST /api/admin/engines/simulator/sql/scripts
  * @desc Saves a new SQL script to the library under a category
  */
-router.post("/simulator/sql/scripts", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/engines/simulator/sql/scripts", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, category, query, isDestructive } = req.body;
 
@@ -1367,10 +1367,44 @@ router.post("/simulator/sql/scripts", requireAdmin, async (req: Request, res: Re
 });
 
 /**
+ * @route PUT /api/admin/engines/simulator/sql/scripts/:id
+ * @desc Updates an existing saved SQL utility script
+ */
+router.put("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "A valid script id is required." });
+    }
+
+    const { name, category, query, isDestructive } = req.body;
+
+    if (!name || !category || !query) {
+      return res.status(400).json({ error: "name, category, and query are required." });
+    }
+
+    const [updated] = await db.update(savedSqlScripts).set({
+      name,
+      category,
+      query,
+      isDestructive: Boolean(isDestructive)
+    }).where(eq(savedSqlScripts.id, id)).returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: "Script not found." });
+    }
+
+    return res.json({ script: updated });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * @route DELETE /api/admin/engines/simulator/sql/scripts/:id
  * @desc Deletes a saved SQL utility script
  */
-router.delete("/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
