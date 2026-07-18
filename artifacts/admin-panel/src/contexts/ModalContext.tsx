@@ -35,6 +35,18 @@ import {
 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@codemirror/view";
+
+// Same repaint as SimulatorCenterCanvas's editor: keep One Dark's syntax
+// palette but swap its #282c34 surfaces for the app's GitHub-dark tokens.
+// Defined locally rather than imported from the canvas — components import
+// useModal from this file, so importing back from them would be a cycle.
+const editorSurfaceTheme = EditorView.theme({
+  "&": { backgroundColor: "#0D1117" },
+  ".cm-gutters": { backgroundColor: "#0D1117", borderRight: "1px solid #21262D" },
+  ".cm-activeLine": { backgroundColor: "#161B2280" },
+  ".cm-activeLineGutter": { backgroundColor: "#161B2280" },
+});
 
 export type ModalType = "execute-scenario" | "edit-script" | "new-script" | "engine-trace" | null;
 
@@ -82,7 +94,7 @@ function ModalContainer() {
 
   return (
     <Dialog open={activeModal !== null} onOpenChange={(open) => { if (!open) closeModal(); }}>
-      <DialogContent className={`${activeModal === "engine-trace" ? "max-w-3xl" : "max-w-2xl"} bg-slate-950 border border-slate-800 text-slate-100 shadow-2xl p-6 rounded-xl`}>
+      <DialogContent className={`${activeModal === "engine-trace" ? "max-w-3xl" : "max-w-2xl"} bg-background border border-border text-foreground shadow-2xl p-6 rounded-xl`}>
         {activeModal === "execute-scenario" && <ExecuteScenarioModal />}
         {activeModal === "edit-script" && <ScriptEditorModal isNew={false} />}
         {activeModal === "new-script" && <ScriptEditorModal isNew={true} />}
@@ -100,51 +112,51 @@ function EngineTraceModal() {
   return (
     <div className="space-y-4 font-sans text-sm">
       <DialogHeader>
-        <DialogTitle className="text-slate-200 text-base font-semibold">{engineName} Evaluation Trace</DialogTitle>
-        <DialogDescription className="text-slate-500 text-xs">
+        <DialogTitle className="text-foreground text-base font-semibold">{engineName} Evaluation Trace</DialogTitle>
+        <DialogDescription className="text-muted-foreground text-xs">
           Interactive trace of evaluated rules and tenant profile state.
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4 font-mono text-sm max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800">
+      <div className="space-y-4 font-mono text-sm max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin">
         <section className="space-y-1.5">
-          <h4 className="text-slate-400 uppercase text-[10px] tracking-wider font-bold">Input Tenant Profile</h4>
-          <pre className="bg-slate-900 border border-slate-800 p-3 rounded-lg text-emerald-400 overflow-x-auto text-[11px] max-h-48 overflow-y-auto leading-relaxed">
+          <h4 className="text-muted-foreground uppercase text-[10px] tracking-wider font-bold">Input Tenant Profile</h4>
+          <pre className="bg-card border border-border p-3 rounded-lg text-emerald-400 overflow-x-auto text-[11px] max-h-48 overflow-y-auto leading-relaxed">
             {JSON.stringify(data?.rawInput || {}, null, 2)}
           </pre>
         </section>
-        
+
         <section className="space-y-1.5">
-          <h4 className="text-slate-400 uppercase text-[10px] tracking-wider font-bold">Rule Logic Path</h4>
+          <h4 className="text-muted-foreground uppercase text-[10px] tracking-wider font-bold">Rule Logic Path</h4>
           {data?.trace && data.trace.length > 0 ? (
-            <div className="border-l-2 border-slate-800 pl-4 space-y-3">
+            <div className="border-l-2 border-border pl-4 space-y-3">
               {data.trace.map((step: any, i: number) => (
-                <div key={i} className="text-slate-200">
+                <div key={i} className="text-foreground">
                   <div className="flex items-center gap-2">
-                    <span className="text-cyan-400 font-bold text-xs">{step.ruleId}:</span>
+                    <span className="text-[#58A6FF] font-bold text-xs">{step.ruleId}:</span>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${
-                      step.outcome === "FIRED" 
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25" 
-                        : "bg-slate-900 text-slate-500 border border-slate-800"
+                      step.outcome === "FIRED"
+                        ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/25"
+                        : "bg-card text-muted-foreground border border-border"
                     }`}>
                       {step.outcome}
                     </span>
                   </div>
-                  <small className="text-slate-400 block mt-1 leading-normal font-sans text-[11px]">{step.reasoning}</small>
+                  <small className="text-muted-foreground block mt-1 leading-normal font-sans text-[11px]">{step.reasoning}</small>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-slate-500 text-xs italic font-sans">No evaluation trace logs generated for this engine run.</div>
+            <div className="text-muted-foreground text-xs italic font-sans">No evaluation trace logs generated for this engine run.</div>
           )}
         </section>
       </div>
 
-      <div className="flex justify-end pt-3 border-t border-slate-900">
-        <Button 
-          variant="outline" 
+      <div className="flex justify-end pt-3 border-t border-border">
+        <Button
+          variant="outline"
           onClick={closeModal}
-          className="bg-transparent border-slate-800 hover:bg-slate-900 hover:text-slate-100 text-xs"
+          className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs"
         >
           Close
         </Button>
@@ -248,10 +260,10 @@ function ExecuteScenarioModal() {
 
   const getEventIcon = (cat: string) => {
     switch (cat) {
-      case "billing": return <CreditCard className="w-5 h-5 text-rose-400 animate-pulse" />;
+      case "billing": return <CreditCard className="w-5 h-5 text-destructive animate-pulse" />;
       case "security": return <Shield className="w-5 h-5 text-emerald-400 animate-pulse" />;
       case "sla": return <Clock className="w-5 h-5 text-amber-400 animate-pulse" />;
-      default: return <RefreshCw className="w-5 h-5 text-cyan-400 animate-pulse" />;
+      default: return <RefreshCw className="w-5 h-5 text-[#58A6FF] animate-pulse" />;
     }
   };
 
@@ -259,34 +271,34 @@ function ExecuteScenarioModal() {
     <div className="space-y-5">
       <DialogHeader>
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+          <div className="p-2.5 rounded-lg bg-card border border-border">
             {getEventIcon(event?.category)}
           </div>
           <div>
-            <DialogTitle className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <DialogTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
               Fire Simulation Scenario
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-400">
+            <DialogDescription className="text-xs text-muted-foreground">
               Run test scenarios against local testbed systems
             </DialogDescription>
           </div>
         </div>
       </DialogHeader>
 
-      <div className="border border-slate-800/80 rounded-xl bg-slate-900/40 p-4 space-y-3.5">
+      <div className="border border-border rounded-xl bg-card/50 p-4 space-y-3.5">
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Scenario Name</h4>
-          <p className="text-sm font-medium text-slate-200">{event?.name}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Scenario Name</h4>
+          <p className="text-sm font-medium text-foreground">{event?.name}</p>
         </div>
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Description</h4>
-          <p className="text-xs text-slate-300 leading-relaxed">{event?.description}</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Description</h4>
+          <p className="text-xs text-foreground/90 leading-relaxed">{event?.description}</p>
         </div>
         {event?.demoSpeakerNote && (
-          <div className="bg-cyan-950/20 border border-cyan-800/30 rounded-lg p-3 text-[11px] text-cyan-400 flex gap-2">
+          <div className="bg-[#58A6FF]/10 border border-[#58A6FF]/30 rounded-lg p-3 text-[11px] text-[#58A6FF] flex gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold uppercase tracking-wider block text-[9px] mb-0.5 text-cyan-300">Speaker Note (Demo Walkthrough)</span>
+              <span className="font-semibold uppercase tracking-wider block text-[9px] mb-0.5">Speaker Note (Demo Walkthrough)</span>
               {event.demoSpeakerNote}
             </div>
           </div>
@@ -294,22 +306,22 @@ function ExecuteScenarioModal() {
       </div>
 
       <div className="space-y-3">
-        <Label className="text-xs font-medium text-slate-400">Select Target Testbed Customer</Label>
+        <Label className="text-xs font-medium text-muted-foreground">Select Target Testbed Customer</Label>
         {loadingTestbeds ? (
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading testbeds...
           </div>
         ) : testbeds.length === 0 ? (
-          <div className="bg-red-950/20 border border-red-900/30 rounded-lg p-3.5 text-xs text-red-400 flex items-center gap-2">
+          <div className="bg-destructive/10 border border-destructive/40 rounded-lg p-3.5 text-xs text-destructive flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             No testbed customers (is_testbed = true) exist in the system. Go to platform settings to flag one.
           </div>
         ) : (
           <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-            <SelectTrigger className="w-full bg-slate-900 border-slate-800 text-slate-200 text-xs h-10">
+            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-10">
               <SelectValue placeholder="Select target testbed customer" />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-800 text-slate-200 text-xs">
+            <SelectContent className="bg-card border-border text-foreground text-xs">
               {testbeds.map((tb) => (
                 <SelectItem key={tb.id} value={String(tb.id)}>
                   {tb.name} {tb.domain ? `(${tb.domain})` : ""} (Customer ID: {tb.id})
@@ -322,43 +334,43 @@ function ExecuteScenarioModal() {
 
       {executionResult && (
         <div className={`border rounded-xl p-4 font-mono text-[11px] overflow-hidden ${
-          executionResult.success 
-            ? "bg-emerald-950/10 border-emerald-900/30 text-emerald-300" 
-            : "bg-rose-950/10 border-rose-900/30 text-rose-300"
+          executionResult.success
+            ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-400"
+            : "bg-destructive/10 border-destructive/40 text-destructive"
         }`}>
           <div className="flex items-center gap-2 font-semibold text-xs mb-2">
             {executionResult.success ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             ) : (
-              <XCircle className="w-4 h-4 text-rose-400" />
+              <XCircle className="w-4 h-4 text-destructive" />
             )}
             {executionResult.success ? "Execution Succeeded" : "Execution Failed"}
           </div>
           {executionResult.success ? (
             <div className="space-y-1">
-              <div><span className="text-slate-500">&gt; message:</span> {executionResult.message}</div>
-              <div><span className="text-slate-500">&gt; mutated_rows:</span> {executionResult.mutatedRows ?? 0}</div>
-              <div><span className="text-slate-500">&gt; duration:</span> {executionResult.executionMs}ms</div>
-              <div><span className="text-slate-500">&gt; timestamp:</span> {executionResult.timestamp}</div>
+              <div><span className="text-muted-foreground">&gt; message:</span> {executionResult.message}</div>
+              <div><span className="text-muted-foreground">&gt; mutated_rows:</span> {executionResult.mutatedRows ?? 0}</div>
+              <div><span className="text-muted-foreground">&gt; duration:</span> {executionResult.executionMs}ms</div>
+              <div><span className="text-muted-foreground">&gt; timestamp:</span> {executionResult.timestamp}</div>
             </div>
           ) : (
-            <div><span className="text-slate-500">&gt; error:</span> {executionResult.error}</div>
+            <div><span className="text-muted-foreground">&gt; error:</span> {executionResult.error}</div>
           )}
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-3 border-t border-slate-900">
-        <Button 
-          variant="outline" 
+      <div className="flex justify-end gap-3 pt-3 border-t border-border">
+        <Button
+          variant="outline"
           onClick={closeModal}
-          className="bg-transparent border-slate-800 hover:bg-slate-900 hover:text-slate-100 text-xs"
+          className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs"
         >
           Cancel
         </Button>
-        <Button 
+        <Button
           onClick={handleExecute}
           disabled={executing || testbeds.length === 0}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center gap-2 px-4 shadow-lg shadow-indigo-600/10"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 px-4"
         >
           {executing ? (
             <>
@@ -442,14 +454,14 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
     <div className="space-y-4">
       <DialogHeader>
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
-            <TerminalIcon className="w-5 h-5 text-indigo-400" />
+          <div className="p-2.5 rounded-lg bg-card border border-border">
+            <TerminalIcon className="w-5 h-5 text-[#58A6FF]" />
           </div>
           <div>
-            <DialogTitle className="text-lg font-semibold text-slate-100">
+            <DialogTitle className="text-lg font-semibold text-foreground">
               {isNew ? "Create SQL Utility Script" : "Edit SQL Utility Script"}
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-400">
+            <DialogDescription className="text-xs text-muted-foreground">
               Manage saved scripts for testing database migrations and telemetry logic
             </DialogDescription>
           </div>
@@ -458,22 +470,22 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
 
       <div className="grid grid-cols-2 gap-4 pt-1">
         <div className="space-y-1.5 col-span-2 md:col-span-1">
-          <Label htmlFor="script-name" className="text-xs font-semibold text-slate-400">Script Name</Label>
-          <Input 
-            id="script-name" 
-            placeholder="e.g. Wipe Signal Logs" 
-            value={name} 
+          <Label htmlFor="script-name" className="text-xs font-semibold text-muted-foreground">Script Name</Label>
+          <Input
+            id="script-name"
+            placeholder="e.g. Wipe Signal Logs"
+            value={name}
             onChange={(e) => setName(e.target.value)}
-            className="bg-slate-900 border-slate-800 text-slate-200 text-xs h-9"
+            className="bg-background border-border text-foreground text-xs h-9"
           />
         </div>
         <div className="space-y-1.5 col-span-2 md:col-span-1">
-          <Label htmlFor="script-category" className="text-xs font-semibold text-slate-400">Category</Label>
+          <Label htmlFor="script-category" className="text-xs font-semibold text-muted-foreground">Category</Label>
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-full bg-slate-900 border-slate-800 text-slate-200 text-xs h-9">
+            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-9">
               <SelectValue placeholder="Select Category" />
             </SelectTrigger>
-            <SelectContent className="bg-slate-900 border-slate-800 text-slate-200 text-xs">
+            <SelectContent className="bg-card border-border text-foreground text-xs">
               <SelectItem value="QA Asserts">QA Asserts</SelectItem>
               <SelectItem value="Maintenance">Maintenance</SelectItem>
               <SelectItem value="Database Setup">Database Setup</SelectItem>
@@ -484,12 +496,13 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs font-semibold text-slate-400">SQL Query</Label>
-        <div className="border border-slate-800 rounded-lg overflow-hidden bg-[#282c34] text-[11px] leading-relaxed">
+        <Label className="text-xs font-semibold text-muted-foreground">SQL Query</Label>
+        <div className="border border-border rounded-lg overflow-hidden bg-[#0D1117] text-[11px] leading-relaxed">
           <CodeMirror
             value={query}
             height="180px"
             theme={oneDark}
+            extensions={[editorSurfaceTheme]}
             onChange={(val) => setQuery(val)}
             basicSetup={{
               lineNumbers: true,
@@ -501,34 +514,34 @@ function ScriptEditorModal({ isNew = false }: { isNew: boolean }) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between p-3 border border-slate-800/80 rounded-lg bg-slate-900/40">
+      <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-card/50">
         <div className="flex gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-xs font-semibold text-slate-200">Destructive Script</h4>
-            <p className="text-[10px] text-slate-400">Check this if the query performs deletions, drops, or updates that wipe data.</p>
+            <h4 className="text-xs font-semibold text-foreground">Destructive Script</h4>
+            <p className="text-[10px] text-muted-foreground">Check this if the query performs deletions, drops, or updates that wipe data.</p>
           </div>
         </div>
-        <input 
-          type="checkbox" 
-          checked={isDestructive} 
+        <input
+          type="checkbox"
+          checked={isDestructive}
           onChange={(e) => setIsDestructive(e.target.checked)}
-          className="w-4 h-4 rounded border-slate-800 text-indigo-600 bg-slate-950 accent-indigo-600 focus:ring-indigo-600/30"
+          className="w-4 h-4 rounded border-border bg-background accent-primary focus:ring-ring/30"
         />
       </div>
 
-      <div className="flex justify-end gap-3 pt-3 border-t border-slate-900">
-        <Button 
-          variant="outline" 
+      <div className="flex justify-end gap-3 pt-3 border-t border-border">
+        <Button
+          variant="outline"
           onClick={closeModal}
-          className="bg-transparent border-slate-800 hover:bg-slate-900 hover:text-slate-100 text-xs"
+          className="bg-transparent border-border hover:bg-accent hover:text-foreground text-xs"
         >
           Cancel
         </Button>
-        <Button 
+        <Button
           onClick={handleSave}
           disabled={saving}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center gap-2 px-4 shadow-lg shadow-indigo-600/10"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-xs flex items-center gap-2 px-4"
         >
           {saving ? (
             <>

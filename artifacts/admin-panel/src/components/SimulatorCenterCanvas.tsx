@@ -43,7 +43,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
-import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
 
 interface Msp {
   id: number;
@@ -71,7 +70,7 @@ export function SimulatorCenterCanvas(props?: {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "schema">("sql");
+  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines">("sql");
 
   // SQL Editor state
   const [query, setQuery] = useState("SELECT * FROM msps;\n-- Try running any SQL command here!");
@@ -285,7 +284,6 @@ export function SimulatorCenterCanvas(props?: {
     { key: "testbeds", label: "Testbeds" },
     { key: "overrides", label: "Overrides" },
     { key: "engines", label: "Run Engines" },
-    { key: "schema", label: "DB Schema" },
   ];
 
   return (
@@ -686,12 +684,6 @@ export function SimulatorCenterCanvas(props?: {
         {/* Tab 4: Run Engines Panel */}
         {activeTab === "engines" && (
           <SimulatorEnginesPanel />
-        )}
-        {/* Tab 5: Live DB Schema (relocated here from the standalone right panel, which is now the Customer Portal Mirror) */}
-        {activeTab === "schema" && (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <LiveDbSchemaTree />
-          </div>
         )}
       </div>
     </div>

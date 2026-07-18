@@ -3,9 +3,10 @@
 // VS Code-style IDE shell for the Simulator Studio, on the app's GitHub-dark
 // token system (bg-background / bg-card / border-border / #0078D4 primary):
 //   left    — Explorer tree (scenarios + saved SQL scripts)
-//   center  — working canvas (SQL / testbeds / overrides / engines / schema)
-//   right   — collapsible Portal Snapshot panel (collapsed by default)
-//   bottom  — Log Stream (multi-channel split panes) + SQL Console
+//   center  — working canvas (SQL / testbeds / overrides / engines)
+//   right   — collapsible tabbed panel: Portal Snapshot / DB Schema / SQL Console
+//             (collapsed by default)
+//   bottom  — Log Stream (multi-channel split panes)
 //   footer  — status bar
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,6 +29,7 @@ import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
 import { SimulatorPortalSnapshot } from "../components/SimulatorPortalSnapshot";
 import { SimulatorLogStream } from "../components/SimulatorLogStream";
 import { SqlSnapshotTab } from "../components/SqlSnapshotTab";
+import { LiveDbSchemaTree } from "../components/LiveDbSchemaTree";
 import { ModalProvider } from "../contexts/ModalContext";
 import { SimulatorActivityProvider } from "../contexts/SimulatorActivityContext";
 
@@ -57,11 +59,11 @@ export function SimulatorStudioPage() {
     return baseDate.toLocaleDateString() + " " + baseDate.toLocaleTimeString();
   }, [currentStep]);
 
-  const [bottomTab, setBottomTab] = useState<"logs" | "sql">("logs");
   const [bottomCollapsed, setBottomCollapsed] = useState(false);
   const bottomPanelRef = useRef<ImperativePanelHandle>(null);
 
   const [rightOpen, setRightOpen] = useState<boolean>(() => readJson(RIGHT_PANEL_KEY, false));
+  const [rightTab, setRightTab] = useState<"portal" | "schema" | "sql">("portal");
   const [selectedChannels, setSelectedChannels] = useState<string[]>(() => readJson(LOG_CHANNELS_KEY, []));
 
   useEffect(() => {
@@ -210,7 +212,7 @@ export function SimulatorStudioPage() {
                   className={`rounded p-1 transition-colors ${
                     rightOpen ? "text-[#58A6FF]" : "text-muted-foreground hover:text-foreground"
                   } hover:bg-accent`}
-                  title="Toggle Portal Snapshot panel"
+                  title="Toggle right panel (Portal Snapshot / DB Schema / SQL Console)"
                 >
                   <PanelRight className="h-3.5 w-3.5" />
                 </button>
@@ -257,28 +259,11 @@ export function SimulatorStudioPage() {
                     onExpand={() => setBottomCollapsed(false)}
                   >
                     <div className="flex h-full min-h-0 flex-col bg-background">
-                      {/* Panel tab strip */}
+                      {/* Panel header — Log Stream is the bottom panel's only occupant */}
                       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card px-2 select-none">
-                        <div className="flex h-full items-center gap-1">
-                          {(
-                            [
-                              { key: "logs", label: "Log Stream" },
-                              { key: "sql", label: "SQL Console" },
-                            ] as const
-                          ).map(({ key, label }) => (
-                            <button
-                              key={key}
-                              onClick={() => setBottomTab(key)}
-                              className={`relative h-full px-2.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                                bottomTab === key
-                                  ? "text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary"
-                                  : "text-muted-foreground hover:text-foreground"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
+                        <span className="relative flex h-full items-center px-2.5 text-[10px] font-semibold uppercase tracking-wider text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary">
+                          Log Stream
+                        </span>
                         <button
                           onClick={toggleBottomPanel}
                           className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -288,29 +273,44 @@ export function SimulatorStudioPage() {
                         </button>
                       </div>
 
-                      {/* Both tabs stay mounted so live streams and query state
-                          survive tab switches — only visibility toggles. */}
-                      <div className={`min-h-0 flex-1 ${bottomTab === "logs" ? "flex flex-col" : "hidden"}`}>
+                      <div className="flex min-h-0 flex-1 flex-col">
                         <SimulatorLogStream selectedChannels={selectedChannels} onChangeChannels={setSelectedChannels} />
-                      </div>
-                      <div className={`min-h-0 flex-1 ${bottomTab === "sql" ? "flex flex-col" : "hidden"}`}>
-                        <SqlSnapshotTab />
                       </div>
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
               </ResizablePanel>
 
-              {/* Portal Snapshot side panel — collapsed by default */}
+              {/* Right side panel — collapsed by default. Tabbed: Portal
+                  Snapshot / DB Schema / SQL Console share the one panel. */}
               {rightOpen && (
                 <>
                   <ResizableHandle className="w-px bg-border" />
                   <ResizablePanel id="portal-snapshot" order={3} defaultSize={24} minSize={16} maxSize={40}>
                     <div className="flex h-full min-h-0 flex-col">
-                      <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card px-2.5 select-none">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          Portal Snapshot
-                        </span>
+                      {/* Panel tab strip — mirrors the bottom panel's pattern */}
+                      <div className="flex h-8 shrink-0 items-center justify-between border-b border-border bg-card px-2 select-none">
+                        <div className="flex h-full min-w-0 items-center gap-1 overflow-x-auto">
+                          {(
+                            [
+                              { key: "portal", label: "Portal Snapshot" },
+                              { key: "schema", label: "DB Schema" },
+                              { key: "sql", label: "SQL Console" },
+                            ] as const
+                          ).map(({ key, label }) => (
+                            <button
+                              key={key}
+                              onClick={() => setRightTab(key)}
+                              className={`relative h-full whitespace-nowrap px-2 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                                rightTab === key
+                                  ? "text-foreground after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-primary"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                         <button
                           onClick={() => setRightOpen(false)}
                           className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -319,8 +319,17 @@ export function SimulatorStudioPage() {
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <div className="min-h-0 flex-1">
+
+                      {/* All tabs stay mounted so snapshot/query state survives
+                          tab switches — only visibility toggles. */}
+                      <div className={`min-h-0 flex-1 ${rightTab === "portal" ? "" : "hidden"}`}>
                         <SimulatorPortalSnapshot />
+                      </div>
+                      <div className={`min-h-0 flex-1 overflow-hidden ${rightTab === "schema" ? "" : "hidden"}`}>
+                        <LiveDbSchemaTree />
+                      </div>
+                      <div className={`min-h-0 flex-1 ${rightTab === "sql" ? "flex flex-col" : "hidden"}`}>
+                        <SqlSnapshotTab />
                       </div>
                     </div>
                   </ResizablePanel>
