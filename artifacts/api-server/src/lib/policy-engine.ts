@@ -36,10 +36,30 @@ async function evaluatePoliciesForCustomer(
     )
     .orderBy(sql`${policyRulesTable.mspId} NULLS LAST`);
 
+  // Collapse overlapping MSP-specific / platform-default rules down to just
+  // the MSP-specific one. Rules are already ordered mspId NULLS LAST, so the
+  // first rule seen for a given condition key is always the MSP-specific
+  // override (if one exists) — any later rule for the same key is the
+  // platform default and gets suppressed.
+  const seenConditionKeys = new Set<string>();
+  const dedupedRules = rules.filter(rule => {
+    const conditionKey =
+      rule.conditionType === "signal"
+        ? `signal:${rule.signalKeyPrefix}`
+        : rule.conditionType === "score_threshold"
+          ? `score_threshold:${rule.engineKey}`
+          : null;
+
+    if (conditionKey === null) return true;
+    if (seenConditionKeys.has(conditionKey)) return false;
+    seenConditionKeys.add(conditionKey);
+    return true;
+  });
+
   let fired = 0;
   let checked = 0;
 
-  for (const rule of rules) {
+  for (const rule of dedupedRules) {
     checked++;
     try {
       let conditionMet = false;
