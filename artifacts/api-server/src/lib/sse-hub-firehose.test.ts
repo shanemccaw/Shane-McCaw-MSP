@@ -17,6 +17,7 @@ import { describe, it, expect } from "vitest";
 import type { Response } from "express";
 import {
   registerFirehoseClient,
+  registerChannelFirehoseClient,
   registerHubClient,
   broadcastToHub,
   broadcastToHubWithReplay,
@@ -109,6 +110,60 @@ describe("channel-scoped client isolation (?channel=engine.sla)", () => {
     expect(parsed).not.toHaveProperty("channel");
     expect(parsed).toEqual({ type: "log", message: "hi" });
     sla.close();
+  });
+});
+
+describe("channel firehose subscriber (?channel=engine.sla, no mspId)", () => {
+  // The exact regression this tier fixes: watching a channel with no scope
+  // filter must catch activity carrying a REAL mspId. The old code registered
+  // on the exact key "engine.sla:*", which only ever matched null-scope
+  // broadcasts — so real engine activity (always scoped to a live mspId) was
+  // silently invisible.
+  it("receives a broadcast that carries a REAL (non-null) mspId", () => {
+    const cf = fakeRes();
+    registerChannelFirehoseClient("engine.sla", cf.res, () => {});
+    broadcastToHub("engine.sla", 42, { type: "log", level: "warn", message: "breach" });
+    expect(cf.frames).toHaveLength(1);
+    // Tagged with its originating scope, but NOT the channel (the subscriber
+    // already knows the channel it asked for).
+    expect(parseFrame(cf.frames[0])).toEqual({
+      scope: 42, type: "log", level: "warn", message: "breach",
+    });
+    cf.close();
+  });
+
+  it("receives activity across MANY scopes on its channel, but nothing from other channels", () => {
+    const cf = fakeRes();
+    registerChannelFirehoseClient("engine.sla", cf.res, () => {});
+    broadcastToHub("engine.sla", 42, { a: 1 });
+    broadcastToHub("engine.sla", 7, { b: 2 });
+    broadcastToHub("engine.sla", null, { c: 3 });
+    // A different channel — even sharing a scope number — must NOT leak in.
+    broadcastToHub("engine.scope-creep", 42, { d: 4 });
+    expect(cf.frames).toHaveLength(3);
+    expect(cf.frames.map((f) => parseFrame(f).scope)).toEqual([42, 7, null]);
+    cf.close();
+  });
+
+  it("does NOT deliver to an exact-scope subscriber watching a DIFFERENT mspId (precise scoping still works)", () => {
+    // An explicit ?mspId=7 subscriber (registerHubClient) must remain narrowly
+    // scoped — it should NOT see a broadcast for mspId 42 on the same channel.
+    const exact = fakeRes();
+    registerHubClient("engine.sla", 7, exact.res, () => {});
+    broadcastToHub("engine.sla", 42, { type: "log", message: "other-msp" });
+    expect(exact.frames).toHaveLength(0);
+    broadcastToHub("engine.sla", 7, { type: "log", message: "mine" });
+    expect(exact.frames).toHaveLength(1);
+    expect(parseFrame(exact.frames[0])).toEqual({ type: "log", message: "mine" });
+    exact.close();
+  });
+
+  it("stops receiving once it closes", () => {
+    const cf = fakeRes();
+    registerChannelFirehoseClient("engine.sla", cf.res, () => {});
+    cf.close();
+    broadcastToHub("engine.sla", 42, { x: 1 });
+    expect(cf.frames).toHaveLength(0);
   });
 });
 

@@ -18,10 +18,12 @@ import type { AddressInfo } from "node:net";
 
 const registerHubClient = vi.fn();
 const registerFirehoseClient = vi.fn();
+const registerChannelFirehoseClient = vi.fn();
 
 vi.mock("../lib/sse-hub.ts", () => ({
   registerHubClient: (...args: unknown[]) => registerHubClient(...args),
   registerFirehoseClient: (...args: unknown[]) => registerFirehoseClient(...args),
+  registerChannelFirehoseClient: (...args: unknown[]) => registerChannelFirehoseClient(...args),
 }));
 
 // requireAuth.ts (imported transitively via requireAdmin) imports @workspace/db
@@ -103,9 +105,10 @@ describe("GET /api/admin/live-stream routing", () => {
     }
   });
 
-  it("routes a named channel to the per-channel registrar, not the firehose", async () => {
+  it("routes a named channel WITH an explicit mspId to the exact-scope registrar", async () => {
     registerHubClient.mockClear();
     registerFirehoseClient.mockClear();
+    registerChannelFirehoseClient.mockClear();
     const app = await loadRouter();
     const server = app.listen(0);
     try {
@@ -114,6 +117,28 @@ describe("GET /api/admin/live-stream routing", () => {
       await connectAndReadOneChunk(port, `channel=engine.sla&mspId=42&token=${token}`);
       expect(registerHubClient).toHaveBeenCalledTimes(1);
       expect(registerHubClient).toHaveBeenCalledWith("engine.sla", 42, expect.anything(), expect.any(Function));
+      expect(registerChannelFirehoseClient).not.toHaveBeenCalled();
+      expect(registerFirehoseClient).not.toHaveBeenCalled();
+    } finally {
+      server.close();
+    }
+  });
+
+  it("routes a named channel with NO mspId to the channel-firehose registrar, not the exact-scope one", async () => {
+    // The regression case: EnginesStreamTab.tsx omits mspId, so it must land on
+    // the channel firehose (all scopes) rather than the exact key "engine.sla:*".
+    registerHubClient.mockClear();
+    registerFirehoseClient.mockClear();
+    registerChannelFirehoseClient.mockClear();
+    const app = await loadRouter();
+    const server = app.listen(0);
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const token = jwt.sign({ id: 1, role: "admin" }, JWT_SECRET);
+      await connectAndReadOneChunk(port, `channel=engine.sla&token=${token}`);
+      expect(registerChannelFirehoseClient).toHaveBeenCalledTimes(1);
+      expect(registerChannelFirehoseClient).toHaveBeenCalledWith("engine.sla", expect.anything(), expect.any(Function));
+      expect(registerHubClient).not.toHaveBeenCalled();
       expect(registerFirehoseClient).not.toHaveBeenCalled();
     } finally {
       server.close();

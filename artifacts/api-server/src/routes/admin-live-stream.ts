@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { registerHubClient, registerFirehoseClient } from "../lib/sse-hub.ts";
+import { registerHubClient, registerFirehoseClient, registerChannelFirehoseClient } from "../lib/sse-hub.ts";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router = Router();
@@ -65,9 +65,16 @@ router.get("/admin/live-stream", async (req: Request, res: Response) => {
   res.write(": connected\n\n");
 
   const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25_000);
-  // channel="*" is the firehose: every broadcast on every channel/scope.
+  // Three tiers of subscription:
+  //   channel="*"          → firehose: every broadcast on every channel/scope.
+  //   channel, no mspId    → channel firehose: every broadcast on this channel,
+  //                          across ALL scopes (real activity carries a real
+  //                          mspId, so this is what "watch a channel" must mean).
+  //   channel + mspId      → exact channel+scope, for scoping to one MSP.
   if (channel === "*") {
     registerFirehoseClient(res, () => clearInterval(keepAlive));
+  } else if (scopeParam == null) {
+    registerChannelFirehoseClient(channel, res, () => clearInterval(keepAlive));
   } else {
     registerHubClient(channel, scopeKey, res, () => clearInterval(keepAlive));
   }

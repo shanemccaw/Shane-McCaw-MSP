@@ -25,6 +25,15 @@ const lastStateCache = new Map<string, Record<string, unknown>>();
 // channel-scoped delivery and the firehose fan-out stay independent.
 const firehoseClients = new Set<Response>();
 
+// ── Per-channel firehose ────────────────────────────────────────────────────────
+// A middle tier between per-scope delivery (`clients`) and the all-channels
+// firehose: subscribers here receive EVERY broadcast on ONE channel, regardless
+// of scope. Backs the "watch this channel across all MSPs/customers" case — e.g.
+// the Engines tab omits mspId, so it wants engine.sla activity for scope 42, 7,
+// … all at once, not just the (rare) null-scope broadcasts that the exact-scope
+// key "engine.sla:*" would match.
+const channelFirehoseClients = new Map<string, Set<Response>>();
+
 function keyFor(channel: string, scopeKey: string | number | null): string {
   return `${channel}:${scopeKey ?? "*"}`;
 }
@@ -72,6 +81,31 @@ function broadcastToFirehose(
   }
 }
 
+/** Register a client that receives every broadcast on `channel`, regardless of scope. */
+export function registerChannelFirehoseClient(channel: string, res: Response, onClose: () => void): void {
+  if (!channelFirehoseClients.has(channel)) channelFirehoseClients.set(channel, new Set());
+  const set = channelFirehoseClients.get(channel)!;
+  set.add(res);
+  res.on("close", () => {
+    set.delete(res);
+    if (set.size === 0) channelFirehoseClients.delete(channel);
+    onClose();
+  });
+}
+
+function broadcastToChannelFirehose(
+  channel: string,
+  scopeKey: string | number | null,
+  event: Record<string, unknown>,
+): void {
+  const set = channelFirehoseClients.get(channel);
+  if (!set?.size) return;
+  const line = `data: ${JSON.stringify({ scope: scopeKey, ...event })}\n\n`;
+  for (const res of set) {
+    try { res.write(line); } catch {}
+  }
+}
+
 export function broadcastToHub(
   channel: string,
   scopeKey: string | number | null,
@@ -83,6 +117,7 @@ export function broadcastToHub(
   // this single call covers both broadcast entry points; adding another call in
   // broadcastToHubWithReplay would double-emit to the firehose.
   broadcastToFirehose(channel, scopeKey, event);
+  broadcastToChannelFirehose(channel, scopeKey, event);
   const key = keyFor(channel, scopeKey);
   const set = clients.get(key);
   if (!set?.size) return;
