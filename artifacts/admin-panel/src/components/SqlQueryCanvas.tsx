@@ -6,6 +6,7 @@ import { Prec } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Play, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 
 // The center canvas's SQL Query editor — relocated from the right panel's SQL
@@ -46,6 +47,7 @@ interface SqlQueryCanvasProps {
 }
 
 export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) {
+  const { fetchWithAuth } = useAuth();
   const [query, setQuery] = useState("SELECT * FROM msps LIMIT 10;");
   const [hasSelection, setHasSelection] = useState(false);
   const [schemaMap, setSchemaMap] = useState<Record<string, { label: string; detail: string }[]> | null>(null);
@@ -55,7 +57,7 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
     if (!statementText.trim()) return;
     onOutputChange({ isExecuting: true, results: null, error: null });
     try {
-      const res = await fetch("/api/admin/engines/simulator/sql/execute", {
+      const res = await fetchWithAuth("/api/simulator/sql/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: statementText }),
@@ -117,7 +119,7 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/admin/engines/simulator/db-schema");
+        const res = await fetchWithAuth("/api/simulator/db-schema");
         const data = await res.json();
         if (!res.ok || cancelled) return;
         const map: Record<string, { label: string; detail: string }[]> = {};
