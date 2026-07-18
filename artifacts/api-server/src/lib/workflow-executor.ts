@@ -791,6 +791,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "get_tenant_signals":
       return { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true };
 
+    case "evaluate_signal_policies":
+      return { dryRun: true, customersChecked: 3, totalFired: 1 };
+
     case "calculate_priority":
     case "calculate_pricing_engine":
     case "calculate_health":
@@ -3396,6 +3399,21 @@ async function executeNode(
             };
             log.error({ runId, gtsErr }, "wf-executor: get_tenant_signals failed");
           }
+        }
+        break;
+      }
+
+      case "evaluate_signal_policies": {
+        try {
+          const { evaluateAllPolicies } = await import("./policy-engine.ts");
+          const result = await evaluateAllPolicies();
+          output = { customersChecked: result.customersChecked, totalFired: result.totalFired };
+          log.info({ runId, ...result }, "wf-executor: evaluate_signal_policies node executed");
+        } catch (espErr) {
+          nodeError = true;
+          const errMsg = espErr instanceof Error ? espErr.message : String(espErr);
+          output = { error: `evaluate_signal_policies failed: ${errMsg.slice(0, 200)}` };
+          log.warn({ runId, err: espErr }, "wf-executor: evaluate_signal_policies node failed");
         }
         break;
       }
