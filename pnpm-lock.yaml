@@ -1572,6 +1572,12 @@ importers:
         specifier: 'catalog:'
         version: 3.25.76
 
+  lib/dashboard-registry:
+    devDependencies:
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
+
   lib/db:
     dependencies:
       drizzle-orm:
