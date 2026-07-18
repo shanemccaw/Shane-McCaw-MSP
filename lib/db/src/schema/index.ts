@@ -2649,6 +2649,19 @@ export const policyRuleAuditLogTable = pgTable("policy_rule_audit_log", {
 
 export type PolicyRuleAuditLog = typeof policyRuleAuditLogTable.$inferSelect;
 
+export const policyRuleFiringsTable = pgTable("policy_rule_firings", {
+  id: serial("id").primaryKey(),
+  ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  firedAt: timestamp("fired_at").notNull().defaultNow(),
+}, (table) => ({
+  ruleCustomerFiredIdx: index("policy_rule_firings_rule_customer_fired_idx").on(table.ruleId, table.customerId, table.firedAt),
+}));
+
+export type InsertPolicyRuleFiring = typeof policyRuleFiringsTable.$inferInsert;
+export type PolicyRuleFiring = typeof policyRuleFiringsTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
