@@ -93,6 +93,9 @@ export default function ExceptionTracking() {
   const [suppressReason, setSuppressReason] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
 
+  const [testMarker, setTestMarker] = useState("");
+  const [triggering, setTriggering] = useState(false);
+
   const loadList = useCallback(async () => {
     setListLoading(true);
     try {
@@ -172,6 +175,21 @@ export default function ExceptionTracking() {
       await loadDetail(selectedFingerprint);
     } finally {
       setActionBusy(false);
+    }
+  }
+
+  // Fires a synthetic exception through the real captureException path so
+  // grouping/reopen/suppress behavior can be exercised without a real bug.
+  // Blank marker reuses the fixed "manual-test" group across clicks; a
+  // typed marker isolates that click's exception into its own group.
+  async function triggerTest() {
+    setTriggering(true);
+    try {
+      const marker = testMarker.trim() || "manual-test";
+      await fetchWithAuth(`/api/admin/exceptions/_test/trigger?marker=${encodeURIComponent(marker)}`, { method: "POST" });
+      await loadList();
+    } finally {
+      setTriggering(false);
     }
   }
 
@@ -376,12 +394,29 @@ export default function ExceptionTracking() {
           <h1 className="text-[#E6EDF3] text-xl font-semibold">Exception Tracking</h1>
           <p className="text-[#7D8590] text-sm mt-1">Captured server-side exceptions, grouped by fingerprint.</p>
         </div>
-        <button
-          onClick={() => void loadList()}
-          className="text-xs text-[#0078D4] hover:text-blue-400 transition-colors"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={testMarker}
+            onChange={(e) => setTestMarker(e.target.value)}
+            placeholder="manual-test"
+            title="Marker for the test exception — same marker reuses the same group, blank defaults to 'manual-test'"
+            className="text-xs bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-blue-700 w-32"
+          />
+          <button
+            onClick={() => void triggerTest()}
+            disabled={triggering}
+            className="text-xs text-[#0078D4] hover:text-blue-400 transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {triggering ? "Triggering…" : "+ Trigger Test Exception"}
+          </button>
+          <button
+            onClick={() => void loadList()}
+            className="text-xs text-[#0078D4] hover:text-blue-400 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
