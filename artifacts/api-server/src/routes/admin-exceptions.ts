@@ -191,4 +191,20 @@ router.patch(
   },
 );
 
+// POST /api/admin/exceptions/_test/trigger — throws a deliberate test error
+// through the real logger.error({ err }) → captureException path, so the full
+// pipeline (group upsert, occurrence insert, auto-reopen, suppression) can be
+// exercised end-to-end without needing a real bug or Simulator Studio.
+//
+// The `marker` query param varies the message so different markers land in
+// different groups. Use NON-numeric markers (?marker=alpha vs ?marker=beta) —
+// numbers are normalized to <n> for fingerprinting, so ?marker=1 vs ?marker=2
+// would (correctly) collapse into the same group.
+router.post("/admin/exceptions/_test/trigger", requireAdmin, (req: Request, res: Response) => {
+  const marker = String(req.query["marker"] ?? "default");
+  const testErr = new Error(`[TEST] Synthetic exception trigger (marker=${marker})`);
+  log.error({ err: testErr }, "Synthetic test exception triggered via admin API");
+  res.json({ ok: true, message: "Test exception captured — check GET /admin/exceptions" });
+});
+
 export default router;

@@ -189,6 +189,40 @@ describe("captureException", () => {
     expect(occ.channel).toBe("admin.exceptions");
   });
 
+  it("redacts a secret-like errorMessage for storage without changing the fingerprint", async () => {
+    await captureException(errWithStack("Error", 'auth failed password: "abc"'), {
+      channel: "c",
+      source: "caught",
+    });
+
+    expect(mock.__groupInserts).toHaveLength(1);
+    const stored = mock.__groupInserts[0]!.errorMessage as string;
+    expect(stored).not.toContain("abc"); // secret value scrubbed
+    expect(stored).toContain("[Redacted]");
+
+    // Fingerprint is computed from the UNREDACTED normalized message, so
+    // redaction cannot alter grouping.
+    const expectedFp = computeFingerprint(
+      "Error",
+      "/nonexistent/src/lib/route.ts",
+      88,
+      normalizeMessage('auth failed password: "abc"'),
+    );
+    expect(mock.__groupInserts[0]!.fingerprint).toBe(expectedFp);
+  });
+
+  it("does NOT collide two errors that differ only inside a secret segment", async () => {
+    // Both redact to the same stored string, but fingerprinting sees the
+    // unredacted normalized message — so they stay in SEPARATE groups (no
+    // unintended collision; the only quirk is identical-looking stored text).
+    await captureException(errWithStack("Error", 'password: "alpha"'), { channel: "c", source: "caught" });
+    await captureException(errWithStack("Error", 'password: "bravo"'), { channel: "c", source: "caught" });
+
+    expect(mock.__groupInserts).toHaveLength(2);
+    expect(mock.__groupInserts[0]!.fingerprint).not.toBe(mock.__groupInserts[1]!.fingerprint);
+    expect(mock.__groupInserts[0]!.errorMessage).toBe(mock.__groupInserts[1]!.errorMessage);
+  });
+
   it("groups two instances of the same error under one fingerprint", async () => {
     await captureException(errWithStack("Error", "user 1 gone"), { channel: "c", source: "caught" });
     await captureException(errWithStack("Error", "user 2 gone"), { channel: "c", source: "caught" });

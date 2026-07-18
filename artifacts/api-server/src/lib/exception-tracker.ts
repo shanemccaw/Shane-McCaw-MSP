@@ -15,15 +15,16 @@ interface CaptureOptions {
 // production the group is still fully created from name/file/line/stack alone.
 const CODE_FRAMES_ENABLED = process.env.NODE_ENV !== "production";
 
-// Best-effort scrub of an obvious hardcoded secret in a captured source line
-// before it lands in a table with no retention limit. Not a security boundary
-// — code frames are dev-only — just a guard against the common
-// `const secret = "..."` fallback pattern leaking into stored frames.
+// Best-effort scrub of an obvious hardcoded secret before a value lands in a
+// table with no retention limit. Not a security boundary — just a guard
+// against the common `secret: "..."` pattern leaking into stored data. Used
+// for two storage-time concerns: dev-only code frames AND the stored
+// errorMessage (renamed from redactCodeFrame now that it serves both).
 const SECRET_LIKE_RE =
   /(secret|password|token|apikey|api_key)\s*[:=]\s*["'`][^"'`]+["'`]/gi;
 
-function redactCodeFrame(frame: string): string {
-  return frame.replace(SECRET_LIKE_RE, (m) => m.split(/[:=]/)[0] + ": [Redacted]");
+function redactSecrets(text: string): string {
+  return text.replace(SECRET_LIKE_RE, (m) => m.split(/[:=]/)[0] + ": [Redacted]");
 }
 
 // Strip dynamic tokens (numbers, UUIDs) from an error message so recurring
@@ -64,7 +65,7 @@ function readCodeFrame(file: string | null, line: number | null): string | null 
       .slice(start, end)
       .map((l, i) => `${start + i + 1}${start + i + 1 === line ? " >" : "  "} ${l}`)
       .join("\n");
-    return redactCodeFrame(raw);
+    return redactSecrets(raw);
   } catch {
     return null; // File not readable at runtime — non-fatal, group still created without a code frame.
   }
@@ -84,6 +85,10 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
   try {
     const { file, line, functionName } = parseTopFrame(err.stack);
     const normalizedMessage = normalizeMessage(err.message ?? "");
+    // Redaction is a storage-time concern only. Fingerprinting uses the
+    // unredacted normalizedMessage so grouping is unaffected — redaction can
+    // never merge two genuinely different errors into one group.
+    const storedErrorMessage = redactSecrets(err.message ?? "");
     const fingerprint = computeFingerprint(err.name ?? "Error", file, line, normalizedMessage);
     const codeFrame = readCodeFrame(file, line);
     const ctx = getRequestContext();
@@ -94,7 +99,7 @@ export async function captureException(err: Error, opts: CaptureOptions): Promis
       .values({
         fingerprint,
         errorName: err.name ?? "Error",
-        errorMessage: err.message ?? "",
+        errorMessage: storedErrorMessage,
         file,
         line,
         functionName,
