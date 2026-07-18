@@ -12,7 +12,7 @@
  *    don't spam the same event for the same customer.
  */
 
-import { db, policyRulesTable, policyRuleFiringsTable, tenantEngineSnapshotsTable, mspCustomersTable } from "@workspace/db";
+import { db, policyRulesTable, policyRuleFiringsTable, policyRuleIncidentsTable, tenantEngineSnapshotsTable, mspCustomersTable } from "@workspace/db";
 import { sql, eq, and, or, isNull, desc } from "drizzle-orm";
 import { getStabilizedSignals } from "./tenant-signals";
 import { emitWorkflowEvent } from "./workflow-executor";
@@ -58,6 +58,7 @@ async function evaluatePoliciesForCustomer(
 
   let fired = 0;
   let checked = 0;
+  const matchedRuleIds = new Set<number>();
 
   for (const rule of dedupedRules) {
     checked++;
@@ -100,36 +101,108 @@ async function evaluatePoliciesForCustomer(
       }
 
       if (!conditionMet) continue;
+      matchedRuleIds.add(rule.id);
 
-      const recentFiring = await db.execute(sql`
-        SELECT id FROM policy_rule_firings
-        WHERE rule_id = ${rule.id} AND customer_id = ${customerId}
-          AND fired_at > NOW() - (${rule.cooldownMinutes} || ' minutes')::interval
-        LIMIT 1
-      `);
-      if (recentFiring.rows.length > 0) continue;
+      if (rule.escalationRules && rule.escalationRules.length > 0) {
+        const [openIncident] = await db
+          .select()
+          .from(policyRuleIncidentsTable)
+          .where(and(
+            eq(policyRuleIncidentsTable.ruleId, rule.id),
+            eq(policyRuleIncidentsTable.customerId, customerId),
+            eq(policyRuleIncidentsTable.status, "open"),
+          ))
+          .limit(1);
 
-      await emitWorkflowEvent(rule.eventName, {
-        customerId,
-        mspId,
-        ruleId: rule.id,
-        ruleName: rule.name,
-        severity: rule.severity,
-        conditionType: rule.conditionType,
-      });
+        if (!openIncident) {
+          const level1 = [...rule.escalationRules].sort((a, b) => a.level - b.level)[0];
+          await emitWorkflowEvent(level1.eventName, {
+            customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: level1.level,
+          });
+          await db.insert(policyRuleIncidentsTable).values({
+            ruleId: rule.id, customerId, mspId, status: "open", currentLevel: level1.level, lastEscalatedAt: new Date(),
+          });
+          fired++;
+          log.info({ ruleId: rule.id, level: level1.level, customerId, mspId }, "policy-engine: incident opened");
+        } else {
+          const nextLevel = rule.escalationRules.find(l => l.level === openIncident.currentLevel + 1);
+          if (nextLevel) {
+            const sinceLastEscalation = Date.now() - new Date(openIncident.lastEscalatedAt ?? openIncident.openedAt).getTime();
+            const minutesSince = sinceLastEscalation / 60000;
+            if (minutesSince >= nextLevel.afterMinutes) {
+              await emitWorkflowEvent(nextLevel.eventName, {
+                customerId, mspId, ruleId: rule.id, ruleName: rule.name, severity: rule.severity, level: nextLevel.level,
+              });
+              await db
+                .update(policyRuleIncidentsTable)
+                .set({ currentLevel: nextLevel.level, lastEscalatedAt: new Date() })
+                .where(eq(policyRuleIncidentsTable.id, openIncident.id));
+              fired++;
+              log.info({ ruleId: rule.id, level: nextLevel.level, customerId, mspId }, "policy-engine: incident escalated");
+            }
+          }
+        }
+      } else {
+        const recentFiring = await db.execute(sql`
+          SELECT id FROM policy_rule_firings
+          WHERE rule_id = ${rule.id} AND customer_id = ${customerId}
+            AND fired_at > NOW() - (${rule.cooldownMinutes} || ' minutes')::interval
+          LIMIT 1
+        `);
+        if (recentFiring.rows.length > 0) continue;
 
-      await db.insert(policyRuleFiringsTable).values({
-        ruleId: rule.id,
-        customerId,
-        mspId,
-        firedAt: new Date(),
-      });
+        await emitWorkflowEvent(rule.eventName, {
+          customerId,
+          mspId,
+          ruleId: rule.id,
+          ruleName: rule.name,
+          severity: rule.severity,
+          conditionType: rule.conditionType,
+        });
 
-      fired++;
-      log.info({ ruleId: rule.id, ruleName: rule.name, customerId, mspId }, "policy-engine: rule fired");
+        await db.insert(policyRuleFiringsTable).values({
+          ruleId: rule.id,
+          customerId,
+          mspId,
+          firedAt: new Date(),
+        });
+
+        fired++;
+        log.info({ ruleId: rule.id, ruleName: rule.name, customerId, mspId }, "policy-engine: rule fired");
+      }
     } catch (err) {
       log.warn({ err, ruleId: rule.id, customerId, mspId }, "policy-engine: rule evaluation failed — continuing");
     }
+  }
+
+  try {
+    const openIncidents = await db
+      .select({
+        incident: policyRuleIncidentsTable,
+        resolvedEventName: policyRulesTable.resolvedEventName,
+      })
+      .from(policyRuleIncidentsTable)
+      .innerJoin(policyRulesTable, eq(policyRuleIncidentsTable.ruleId, policyRulesTable.id))
+      .where(and(
+        eq(policyRuleIncidentsTable.customerId, customerId),
+        eq(policyRuleIncidentsTable.status, "open"),
+      ));
+    for (const { incident, resolvedEventName } of openIncidents) {
+      if (!matchedRuleIds.has(incident.ruleId)) {
+        if (resolvedEventName) {
+          await emitWorkflowEvent(resolvedEventName, {
+            customerId, mspId, ruleId: incident.ruleId, incidentId: incident.id,
+          });
+        }
+        await db
+          .update(policyRuleIncidentsTable)
+          .set({ status: "resolved", resolvedAt: new Date() })
+          .where(eq(policyRuleIncidentsTable.id, incident.id));
+        log.info({ ruleId: incident.ruleId, incidentId: incident.id, customerId, firedResolvedEvent: !!resolvedEventName }, "policy-engine: incident auto-resolved");
+      }
+    }
+  } catch (err) {
+    log.warn({ err, customerId }, "policy-engine: incident resolution sweep failed");
   }
 
   return { fired, checked };
