@@ -11,5 +11,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
-| 2026-07-18 | ⏳ IN FLIGHT | policy-engine escalation lifecycle | |
+| 2026-07-18 | ✅ DONE | policy-engine escalation lifecycle | 0a6c5c38 |
 | 2026-07-18 | ✅ DONE | Admin Dashboard Designer (Step 4b) | dfcb9f47 |
