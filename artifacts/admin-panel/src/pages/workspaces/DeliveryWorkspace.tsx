@@ -3,6 +3,7 @@ import ProjectsPage from "@/pages/crm/Projects";
 import ClientsPage from "@/pages/crm/Clients";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
 import TenantSignalsPage from "@/pages/TenantSignals";
+import SignalRulesPage from "@/pages/SignalRules";
 import WorkflowsPage from "@/pages/Workflows";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
@@ -24,6 +25,7 @@ function getContent(section: string): ReactNode {
     case "clients":              return <ClientsPage />;
     case "engagement-projects":  return <EngagementProjectsPage />;
     case "tenant-signals":       return <TenantSignalsPage />;
+    case "signal-rules":         return <SignalRulesPage />;
     case "workflows":            return <WorkflowsPage />;
     case "activity-logs":        return <ActivityLogPage />;
     case "hub-storage":          return <SharePointPage />;

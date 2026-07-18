@@ -386,46 +386,6 @@ export default function TenantSignalsPage() {
   const [showSignalImportModal, setShowSignalImportModal] = useState(false);
   const [signalImportJson, setSignalImportJson] = useState("");
   const [signalImportRunning, setSignalImportRunning] = useState(false);
-  const [publishingToProd, setPublishingToProd] = useState(false);
-  const [publishDiffLoading, setPublishDiffLoading] = useState(false);
-  const [publishDiff, setPublishDiff] = useState<{
-    customSignals: { added: string[]; removed: string[] };
-    groups: { current: number; incoming: number };
-    rules: { current: number; incoming: number };
-  } | null>(null);
-
-  const handlePreviewPublish = useCallback(async () => {
-    setPublishDiffLoading(true);
-    try {
-      const res = await fetchWithAuth("/api/admin/signal-rules/publish-to-prod?dryRun=true", { method: "POST" });
-      const body = await res.json() as { dryRun?: boolean; customSignals?: { added: string[]; removed: string[] }; groups?: { current: number; incoming: number }; rules?: { current: number; incoming: number }; error?: string };
-      if (!res.ok) throw new Error(body.error ?? "Failed to preview");
-      setPublishDiff({
-        customSignals: body.customSignals ?? { added: [], removed: [] },
-        groups: body.groups ?? { current: 0, incoming: 0 },
-        rules: body.rules ?? { current: 0, incoming: 0 },
-      });
-    } catch (err) {
-      toast({ title: "Preview failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setPublishDiffLoading(false);
-    }
-  }, [fetchWithAuth, toast]);
-
-  const handleConfirmPublish = useCallback(async () => {
-    setPublishingToProd(true);
-    try {
-      const res = await fetchWithAuth("/api/admin/signal-rules/publish-to-prod", { method: "POST" });
-      const body = await res.json() as { ok?: boolean; groups?: number; rules?: number; error?: string };
-      if (!res.ok) throw new Error(body.error ?? "Failed to publish");
-      setPublishDiff(null);
-      toast({ title: "Published to production", description: `${body.groups ?? 0} group(s), ${body.rules ?? 0} rule(s) synced.` });
-    } catch (err) {
-      toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setPublishingToProd(false);
-    }
-  }, [fetchWithAuth, toast]);
 
   const [showNewSignalModal, setShowNewSignalModal] = useState(false);
   const [newSignalForm, setNewSignalForm] = useState({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: false });
@@ -1228,16 +1188,6 @@ export default function TenantSignalsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { void handlePreviewPublish(); }}
-            disabled={publishDiffLoading || publishingToProd}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
-          >
-            {publishDiffLoading
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Upload className="w-3.5 h-3.5" />}
-            Publish to Prod
-          </button>
-          <button
             onClick={() => setShowConflictsPanel(true)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
               conflicts.length > 0
@@ -1250,54 +1200,6 @@ export default function TenantSignalsPage() {
           </button>
         </div>
       </div>
-
-      {/* Publish-to-prod diff modal */}
-      {publishDiff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-            <h2 className="text-base font-bold text-foreground mb-1">Review Changes</h2>
-            <p className="text-xs text-muted-foreground mb-4">These changes will be applied to the production database. Groups and rules are replaced in full.</p>
-            <div className="space-y-2 mb-5">
-              {(publishDiff.customSignals.added.length > 0 || publishDiff.customSignals.removed.length > 0) && (
-                <div className="rounded-lg bg-accent border border-border px-3 py-2 space-y-1">
-                  <p className="text-xs font-semibold text-foreground/90">Custom Signals</p>
-                  {publishDiff.customSignals.added.length > 0 && (
-                    <p className="text-[11px] text-emerald-400">+ {publishDiff.customSignals.added.join(", ")}</p>
-                  )}
-                  {publishDiff.customSignals.removed.length > 0 && (
-                    <p className="text-[11px] text-red-400">− {publishDiff.customSignals.removed.join(", ")}</p>
-                  )}
-                </div>
-              )}
-              <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 space-y-1">
-                <p className="text-xs font-semibold text-primary">Rule Groups</p>
-                <p className="text-[11px] text-primary/70">{publishDiff.groups.current} → {publishDiff.groups.incoming} group{publishDiff.groups.incoming !== 1 ? "s" : ""}</p>
-              </div>
-              <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2 space-y-1">
-                <p className="text-xs font-semibold text-primary">Derivation Rules</p>
-                <p className="text-[11px] text-primary/70">{publishDiff.rules.current} → {publishDiff.rules.incoming} rule{publishDiff.rules.incoming !== 1 ? "s" : ""}</p>
-              </div>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setPublishDiff(null)}
-                disabled={publishingToProd}
-                className="text-sm font-semibold px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground/90 hover:border-muted-foreground/60 disabled:opacity-40 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { void handleConfirmPublish(); }}
-                disabled={publishingToProd}
-                className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white transition-colors"
-              >
-                {publishingToProd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                Publish to Prod
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Simulate view ─────────────────────────────────────────────────────── */}
       {pageView === "simulate" && (
