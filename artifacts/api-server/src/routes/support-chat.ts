@@ -350,20 +350,19 @@ async function escalateToAdmin(opts: {
 
 /**
  * Support chat is a tenant-scoped tool (MSP staff or customer users asking about
- * their own MSP's data). A PlatformAdmin with no resolvable MSP context has no
- * tenant to ground answers in, so the endpoints reject rather than fall back to
- * an un-grounded "platform administrator" persona. Returns true when the request
- * was rejected (response already sent).
+ * their own MSP's data). PlatformAdmin has no chat access at all — even while
+ * impersonating or with a selected MSP — so both endpoints reject rather than
+ * fall back to the removed "platform administrator" persona. Returns true when
+ * the request was rejected (response already sent).
  */
-function rejectPlatformAdminWithoutMsp(
+function rejectPlatformAdmin(
   user: NonNullable<Request["user"]>,
-  mspId: number | null,
   res: Response,
 ): boolean {
   const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
-  if (isPlatformAdmin && mspId == null) {
+  if (isPlatformAdmin) {
     res.status(403).json({
-      error: "Support chat isn't available for PlatformAdmin. Select or impersonate a specific MSP to use it.",
+      error: "Support chat isn't available for PlatformAdmin.",
     });
     return true;
   }
@@ -387,11 +386,11 @@ router.post(
       return;
     }
 
+    if (rejectPlatformAdmin(user, res)) return;
+
     const mspId = await resolveMspId(req);
     const customerId = user.customerId ?? null;
     const isCustomerUser = user.mspRole === "CustomerUser";
-
-    if (rejectPlatformAdminWithoutMsp(user, mspId, res)) return;
 
     let groundedCtx: GroundedContext;
     try {
@@ -469,10 +468,10 @@ router.post(
     const user = req.user!;
     const { question } = req.body as { question?: string };
 
+    if (rejectPlatformAdmin(user, res)) return;
+
     const mspId = await resolveMspId(req);
     const isCustomerUser = user.mspRole === "CustomerUser";
-
-    if (rejectPlatformAdminWithoutMsp(user, mspId, res)) return;
 
     await escalateToAdmin({
       question: question ?? "(no question provided)",
