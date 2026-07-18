@@ -20,7 +20,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Engines tree node | 9d65f853 |
 | 2026-07-18 | ✅ DONE | policy-engine category tagging | aa493fd0 |
 | 2026-07-18 | ✅ DONE | #2 Smart Widget State Logic | a1089508 |
-| 2026-07-18 | ⏳ IN FLIGHT | Signal Rules UI v1 | |
+| 2026-07-18 | ✅ DONE | Signal Rules UI v1 | eefafc6e |
 | 2026-07-18 | ✅ DONE | #4 customer-connect-dropdown-action | dbe72b1b |
 | 2026-07-18 | ✅ DONE | #6 Audit Log Metadata Display Formatting | 4b090d38 |
 | 2026-07-18 | ✅ DONE | #8 DLQ Help Text and Action Labels | 813a96f1 |
