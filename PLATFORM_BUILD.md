@@ -26,3 +26,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | #8 DLQ Help Text and Action Labels | 813a96f1 |
 | 2026-07-18 | ✅ DONE | Dashboard Designer Access + Create Button | 2cbce684 |
 | 2026-07-18 | ⏳ IN FLIGHT | #6 Portal 404 Redesign + Audit Logging | |
+| 2026-07-18 | ⏳ IN FLIGHT | #B Portal Favicon Fix | |
