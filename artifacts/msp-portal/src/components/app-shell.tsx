@@ -960,6 +960,10 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
 
   const mspRole = user?.mspRole;
+  // Support chat is tenant-scoped and not available to PlatformAdmin (the
+  // backend rejects PlatformAdmin chat/escalate with 403). Hide the trigger and
+  // the docked panel so the affordance never appears for them.
+  const isPlatformAdmin = user?.role === "admin" || user?.mspRole === "PlatformAdmin";
 
   // Fetch MSP profile for real white-label branding.
   // For PlatformAdmin (no mspId on token), pass ?slug= so the backend can resolve the MSP.
@@ -1254,19 +1258,21 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             {/* 2. Bell */}
             <NotificationBell />
 
-            {/* 3. Chat (Non-blocking docked panel trigger) */}
-            <button
-              className={`relative rounded-md p-2 transition-colors ${
-                supportOpen
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-              onClick={() => setSupportOpen((v) => !v)}
-              title={supportOpen ? "Close Support Chat" : "Open Support Chat"}
-              aria-label="Support Chat"
-            >
-              <MessageSquare className="size-4" />
-            </button>
+            {/* 3. Chat (Non-blocking docked panel trigger) — hidden for PlatformAdmin */}
+            {!isPlatformAdmin && (
+              <button
+                className={`relative rounded-md p-2 transition-colors ${
+                  supportOpen
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+                onClick={() => setSupportOpen((v) => !v)}
+                title={supportOpen ? "Close Support Chat" : "Open Support Chat"}
+                aria-label="Support Chat"
+              >
+                <MessageSquare className="size-4" />
+              </button>
+            )}
 
             {/* 4. Profile Card */}
             <DropdownMenu>
@@ -1423,8 +1429,8 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         </footer>
       </div>
 
-      {/* Non-blocking Docked Support Panel on the Right */}
-      {supportOpen && <DockedSupportPanel />}
+      {/* Non-blocking Docked Support Panel on the Right — not for PlatformAdmin */}
+      {supportOpen && !isPlatformAdmin && <DockedSupportPanel />}
 
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
     </div>
