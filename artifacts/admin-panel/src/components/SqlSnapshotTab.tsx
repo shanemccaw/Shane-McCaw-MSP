@@ -1,27 +1,37 @@
-import { useState } from "react";
-import { Play, PanelLeftClose, PanelLeft, Clock, Table as TableIcon } from "lucide-react";
-import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
+import { useEffect, useMemo, useRef, useState } from "react";
+import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
+import { PostgreSQL, sql } from "@codemirror/lang-sql";
+import { keymap } from "@codemirror/view";
+import { Prec } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { Play, Clock, Table as TableIcon } from "lucide-react";
+import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 
-// Inline sibling of SqlRunnerModal.tsx — same endpoint, same request/response
-// shape, same results-table rendering, just laid out for the bottom panel's
-// compact strip instead of a full-height modal dialog. The Monaco editor from
-// the modal doesn't fit this panel's vertical space, so the query input here is
-// a plain compact textarea; the execute call and result handling are unchanged.
+// Inline sibling of SqlRunnerModal.tsx — same execute endpoint, same
+// request/response shape, same results-table rendering, laid out for the
+// right panel's compact strip. The editor is CodeMirror (Monaco is too heavy
+// for this panel) with schema-aware autocomplete fed by the live db-schema
+// endpoint, plus a per-statement play-button gutter so stacked statements can
+// be run individually. The schema browser is the sibling DB Schema tab in the
+// same panel, so there's no embedded schema tree here.
 export function SqlSnapshotTab() {
   const [query, setQuery] = useState("SELECT * FROM msps LIMIT 10;");
-  const [showSchemaTree, setShowSchemaTree] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [results, setResults] = useState<{ rows: any[]; rowCount: number; fields: string[]; executionMs: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+  const [schemaMap, setSchemaMap] = useState<Record<string, { label: string; detail: string }[]> | null>(null);
+  const cmRef = useRef<ReactCodeMirrorRef>(null);
 
-  const handleExecute = async () => {
+  const executeSql = async (statementText: string) => {
+    if (!statementText.trim()) return;
     setIsExecuting(true);
     setError(null);
     try {
       const res = await fetch("/api/admin/engines/simulator/sql/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query: statementText }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Execution failed");
@@ -32,40 +42,79 @@ export function SqlSnapshotTab() {
       setIsExecuting(false);
     }
   };
+  const executeSqlRef = useRef(executeSql);
+  executeSqlRef.current = executeSql;
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      void handleExecute();
+  // Runs the selected text if there is a selection, otherwise the full editor
+  // contents — the per-statement gutter buttons cover the finer-grained case.
+  const handleRunClick = () => {
+    const view = cmRef.current?.view;
+    if (view) {
+      const { from, to } = view.state.selection.main;
+      void executeSql(from === to ? view.state.doc.toString() : view.state.sliceDoc(from, to));
+    } else {
+      void executeSql(query);
     }
   };
+  const handleRunClickRef = useRef(handleRunClick);
+  handleRunClickRef.current = handleRunClick;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/engines/simulator/db-schema");
+        const data = await res.json();
+        if (!res.ok || cancelled) return;
+        const map: Record<string, { label: string; detail: string }[]> = {};
+        for (const tbl of data.tables || []) {
+          map[tbl.name] = (tbl.columns || []).map((col: { name: string; dataType: string }) => ({
+            label: col.name,
+            detail: col.dataType,
+          }));
+        }
+        setSchemaMap(map);
+      } catch {
+        // Autocomplete degrades to keywords-only if the schema fetch fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const extensions = useMemo(
+    () => [
+      sql({ dialect: PostgreSQL, schema: schemaMap ?? {}, upperCaseKeywords: true }),
+      sqlStatementGutter((statementText) => void executeSqlRef.current(statementText)),
+      Prec.highest(
+        keymap.of([
+          {
+            key: "Mod-Enter",
+            run: () => {
+              handleRunClickRef.current();
+              return true;
+            },
+          },
+        ]),
+      ),
+    ],
+    [schemaMap],
+  );
 
   return (
     <div className="flex h-full bg-background font-mono text-[11px] text-foreground">
-      {showSchemaTree && (
-        <div className="h-full w-56 shrink-0 overflow-hidden border-r border-border">
-          <LiveDbSchemaTree />
-        </div>
-      )}
-
       <div className="flex h-full min-w-0 flex-1 flex-col">
         {/* Compact toolbar */}
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-2 py-1 select-none">
           <button
-            onClick={() => setShowSchemaTree(!showSchemaTree)}
-            className="rounded border border-border bg-background p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            title={showSchemaTree ? "Hide schema explorer" : "Show schema explorer"}
-          >
-            {showSchemaTree ? <PanelLeftClose className="h-3 w-3" /> : <PanelLeft className="h-3 w-3" />}
-          </button>
-          <button
-            onClick={handleExecute}
+            onClick={handleRunClick}
             disabled={isExecuting}
             className="flex items-center gap-1 rounded bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-            title="Run query (Ctrl/Cmd + Enter)"
+            title="Run selection if text is selected, otherwise run everything (Ctrl/Cmd + Enter)"
           >
             <Play className={`h-3 w-3 ${isExecuting ? "animate-spin" : ""}`} />
-            {isExecuting ? "Running…" : "Run"}
+            {isExecuting ? "Running…" : hasSelection ? "Run Selection" : "Run All"}
           </button>
           {results && (
             <span className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -75,16 +124,20 @@ export function SqlSnapshotTab() {
           )}
         </div>
 
-        {/* Compact query input */}
-        <textarea
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          rows={2}
-          className="w-full shrink-0 resize-none border-b border-border bg-background px-2.5 py-1.5 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/60 focus:bg-card/60"
-          placeholder="SELECT …"
-        />
+        {/* Query editor */}
+        <div className="shrink-0 border-b border-border">
+          <CodeMirror
+            ref={cmRef}
+            value={query}
+            onChange={setQuery}
+            onUpdate={(viewUpdate) => setHasSelection(!viewUpdate.state.selection.main.empty)}
+            extensions={extensions}
+            theme={oneDark}
+            height="110px"
+            style={{ fontSize: "11px" }}
+            basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: true }}
+          />
+        </div>
 
         {/* Results */}
         <div className="flex-1 overflow-auto p-2">
