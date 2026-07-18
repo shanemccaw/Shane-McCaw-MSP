@@ -20,7 +20,7 @@ import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
-import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { calculateMspPortfolioRisk } from "../lib/msp-engine.ts";
 import { aggregateMspTelemetry } from "../lib/msp-financial-aggregator.ts";
 
@@ -56,7 +56,7 @@ router.get(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) {
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "No active MSP found");
         return;
@@ -77,7 +77,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const monthStart = startOfMonth();
 
@@ -324,7 +328,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;
@@ -406,7 +410,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;
@@ -629,13 +633,15 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspId(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const limit = Math.min(200, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "50"), 10) || 50));
 
-      // Base query
-      const baseConditions = mspId
-        ? [eq(mspEventStoreTable.mspId, mspId)]
-        : [];
+      // Base query — always scoped to the caller's own MSP
+      const baseConditions = [eq(mspEventStoreTable.mspId, mspId)];
 
       const rows = await db
         .select({
@@ -695,7 +701,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;
@@ -935,7 +941,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;
@@ -992,7 +998,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const page = Math.max(1, parseInt(String((req.query as Record<string, unknown>).page ?? "1"), 10) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10) || 20));
@@ -1000,11 +1010,9 @@ router.get(
       const search = String((req.query as Record<string, unknown>).search ?? "").trim();
       const statusFilter = String((req.query as Record<string, unknown>).status ?? "").trim();
 
+      // Always scoped to the caller's own MSP
       const conditions = [];
-
-      if (mspId) {
-        conditions.push(eq(mspCustomersTable.mspId, mspId));
-      }
+      conditions.push(eq(mspCustomersTable.mspId, mspId));
 
       if (search) {
         conditions.push(
@@ -1068,7 +1076,11 @@ router.get(
         res.status(400).json({ error: "Invalid customer id" });
         return;
       }
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const rows = await db
         .select({
@@ -1090,7 +1102,7 @@ router.get(
         .where(
           and(
             eq(mspCustomersTable.id, customerId),
-            ...(mspId ? [eq(mspCustomersTable.mspId, mspId)] : []),
+            eq(mspCustomersTable.mspId, mspId),
           ),
         )
         .limit(1);
@@ -1109,7 +1121,7 @@ router.get(
 );
 
 // ── PATCH /api/msp/customers/:id ──────────────────────────────────────────────
-// Edit an existing customer. Scoped to the authenticated MSP (unless PlatformAdmin).
+// Edit an existing customer. Strictly scoped to the authenticated MSP.
 const editCustomerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(200).optional(),
   domain: z.string().max(253).nullable().optional(),
@@ -1128,7 +1140,11 @@ router.patch(
         res.status(400).json({ error: "Invalid customer id" });
         return;
       }
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const parsed = editCustomerSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1137,14 +1153,14 @@ router.patch(
       }
       const data = parsed.data;
 
-      // Ensure customer exists and belongs to this MSP (if scoped)
+      // Ensure customer exists and belongs to this MSP
       const [existing] = await db
         .select()
         .from(mspCustomersTable)
         .where(
           and(
             eq(mspCustomersTable.id, customerId),
-            ...(mspId ? [eq(mspCustomersTable.mspId, mspId)] : []),
+            eq(mspCustomersTable.mspId, mspId),
           ),
         )
         .limit(1);

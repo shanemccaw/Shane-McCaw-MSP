@@ -50,6 +50,7 @@ vi.mock("../lib/logger.ts", () => ({
 vi.mock("../lib/resolve-msp-id.ts", () => ({
   resolveMspId: vi.fn().mockResolvedValue(1),
   resolveMspIdOrZero: vi.fn().mockResolvedValue(1),
+  resolveMspIdStrict: vi.fn().mockReturnValue(1),
 }));
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

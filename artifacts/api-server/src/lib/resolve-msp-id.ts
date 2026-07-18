@@ -60,3 +60,18 @@ export async function resolveMspIdOrZero(req: Request): Promise<number> {
   const id = await resolveMspId(req);
   return id ?? 0;
 }
+
+/**
+ * Strict, session-only MSP resolution.
+ *
+ * Returns the caller's own mspId straight from the authenticated session,
+ * with NO ?mspId= / ?slug= query-param override — even for PlatformAdmin.
+ * Use this on session-scoped /msp/... routes (no :mspId in the URL) that must
+ * only ever operate on the caller's own MSP. For admin-facing cross-MSP access,
+ * use a /msps/:mspId/... route with requireMspScope instead.
+ *
+ * Returns null when the session carries no MSP context; callers should 403.
+ */
+export function resolveMspIdStrict(req: Request): number | null {
+  return req.user?.mspId ?? null;
+}

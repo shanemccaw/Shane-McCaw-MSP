@@ -36,7 +36,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine";
 import { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } from "../lib/report-nodes";
@@ -146,7 +146,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : undefined;
 
       const conditions = mspId
@@ -176,7 +180,11 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const user = req.user!;
       const {
         name, description, docType = "executive_summary",
@@ -203,7 +211,7 @@ router.post(
       const [def] = await db
         .insert(mspReportDefinitionsTable)
         .values({
-          mspId: mspId || 1,
+          mspId: mspId,
           customerId: customerId ?? null,
           name,
           description: description ?? null,
@@ -232,7 +240,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const { defId } = req.params as { defId: string };
 
       const [def] = await db
@@ -261,7 +273,11 @@ router.patch(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const { defId } = req.params as { defId: string };
 
       const allowed = ["name", "description", "docType", "deliveryMethod", "deliveryEmail", "fieldMappings", "scheduleConfig", "isActive", "customerId"];
@@ -296,7 +312,11 @@ router.delete(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const { defId } = req.params as { defId: string };
 
       const [deleted] = await db
@@ -325,7 +345,11 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const user = req.user!;
       const { defId } = req.params as { defId: string };
 
@@ -403,7 +427,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
       const defId = req.query["definitionId"] ? String(req.query["definitionId"]) : undefined;
 
@@ -452,7 +480,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const { runId } = req.params as { runId: string };
 
       const [run] = await db
@@ -496,7 +528,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const { runId } = req.params as { runId: string };
 
       const [run] = await db
@@ -566,7 +602,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
 
       // PlatformAdmins browsing without a specific MSP context get a zeroed response
       // rather than a query scoped to msp_id = 0 (which would never match real rows).
@@ -650,7 +686,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const canvases = await db
@@ -672,7 +708,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const { name, description, canvasLayout, deliveryConfig } = req.body as {
@@ -705,7 +741,7 @@ router.put(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const canvasId = String(req.params.id);
@@ -737,7 +773,7 @@ router.delete(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const canvasId = String(req.params.id);
@@ -760,7 +796,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const canvasId = String(req.params.id);
@@ -834,7 +870,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const schedules = await db
@@ -856,7 +892,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const { canvasId, cadence, recipientEmails, enabled } = req.body as {
@@ -889,7 +925,7 @@ router.put(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const scheduleId = String(req.params.id);
@@ -923,7 +959,7 @@ router.delete(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
       if (!mspId) { res.status(403).json({ error: "No MSP context" }); return; }
 
       const scheduleId = String(req.params.id);

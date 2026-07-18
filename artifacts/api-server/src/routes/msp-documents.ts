@@ -29,7 +29,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { createRun, executeRun } from "../lib/portal-workflow-engine";
 import { resolveBillingMspId } from "../lib/ai-billing";
 import { DEFAULT_DOC_PIPELINE_GRAPH } from "../lib/doc-pipeline-nodes";
@@ -68,7 +68,11 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const {
         title,
         documentType = "general",
@@ -163,7 +167,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const customerIdFilter = req.query.customerId
         ? parseInt(String(req.query.customerId), 10)
         : undefined;
@@ -200,7 +208,11 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [document] = await db
         .select()
@@ -247,7 +259,11 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [document] = await db
         .select()
@@ -310,7 +326,11 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [document] = await db
         .select({ documentId: mspDocumentsTable.documentId })
@@ -361,7 +381,11 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId, versionId } = req.params as { documentId: string; versionId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [document] = await db
         .select({ documentId: mspDocumentsTable.documentId })
@@ -406,7 +430,11 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const publishedByUserId = req.user!.id ?? 0;
 
       const [document] = await db
@@ -463,7 +491,11 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const connectors = await db
         .select({
@@ -495,7 +527,11 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
       const {
         label,
         tenantId,
@@ -568,7 +604,11 @@ router.patch(
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [existing] = await db
         .select({ connectorId: mspSharepointConnectorsTable.connectorId })
@@ -631,7 +671,11 @@ router.delete(
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
 
       const [updated] = await db
         .update(mspSharepointConnectorsTable)

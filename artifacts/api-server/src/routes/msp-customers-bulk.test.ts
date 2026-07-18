@@ -98,6 +98,7 @@ vi.mock("../lib/idempotency.ts", () => ({
 vi.mock("../lib/resolve-msp-id.ts", () => ({
   resolveMspId: vi.fn().mockResolvedValue(42),
   resolveMspIdOrZero: vi.fn().mockResolvedValue(42),
+  resolveMspIdStrict: vi.fn().mockReturnValue(42),
 }));
 
 // ── App setup ─────────────────────────────────────────────────────────────────
