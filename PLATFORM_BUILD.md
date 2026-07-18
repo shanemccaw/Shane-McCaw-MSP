@@ -15,6 +15,6 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Admin Dashboard Designer (Step 4b) | dfcb9f47 |
 | 2026-07-18 | ✅ DONE | #1 Engine Development - policy-rule-suppressions | ab10e2bc |
 | 2026-07-18 | ✅ DONE | #1 Engine Development: policy-engine suppression gate | 9c941ef0 |
-| 2026-07-18 | ⏳ IN FLIGHT | Customer/MSP Dashboard Editor | |
+| 2026-07-18 | ✅ DONE | Customer/MSP Dashboard Editor | 56ec3a77 |
 | 2026-07-18 | ✅ DONE | Events tree node | 9d77b61d |
 | 2026-07-18 | ✅ DONE | Engines tree node | 9d65f853 |
