@@ -22,3 +22,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | #2 Smart Widget State Logic | a1089508 |
 | 2026-07-18 | ⏳ IN FLIGHT | Signal Rules UI v1 | |
 | 2026-07-18 | ✅ DONE | #4 customer-connect-dropdown-action | dbe72b1b |
+| 2026-07-18 | ⏳ IN FLIGHT | #6 Audit Log Metadata Display Formatting | |
