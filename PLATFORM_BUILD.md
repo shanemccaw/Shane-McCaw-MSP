@@ -13,3 +13,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 |------|--------|------|--------|
 | 2026-07-18 | ✅ DONE | policy-engine escalation lifecycle | 0a6c5c38 |
 | 2026-07-18 | ✅ DONE | Admin Dashboard Designer (Step 4b) | dfcb9f47 |
+| 2026-07-18 | ⏳ IN FLIGHT | #1 Engine Development - policy-rule-suppressions | |
