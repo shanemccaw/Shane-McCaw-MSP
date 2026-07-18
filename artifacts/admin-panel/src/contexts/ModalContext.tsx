@@ -567,12 +567,16 @@ type TestSuiteStep =
 type TestSuiteStepType = "sql" | "scenario" | "exception_trigger" | "orchestrated_pipeline";
 
 // Editable row state — a superset of every step type's fields so switching the
-// type Select doesn't lose in-progress values mid-edit.
+// type Select doesn't lose in-progress values mid-edit. testbedCustomerId /
+// engineKeys have no UI here; they are round-tripped so a no-op open-and-save
+// of an API-authored pipeline step doesn't strip them.
 interface SuiteStepRow {
   type: TestSuiteStepType;
   scriptId?: number;
   eventId?: string;
   marker?: string;
+  testbedCustomerId?: number;
+  engineKeys?: string[];
 }
 
 interface SuiteSavedScript {
@@ -616,6 +620,8 @@ function TestSuiteEditorModal({ isNew = false }: { isNew: boolean }) {
           scriptId: s.type === "sql" ? s.scriptId : undefined,
           eventId: s.type === "scenario" ? s.eventId : undefined,
           marker: s.type === "exception_trigger" ? s.marker : undefined,
+          testbedCustomerId: s.type === "orchestrated_pipeline" ? s.testbedCustomerId : undefined,
+          engineKeys: s.type === "orchestrated_pipeline" ? s.engineKeys : undefined,
         })),
       );
     } else {
@@ -712,9 +718,14 @@ function TestSuiteEditorModal({ isNew = false }: { isNew: boolean }) {
             ? { type: "exception_trigger", marker: row.marker.trim() }
             : { type: "exception_trigger" };
         case "orchestrated_pipeline":
-          // Omit testbedCustomerId/engineKeys — the run-level testbed customer
-          // is used and all engines run.
-          return { type: "orchestrated_pipeline" };
+          // The UI never sets testbedCustomerId/engineKeys (run-level customer,
+          // all engines) but round-trips API-authored values so an open-and-save
+          // doesn't strip them.
+          return {
+            type: "orchestrated_pipeline",
+            ...(row.testbedCustomerId != null ? { testbedCustomerId: row.testbedCustomerId } : {}),
+            ...(row.engineKeys != null ? { engineKeys: row.engineKeys } : {}),
+          };
       }
     });
 
@@ -791,7 +802,14 @@ function TestSuiteEditorModal({ isNew = false }: { isNew: boolean }) {
                 <Select
                   value={row.type}
                   onValueChange={(val) =>
-                    updateStep(index, { type: val as TestSuiteStepType, scriptId: undefined, eventId: undefined, marker: undefined })
+                    updateStep(index, {
+                      type: val as TestSuiteStepType,
+                      scriptId: undefined,
+                      eventId: undefined,
+                      marker: undefined,
+                      testbedCustomerId: undefined,
+                      engineKeys: undefined,
+                    })
                   }
                 >
                   <SelectTrigger className="w-44 shrink-0 bg-background border-border text-foreground text-xs h-8">

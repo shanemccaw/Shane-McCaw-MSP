@@ -24,6 +24,7 @@ import "./lib/sse-hub-event-bridge.ts";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner";
 
 const rawPort = process.env["PORT"];
 
@@ -91,6 +92,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  failOrphanedTestSuiteRuns().catch((err) => {
+    logger.warn({ err }, "Orphaned test-suite-run sweep failed (non-fatal)");
+  });
 
   checkWebhookHealthOnStartup(logger).catch((err) => {
     logger.warn({ err }, "Stripe webhook health check failed (non-fatal)");

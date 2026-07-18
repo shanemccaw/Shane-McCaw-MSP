@@ -300,32 +300,51 @@ export function SimulatorLeftTree() {
       const runId: number = data.runId;
       toast.success(`Suite run #${runId} started — output streams to the Log Stream`);
 
+      // Async interval callbacks can overlap when a poll runs longer than the
+      // interval: `inFlight` skips a tick while the previous fetch is pending,
+      // and `done` guarantees exactly one tick finalizes (stop + toast).
       let ticks = 0;
+      let inFlight = false;
+      let done = false;
+      const finalize = (notify: () => void) => {
+        if (done) return;
+        done = true;
+        stopSuitePoll(timer, suite.id);
+        notify();
+      };
       const timer = window.setInterval(async () => {
+        if (done) return;
+        // Every tick counts toward the cap — including skipped ones — so a
+        // hung request can't stretch the 5-minute budget.
         ticks += 1;
-        try {
-          const pollRes = await fetchWithAuth(`/api/admin/test-suites/runs/${runId}`);
-          if (pollRes.ok) {
-            const pollData = await pollRes.json();
-            const run = pollData.run;
-            if (run && run.status !== "running") {
-              stopSuitePoll(timer, suite.id);
-              if (run.status === "completed") {
-                toast.success(`Suite run #${runId} completed`);
-              } else {
-                const stepResults: Array<{ status: string }> = run.stepResults ?? [];
-                const failed = stepResults.filter((s) => s.status === "failed").length;
-                toast.error(`Suite run #${runId} failed — ${failed} of ${stepResults.length} steps failed`);
+        if (!inFlight) {
+          inFlight = true;
+          try {
+            const pollRes = await fetchWithAuth(`/api/admin/test-suites/runs/${runId}`);
+            if (!done && pollRes.ok) {
+              const pollData = await pollRes.json();
+              const run = pollData.run;
+              if (run && run.status !== "running") {
+                finalize(() => {
+                  if (run.status === "completed") {
+                    toast.success(`Suite run #${runId} completed`);
+                  } else {
+                    const stepResults: Array<{ status: string }> = run.stepResults ?? [];
+                    const failed = stepResults.filter((s) => s.status === "failed").length;
+                    toast.error(`Suite run #${runId} failed — ${failed} of ${stepResults.length} steps failed`);
+                  }
+                });
+                return;
               }
-              return;
             }
+          } catch {
+            // Transient poll error — keep polling until the tick budget runs out.
+          } finally {
+            inFlight = false;
           }
-        } catch {
-          // Transient poll error — keep polling until the tick budget runs out.
         }
         if (ticks >= SUITE_POLL_MAX_TICKS) {
-          stopSuitePoll(timer, suite.id);
-          toast.error(`Suite run #${runId} is still running after 5 minutes — stopped polling`);
+          finalize(() => toast.error(`Suite run #${runId} is still running after 5 minutes — stopped polling`));
         }
       }, SUITE_POLL_INTERVAL_MS);
       pollTimersRef.current.push(timer);

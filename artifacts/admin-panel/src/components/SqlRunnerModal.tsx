@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Play, PanelLeftClose, PanelLeft, Database, Clock, Table as TableIcon } from "lucide-react";
 import { LiveDbSchemaTree } from "./LiveDbSchemaTree";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SqlRunnerModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface SqlRunnerModalProps {
 }
 
 export function SqlRunnerModal({ isOpen, onClose, initialQuery = "SELECT * FROM msps LIMIT 10;" }: SqlRunnerModalProps) {
+  const { fetchWithAuth } = useAuth();
   const [query, setQuery] = useState(initialQuery);
   const [showSchemaTree, setShowSchemaTree] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -22,7 +24,7 @@ export function SqlRunnerModal({ isOpen, onClose, initialQuery = "SELECT * FROM 
     setIsExecuting(true);
     setError(null);
     try {
-      const res = await fetch("/api/simulator/sql/execute", {
+      const res = await fetchWithAuth("/api/simulator/sql/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),

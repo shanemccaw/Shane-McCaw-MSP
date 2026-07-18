@@ -31,6 +31,11 @@ export interface TestSuiteStepResult {
   durationMs: number;
 }
 
+// Same guard as the SQL console's POST /simulator/sql/execute (admin-engines.ts)
+// — suite sql steps must not widen what an admin can execute through raw SQL.
+// Reset scripts use DELETE FROM, which passes.
+const DESTRUCTIVE_KEYWORDS = /\b(drop|truncate|alter|rename)\b/i;
+
 export class TestSuiteRunError extends Error {
   constructor(
     public code: "suite_not_found" | "no_steps",
@@ -97,6 +102,9 @@ async function executeStep(
         .where(eq(savedSqlScripts.id, step.scriptId))
         .limit(1);
       if (!script) throw new Error(`Saved SQL script ${step.scriptId} not found`);
+      if (DESTRUCTIVE_KEYWORDS.test(script.query)) {
+        return { error: "Destructive SQL commands (DROP, TRUNCATE, ALTER, RENAME) are prohibited." };
+      }
       const startTime = Date.now();
       const result = await db.execute(sql.raw(script.query));
       const executionMs = Date.now() - startTime;
@@ -155,11 +163,22 @@ async function executeStep(
       }
       const failedKeys = Object.keys(engines).filter(k => !engines[k]!.ok);
       const output = { engines, executionMs };
+      // runEngineManifestForTenant silently filters unknown keys out of the
+      // manifest order — surface them instead of reporting an empty success.
+      const unknownKeys = (step.engineKeys ?? []).filter(k => !(k in results));
+      if (unknownKeys.length > 0) {
+        return { output, error: `Unknown engine keys: ${unknownKeys.join(", ")}` };
+      }
       if (failedKeys.length > 0) {
         return { output, error: `Engines failed: ${failedKeys.join(", ")}` };
       }
       return { output };
     }
+
+    default:
+      // steps come from opaque jsonb — a row edited outside the API can carry
+      // a type the union doesn't know; fail the step, not the whole run.
+      return { error: `Unknown step type '${String((step as { type?: unknown }).type)}'` };
   }
 }
 
@@ -234,6 +253,29 @@ async function executeSuiteRun(
     { runId, suiteId, failedCount, stepCount: steps.length },
     `test-suite: run #${runId} ${finalStatus} — ${results.length - failedCount}/${steps.length} steps succeeded`,
   );
+}
+
+/**
+ * Marks runs left in "running" by a previous process (crash or restart
+ * mid-run) as failed. Called once at server boot — a run can only
+ * legitimately be "running" while its in-process executor promise is alive.
+ */
+export async function failOrphanedTestSuiteRuns(): Promise<void> {
+  try {
+    const orphaned = await db
+      .update(testSuiteRunsTable)
+      .set({ status: "failed", completedAt: new Date() })
+      .where(eq(testSuiteRunsTable.status, "running"))
+      .returning({ id: testSuiteRunsTable.id });
+    if (orphaned.length > 0) {
+      log.warn(
+        { runIds: orphaned.map(r => r.id) },
+        `test-suite: marked ${orphaned.length} orphaned running run(s) as failed after restart`,
+      );
+    }
+  } catch (err) {
+    log.warn({ err }, "test-suite: orphaned-run sweep failed (non-fatal)");
+  }
 }
 
 /**

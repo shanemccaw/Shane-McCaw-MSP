@@ -407,6 +407,13 @@ router.post("/simulator/orchestrated-pipeline/run", requireAdmin, async (req: Re
     if (engineKeys !== undefined && (!Array.isArray(engineKeys) || engineKeys.some(k => typeof k !== "string"))) {
       return res.status(400).json({ error: "engineKeys must be an array of engine key strings" });
     }
+    if (Array.isArray(engineKeys) && engineKeys.length > 0) {
+      const knownKeys = new Set(ENGINE_DEFS.map(d => d.key));
+      const unknownKeys = engineKeys.filter((k: string) => !knownKeys.has(k));
+      if (unknownKeys.length > 0) {
+        return res.status(400).json({ error: `Unknown engine keys: ${unknownKeys.join(", ")}` });
+      }
+    }
 
     const [testbedCustomer] = await db
       .select({ id: mspCustomersTable.id })
