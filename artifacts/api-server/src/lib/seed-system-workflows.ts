@@ -1872,6 +1872,31 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  {
+    name: "__system__: Signal Policy Evaluation",
+    description: "Runs every 15 minutes. Evaluates all active Signal Policy Engine rules (policy_rules) against every customer with a currently-fired signal, firing configured workflow events for anything that qualifies — this is the final step connecting a fired/stabilized signal to a real dispatched alert.",
+    triggerType: "schedule",
+    cron: "*/15 * * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Every 15 min" } },
+        {
+          id: "evaluate",
+          type: "evaluate_signal_policies",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "evaluate_signal_policies",
+            label: "Evaluate Signal Policies",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",    target: "evaluate" },
+        { id: "e2", source: "evaluate", target: "end"      },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
