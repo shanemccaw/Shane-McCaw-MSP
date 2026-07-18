@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: [
       "src/lib/sse-channels.test.ts",
+      "src/lib/sse-hub-firehose.test.ts",
       "src/lib/compileReportToHtml.test.ts",
       "src/lib/sow-pricing.test.ts",
       "src/lib/ai-analyzer.test.ts",

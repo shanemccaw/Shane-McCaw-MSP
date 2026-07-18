@@ -13,6 +13,7 @@
  */
 
 import { db, platformLogStreamTable } from "@workspace/db";
+import { bridgeLogEntryToHub } from "./sse-hub-log-bridge.ts";
 
 interface QueuedLogEntry {
   channel: string;
@@ -31,6 +32,16 @@ const FLUSH_INTERVAL_MS = 1000;
 
 export function enqueueLogEntry(entry: QueuedLogEntry): void {
   queue.push(entry);
+  // Phase 3a real-time tap: fan this entry out to live SSE hub subscribers
+  // immediately, independently of the batched DB flush below (which can lag up
+  // to FLUSH_INTERVAL_MS). Wrapped defensively — a live-bridge failure (e.g.
+  // non-serializable meta) must NEVER break the caller's log call, and is
+  // reported to stderr, not `logger` (which would recurse back into this hook).
+  try {
+    bridgeLogEntryToHub(entry);
+  } catch (err) {
+    console.error("log-stream-writer: live bridge failed", err);
+  }
   if (queue.length >= MAX_QUEUE_SIZE) {
     void flush();
   }

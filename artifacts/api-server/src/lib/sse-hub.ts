@@ -17,6 +17,14 @@ const clients: ClientMap = new Map();
 // the browser has opened its SSE connection.
 const lastStateCache = new Map<string, Record<string, unknown>>();
 
+// ── Firehose ──────────────────────────────────────────────────────────────────
+// Subscribers here receive EVERY broadcast across ALL channels/scopes, each event
+// tagged with its originating channel + scope. Backs the admin live-stream
+// "?channel=*" view (e.g. the Engines tab watching all engine.* activity at once).
+// Kept as a separate set — rather than a magic "*" key in `clients` — so ordinary
+// channel-scoped delivery and the firehose fan-out stay independent.
+const firehoseClients = new Set<Response>();
+
 function keyFor(channel: string, scopeKey: string | number | null): string {
   return `${channel}:${scopeKey ?? "*"}`;
 }
@@ -43,11 +51,38 @@ export function registerHubClient(
   });
 }
 
+/** Register a firehose client that receives every broadcast on every channel. */
+export function registerFirehoseClient(res: Response, onClose: () => void): void {
+  firehoseClients.add(res);
+  res.on("close", () => {
+    firehoseClients.delete(res);
+    onClose();
+  });
+}
+
+function broadcastToFirehose(
+  channel: string,
+  scopeKey: string | number | null,
+  event: Record<string, unknown>,
+): void {
+  if (firehoseClients.size === 0) return;
+  const line = `data: ${JSON.stringify({ channel, scope: scopeKey, ...event })}\n\n`;
+  for (const res of firehoseClients) {
+    try { res.write(line); } catch {}
+  }
+}
+
 export function broadcastToHub(
   channel: string,
   scopeKey: string | number | null,
   event: Record<string, unknown>,
 ): void {
+  // Firehose subscribers must see EVERY broadcast — including ones on a
+  // channel:scope key with no direct subscribers — so this runs BEFORE the
+  // early-return below. broadcastToHubWithReplay delegates to this function, so
+  // this single call covers both broadcast entry points; adding another call in
+  // broadcastToHubWithReplay would double-emit to the firehose.
+  broadcastToFirehose(channel, scopeKey, event);
   const key = keyFor(channel, scopeKey);
   const set = clients.get(key);
   if (!set?.size) return;
