@@ -98,6 +98,37 @@ function fmtTime(at: number): string {
   return `${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
+// Identifying fields worth surfacing inline, in priority order — sampled from
+// the log.error/log.warn call sites across artifacts/api-server/src (engines,
+// rules, signals, monitor checks, tenants, docs). Add a key here once a real
+// call site uses it; this is not meant to be exhaustive up front.
+const HIGHLIGHT_FIELDS = [
+  "engineKey",
+  "ruleKey",
+  "groupId",
+  "signalKey",
+  "checkKey",
+  "runId",
+  "mspId",
+  "tenantId",
+  "customerId",
+  "clientId",
+  "clientUserId",
+  "projectId",
+  "docId",
+  "resultId",
+  "taskId",
+  "packKey",
+  "artifactName",
+  "automationId",
+];
+
+function extractHighlightFields(meta: Record<string, unknown> | null): string {
+  if (!meta) return "";
+  const found = HIGHLIGHT_FIELDS.filter((k) => meta[k] != null).map((k) => `${k}=${meta[k]}`);
+  return found.length ? ` [${found.join(", ")}]` : "";
+}
+
 /** Normalize any live-stream frame (log-bridge, event-bridge, or raw hub
  *  broadcast) into one renderable line. The firehose taps ALL hub traffic,
  *  so this degrades gracefully for shapes it doesn't know. */
@@ -109,7 +140,8 @@ function frameToLine(frame: LiveStreamFrame): NormalizedLine {
   if (data.type === "log") {
     const style = levelStyle(String(data.level ?? "info"));
     const detail: Record<string, unknown> = {};
-    if (data.meta && typeof data.meta === "object") Object.assign(detail, data.meta);
+    const meta = data.meta && typeof data.meta === "object" ? (data.meta as Record<string, unknown>) : null;
+    if (meta) Object.assign(detail, meta);
     if (data.correlationId) detail.correlationId = data.correlationId;
     return {
       id: frame.id,
@@ -117,7 +149,7 @@ function frameToLine(frame: LiveStreamFrame): NormalizedLine {
       recvAt: frame.receivedAt,
       time: fmtTime(frame.receivedAt),
       ...style,
-      text: String(data.message ?? ""),
+      text: `${String(data.message ?? "")}${extractHighlightFields(meta)}`,
       channel,
       scope,
       detail: Object.keys(detail).length > 0 ? detail : null,
