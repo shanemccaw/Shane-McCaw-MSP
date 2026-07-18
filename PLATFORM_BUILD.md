@@ -21,3 +21,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | policy-engine category tagging | aa493fd0 |
 | 2026-07-18 | ⏳ IN FLIGHT | #2 Smart Widget State Logic | |
 | 2026-07-18 | ⏳ IN FLIGHT | Signal Rules UI v1 | |
+| 2026-07-18 | ⏳ IN FLIGHT | #4 customer-connect-dropdown-action | |
