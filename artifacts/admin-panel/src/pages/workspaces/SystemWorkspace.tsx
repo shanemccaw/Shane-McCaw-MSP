@@ -10,6 +10,7 @@ import PlatformAgreementsPage from "@/pages/PlatformAgreements";
 import ObservabilityDashboard from "@/pages/ObservabilityDashboard";
 import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
+import ExceptionTracking from "@/pages/ExceptionTracking";
 
 function ComingSoon({ label }: { label: string }) {
   return (
@@ -43,6 +44,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      </svg>
+    ),
+  },
+  {
+    label: "Exceptions",
+    path: "/system/exceptions",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
       </svg>
     ),
   },
@@ -125,6 +135,7 @@ function getContent(section: string): ReactNode {
   switch (section) {
     case "observability":         return <ObservabilityDashboard />;
     case "alert-rules":           return <AlertRulesPage />;
+    case "exceptions":            return <ExceptionTracking />;
     case "platform-revenue":      return <PlatformRevenueDashboard />;
     case "security":              return <AdminSecurityPage />;
     case "signal-mappings":       return <QuizPainConfigPage />;

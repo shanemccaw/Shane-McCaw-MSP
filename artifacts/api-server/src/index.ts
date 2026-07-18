@@ -18,6 +18,9 @@ import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine";
 import { registerReportNodes } from "./lib/report-nodes";
 import { startJobWorker } from "./lib/msp-jobs";
+// Side-effect import: registers the canonical event bus → SSE hub bridge
+// listener at boot so hub subscribers receive events dispatched thereafter.
+import "./lib/sse-hub-event-bridge.ts";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";

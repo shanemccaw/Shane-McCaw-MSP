@@ -105,6 +105,7 @@ import adminLiveMonitorRouter from "./admin-live-monitor";
 import mspSowRouter from "./msp-sow";
 import adminObservabilityRouter from "./admin-observability";
 import adminExceptionsRouter from "./admin-exceptions";
+import adminLiveStreamRouter from "./admin-live-stream";
 import portalCheckoutRouter from "./portal-checkout";
 
 import pccRouter from "./pcc.js";
@@ -225,6 +226,7 @@ router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);
 router.use(adminExceptionsRouter);
+router.use(adminLiveStreamRouter);
 router.use(portalCheckoutRouter);
 
 // MSP platform API — versioned surface
