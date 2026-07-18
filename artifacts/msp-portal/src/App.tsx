@@ -68,6 +68,7 @@ import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
+import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -354,6 +355,13 @@ function SlugInnerSwitch() {
       {/* Reports */}
       <Route path="/reports">
         <ProtectedRoute component={ReportsPage} />
+      </Route>
+
+      {/* Dashboard Web Part System — internal component preview, not linked
+          in nav. Step 4a (Components) only; the real designer/viewer surfaces
+          are later steps. */}
+      <Route path="/dashboard-canvas-preview">
+        <ProtectedRoute component={DashboardCanvasPreviewPage} />
       </Route>
 
       {/* AI Billing */}
