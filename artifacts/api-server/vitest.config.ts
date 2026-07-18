@@ -38,6 +38,7 @@ export default defineConfig({
       "src/tests/msp-reports.test.ts",
       "src/tests/request-context-spine.test.ts",
       "src/tests/log-stream-mirror.test.ts",
+      "src/lib/exception-tracker.test.ts",
       "src/tests/workflow-run-correlation.test.ts",
       "src/routes/support-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",

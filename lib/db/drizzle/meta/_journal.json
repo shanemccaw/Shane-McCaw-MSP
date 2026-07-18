@@ -1411,6 +1411,13 @@
       "when": 1784163644560,
       "tag": "0197_add_platform_log_stream",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1784163644561,
+      "tag": "0198_add_exception_tracking",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import pino from "pino";
 import { enqueueLogEntry } from "./log-stream-writer.ts";
 import { getRequestContext } from "./request-context.ts";
+import { captureException } from "./exception-tracker.ts";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -71,6 +72,13 @@ export const logger = pino({
             (bindings.customerId as number | undefined) ?? ctx?.customerId ?? null,
           occurredAt: new Date(),
         });
+        // Feed exception tracking off the same merging object — every
+        // `logger.error({ err }, "...")` call site (incl. the top-level
+        // Express handler) is captured with zero call-site changes.
+        const errCandidate = mergingObject.err ?? mergingObject.error;
+        if (errCandidate instanceof Error) {
+          void captureException(errCandidate, { channel, source: "caught" });
+        }
       } catch {
         // Never let the mirror hook break actual logging.
       }

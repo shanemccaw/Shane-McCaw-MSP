@@ -7,6 +7,42 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { ConsentRevokedError } from "./lib/graph";
 import { runWithRequestContext, getRequestContext } from "./lib/request-context.ts";
+import { captureException } from "./lib/exception-tracker.ts";
+
+// Durably record a crash before the process dies, but never let a hung DB
+// write delay exit — a stuck process is strictly worse than one lost record.
+async function captureWithTimeout(
+  err: Error,
+  opts: { channel: string; source: "uncaught" },
+  timeoutMs = 2000,
+): Promise<void> {
+  await Promise.race([
+    captureException(err, opts),
+    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
+// Previously anything uncaught crashed the process with no record. Preserve
+// that exit behaviour (process.exit(1)) — the only change is the durable
+// record written first.
+process.on("uncaughtException", (err) => {
+  void captureWithTimeout(err, { channel: "system.core", source: "uncaught" })
+    .catch(() => {})
+    .finally(() => {
+      logger.fatal({ err }, "Uncaught exception — process exiting");
+      process.exit(1);
+    });
+});
+
+process.on("unhandledRejection", (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  void captureWithTimeout(err, { channel: "system.core", source: "uncaught" })
+    .catch(() => {})
+    .finally(() => {
+      logger.fatal({ err }, "Unhandled promise rejection — process exiting");
+      process.exit(1);
+    });
+});
 
 const app: Express = express();
 

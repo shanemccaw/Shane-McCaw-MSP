@@ -2639,4 +2639,53 @@ export const platformLogStreamTable = pgTable("platform_log_stream", {
 export type InsertPlatformLogStream = typeof platformLogStreamTable.$inferInsert;
 export type PlatformLogStream = typeof platformLogStreamTable.$inferSelect;
 
+// ── Exception Tracking ──────────────────────────────────────────────────────
+// Groups (one row per unique file:line:normalized-message fingerprint) and
+// occurrences (one row per actual instance). Fed by lib/exception-tracker.ts,
+// which the logger's logMethod hook invokes on every `logger.error({ err })`
+// call plus the process-level uncaught/unhandledRejection handlers. Persists
+// until manually resolved/suppressed — NOT subject to the log-stream's prune.
+
+export const exceptionGroupsTable = pgTable("exception_groups", {
+  fingerprint: text("fingerprint").primaryKey(),
+  errorName: text("error_name").notNull(),
+  errorMessage: text("error_message").notNull(),
+  file: text("file"),
+  line: integer("line"),
+  functionName: text("function_name"),
+  codeFrame: text("code_frame"),
+  stackSample: text("stack_sample"),
+  channel: text("channel").notNull(),
+  source: text("source").notNull(), // "caught" | "uncaught"
+  status: text("status").notNull().default("open"), // "open" | "suppressed" | "resolved"
+  occurrenceCount: integer("occurrence_count").notNull().default(1),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: integer("resolved_by"),
+  resolutionNote: text("resolution_note"),
+  suppressedAt: timestamp("suppressed_at", { withTimezone: true }),
+  suppressedBy: integer("suppressed_by"),
+  suppressionReason: text("suppression_reason"),
+}, (t) => [
+  index("exception_groups_status_idx").on(t.status),
+  index("exception_groups_last_seen_idx").on(t.lastSeenAt),
+]);
+
+export const exceptionOccurrencesTable = pgTable("exception_occurrences", {
+  id: serial("id").primaryKey(),
+  fingerprint: text("fingerprint").notNull(),
+  correlationId: uuid("correlation_id"),
+  channel: text("channel").notNull(),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("exception_occurrences_fingerprint_idx").on(t.fingerprint),
+  index("exception_occurrences_correlation_id_idx").on(t.correlationId),
+]);
+
+export type ExceptionGroup = typeof exceptionGroupsTable.$inferSelect;
+export type ExceptionOccurrence = typeof exceptionOccurrencesTable.$inferSelect;
+
 export * from "./msp";
