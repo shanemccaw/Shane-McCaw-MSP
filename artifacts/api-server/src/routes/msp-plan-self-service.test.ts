@@ -62,7 +62,7 @@ vi.mock("../middlewares/requireAuth.ts", () => ({
   },
 }));
 
-vi.mock("../lib/resolve-msp-id.ts", () => ({ resolveMspId: async () => 42 }));
+vi.mock("../lib/resolve-msp-id.ts", () => ({ resolveMspIdStrict: () => 42 }));
 
 const mockCountActiveTenants = vi.fn();
 vi.mock("../lib/msp-entitlement.ts", () => ({

@@ -25,7 +25,7 @@ import {
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
-import { resolveMspId } from "../lib/resolve-msp-id.ts";
+import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { countActiveTenants } from "../lib/msp-entitlement.ts";
 import {
   getOrCreatePlanPrice,
@@ -106,7 +106,7 @@ export function downgradeBlockReason(params: {
 
 router.get("/msp/plan/current", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
   try {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
     const [row] = await db
@@ -228,7 +228,7 @@ const changeSchema = z.object({
 
 router.post("/msp/plan/change", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
   try {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
     const parsed = changeSchema.safeParse(req.body);
@@ -380,7 +380,7 @@ router.post("/msp/plan/change", requireRole("MSPAdmin"), async (req: Request, re
 
 router.post("/msp/plan/cancel-pending-change", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
   try {
-    const mspId = await resolveMspId(req);
+    const mspId = resolveMspIdStrict(req);
     if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
     const [sub] = await db
