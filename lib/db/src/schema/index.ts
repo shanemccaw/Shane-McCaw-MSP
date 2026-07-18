@@ -2625,6 +2625,7 @@ export const policyRulesTable = pgTable("policy_rules", {
   severity: text("severity", { enum: ["info", "warning", "critical"] }).notNull().default("info"),
   eventName: text("event_name").notNull(),
   cooldownMinutes: integer("cooldown_minutes").notNull().default(1440),
+  escalationRules: jsonb("escalation_rules").$type<{ level: number; afterMinutes: number; eventName: string }[]>(),
   isActive: boolean("is_active").notNull().default(true),
   ruleVersion: integer("rule_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2661,6 +2662,23 @@ export const policyRuleFiringsTable = pgTable("policy_rule_firings", {
 
 export type InsertPolicyRuleFiring = typeof policyRuleFiringsTable.$inferInsert;
 export type PolicyRuleFiring = typeof policyRuleFiringsTable.$inferSelect;
+
+export const policyRuleIncidentsTable = pgTable("policy_rule_incidents", {
+  id: serial("id").primaryKey(),
+  ruleId: integer("rule_id").notNull().references(() => policyRulesTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["open", "resolved"] }).notNull().default("open"),
+  currentLevel: integer("current_level").notNull().default(1),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+  lastEscalatedAt: timestamp("last_escalated_at"),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => ({
+  ruleCustomerStatusIdx: index("policy_rule_incidents_rule_customer_status_idx").on(table.ruleId, table.customerId, table.status),
+}));
+
+export type InsertPolicyRuleIncident = typeof policyRuleIncidentsTable.$inferInsert;
+export type PolicyRuleIncident = typeof policyRuleIncidentsTable.$inferSelect;
 
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
