@@ -120,6 +120,7 @@ const HIGHLIGHT_FIELDS = [
   "signalKey",
   "checkKey",
   "runId",
+  "suiteId",
   "mspId",
   "tenantId",
   "customerId",

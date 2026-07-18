@@ -1954,6 +1954,9 @@ export const savedSqlScripts = pgTable("saved_sql_scripts", {
   category: text("category").notNull(), // e.g., "QA Asserts", "Maintenance"
   query: text("query").notNull(),
   isDestructive: boolean("is_destructive").default(false),
+  // Reset scripts are hoisted to the front of a test-suite run regardless of
+  // stored step order (see api-server lib/test-suite-runner.ts).
+  isResetScript: boolean("is_reset_script").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1983,6 +1986,38 @@ export type InsertSimulationProfile = typeof simulationProfiles.$inferInsert;
 
 export type SimulationRun = typeof simulationRuns.$inferSelect;
 export type InsertSimulationRun = typeof simulationRuns.$inferInsert;
+
+// ── Test Suite Runner ──────────────────────────────────────────────────────────
+// Ordered multi-step test suites executed sequentially server-side
+// (api-server lib/test-suite-runner.ts). steps is a TestSuiteStep[] — the step
+// union is typed api-server-side; the schema stores it as opaque jsonb.
+
+export const testSuitesTable = pgTable("test_suites", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  steps: jsonb("steps").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const testSuiteRunsTable = pgTable("test_suite_runs", {
+  id: serial("id").primaryKey(),
+  suiteId: integer("suite_id").notNull().references(() => testSuitesTable.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("running"), // "running" | "completed" | "failed"
+  stepResults: jsonb("step_results"), // { stepIndex, type, status, output?, error?, durationMs }[]
+  testbedCustomerId: integer("testbed_customer_id"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (t) => [
+  index("test_suite_runs_suite_id_idx").on(t.suiteId),
+  index("test_suite_runs_started_at_idx").on(t.startedAt),
+]);
+
+export type TestSuite = typeof testSuitesTable.$inferSelect;
+export type InsertTestSuite = typeof testSuitesTable.$inferInsert;
+
+export type TestSuiteRun = typeof testSuiteRunsTable.$inferSelect;
+export type InsertTestSuiteRun = typeof testSuiteRunsTable.$inferInsert;
 
 // ── Baseline Action Templates ──────────────────────────────────────────────────
 

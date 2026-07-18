@@ -22,7 +22,7 @@ export function SqlRunnerModal({ isOpen, onClose, initialQuery = "SELECT * FROM 
     setIsExecuting(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/engines/simulator/sql/execute", {
+      const res = await fetch("/api/simulator/sql/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),

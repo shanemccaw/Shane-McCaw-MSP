@@ -1425,6 +1425,13 @@
       "when": 1784163644562,
       "tag": "0199_add_fulfillment_wholesale_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1784391454340,
+      "tag": "0200_add_test_suites",
+      "breakpoints": true
     }
   ]
 }

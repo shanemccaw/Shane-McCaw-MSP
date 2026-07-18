@@ -13,6 +13,7 @@ import {
   ENGINE_DEFS,
   getEngineDef,
   buildEngineTestInputForTenant,
+  runEngineManifestForTenant,
 } from "../lib/engine-registry";
 import { getEngineHistoryMerged, getBaselineEvents, getSignalDeltasForRange } from "../lib/engine-history";
 import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
@@ -388,6 +389,50 @@ router.post("/admin/simulator/replay-all", requireAdmin, async (req: Request, re
   } catch (err) {
     log.error({ err }, "admin-engines: replay-all failed");
     return res.status(500).json({ error: err instanceof Error ? err.message : "Replay failed" });
+  }
+});
+
+// ── POST /api/simulator/orchestrated-pipeline/run ───────────────────────────
+// Runs the full engine manifest (or an engineKeys subset) in dependency order
+// against a testbed customer via runEngineManifestForTenant — the Run Engines
+// panel's standalone "Orchestrated Pipeline" action. Per-engine failures are
+// tolerated by the manifest runner (result null) and surfaced as ok: false.
+
+router.post("/simulator/orchestrated-pipeline/run", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { testbedCustomerId, engineKeys } = req.body ?? {};
+    if (!testbedCustomerId) {
+      return res.status(400).json({ error: "Missing testbedCustomerId" });
+    }
+    if (engineKeys !== undefined && (!Array.isArray(engineKeys) || engineKeys.some(k => typeof k !== "string"))) {
+      return res.status(400).json({ error: "engineKeys must be an array of engine key strings" });
+    }
+
+    const [testbedCustomer] = await db
+      .select({ id: mspCustomersTable.id })
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, Number(testbedCustomerId)), eq(mspCustomersTable.isTestbed, true)))
+      .limit(1);
+    if (!testbedCustomer) {
+      return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
+    }
+
+    const startTime = Date.now();
+    const results = await runEngineManifestForTenant(
+      testbedCustomer.id,
+      { evaluationTimestamp: new Date() },
+      Array.isArray(engineKeys) && engineKeys.length > 0 ? engineKeys : undefined,
+    );
+    const executionMs = Date.now() - startTime;
+
+    const engines: Record<string, { ok: boolean }> = {};
+    for (const [key, value] of Object.entries(results)) {
+      engines[key] = { ok: value !== null };
+    }
+    return res.json({ engines, executionMs });
+  } catch (err) {
+    log.error({ err }, "admin-engines: orchestrated pipeline run failed");
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Orchestrated pipeline run failed" });
   }
 });
 
@@ -1329,10 +1374,10 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
 });
 
 /**
- * @route GET /api/admin/engines/simulator/sql/scripts
+ * @route GET /api/simulator/sql/scripts
  * @desc Gets all saved, categorized SQL utility scripts
  */
-router.get("/admin/engines/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/simulator/sql/scripts", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const scripts = await db.select().from(savedSqlScripts);
     return res.json({ scripts });
@@ -1342,12 +1387,12 @@ router.get("/admin/engines/simulator/sql/scripts", requireAdmin, async (_req: Re
 });
 
 /**
- * @route POST /api/admin/engines/simulator/sql/scripts
+ * @route POST /api/simulator/sql/scripts
  * @desc Saves a new SQL script to the library under a category
  */
-router.post("/admin/engines/simulator/sql/scripts", requireAdmin, async (req: Request, res: Response) => {
+router.post("/simulator/sql/scripts", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, category, query, isDestructive } = req.body;
+    const { name, category, query, isDestructive, isResetScript } = req.body;
 
     if (!name || !category || !query) {
       return res.status(400).json({ error: "name, category, and query are required." });
@@ -1357,7 +1402,8 @@ router.post("/admin/engines/simulator/sql/scripts", requireAdmin, async (req: Re
       name,
       category,
       query,
-      isDestructive: Boolean(isDestructive)
+      isDestructive: Boolean(isDestructive),
+      isResetScript: Boolean(isResetScript)
     }).returning();
 
     return res.json({ script: inserted });
@@ -1367,17 +1413,17 @@ router.post("/admin/engines/simulator/sql/scripts", requireAdmin, async (req: Re
 });
 
 /**
- * @route PUT /api/admin/engines/simulator/sql/scripts/:id
+ * @route PUT /api/simulator/sql/scripts/:id
  * @desc Updates an existing saved SQL utility script
  */
-router.put("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
+router.put("/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       return res.status(400).json({ error: "A valid script id is required." });
     }
 
-    const { name, category, query, isDestructive } = req.body;
+    const { name, category, query, isDestructive, isResetScript } = req.body;
 
     if (!name || !category || !query) {
       return res.status(400).json({ error: "name, category, and query are required." });
@@ -1387,7 +1433,8 @@ router.put("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req:
       name,
       category,
       query,
-      isDestructive: Boolean(isDestructive)
+      isDestructive: Boolean(isDestructive),
+      isResetScript: Boolean(isResetScript)
     }).where(eq(savedSqlScripts.id, id)).returning();
 
     if (!updated) {
@@ -1401,10 +1448,10 @@ router.put("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req:
 });
 
 /**
- * @route DELETE /api/admin/engines/simulator/sql/scripts/:id
+ * @route DELETE /api/simulator/sql/scripts/:id
  * @desc Deletes a saved SQL utility script
  */
-router.delete("/admin/engines/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/simulator/sql/scripts/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {

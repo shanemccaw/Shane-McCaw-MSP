@@ -38,6 +38,7 @@ const CHANNEL_TAXONOMY = [
   "system.dlq",
   "tenant.msp-admin",
   "tenant.portal",
+  "test-suite",
   "workflow.doc-pipeline",
   "workflow.run",
   "workflow.script",

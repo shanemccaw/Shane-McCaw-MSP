@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Play, Loader2, AlertCircle, CheckCircle2, Copy, FileText } from "lucide-react";
+import { Play, Loader2, AlertCircle, CheckCircle2, Copy, FileText, Workflow, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useModal } from "@/contexts/ModalContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
@@ -51,6 +51,12 @@ export function SimulatorEnginesPanel() {
   const [runningKey, setRunningKey] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, EngineRunResult | { error: string }>>({});
 
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<{
+    engines: Record<string, { ok: boolean }>;
+    executionMs: number;
+  } | null>(null);
+
   useEffect(() => {
     setLoadingEngines(true);
     fetchWithAuth("/api/admin/engines")
@@ -88,6 +94,34 @@ export function SimulatorEnginesPanel() {
     }
   };
 
+  const handleRunPipeline = async () => {
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
+      return;
+    }
+    setPipelineRunning(true);
+    try {
+      const res = await fetchWithAuth("/api/simulator/orchestrated-pipeline/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testbedCustomerId: selectedCustomerId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPipelineResult(data);
+        toast.success(`Pipeline ran ${Object.keys(data.engines ?? {}).length} engines in ${data.executionMs}ms`);
+      } else {
+        setPipelineResult(null);
+        toast.error(data.error ?? "Pipeline run failed");
+      }
+    } catch (err: any) {
+      setPipelineResult(null);
+      toast.error(err.message ?? "Network error");
+    } finally {
+      setPipelineRunning(false);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full bg-background">
       <div className="flex items-center justify-between">
@@ -102,6 +136,53 @@ export function SimulatorEnginesPanel() {
           <div className="text-xs text-muted-foreground shrink-0">
             Target: <span className="text-foreground font-medium">{selectedCustomer.name}</span>
             <span className="font-mono text-[10px]"> (#{selectedCustomer.id})</span>
+          </div>
+        )}
+      </div>
+
+      {/* Standalone orchestrated pipeline run — one POST fans out to the full engine manifest in dependency order. */}
+      <div className="bg-card border border-border rounded-lg p-3.5 space-y-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-sm font-semibold text-foreground">Orchestrated Pipeline</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Run the full engine manifest in dependency order against the selected testbed customer.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRunPipeline}
+            disabled={pipelineRunning}
+            className="h-7 px-3 shrink-0 gap-1.5"
+          >
+            {pipelineRunning ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Workflow className="w-3.5 h-3.5" />
+            )}
+            Run
+          </Button>
+        </div>
+
+        {pipelineResult && (
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
+            {Object.entries(pipelineResult.engines).map(([key, result]) => (
+              <span
+                key={key}
+                className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] ${
+                  result.ok
+                    ? "bg-emerald-400/10 text-emerald-400 border-emerald-400/25"
+                    : "bg-destructive/10 text-destructive border-destructive/25"
+                }`}
+              >
+                {result.ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                {key}
+              </span>
+            ))}
+            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+              {pipelineResult.executionMs}ms
+            </span>
           </div>
         )}
       </div>

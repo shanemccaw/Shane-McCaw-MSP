@@ -315,7 +315,13 @@ async function writeEngineSnapshot(
       .limit(1);
     const resolvedCustomerId = customerRow?.customerId ?? null;
     const mspId = customerRow?.mspId ?? null;
-    if (resolvedCustomerId == null) return;
+    if (resolvedCustomerId == null) {
+      // Previously a silent return — the main reason engine runs looked
+      // invisible: ids that don't resolve through msp_users (e.g. simulator
+      // runs passing a customer id, not a portal user id) skip snapshots.
+      log.info({ engineKey, customerId }, "writeEngineSnapshot: skipped — id does not resolve to a customer via msp_users");
+      return;
+    }
 
     const [auditRow] = await db
       .select({ id: signalRuleAuditLogTable.id })
@@ -369,6 +375,11 @@ async function writeEngineSnapshot(
         await db.insert(engineScoreSignalDeltasTable).values(deltaRows);
       }
     }
+
+    log.info(
+      { engineKey, customerId: resolvedCustomerId, mspId, score, previousScore, delta, snapshotId: historyId },
+      `writeEngineSnapshot: recorded ${engineKey} snapshot for customer ${resolvedCustomerId} (score ${score}${delta != null ? `, delta ${delta}` : ""})`,
+    );
 
     const [priorBaseline] = await db
       .select({ ruleVersion: engineBaselineHistoryTable.ruleVersion, baselineScore: engineBaselineHistoryTable.baselineScore })

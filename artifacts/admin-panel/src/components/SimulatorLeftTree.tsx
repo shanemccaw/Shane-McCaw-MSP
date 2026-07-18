@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useModal } from "@/contexts/ModalContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
 import {
   ChevronRight,
   ChevronDown,
@@ -17,6 +18,9 @@ import {
   Sparkles,
   Play,
   Trash2,
+  AlertTriangle,
+  ListChecks,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,19 +45,49 @@ interface SavedScript {
   category: string;
   query: string;
   isDestructive: boolean;
+  isResetScript: boolean;
 }
+
+// Exact step shapes stored by /api/admin/test-suites — the tree only needs the
+// step count, but the full union keeps the edit-test-suite modalData typed.
+type TestSuiteStep =
+  | { type: "sql"; scriptId: number }
+  | { type: "scenario"; eventId: string }
+  | { type: "exception_trigger"; marker?: string }
+  | { type: "orchestrated_pipeline"; testbedCustomerId?: number; engineKeys?: string[] };
+
+interface TestSuite {
+  id: number;
+  name: string;
+  steps: TestSuiteStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ~5 minutes of polling at 1500ms per tick.
+const SUITE_POLL_INTERVAL_MS = 1500;
+const SUITE_POLL_MAX_TICKS = 200;
 
 export function SimulatorLeftTree() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
+  const { selectedCustomerId } = useTestbedContext();
 
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
+  const [suites, setSuites] = useState<TestSuite[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [triggeringException, setTriggeringException] = useState(false);
+  // Suites with an in-flight run — spinner on the row, re-run blocked.
+  const [runningSuites, setRunningSuites] = useState<Record<number, boolean>>({});
+  const pollTimersRef = useRef<number[]>([]);
 
   // Tree toggle states
   const [scenariosOpen, setScenariosOpen] = useState(true);
   const [scriptsOpen, setScriptsOpen] = useState(true);
+  const [exceptionsOpen, setExceptionsOpen] = useState(true);
+  const [suitesOpen, setSuitesOpen] = useState(true);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
@@ -117,6 +151,13 @@ export function SimulatorLeftTree() {
         const scriptsData = await scriptsRes.json();
         setScripts(scriptsData.scripts || []);
       }
+
+      // 3. Fetch test suites
+      const suitesRes = await fetchWithAuth("/api/admin/test-suites");
+      if (suitesRes.ok) {
+        const suitesData = await suitesRes.json();
+        setSuites(suitesData.suites || []);
+      }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
       toast.error("Failed to load some simulator workspace items");
@@ -128,15 +169,28 @@ export function SimulatorLeftTree() {
   useEffect(() => {
     loadData();
 
-    // Listen for scripts-updated event to reload list
+    // Listen for scripts-updated / suites-updated events to reload lists
     const handleScriptsUpdate = () => {
       loadData();
     };
+    const handleSuitesUpdate = () => {
+      loadData();
+    };
     window.addEventListener("simulator-scripts-updated", handleScriptsUpdate);
+    window.addEventListener("simulator-suites-updated", handleSuitesUpdate);
     return () => {
       window.removeEventListener("simulator-scripts-updated", handleScriptsUpdate);
+      window.removeEventListener("simulator-suites-updated", handleSuitesUpdate);
     };
   }, [fetchWithAuth]);
+
+  // Stop any in-flight suite-run polling on unmount.
+  useEffect(() => {
+    return () => {
+      pollTimersRef.current.forEach((timer) => window.clearInterval(timer));
+      pollTimersRef.current = [];
+    };
+  }, []);
 
   // Group events by category
   const scenariosByCategory = scenarios.reduce(
@@ -195,6 +249,105 @@ export function SimulatorLeftTree() {
       }
     } catch (err: any) {
       toast.error(err.message || "Network error deleting script");
+    }
+  };
+
+  const handleTriggerException = async () => {
+    if (triggeringException) return;
+    setTriggeringException(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/exceptions/_test/trigger?marker=simulator-tree", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message);
+      } else {
+        toast.error(data.error || "Failed to trigger synthetic exception");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error triggering synthetic exception");
+    } finally {
+      setTriggeringException(false);
+    }
+  };
+
+  const stopSuitePoll = (timer: number, suiteId: number) => {
+    window.clearInterval(timer);
+    pollTimersRef.current = pollTimersRef.current.filter((t) => t !== timer);
+    setRunningSuites((prev) => ({ ...prev, [suiteId]: false }));
+  };
+
+  const handleSuiteRun = async (suite: TestSuite) => {
+    if (runningSuites[suite.id]) return;
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
+      return;
+    }
+    setRunningSuites((prev) => ({ ...prev, [suite.id]: true }));
+    try {
+      const res = await fetchWithAuth(`/api/admin/test-suites/${suite.id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testbedCustomerId: selectedCustomerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRunningSuites((prev) => ({ ...prev, [suite.id]: false }));
+        toast.error(data.error || "Failed to start suite run");
+        return;
+      }
+      const runId: number = data.runId;
+      toast.success(`Suite run #${runId} started — output streams to the Log Stream`);
+
+      let ticks = 0;
+      const timer = window.setInterval(async () => {
+        ticks += 1;
+        try {
+          const pollRes = await fetchWithAuth(`/api/admin/test-suites/runs/${runId}`);
+          if (pollRes.ok) {
+            const pollData = await pollRes.json();
+            const run = pollData.run;
+            if (run && run.status !== "running") {
+              stopSuitePoll(timer, suite.id);
+              if (run.status === "completed") {
+                toast.success(`Suite run #${runId} completed`);
+              } else {
+                const stepResults: Array<{ status: string }> = run.stepResults ?? [];
+                const failed = stepResults.filter((s) => s.status === "failed").length;
+                toast.error(`Suite run #${runId} failed — ${failed} of ${stepResults.length} steps failed`);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Transient poll error — keep polling until the tick budget runs out.
+        }
+        if (ticks >= SUITE_POLL_MAX_TICKS) {
+          stopSuitePoll(timer, suite.id);
+          toast.error(`Suite run #${runId} is still running after 5 minutes — stopped polling`);
+        }
+      }, SUITE_POLL_INTERVAL_MS);
+      pollTimersRef.current.push(timer);
+    } catch (err: any) {
+      setRunningSuites((prev) => ({ ...prev, [suite.id]: false }));
+      toast.error(err.message || "Network error starting suite run");
+    }
+  };
+
+  const handleSuiteDelete = async (suite: TestSuite) => {
+    if (!confirm(`Delete test suite "${suite.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/test-suites/${suite.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Test suite deleted");
+        window.dispatchEvent(new CustomEvent("simulator-suites-updated"));
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to delete test suite");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error deleting test suite");
     }
   };
 
@@ -341,8 +494,20 @@ export function SimulatorLeftTree() {
                               <div className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground">
                                 <div className="flex min-w-0 flex-1 items-center gap-1.5" onClick={() => handleScriptClick(script)}>
                                   <FileCode
-                                    className={`h-3.5 w-3.5 shrink-0 ${script.isDestructive ? "text-destructive" : "text-muted-foreground"}`}
-                                    aria-label={script.isDestructive ? "Destructive script" : undefined}
+                                    className={`h-3.5 w-3.5 shrink-0 ${
+                                      script.isDestructive
+                                        ? "text-destructive"
+                                        : script.isResetScript
+                                          ? "text-amber-400"
+                                          : "text-muted-foreground"
+                                    }`}
+                                    aria-label={
+                                      script.isDestructive
+                                        ? "Destructive script"
+                                        : script.isResetScript
+                                          ? "Reset script (always runs first in test suites)"
+                                          : undefined
+                                    }
                                   />
                                   <span className="truncate font-mono text-[11px]" title={script.name}>
                                     {script.name}
@@ -380,6 +545,138 @@ export function SimulatorLeftTree() {
                     )}
                   </div>
                 ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 3: Exception Testing */}
+        <div>
+          <div
+            onClick={() => setExceptionsOpen(!exceptionsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {exceptionsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span className="truncate">Exception Testing</span>
+          </div>
+
+          {exceptionsOpen && (
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div
+                  onClick={() => {
+                    if (!triggeringException) handleTriggerException();
+                  }}
+                  className={`group flex h-[22px] items-center gap-1.5 pl-4 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground ${
+                    triggeringException ? "cursor-default opacity-60" : "cursor-pointer"
+                  }`}
+                >
+                  {triggeringException ? (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-400" />
+                  ) : (
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  )}
+                  <span
+                    className="flex-1 truncate"
+                    title="Fires a synthetic exception through the exception pipeline (marker: simulator-tree)"
+                  >
+                    Trigger Synthetic Exception
+                  </span>
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-44">
+                <ContextMenuItem
+                  onSelect={handleTriggerException}
+                  disabled={triggeringException}
+                  className="gap-2 text-xs"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Trigger
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          )}
+        </div>
+
+        {/* Section 4: Test Suites */}
+        <div>
+          <div
+            onClick={() => setSuitesOpen(!suitesOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {suitesOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span className="truncate">Test Suites</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal("new-test-suite");
+              }}
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="New test suite"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+
+          {suitesOpen && (
+            <div>
+              {suites.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No test suites</div>
+              ) : (
+                suites.map((suite) => {
+                  const isRunning = !!runningSuites[suite.id];
+                  return (
+                    <ContextMenu key={suite.id}>
+                      <ContextMenuTrigger asChild>
+                        <div
+                          onClick={() => openModal("edit-test-suite", { suite })}
+                          className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                          {isRunning ? (
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" aria-label="Suite run in progress" />
+                          ) : (
+                            <ListChecks className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+                          )}
+                          <span className="flex-1 truncate" title={suite.name}>
+                            {suite.name}
+                          </span>
+                          <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
+                            {suite.steps.length}
+                          </span>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-44">
+                        <ContextMenuItem
+                          onSelect={() => handleSuiteRun(suite)}
+                          disabled={isRunning}
+                          className="gap-2 text-xs"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          Run
+                        </ContextMenuItem>
+                        <ContextMenuItem onSelect={() => openModal("edit-test-suite", { suite })} className="gap-2 text-xs">
+                          <Edit2 className="h-3.5 w-3.5" />
+                          Edit
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          onSelect={() => handleSuiteDelete(suite)}
+                          className="gap-2 text-xs text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  );
+                })
               )}
             </div>
           )}
