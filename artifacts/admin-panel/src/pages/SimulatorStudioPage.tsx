@@ -63,9 +63,11 @@ export function SimulatorStudioPage() {
   );
 }
 
-// The one testbed picker: MSP first, which scopes the customer dropdown.
-// Every panel that used to have its own picker now reads this selection
-// from TestbedContext.
+// The one testbed picker. Customers are filtered on is_testbed only — a
+// testbed customer doesn't have to have an MSP assigned — so the customer
+// dropdown lists all testbed customers by default; picking an MSP just
+// narrows it. Every panel that used to have its own picker now reads this
+// selection from TestbedContext.
 function TestbedHeaderPicker() {
   const {
     msps,
@@ -97,18 +99,11 @@ function TestbedHeaderPicker() {
       <select
         value={selectedCustomerId ?? ""}
         onChange={(e) => setSelectedCustomer(e.target.value === "" ? null : Number(e.target.value))}
-        disabled={selectedMspId == null}
         className="max-w-44 rounded border border-border bg-background px-1 py-0.5 text-[10px] text-foreground focus:border-ring focus:outline-none disabled:opacity-50"
         title="Testbed customer"
       >
         <option value="">
-          {selectedMspId == null
-            ? "-- Customer --"
-            : loadingCustomers
-              ? "Loading…"
-              : customers.length === 0
-                ? "No testbed customers"
-                : "-- Customer --"}
+          {loadingCustomers ? "Loading…" : customers.length === 0 ? "No testbed customers" : "-- Customer --"}
         </option>
         {customers.map((customer) => (
           <option key={customer.id} value={customer.id}>

@@ -26,7 +26,7 @@ export interface TestbedCustomer {
 
 interface TestbedContextType {
   msps: TestbedMsp[];
-  /** Testbed customers scoped to the selected MSP (empty when none selected). */
+  /** All testbed customers, narrowed to the selected MSP when one is picked. An MSP is not required — a testbed customer doesn't have to have one assigned. */
   customers: TestbedCustomer[];
   loadingMsps: boolean;
   loadingCustomers: boolean;
@@ -105,23 +105,19 @@ export function TestbedProvider({ children }: { children: React.ReactNode }) {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    if (selectedMspId == null) {
-      setCustomers([]);
-      // A customer can only be selected under an MSP; clearing the MSP (or a
-      // stored customer with no stored MSP) must not leave one behind.
-      setSelectedCustomerId(null);
-      return;
-    }
+    // Testbed customers are filtered on is_testbed only — a testbed customer
+    // doesn't have to have an MSP assigned. The MSP dropdown, when set, just
+    // narrows this same list client-side; it never gates the fetch.
     let cancelled = false;
     setLoadingCustomers(true);
-    fetchWithAuth(`/api/admin/testbeds?mspId=${selectedMspId}`)
+    fetchWithAuth("/api/admin/testbeds")
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
         const list: TestbedCustomer[] = d.testbeds ?? [];
         setCustomers(list);
-        // Drop a restored/stale customer that doesn't belong to this MSP —
-        // never leave a cross-MSP customer selected silently.
+        // Drop a restored/stale customer that no longer exists in the list —
+        // never leave a stale customer selected silently.
         setSelectedCustomerId((prev) =>
           prev != null && !list.some((c) => c.id === prev) ? null : prev,
         );
@@ -135,12 +131,21 @@ export function TestbedProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [fetchWithAuth, selectedMspId]);
+  }, [fetchWithAuth]);
 
   const setSelectedMsp = (mspId: number | null) => {
-    if (mspId !== selectedMspId) setSelectedCustomerId(null);
+    // Narrowing the MSP filter can hide the current customer selection;
+    // drop it rather than leave a selection the dropdown no longer shows.
+    if (mspId !== selectedMspId) {
+      const stillVisible =
+        selectedCustomerId != null &&
+        customers.some((c) => c.id === selectedCustomerId && (mspId == null || c.mspId === mspId));
+      if (!stillVisible) setSelectedCustomerId(null);
+    }
     setSelectedMspId(mspId);
   };
+
+  const visibleCustomers = selectedMspId == null ? customers : customers.filter((c) => c.mspId === selectedMspId);
 
   const selectedCustomer =
     selectedCustomerId != null ? (customers.find((c) => c.id === selectedCustomerId) ?? null) : null;
@@ -149,7 +154,7 @@ export function TestbedProvider({ children }: { children: React.ReactNode }) {
     <TestbedContext.Provider
       value={{
         msps,
-        customers,
+        customers: visibleCustomers,
         loadingMsps,
         loadingCustomers,
         selectedMspId,
