@@ -26,7 +26,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, CheckCircle2, RefreshCw, RotateCcw, X } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { AlertCircle, CheckCircle2, Info, RefreshCw, RotateCcw, X } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -235,7 +240,26 @@ export default function DlqPage() {
       <div className="p-6 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-lg font-semibold">Dead Letter Queue</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-lg font-semibold">Dead Letter Queue</h2>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground"
+                    aria-label="What is a DLQ entry?"
+                  >
+                    <Info className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-xs">
+                  A DLQ entry is a workflow event that failed to process automatically
+                  and was set aside for review. Unresolved entries may need manual
+                  attention — replay to retry, discard to dismiss, or mark resolved
+                  once handled outside the system.
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               Failed events from the portal workflow engine.{" "}
               {total > 0 && (
@@ -342,27 +366,41 @@ export default function DlqPage() {
                         <RotateCcw className="size-3" />
                         Replay
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 gap-1 text-xs text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/10"
-                        onClick={() =>
-                          setConfirm({ entry, action: "discard" })
-                        }
-                      >
-                        <X className="size-3" />
-                        Discard
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs text-green-400 border-green-500/30 hover:bg-green-500/10"
-                        onClick={() =>
-                          setConfirm({ entry, action: "manual" })
-                        }
-                      >
-                        Escalate
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/10"
+                            onClick={() =>
+                              setConfirm({ entry, action: "discard" })
+                            }
+                          >
+                            <X className="size-3" />
+                            Discard
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Permanently dismiss this entry — no further action will be taken.
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs text-green-400 border-green-500/30 hover:bg-green-500/10"
+                            onClick={() =>
+                              setConfirm({ entry, action: "manual" })
+                            }
+                          >
+                            Mark Resolved
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs">
+                          Mark as resolved after handling this manually outside the system.
+                        </TooltipContent>
+                      </Tooltip>
                     </>
                   )}
                 </div>
@@ -385,21 +423,21 @@ export default function DlqPage() {
               ? "Replay DLQ entry"
               : confirm.action === "discard"
               ? "Discard DLQ entry"
-              : "Mark as escalated"
+              : "Mark as resolved"
           }
           description={
             confirm.action === "replay"
               ? `Re-process "${confirm.entry.eventType}" — this creates a new workflow run from the original payload.`
               : confirm.action === "discard"
-              ? `Permanently discard "${confirm.entry.eventType}". No retry will occur.`
-              : `Mark "${confirm.entry.eventType}" as manually escalated/handled. No retry will occur.`
+              ? `Permanently dismiss "${confirm.entry.eventType}" — no further action will be taken.`
+              : `Mark "${confirm.entry.eventType}" as resolved after handling this manually outside the system.`
           }
           confirmLabel={
             confirm.action === "replay"
               ? "Replay"
               : confirm.action === "discard"
               ? "Discard"
-              : "Escalate"
+              : "Mark Resolved"
           }
           variant={confirm.action === "discard" ? "destructive" : "default"}
           onConfirm={() => {
