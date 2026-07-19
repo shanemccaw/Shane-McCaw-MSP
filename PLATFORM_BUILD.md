@@ -41,4 +41,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | stripe-metadata-service-id-casing-fix | 4fcbc9da |
 | 2026-07-18 | ⏳ IN FLIGHT | tenant-profile-resolution-consolidation |  |
 | 2026-07-18 | ✅ DONE | api-server-typecheck-fixes | 7d375bfa |
-| 2026-07-18 | ⏳ IN FLIGHT | Portal Multi-Template Dashboard Resolve + Tabs |  |
+| 2026-07-18 | ✅ DONE | Portal Multi-Template Dashboard Resolve + Tabs (project/assessment excluded, pending projectsTable->mspId/customerId backlog fix) | 40e24e67 |
