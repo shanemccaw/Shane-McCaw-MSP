@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | engagement offer real-time trigger on qualifying events | |
 | 2026-07-19 | ✅ DONE | quiz submit wires Lead Offer Engine synchronously | 4b1cdb6a |
 | 2026-07-19 | ✅ DONE | engagement offer evaluation seeded workflow | 991fac42 |
 | 2026-07-19 | ✅ DONE | critical workflow manual-trigger lock — allowManualTrigger metadata flag on system workflow seeds; POST .../run and .../test-run in admin-workflows.ts now 403 when a definition's metadata.allowManualTrigger === false; .../runs/:id/rerun untouched. Applied to Engine Score Retention & Rollup. Note: the seed-system-workflows.ts portion (interface field, upsert query, Retention & Rollup entry) landed inside a concurrent session's commit 63512110 — that session's commit swept up this file's uncommitted edits before they could be committed standalone here. Flagged, not silently absorbed; verified present/correct in HEAD. | 8ae46023 |
