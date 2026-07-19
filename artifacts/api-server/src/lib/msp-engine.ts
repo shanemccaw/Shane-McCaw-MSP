@@ -27,14 +27,15 @@ import {
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
-import { computeHealthEngine } from "./health-engine.ts";
-import { computeDriftEngine } from "./drift-engine.ts";
+import { computeHealthEngine, type HealthPillarBreakdown } from "./health-engine.ts";
+import { computeDriftEngine, type DriftBreakdownEntry } from "./drift-engine.ts";
 import {
   fetchSignalRulesAndGroups,
   buildTenantProfileAndFindings,
   rankFiredSignals,
   sumPriorityScore,
   getSignalWeights,
+  type EngineBreakdownEntry,
 } from "./priority-engine.ts";
 
 // ── Shared engine output contract (mirrors priority-engine.ts / health-engine.ts) ──
@@ -48,6 +49,17 @@ export interface TenantEngineScores {
   /** Pure sum of the three scores above — nothing else. */
   combinedScore: number;
   firedSignals: string[];
+  /**
+   * The per-engine breakdowns that produced the three scores above. Threaded
+   * straight through from the underlying health/drift/priority engines (no
+   * recomputation) so downstream consumers — e.g. the Simulator Studio
+   * Portal Snapshot explain dialog — can show how each score was reached.
+   */
+  breakdown: {
+    health: HealthPillarBreakdown[];
+    drift: DriftBreakdownEntry[];
+    priority: EngineBreakdownEntry[];
+  };
 }
 
 export interface MspEngineOutput {
@@ -102,9 +114,23 @@ export function computeTenantEngineScores(
   const firedSignalKeys = [...firedSignals];
   const weights = getSignalWeightsFromRulesAndGroups(rules, groups);
   const rankedSignals = rankFiredSignals(firedSignalKeys, weights);
-  const { score: priorityScore } = sumPriorityScore(rankedSignals);
+  const { score: priorityScore, breakdown: priorityBreakdown } = sumPriorityScore(rankedSignals);
 
   const combinedScore = health.score + drift.score + priorityScore;
+
+  log.debug(
+    {
+      customerId,
+      healthScore: health.score,
+      driftScore: drift.score,
+      priorityScore,
+      combinedScore,
+      healthPillars: health.breakdown.length,
+      driftEntries: drift.breakdown.length,
+      priorityEntries: priorityBreakdown.length,
+    },
+    "computeTenantEngineScores: threaded per-engine breakdowns through roll-up",
+  );
 
   return {
     customerId,
@@ -114,6 +140,11 @@ export function computeTenantEngineScores(
     priorityScore,
     combinedScore,
     firedSignals: firedSignalKeys,
+    breakdown: {
+      health: health.breakdown,
+      drift: drift.breakdown,
+      priority: priorityBreakdown,
+    },
   };
 }
 

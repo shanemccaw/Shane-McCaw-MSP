@@ -1,13 +1,14 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable } from "@workspace/db";
+import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
 import { createNotification } from "../lib/notification-center";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { executeMonitorCheck } from "../lib/monitor-executor";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.signals" });
+const policyLog = logger.child({ channel: "engine.policy" });
 import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
   ENGINE_DEFS,
@@ -507,7 +508,7 @@ router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin
   }
   try {
     const [customer] = await db
-      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain })
+      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain, mspId: mspCustomersTable.mspId })
       .from(mspCustomersTable)
       .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.isTestbed, true)))
       .limit(1);
@@ -521,6 +522,9 @@ router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin
       .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
       .limit(1);
 
+    // Owning MSP scopes the policy-firings query; it lives on the customer row.
+    const mspId = customer.mspId ?? null;
+
     const snapshots = await db
       .select({
         engineKey: tenantEngineSnapshotsTable.engineKey,
@@ -532,29 +536,148 @@ router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin
       .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
       .orderBy(desc(tenantEngineSnapshotsTable.capturedAt));
 
-    // Latest snapshot per engine, findings pulled out of breakdown the same way
-    // /portal/dashboard does so the panel shows what the customer would see.
-    const engines: Array<{ engineKey: string; score: number | null; capturedAt: string | null; findings: string[] }> = [];
+    // Latest snapshot per engine (rows already ordered captured-desc).
+    const latestByEngine: Array<{ engineKey: string; score: number | null; capturedAt: string | null; breakdown: Record<string, unknown>[] }> = [];
     const seen = new Set<string>();
     for (const snap of snapshots) {
       if (seen.has(snap.engineKey)) continue;
       seen.add(snap.engineKey);
-      const findings: string[] = [];
-      const breakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
-      for (const item of breakdown) {
-        if (typeof item === "object" && item !== null) {
-          const b = item as Record<string, unknown>;
-          if (b.finding) findings.push(String(b.finding));
-          else if (b.message) findings.push(String(b.message));
-          else if (b.label) findings.push(String(b.label));
-        }
-      }
-      engines.push({
+      latestByEngine.push({
         engineKey: snap.engineKey,
         score: snap.score,
         capturedAt: snap.capturedAt ? snap.capturedAt.toISOString() : null,
-        findings: findings.slice(0, 3),
+        breakdown: Array.isArray(snap.breakdown) ? snap.breakdown : [],
       });
+    }
+
+    // ── Label resolution ──────────────────────────────────────────────────
+    // Breakdown entries carrying source/sourceId (drift, forecasting) resolve
+    // against signal_derivation_rules.description ("rule") or
+    // signal_rule_groups.label ("group"). Priority entries have no source —
+    // best-effort label them by signalKey against the same two tables.
+    const ruleIds = new Set<number>();
+    const groupIds = new Set<number>();
+    const signalKeys = new Set<string>();
+    for (const eng of latestByEngine) {
+      for (const item of eng.breakdown) {
+        if (typeof item !== "object" || item === null) continue;
+        const b = item as Record<string, unknown>;
+        const sourceId = typeof b.sourceId === "number" ? b.sourceId : null;
+        if (b.source === "rule" && sourceId != null) ruleIds.add(sourceId);
+        else if (b.source === "group" && sourceId != null) groupIds.add(sourceId);
+        if (typeof b.signalKey === "string" && b.signalKey) signalKeys.add(b.signalKey);
+      }
+    }
+
+    const ruleDescById = new Map<number, string>();
+    const groupLabelById = new Map<number, string>();
+    const labelBySignalKey = new Map<string, string>();
+    try {
+      const ruleIdList = [...ruleIds];
+      const groupIdList = [...groupIds];
+      const signalKeyList = [...signalKeys];
+      const [ruleRows, groupRows] = await Promise.all([
+        ruleIdList.length > 0 || signalKeyList.length > 0
+          ? db
+              .select({ id: signalDerivationRulesTable.id, signalKey: signalDerivationRulesTable.signalKey, description: signalDerivationRulesTable.description })
+              .from(signalDerivationRulesTable)
+              .where(
+                sql`${ruleIdList.length > 0 ? inArray(signalDerivationRulesTable.id, ruleIdList) : sql`false`} OR ${signalKeyList.length > 0 ? inArray(signalDerivationRulesTable.signalKey, signalKeyList) : sql`false`}`,
+              )
+          : Promise.resolve([] as { id: number; signalKey: string; description: string | null }[]),
+        groupIdList.length > 0 || signalKeyList.length > 0
+          ? db
+              .select({ id: signalRuleGroupsTable.id, signalKey: signalRuleGroupsTable.signalKey, label: signalRuleGroupsTable.label })
+              .from(signalRuleGroupsTable)
+              .where(
+                sql`${groupIdList.length > 0 ? inArray(signalRuleGroupsTable.id, groupIdList) : sql`false`} OR ${signalKeyList.length > 0 ? inArray(signalRuleGroupsTable.signalKey, signalKeyList) : sql`false`}`,
+              )
+          : Promise.resolve([] as { id: number; signalKey: string; label: string | null }[]),
+      ]);
+      for (const r of ruleRows) {
+        if (r.description) ruleDescById.set(r.id, r.description);
+        if (r.description && !labelBySignalKey.has(r.signalKey)) labelBySignalKey.set(r.signalKey, r.description);
+      }
+      for (const g of groupRows) {
+        if (g.label) groupLabelById.set(g.id, g.label);
+        if (g.label && !labelBySignalKey.has(g.signalKey)) labelBySignalKey.set(g.signalKey, g.label);
+      }
+      log.debug(
+        { customerId, ruleIds: ruleIds.size, groupIds: groupIds.size, signalKeys: signalKeys.size, resolvedLabels: labelBySignalKey.size },
+        "portal-snapshot: resolved breakdown labels",
+      );
+    } catch (labelErr) {
+      log.warn({ err: labelErr, customerId }, "portal-snapshot: label resolution failed — returning breakdowns without labels");
+    }
+
+    const resolveEntryLabel = (b: Record<string, unknown>): string | null => {
+      const sourceId = typeof b.sourceId === "number" ? b.sourceId : null;
+      if (b.source === "rule" && sourceId != null && ruleDescById.has(sourceId)) return ruleDescById.get(sourceId)!;
+      if (b.source === "group" && sourceId != null && groupLabelById.has(sourceId)) return groupLabelById.get(sourceId)!;
+      if (typeof b.signalKey === "string" && labelBySignalKey.has(b.signalKey)) return labelBySignalKey.get(b.signalKey)!;
+      return null;
+    };
+
+    // Assemble each engine: keep the legacy `findings` strings for the
+    // non-expanded panel view, plus the raw breakdown with per-entry labels
+    // for the explain dialog.
+    const engines = latestByEngine.map(eng => {
+      const findings: string[] = [];
+      const breakdown = eng.breakdown.map(item => {
+        if (typeof item !== "object" || item === null) return item;
+        const b = item as Record<string, unknown>;
+        if (b.finding) findings.push(String(b.finding));
+        else if (b.message) findings.push(String(b.message));
+        else if (b.label) findings.push(String(b.label));
+        const label = resolveEntryLabel(b);
+        return label != null ? { ...b, label: b.label ?? label } : item;
+      });
+      return {
+        engineKey: eng.engineKey,
+        score: eng.score,
+        capturedAt: eng.capturedAt,
+        findings: findings.slice(0, 3),
+        breakdown,
+      };
+    });
+
+    // ── Policy activity ───────────────────────────────────────────────────
+    // score_threshold policy rules that have fired for this customer, most
+    // recent first (cap 5 total), keyed by the engine they threshold on.
+    const engineKeysPresent = engines.map(e => e.engineKey);
+    let policyActivity: Array<{ engineKey: string | null; ruleName: string; severity: string; category: string; firedAt: string | null }> = [];
+    if (mspId != null && engineKeysPresent.length > 0) {
+      try {
+        const firings = await db
+          .select({
+            ruleName: policyRulesTable.name,
+            severity: policyRulesTable.severity,
+            engineKey: policyRulesTable.engineKey,
+            firedAt: policyRuleFiringsTable.firedAt,
+          })
+          .from(policyRuleFiringsTable)
+          .innerJoin(policyRulesTable, eq(policyRuleFiringsTable.ruleId, policyRulesTable.id))
+          .where(
+            and(
+              eq(policyRuleFiringsTable.customerId, customerId),
+              eq(policyRulesTable.conditionType, "score_threshold"),
+              inArray(policyRulesTable.engineKey, engineKeysPresent),
+            ),
+          )
+          .orderBy(desc(policyRuleFiringsTable.firedAt))
+          .limit(5);
+        policyActivity = firings.map(f => ({
+          engineKey: f.engineKey,
+          ruleName: f.ruleName,
+          severity: f.severity,
+          // For score_threshold rules the category is the engine they threshold on.
+          category: f.engineKey ?? "uncategorized",
+          firedAt: f.firedAt ? f.firedAt.toISOString() : null,
+        }));
+        policyLog.debug({ customerId, mspId, count: policyActivity.length }, "portal-snapshot: loaded score_threshold policy firings");
+      } catch (policyErr) {
+        policyLog.warn({ err: policyErr, customerId, mspId }, "portal-snapshot: policy activity query failed");
+      }
     }
 
     const scored = engines.filter(e => e.score !== null);
@@ -567,6 +690,7 @@ router.get("/admin/simulator/testbeds/:customerId/portal-snapshot", requireAdmin
       hasPortalUser: !!portalUser,
       compositeScore,
       engines,
+      policyActivity,
       capturedAt: engines[0]?.capturedAt ?? null,
     });
   } catch (err) {

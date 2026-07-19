@@ -69,6 +69,7 @@ function tenant(id: number, combinedScore: number, overrides: Partial<TenantEngi
     priorityScore: 0,
     combinedScore,
     firedSignals: [],
+    breakdown: { health: [], drift: [], priority: [] },
     ...overrides,
   };
 }
