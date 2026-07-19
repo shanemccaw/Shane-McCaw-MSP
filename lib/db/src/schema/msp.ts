@@ -22,7 +22,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable, usersTable } from "./index";
+import { wfRunsTable, usersTable, scriptPackagesTable } from "./index";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -1292,6 +1292,7 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   engines: jsonb("engines").$type<string[]>().notNull().default([]),
   frequency: text("frequency", { enum: MONITOR_CHECK_FREQUENCY }).notNull().default("daily"),
   requiresCustomerScript: boolean("requires_customer_script").notNull().default(false),
+  scriptPackageId: uuid("script_package_id").references(() => scriptPackagesTable.id, { onDelete: "set null" }),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),

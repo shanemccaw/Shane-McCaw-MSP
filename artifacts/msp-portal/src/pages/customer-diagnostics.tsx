@@ -12,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,6 +20,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Download,
   FileSignature,
   Info,
   Loader2,
@@ -297,6 +299,36 @@ export default function CustomerDiagnosticsPage() {
   const [benchmark, setBenchmark] = useState<HealthBenchmarkData | null>(null);
   const [loadingBenchmark, setLoadingBenchmark] = useState(true);
 
+  const [downloadingScript, setDownloadingScript] = useState<string | null>(null);
+
+  async function handleScriptDownload(checkKey: string) {
+    setDownloadingScript(checkKey);
+    try {
+      const res = await fetchWithAuth(`/api/portal/scripts/${encodeURIComponent(checkKey)}/download`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Download failed" })) as { error?: string };
+        toast.error(data.error ?? "This script isn't available yet — check back later or contact your MSP.");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match ? match[1] : `${checkKey}.ps1`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Script downloaded — run it in your environment when you're ready.");
+    } catch {
+      toast.error("Network error — please try again");
+    } finally {
+      setDownloadingScript(null);
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -570,6 +602,28 @@ export default function CustomerDiagnosticsPage() {
                                 <p className={`text-[11px] font-medium mt-2 ${cfg.color}`}>
                                   {cfg.riskFrame}
                                 </p>
+                              )}
+                              {f.checkStatus === "requires_script" && (
+                                <div className="mt-2">
+                                  <p className="text-xs text-muted-foreground/80">
+                                    This check needs a script run in your environment — download it here.
+                                    Results may take some time to appear after you run it.
+                                  </p>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-2 h-7 text-xs"
+                                    disabled={downloadingScript === f.checkKey}
+                                    onClick={() => handleScriptDownload(f.checkKey)}
+                                  >
+                                    {downloadingScript === f.checkKey ? (
+                                      <Loader2 className="size-3 mr-1 animate-spin" />
+                                    ) : (
+                                      <Download className="size-3 mr-1" />
+                                    )}
+                                    Download script
+                                  </Button>
+                                </div>
                               )}
                             </div>
                           </div>

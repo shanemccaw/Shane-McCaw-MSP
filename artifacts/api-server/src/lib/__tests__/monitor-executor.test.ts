@@ -518,6 +518,7 @@ describe("executeMonitorCheck", () => {
     engines: ["health"] as string[],
     frequency: "daily" as const,
     requiresCustomerScript: false,
+    scriptPackageId: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,

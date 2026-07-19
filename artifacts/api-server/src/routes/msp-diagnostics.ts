@@ -22,6 +22,10 @@
  * Customer portal routes (require CustomerUser role):
  *   GET  /api/portal/diagnostics/latest
  *     — Customer's latest run + findings summary (read-only).
+ *
+ *   GET  /api/portal/scripts/:checkKey/download
+ *     — Download the PowerShell script that satisfies a requires_script check.
+ *       Scoped to checks the caller actually has a requires_script finding for.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -34,6 +38,8 @@ import {
   clientServicesTable,
   servicesTable,
   industryBenchmarkReferenceTable,
+  monitorChecksTable,
+  scriptModulesTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or, sql } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
@@ -441,6 +447,93 @@ router.get(
       res.json({ run: latestRun, findings });
     } catch (err) {
       log.error({ err }, "GET /portal/diagnostics/latest error");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ── GET /api/portal/scripts/:checkKey/download ────────────────────────────────
+// Customer-facing: downloads the .ps1 script that satisfies a requires_script
+// check. Scoped strictly to the caller's own findings — a checkKey is only
+// resolvable here if the caller's customer actually has a requires_script
+// finding for it, so guessing an unrelated checkKey/package never leaks
+// script content that customer shouldn't see.
+
+router.get(
+  "/portal/scripts/:checkKey/download",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const { checkKey } = req.params as { checkKey: string };
+
+      let customerId = user.customerId ?? null;
+      if (!customerId) {
+        const [freshMu] = await db
+          .select({ customerId: mspUsersTable.customerId })
+          .from(mspUsersTable)
+          .where(eq(mspUsersTable.userId, user.id))
+          .limit(1);
+        customerId = freshMu?.customerId ?? null;
+      }
+
+      if (!customerId) {
+        res.status(404).json({ error: "No script available for this check" });
+        return;
+      }
+
+      const [finding] = await db
+        .select({ findingId: mspDiagnosticFindingsTable.findingId })
+        .from(mspDiagnosticFindingsTable)
+        .where(and(
+          eq(mspDiagnosticFindingsTable.customerId, customerId),
+          eq(mspDiagnosticFindingsTable.checkKey, checkKey),
+          eq(mspDiagnosticFindingsTable.checkStatus, "requires_script"),
+        ))
+        .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
+        .limit(1);
+
+      if (!finding) {
+        res.status(404).json({ error: "No script available for this check" });
+        return;
+      }
+
+      const [check] = await db
+        .select({ scriptPackageId: monitorChecksTable.scriptPackageId })
+        .from(monitorChecksTable)
+        .where(eq(monitorChecksTable.key, checkKey))
+        .limit(1);
+
+      if (!check?.scriptPackageId) {
+        res.status(404).json({ error: "No script has been assigned to this check yet" });
+        return;
+      }
+
+      const modules = await db
+        .select({
+          filename: scriptModulesTable.filename,
+          content: scriptModulesTable.content,
+        })
+        .from(scriptModulesTable)
+        .where(eq(scriptModulesTable.packageId, check.scriptPackageId))
+        .orderBy(scriptModulesTable.sortOrder)
+        .limit(1);
+
+      const [module] = modules;
+      if (!module) {
+        res.status(404).json({ error: "No script has been assigned to this check yet" });
+        return;
+      }
+
+      const filename = module.filename?.trim() || `${checkKey}.ps1`;
+
+      log.info({ customerId, checkKey }, "GET /portal/scripts/:checkKey/download");
+
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(module.content);
+    } catch (err) {
+      log.error({ err }, "GET /portal/scripts/:checkKey/download error");
       res.status(500).json({ error: "Internal server error" });
     }
   },
