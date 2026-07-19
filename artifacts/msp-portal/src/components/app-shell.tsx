@@ -15,6 +15,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
+import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,13 +56,16 @@ import {
   ChevronRight,
   Cog,
   CreditCard,
+  Download,
   FileBarChart2,
   FileText,
+  FolderOpen,
   FolderSync,
   Gift,
   GitBranch,
   History,
   Home,
+  KeyRound,
   LayoutDashboard,
   ListTodo,
   Loader2,
@@ -70,6 +74,7 @@ import {
   Menu,
   MessageCircle,
   MessageSquare,
+  Moon,
   Package,
   Play,
   Plus,
@@ -79,12 +84,14 @@ import {
   Shield,
   ShieldCheck,
   Sparkles,
+  Sun,
   Timer,
   Trash2,
   User,
   Users,
   Webhook,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
 
@@ -939,6 +946,415 @@ function ImpersonationBanner({ email }: { email: string }) {
 }
 
 
+// ── Customer Documents slide-in panel ─────────────────────────────────────────
+//
+// Lightweight side panel over the SAME data the full Documents page reads
+// (/api/portal/insights-documents + /api/portal/reports). It is a new view,
+// not a new data source — no duplicated backend. Opened from the top-bar
+// Documents icon (CustomerUser only). Empty state is handled gracefully.
+
+interface PanelDocument {
+  id: number;
+  title: string;
+  docType: string | null;
+  deliveredAt: string | null;
+  createdAt: string | null;
+}
+
+interface PanelReport {
+  id: number;
+  title: string;
+  period: string | null;
+  createdAt: string | null;
+}
+
+function panelRelativeDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function CustomerDocumentsPanel({
+  open,
+  onOpenChange,
+  fetchWithAuth,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
+}) {
+  const [docs, setDocs] = useState<PanelDocument[]>([]);
+  const [reports, setReports] = useState<PanelReport[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  // Fetch lazily the first time the panel is opened; keep results cached for
+  // subsequent opens within the session.
+  useEffect(() => {
+    if (!open || loaded) return;
+    let mounted = true;
+    setLoading(true);
+    Promise.all([
+      fetchWithAuth("/api/portal/insights-documents")
+        .then((res) => (res.ok ? res.json() : []))
+        .catch(() => []),
+      fetchWithAuth("/api/portal/reports")
+        .then((res) => (res.ok ? res.json() : []))
+        .catch(() => []),
+    ])
+      .then(([d, r]) => {
+        if (!mounted) return;
+        setDocs(Array.isArray(d) ? (d as PanelDocument[]) : []);
+        setReports(Array.isArray(r) ? (r as PanelReport[]) : []);
+        setLoaded(true);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [open, loaded, fetchWithAuth]);
+
+  const isEmpty = !loading && docs.length === 0 && reports.length === 0;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0">
+        <SheetHeader className="px-5 py-4 border-b border-border text-left">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            <FileText className="size-4 text-muted-foreground" />
+            Documents &amp; Reports
+          </SheetTitle>
+          <SheetDescription className="text-xs">
+            Your assessments, statements of work, and periodic reports.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : isEmpty ? (
+            <div className="flex flex-col items-center justify-center text-center gap-2 py-16 px-4">
+              <FolderOpen className="size-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No documents yet</p>
+              <p className="text-xs text-muted-foreground/60 max-w-[240px]">
+                Assessments, roadmaps, statements of work, and reports will appear
+                here once your engagement begins.
+              </p>
+              <Link href="/customer-documents" onClick={() => onOpenChange(false)}>
+                <Button variant="outline" size="sm" className="mt-2 h-7 text-xs">
+                  Open Documents page
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <>
+              {docs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    Assessments &amp; SOWs
+                  </p>
+                  {docs.map((doc) => (
+                    <Link
+                      key={`doc-${doc.id}`}
+                      href="/customer-documents"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/50 transition-colors cursor-pointer">
+                        <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <FileText className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{doc.title}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {panelRelativeDate(doc.deliveredAt ?? doc.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {reports.length > 0 && (
+                <div className="space-y-2">
+                  <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    Reports
+                  </p>
+                  {reports.map((report) => (
+                    <Link
+                      key={`rep-${report.id}`}
+                      href="/customer-documents"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      <div className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/50 transition-colors cursor-pointer">
+                        <div className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <FileBarChart2 className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{report.title}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 capitalize">
+                            {report.period ? `${report.period} report` : "Report"} ·{" "}
+                            {panelRelativeDate(report.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="border-t border-border px-5 py-3 shrink-0">
+          <Link href="/customer-documents" onClick={() => onOpenChange(false)}>
+            <button className="text-xs text-primary hover:underline">
+              View all documents &amp; reports →
+            </button>
+          </Link>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── Customer top bar (CustomerUser role only) ─────────────────────────────────
+//
+// Replaces the left-nav sidebar entirely for CustomerUser: all wayfinding lives
+// in this persistent bar. Other roles keep the sidebar shell unchanged.
+
+function CustomerTopBar({
+  profile,
+  brandName,
+  user,
+  mspRole,
+  onSearch,
+  onOpenDocs,
+  onToggleSupport,
+  supportOpen,
+  isPlatformAdmin,
+  onLogout,
+  navigate,
+}: {
+  profile: MspProfile | null;
+  brandName: string;
+  user: ReturnType<typeof useAuth>["user"];
+  mspRole: MspRole | undefined;
+  onSearch: () => void;
+  onOpenDocs: () => void;
+  onToggleSupport: () => void;
+  supportOpen: boolean;
+  isPlatformAdmin: boolean;
+  onLogout: () => void;
+  navigate: (to: string) => void;
+}) {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <header className="h-14 shrink-0 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4 md:px-6 sticky top-0 z-10">
+      {/* Tenant identity — MSP brand (white-label) + attribution.
+          Reuses the same profile data the sidebar shell renders; no refetch. */}
+      <Link href="/customer-home">
+        <div className="flex items-center gap-2.5 min-w-0 cursor-pointer group">
+          {profile?.logoUrl ? (
+            <img src={profile.logoUrl} alt={brandName} className="size-6 object-contain shrink-0" />
+          ) : (
+            <Shield className="size-5 text-primary shrink-0" />
+          )}
+          <div className="min-w-0 leading-tight">
+            <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+              {brandName || "Your Portal"}
+            </p>
+            <p className="text-[10px] text-muted-foreground truncate hidden sm:block">
+              Managed service portal
+            </p>
+          </div>
+        </div>
+      </Link>
+
+      <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        {/* Search — ⌘K trigger. Visual/keyboard element only; no search backend
+            yet (see CommandPalette wiring in AppShell). */}
+        <button
+          className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          onClick={onSearch}
+          aria-label="Search"
+        >
+          <Search className="size-3.5" />
+          <span>Search</span>
+          <kbd className="text-[10px] bg-border px-1 rounded">⌘K</kbd>
+        </button>
+        <button
+          className="sm:hidden rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          onClick={onSearch}
+          aria-label="Search"
+        >
+          <Search className="size-4" />
+        </button>
+
+        {/* Notification bell — unchanged component */}
+        <NotificationBell />
+
+        {/* Documents — opens the slide-in panel */}
+        <button
+          className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          onClick={onOpenDocs}
+          aria-label="Documents"
+          title="Documents"
+        >
+          <FileText className="size-4" />
+        </button>
+
+        {/* Support chat — standalone icon (not a menu item) */}
+        {!isPlatformAdmin && (
+          <button
+            className={`relative rounded-md p-2 transition-colors ${
+              supportOpen
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            onClick={onToggleSupport}
+            title={supportOpen ? "Close Support Chat" : "Open Support Chat"}
+            aria-label="Support Chat"
+          >
+            <MessageSquare className="size-4" />
+          </button>
+        )}
+
+        {/* Profile avatar dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="flex items-center gap-2 rounded-full p-0.5 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-transform active:scale-95 ml-0.5"
+              aria-label="User profile menu"
+              title={user?.name ?? user?.email ?? "User profile"}
+            >
+              <Avatar className="size-8 border border-border/60 shadow-sm">
+                <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">
+                  {getInitials(user?.name, user?.email)}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64 p-2">
+            <DropdownMenuLabel className="font-normal p-2">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-semibold leading-none text-foreground truncate">
+                  {user?.name ?? user?.email ?? "User Account"}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground truncate">
+                  {user?.email}
+                </p>
+                {mspRole && (
+                  <div className="pt-1">
+                    <Badge className={`text-[10px] px-1.5 py-0 h-4 ${ROLE_COLORS[mspRole] ?? "bg-muted"}`}>
+                      {mspRole}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+
+            {/* Real pages */}
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-team")}>
+              <Users className="size-4 text-muted-foreground" />
+              <span>Manage Team</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-documents")}>
+              <FileText className="size-4 text-muted-foreground" />
+              <span>Documents</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-billing")}>
+              <CreditCard className="size-4 text-muted-foreground" />
+              <span>Billing</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings")}>
+              <Cog className="size-4 text-muted-foreground" />
+              <span>Settings</span>
+            </DropdownMenuItem>
+            {/* Placeholder-backed (UI now, backend later) */}
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/password-mfa")}>
+              <KeyRound className="size-4 text-muted-foreground" />
+              <span>Password &amp; MFA</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/download-data")}>
+              <Download className="size-4 text-muted-foreground" />
+              <span>Download My Data</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-privacy")}>
+              <Lock className="size-4 text-muted-foreground" />
+              <span>Privacy &amp; Data</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Dark mode toggle — wired to the live ThemeProvider. Kept as a
+                clickable row (not a nav) so selecting it doesn't close via
+                navigation; onSelect preventDefault keeps the menu open. */}
+            <DropdownMenuItem
+              className="cursor-pointer gap-2 py-2"
+              onSelect={(e) => {
+                e.preventDefault();
+                setTheme(isDark ? "light" : "dark");
+              }}
+            >
+              {isDark ? (
+                <Sun className="size-4 text-muted-foreground" />
+              ) : (
+                <Moon className="size-4 text-muted-foreground" />
+              )}
+              <span className="flex-1">Dark Mode</span>
+              <span
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                  isDark ? "bg-primary" : "bg-muted-foreground/30"
+                }`}
+                aria-hidden="true"
+              >
+                <span
+                  className={`inline-block size-3 rounded-full bg-white transition-transform ${
+                    isDark ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem
+              className="cursor-pointer gap-2 py-2 text-amber-600 dark:text-amber-400 focus:text-amber-600 focus:bg-amber-50 dark:focus:bg-amber-950/40"
+              onSelect={() => navigate("/coming-soon/cancel-service")}
+            >
+              <XCircle className="size-4" />
+              <span>Cancel Service</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer gap-2 py-2 text-rose-600 dark:text-rose-400 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-950/40"
+              onSelect={onLogout}
+            >
+              <LogOut className="size-4" />
+              <span>Log Out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
+}
+
 // ── Main AppShell ─────────────────────────────────────────────────────────────
 
 interface AppShellProps {
@@ -962,6 +1378,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [docsPanelOpen, setDocsPanelOpen] = useState(false);
   const [profile, setProfile] = useState<MspProfile | null>(() => {
     if (g_cachedMspProfile) return g_cachedMspProfile;
     try {
@@ -1223,6 +1640,122 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     </div>
   );
 
+  const isCustomerUser = mspRole === "CustomerUser";
+
+  // Shared page body — inactive/suspension banners, the routed page content,
+  // and the persistent credibility footer. Identical for every role; only the
+  // surrounding chrome (sidebar vs. customer top bar) differs.
+  const pageBody = (
+    <>
+      {isAccountInactive && (
+        <div
+          role="alert"
+          className="shrink-0 flex items-center justify-between gap-4 px-4 md:px-6 py-3 bg-rose-500/10 border-b border-rose-500/30 text-rose-800 dark:text-rose-300"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5 text-rose-500" />
+            <p className="text-sm">
+              <span className="font-semibold">Subscription Inactive:&nbsp;</span>
+              {mspRole === "CustomerUser"
+                ? "Monitoring and telemetry services are currently paused for your organization."
+                : "Telemetry estate monitoring has been paused."}
+              {" "}Please resubscribe to reactivate your services.
+            </p>
+          </div>
+          <Link href={mspRole === "CustomerUser" ? "/customer-billing" : "/settings/billing"}>
+            <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-4 shrink-0">
+              Resubscribe
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {/* Day 7+ MSP-suspended banner — shown to CustomerUsers only, non-dismissible */}
+      {/* Server already enforces the 7-day threshold; suspended===true means ≥7 days */}
+      {mspRole === "CustomerUser" && suspension?.suspended && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="shrink-0 flex items-start gap-3 px-4 md:px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-amber-700 dark:text-amber-300"
+        >
+          <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-sm">
+            <span className="font-semibold">Service provider notice:&nbsp;</span>
+            There is an account issue on your service provider&apos;s side. No
+            action is required from you — your data is safe and your projects
+            remain accessible. If you have concerns, please contact{" "}
+            <a
+              href="mailto:support@shanemccawconsulting.com"
+              className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+            >
+              support
+            </a>
+            .
+          </p>
+        </div>
+      )}
+
+      {/* Page content */}
+      <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
+
+      {/* Credibility footer — persistent, non-removable, fixed at bottom */}
+      <footer className="shrink-0 border-t border-border bg-background/60 px-6 py-3 z-10">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Award className="size-3.5 text-primary shrink-0" />
+            <span>
+              Modernization delivered by a{" "}
+              <span className="text-foreground font-medium">
+                30-Year Microsoft Veteran &amp; M365 Architect for NASA
+              </span>
+            </span>
+          </div>
+          <span className="shrink-0">
+            Powered by{" "}
+            <span className="text-foreground font-medium">Shane McCaw Consulting</span>
+          </span>
+        </div>
+      </footer>
+    </>
+  );
+
+  // ── CustomerUser layout — no left sidebar; all wayfinding in the top bar ────
+  if (isCustomerUser) {
+    return (
+      <>
+        {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
+        <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+          <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+            <CustomerTopBar
+              profile={profile}
+              brandName={brandName}
+              user={user}
+              mspRole={mspRole}
+              onSearch={() => setCmdOpen(true)}
+              onOpenDocs={() => setDocsPanelOpen(true)}
+              onToggleSupport={() => setSupportOpen((v) => !v)}
+              supportOpen={supportOpen}
+              isPlatformAdmin={isPlatformAdmin}
+              onLogout={() => void logout()}
+              navigate={navigate}
+            />
+            {pageBody}
+          </div>
+
+          {/* Non-blocking Docked Support Panel on the Right */}
+          {supportOpen && !isPlatformAdmin && <DockedSupportPanel />}
+
+          <CustomerDocumentsPanel
+            open={docsPanelOpen}
+            onOpenChange={setDocsPanelOpen}
+            fetchWithAuth={fetchWithAuth}
+          />
+          <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
@@ -1330,28 +1863,18 @@ export function AppShell({ children, title, actions }: AppShellProps) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {/* CustomerUser renders a dedicated top bar and never reaches
+                    this menu, so these targets are the MSP/admin routes only. */}
                 <DropdownMenuItem
                   className="cursor-pointer gap-2 py-2"
-                  onSelect={() =>
-                    navigate(
-                      mspRole === "CustomerUser"
-                        ? "/customer-privacy"
-                        : "/settings"
-                    )
-                  }
+                  onSelect={() => navigate("/settings")}
                 >
                   <Cog className="size-4 text-muted-foreground" />
                   <span>Settings</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer gap-2 py-2"
-                  onSelect={() =>
-                    navigate(
-                      mspRole === "CustomerUser"
-                        ? "/customer-billing"
-                        : "/settings/billing"
-                    )
-                  }
+                  onSelect={() => navigate("/settings/billing")}
                 >
                   <CreditCard className="size-4 text-muted-foreground" />
                   <span>Billing</span>
@@ -1376,75 +1899,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
           </div>
         </header>
 
-        {isAccountInactive && (
-          <div
-            role="alert"
-            className="shrink-0 flex items-center justify-between gap-4 px-4 md:px-6 py-3 bg-rose-500/10 border-b border-rose-500/30 text-rose-800 dark:text-rose-300"
-          >
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-rose-500" />
-              <p className="text-sm">
-                <span className="font-semibold">Subscription Inactive:&nbsp;</span>
-                {mspRole === "CustomerUser" 
-                  ? "Monitoring and telemetry services are currently paused for your organization."
-                  : "Telemetry estate monitoring has been paused."}
-                {" "}Please resubscribe to reactivate your services.
-              </p>
-            </div>
-            <Link href={mspRole === "CustomerUser" ? "/customer-billing" : "/settings/billing"}>
-              <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white rounded-lg px-4 shrink-0">
-                Resubscribe
-              </Button>
-            </Link>
-          </div>
-        )}
-
-        {/* Day 7+ MSP-suspended banner — shown to CustomerUsers only, non-dismissible */}
-        {/* Server already enforces the 7-day threshold; suspended===true means ≥7 days */}
-        {mspRole === "CustomerUser" && suspension?.suspended && (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="shrink-0 flex items-start gap-3 px-4 md:px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-amber-700 dark:text-amber-300"
-            >
-              <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
-              <p className="text-sm">
-                <span className="font-semibold">Service provider notice:&nbsp;</span>
-                There is an account issue on your service provider&apos;s side. No
-                action is required from you — your data is safe and your projects
-                remain accessible. If you have concerns, please contact{" "}
-                <a
-                  href="mailto:support@shanemccawconsulting.com"
-                  className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
-                >
-                  support
-                </a>
-                .
-              </p>
-            </div>
-          )}
-
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
-
-        {/* Credibility footer — persistent, non-removable, fixed at bottom */}
-        <footer className="shrink-0 border-t border-border bg-background/60 px-6 py-3 z-10">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <Award className="size-3.5 text-primary shrink-0" />
-              <span>
-                Modernization delivered by a{" "}
-                <span className="text-foreground font-medium">
-                  30-Year Microsoft Veteran &amp; M365 Architect for NASA
-                </span>
-              </span>
-            </div>
-            <span className="shrink-0">
-              Powered by{" "}
-              <span className="text-foreground font-medium">Shane McCaw Consulting</span>
-            </span>
-          </div>
-        </footer>
+        {pageBody}
       </div>
 
       {/* Non-blocking Docked Support Panel on the Right — not for PlatformAdmin */}

@@ -18,6 +18,7 @@ import {
   salesOfferConfigTable,
   salesOfferRuleGroupsTable,
   servicesTable,
+  mspUsersTable,
   type SalesOffer,
   type SalesOfferRuleGroup,
   type SalesOfferConfig,
@@ -30,6 +31,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "engine.offer" });
 import { buildTenantProfileAndFindings, fetchSignalRulesAndGroups } from "./priority-engine";
 import { computeTenantSignals, getDisabledSignalKeys } from "./tenant-signals";
+import { createNotification } from "./notification-center";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -262,9 +264,31 @@ export async function runSalesOfferEngineForTenant(
 // ── Offer persistence ─────────────────────────────────────────────────────────
 
 /**
+ * Resolve the active portal user (usersTable.id) for an engine customerId
+ * (mspCustomersTable.id) via the msp_users bridge. Mirrors the resolution the
+ * admin-engines routes use for the same testbed→portal-user mapping. Returns
+ * null when the customer has no active portal user to notify.
+ */
+async function resolveCustomerPortalUserId(customerId: number): Promise<number | null> {
+  const [row] = await db
+    .select({ userId: mspUsersTable.userId })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+    .limit(1);
+  return row?.userId ?? null;
+}
+
+/**
  * Persist generated candidates as draft sales_offers rows.
  * Idempotent — skips offers whose idempotencyKey already exists.
  * Returns array of inserted (new) offer IDs.
+ *
+ * Side effect: for each *newly inserted* offer, notify the customer's portal
+ * user via the Notification Center (category "offer", deep-linked to the
+ * customer offers page). Idempotency is inherited from the insert itself — a
+ * re-run produces the same idempotencyKey, the offer insert is skipped, so this
+ * block never re-enters for the same offer and no duplicate notification fires.
+ * This is the same new-row-only guard that gates the offer.generated event.
  */
 export async function persistSalesOfferCandidates(
   candidates: SalesOfferCandidate[],
@@ -273,6 +297,12 @@ export async function persistSalesOfferCandidates(
   engineSnapshot: Record<string, unknown>,
 ): Promise<number[]> {
   const inserted: number[] = [];
+
+  // Resolve the notification recipient once for this customer. Null when there
+  // is no active portal user (e.g. an unclaimed customer) — offers still
+  // persist; they're just not pushed to a bell that no one is watching.
+  const recipientUserId =
+    customerId != null ? await resolveCustomerPortalUserId(customerId) : null;
 
   for (const c of candidates) {
     try {
@@ -300,6 +330,32 @@ export async function persistSalesOfferCandidates(
         const offerId = result[0].id;
         inserted.push(offerId);
         await emitOfferEvent(offerId, "offer.generated", { candidate: c }, null);
+
+        // Notify the customer that a new offer is available. Non-fatal:
+        // createNotification swallows its own errors and returns null, and the
+        // offer has already been persisted regardless.
+        if (recipientUserId != null) {
+          await createNotification({
+            title: "New offer available",
+            body: `New offer: ${c.title}`,
+            category: "offer",
+            severity: "info",
+            linkPath: "/customer-offers",
+            feedType: "personal",
+            notifType: "general",
+            recipient: { type: "customer_user", userId: recipientUserId },
+            ...(mspId != null ? { mspId } : {}),
+          });
+          log.info(
+            { offerId, customerId, recipientUserId },
+            "sales-offer-engine: notified customer of new offer",
+          );
+        } else if (customerId != null) {
+          log.debug(
+            { offerId, customerId },
+            "sales-offer-engine: no active portal user for customer — offer notification skipped",
+          );
+        }
       }
     } catch (err) {
       log.error({ err, idempotencyKey: c.idempotencyKey }, "sales-offer-engine: failed to persist candidate");

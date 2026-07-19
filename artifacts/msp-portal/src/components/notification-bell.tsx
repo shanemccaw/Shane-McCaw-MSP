@@ -6,27 +6,34 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
-import { Bell, X, CheckCheck, Package, CreditCard, Shield, Cpu, FileText, Activity, MessageCircle, Settings, UserPlus, AlertTriangle, Lock, Zap, Layers, Rocket } from "lucide-react";
+import { Bell, X, CheckCheck, Package, CreditCard, Shield, Cpu, FileText, Activity, MessageCircle, Settings, UserPlus, AlertTriangle, Lock, Zap, Layers, Rocket, Tag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 // ── Category icon/color map ───────────────────────────────────────────────────
+//
+// Colors flow through the Portal Foundation Redesign status tokens
+// (--color-status-{red,amber,green,blue,violet} in index.css) rather than raw
+// Tailwind palette classes, so the bell stays in step with light/dark theme.
+// The token set is intentionally small; each legacy hue maps to its nearest
+// status token, and truly neutral categories (system) use the muted surface.
 
 const CATEGORY_MAP: Record<string, { Icon: React.ElementType; color: string; bg: string }> = {
-  fulfillment: { Icon: Package,        color: "text-blue-400",   bg: "bg-blue-500/15"   },
-  payment:     { Icon: CreditCard,     color: "text-green-400",  bg: "bg-green-500/15"  },
-  security:    { Icon: Shield,         color: "text-red-400",    bg: "bg-red-500/15"    },
-  ai:          { Icon: Cpu,            color: "text-purple-400", bg: "bg-purple-500/15" },
-  sow:         { Icon: FileText,       color: "text-indigo-400", bg: "bg-indigo-500/15" },
-  signal:      { Icon: Activity,       color: "text-amber-400",  bg: "bg-amber-500/15"  },
-  message:     { Icon: MessageCircle,  color: "text-teal-400",   bg: "bg-teal-500/15"   },
-  system:      { Icon: Settings,       color: "text-gray-400",   bg: "bg-gray-500/15"   },
-  lead:        { Icon: UserPlus,       color: "text-cyan-400",   bg: "bg-cyan-500/15"   },
-  dunning:     { Icon: AlertTriangle,  color: "text-orange-400", bg: "bg-orange-500/15" },
-  consent:     { Icon: Lock,           color: "text-red-400",    bg: "bg-red-500/15"    },
-  automation:  { Icon: Zap,            color: "text-yellow-400", bg: "bg-yellow-500/15" },
-  project:     { Icon: Layers,         color: "text-blue-400",   bg: "bg-blue-500/15"   },
-  onboarding:  { Icon: Rocket,         color: "text-green-400",  bg: "bg-green-500/15"  },
+  fulfillment: { Icon: Package,        color: "text-status-blue",   bg: "bg-status-blue/15"   },
+  payment:     { Icon: CreditCard,     color: "text-status-green",  bg: "bg-status-green/15"  },
+  security:    { Icon: Shield,         color: "text-status-red",    bg: "bg-status-red/15"    },
+  ai:          { Icon: Cpu,            color: "text-status-violet", bg: "bg-status-violet/15" },
+  sow:         { Icon: FileText,       color: "text-status-blue",   bg: "bg-status-blue/15"   },
+  signal:      { Icon: Activity,       color: "text-status-amber",  bg: "bg-status-amber/15"  },
+  message:     { Icon: MessageCircle,  color: "text-status-blue",   bg: "bg-status-blue/15"   },
+  system:      { Icon: Settings,       color: "text-muted-foreground", bg: "bg-muted"         },
+  lead:        { Icon: UserPlus,       color: "text-status-blue",   bg: "bg-status-blue/15"   },
+  dunning:     { Icon: AlertTriangle,  color: "text-status-amber",  bg: "bg-status-amber/15"  },
+  consent:     { Icon: Lock,           color: "text-status-red",    bg: "bg-status-red/15"    },
+  automation:  { Icon: Zap,            color: "text-status-amber",  bg: "bg-status-amber/15"  },
+  project:     { Icon: Layers,         color: "text-status-blue",   bg: "bg-status-blue/15"   },
+  onboarding:  { Icon: Rocket,         color: "text-status-green",  bg: "bg-status-green/15"  },
+  offer:       { Icon: Tag,            color: "text-status-violet", bg: "bg-status-violet/15" },
 };
 
 const DEFAULT_CATEGORY = { Icon: Bell, color: "text-primary", bg: "bg-primary/15" };

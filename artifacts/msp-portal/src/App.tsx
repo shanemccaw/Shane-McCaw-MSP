@@ -75,6 +75,7 @@ import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
+import ComingSoonPage from "@/pages/coming-soon";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -423,6 +424,13 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={CustomerBillingPage} />
       </Route>
 
+      {/* Coming-soon placeholders for customer account actions whose backend
+          is a later phase (Password & MFA, Download My Data, Cancel Service).
+          Real navigable destinations, not faked functionality. */}
+      <Route path="/coming-soon/:feature">
+        <ProtectedRoute component={ComingSoonPage} />
+      </Route>
+
       {/* Slug root — role-aware landing.
           Render LoginPage directly instead of redirecting to /login.
           A Redirect would return null while scheduling navigation in a
@@ -680,18 +688,24 @@ function AppInner() {
 }
 
 import { SupportChatProvider } from "@/lib/support-chat-context";
+import { ThemeProvider } from "@/lib/theme-context";
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <SupportChatProvider>
-            <WouterRouter base={BASE_PATH}>
-              <AppInner />
-            </WouterRouter>
-            <Toaster richColors position="top-right" theme="dark" />
-          </SupportChatProvider>
+          {/* ThemeProvider must live inside AuthProvider — it reads the session
+              to load the account-level theme preference. It owns the `dark`
+              class on <html> from here on (main.tsx no longer hardcodes it). */}
+          <ThemeProvider>
+            <SupportChatProvider>
+              <WouterRouter base={BASE_PATH}>
+                <AppInner />
+              </WouterRouter>
+              <Toaster richColors position="top-right" />
+            </SupportChatProvider>
+          </ThemeProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
