@@ -64,6 +64,6 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Merge Health Breakdown Into Hero | f3ed188e |
 | 2026-07-19 | ✅ DONE | Auto-Trigger Sales Offer Generation On Diagnostics Completion | 128ba852 |
 | 2026-07-19 | ✅ DONE | Add Animated Revenue Belts to HQ | dc72ff38 |
-| 2026-07-19 | ✅ DONE | PowerShell Script Download for Requires-Script Findings | 6b699253 (bundled into a concurrent session's commit — see note in that commit's file list) |
+| 2026-07-19 | ✅ DONE | PowerShell Script Download for Requires-Script Findings | e453afb3 |
 | 2026-07-19 | ✅ DONE | Move Welcome Header Above Mission Control | c8fdb18b |
 | 2026-07-19 | ✅ DONE | Restyle DashboardTabs to Underline Pattern | a92bf210 |
