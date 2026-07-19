@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | Extend Document Sharing + View Tracking Beyond SOWs | |
 | 2026-07-19 | ⏳ IN FLIGHT | Interactive SOW Scope Selector | |
 | 2026-07-19 | ✅ DONE | TEMP DEBUG — Testbed-Only Assessment Scan Trigger Button (temporary debug code, not a permanent feature — awaiting a backlog removal ticket) | 967551d2 |
 | 2026-07-19 | ✅ DONE | Assessment Document Generation Trigger — Telemetry + First Login | 639e6ba4 |
