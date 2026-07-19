@@ -794,6 +794,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "evaluate_signal_policies":
       return { dryRun: true, customersChecked: 3, totalFired: 1 };
 
+    case "evaluate_engagement_offers":
+      return { dryRun: true, leadsChecked: 3, totalFired: 1 };
+
     case "calculate_priority":
     case "calculate_pricing_engine":
     case "calculate_health":
@@ -3414,6 +3417,21 @@ async function executeNode(
           const errMsg = espErr instanceof Error ? espErr.message : String(espErr);
           output = { error: `evaluate_signal_policies failed: ${errMsg.slice(0, 200)}` };
           log.warn({ runId, err: espErr }, "wf-executor: evaluate_signal_policies node failed");
+        }
+        break;
+      }
+
+      case "evaluate_engagement_offers": {
+        try {
+          const { evaluateAllEngagementOffers } = await import("./engagement-offer-engine.ts");
+          const result = await evaluateAllEngagementOffers();
+          output = { leadsChecked: result.leadsChecked, totalFired: result.totalFired };
+          log.info({ runId, ...result }, "wf-executor: evaluate_engagement_offers node executed");
+        } catch (eoeErr) {
+          nodeError = true;
+          const errMsg = eoeErr instanceof Error ? eoeErr.message : String(eoeErr);
+          output = { error: `evaluate_engagement_offers failed: ${errMsg.slice(0, 200)}` };
+          log.warn({ runId, err: eoeErr }, "wf-executor: evaluate_engagement_offers node failed");
         }
         break;
       }

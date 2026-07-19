@@ -2199,6 +2199,8 @@ export interface WfNode {
     | "update_variable"
     // Signals
     | "get_tenant_signals" | "evaluate_signal_policies"
+    // Engagement Offer Engine
+    | "evaluate_engagement_offers"
     // Intelligence Engines
     | "calculate_priority" | "calculate_pricing_engine" | "calculate_health"
     | "calculate_drift" | "calculate_forecast" | "calculate_crm" | "calculate_msp"
