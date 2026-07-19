@@ -31,6 +31,7 @@ import {
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
+import { emitWorkflowEvent } from "./workflow-executor";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -701,6 +702,15 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
     log.info({ runId, finalStatus, checksTotal, checksOk, checksError, findingsCount }, "diagnostics-runner: run completed");
 
+    await emitWorkflowEvent("diagnostics.run_completed", {
+      runId,
+      customerId,
+      mspId,
+      tenantId: resolvedTenantId,
+      findingsCount,
+      finalStatus,
+    });
+
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, findingsCount, documentId };
 
   } catch (err) {
@@ -726,6 +736,15 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       customerId,
       customerName,
       errorMessage,
+    });
+
+    await emitWorkflowEvent("diagnostics.run_completed", {
+      runId,
+      customerId,
+      mspId,
+      tenantId: resolvedTenantId,
+      findingsCount: 0,
+      finalStatus: "failed",
     });
 
     throw err;

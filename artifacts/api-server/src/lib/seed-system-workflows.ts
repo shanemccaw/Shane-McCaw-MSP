@@ -1097,6 +1097,80 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  // ── Sales Offer Engine — auto-trigger on diagnostics completion ────────────
+  {
+    name: "__system__: Diagnostics Completion — Generate Sales Offers",
+    description:
+      "Triggered when a diagnostics run finishes (diagnostics-runner.ts, event diagnostics.run_completed). " +
+      "Only acts when finalStatus == 'completed' — a failed or partial run means checks didn't finish " +
+      "cleanly, so its findings are incomplete and not a reliable basis for scoring offer candidates " +
+      "(same completed-vs-failed branch style as 'Run Assessment' above). Runs sales_offer_generate for " +
+      "the completed customer, which scores fired signals against active rule groups and persists any new " +
+      "candidates as draft sales_offers rows (persistSalesOfferCandidates also fires a per-offer customer " +
+      "notification on insert). Offers land in state 'draft' and require an MSP operator to review and " +
+      "send them (PATCH /api/sales-offers/:id/state) before they appear as 'sent' in the customer portal " +
+      "or Mission Control's finding→offer feed — this workflow only generates candidates, it never sends.",
+    triggerType: "event",
+    eventNames: ["diagnostics.run_completed"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "diagnostics.run_completed" },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 200 },
+          data: { nodeType: "condition", label: "Run Completed?", expression: "finalStatus == 'completed'" },
+        },
+        {
+          id: "generate",
+          type: "sales_offer_generate",
+          position: { x: 150, y: 340 },
+          data: {
+            nodeType: "sales_offer_generate",
+            label: "Generate Sales Offer Candidates",
+            tenantId: "{{customerId}}",
+            mspId: "{{mspId}}",
+          },
+        },
+        {
+          id: "branch_found",
+          type: "condition",
+          position: { x: 150, y: 480 },
+          data: { nodeType: "condition", label: "Any Candidates?", expression: "candidateCount > 0" },
+        },
+        {
+          id: "notify",
+          type: "create_notification",
+          position: { x: 0, y: 620 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: Offer Candidates Generated",
+            title: "New sales offer candidate(s) ready for review",
+            body: "{{candidateCount}} offer candidate(s) generated from diagnostics run {{runId}} (customer {{customerId}}). Review and send from Sales Offers.",
+            type: "general",
+          },
+        },
+        { id: "end_notified", type: "end", position: { x: 0, y: 760 }, data: { nodeType: "end", label: "Done" } },
+        { id: "end_none", type: "end", position: { x: 300, y: 620 }, data: { nodeType: "end", label: "No new candidates" } },
+        { id: "end_skip", type: "end", position: { x: 450, y: 340 }, data: { nodeType: "end", label: "Run not completed — skip" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "branch" },
+        { id: "e2", source: "branch", target: "generate", sourceHandle: "true" },
+        { id: "e3", source: "branch", target: "end_skip", sourceHandle: "false" },
+        { id: "e4", source: "generate", target: "branch_found" },
+        { id: "e5", source: "branch_found", target: "notify", sourceHandle: "true" },
+        { id: "e6", source: "branch_found", target: "end_none", sourceHandle: "false" },
+        { id: "e7", source: "notify", target: "end_notified" },
+      ],
+    },
+  },
   {
     name: "SOW Generation",
     description: "Generates a Consolidated SOW document for a client engagement. Accepts clientUserId, projectId, and title from the trigger payload. On generation failure, refreshes the M365 profile and intelligence tables before retrying, then sends a failure notification if the retry also fails.",
