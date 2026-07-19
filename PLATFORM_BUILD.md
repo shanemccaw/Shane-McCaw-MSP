@@ -72,3 +72,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Reject cross-MSP tenant consent conflicts | c6d764de |
 | 2026-07-19 | ✅ DONE | Fix Missing Diagnostics Runs List Endpoint + Malformed SSE URL | 16c3aa0a |
 | 2026-07-19 | ✅ DONE | Build 5-Way Resource Category Split | 2ebb9b2f |
+| 2026-07-19 | ⏳ IN FLIGHT | Assessment RBAC Role — Foundation | — |
