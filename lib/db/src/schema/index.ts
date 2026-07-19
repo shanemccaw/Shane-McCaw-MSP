@@ -1043,6 +1043,21 @@ export const quizLeadsTable = pgTable("quiz_leads", {
   recommendedService: text("recommended_service"),
   categoryScores: jsonb("category_scores").$type<Record<string, number>>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
   analysisText: jsonb("analysis_text").$type<QuizAnalysisText>().default({ whatThisMeans: "", whyThisFits: "", roiProjection: "" }),
+  leadOfferResult: jsonb("lead_offer_result").$type<{
+    inferredSignals: { signalKey: string; confidence: number }[];
+    candidates: {
+      serviceId: number;
+      serviceName: string;
+      title: string;
+      rationale: string;
+      basePriceCents: number;
+      adjustedPriceCents: number;
+      aiPricingReasoning: string | null;
+      score: number;
+      expirationDays: number;
+    }[];
+    generatedAt: string;
+  } | null>().default(null),
   conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
   quizType: text("quiz_type").notNull().default("copilot"),
   detectedSeats: integer("detected_seats"),
