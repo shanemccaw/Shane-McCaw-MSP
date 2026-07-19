@@ -2003,7 +2003,11 @@ export type QuickWinPresentation = typeof quickWinPresentationsTable.$inferSelec
 // ── Presentation document dwell-time analytics ────────────────────────────────
 export const presentationDocViewsTable = pgTable("presentation_doc_views", {
   id: serial("id").primaryKey(),
-  presentationId: integer("presentation_id").notNull().references(() => quickWinPresentationsTable.id, { onDelete: "cascade" }),
+  // Nullable: a view/dwell event for a document opened outside a presentation
+  // (e.g. shared directly from the customer document hub) has no presentation.
+  // documentId is required in that case — see the /portal/documents/:id/share
+  // and /api/public/documents/:shareToken routes in portal.ts.
+  presentationId: integer("presentation_id").references(() => quickWinPresentationsTable.id, { onDelete: "cascade" }),
   documentId: integer("document_id").references(() => insightsGeneratedDocumentsTable.id, { onDelete: "set null" }),
   documentTitle: text("document_title"),
   viewedAt: timestamp("viewed_at").notNull().defaultNow(),
@@ -2021,7 +2025,11 @@ export const quickWinResultSharesTable = pgTable("quick_win_result_shares", {
   id: serial("id").primaryKey(),
   clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   shareToken: text("share_token").notNull().unique(),
-  scoresSnapshot: jsonb("scores_snapshot").$type<Partial<Record<string, number>>>().notNull(),
+  // "quick_win_scores" (original use: scoresSnapshot required) vs "document"
+  // (general document share: documentId required, scoresSnapshot null).
+  shareKind: text("share_kind", { enum: ["quick_win_scores", "document"] }).notNull().default("quick_win_scores"),
+  documentId: integer("document_id").references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
+  scoresSnapshot: jsonb("scores_snapshot").$type<Partial<Record<string, number>>>(),
   latestDate: timestamp("latest_date"),
   expiresAt: timestamp("expires_at").notNull(),
   viewCount: integer("view_count").notNull().default(0),

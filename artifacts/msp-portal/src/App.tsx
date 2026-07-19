@@ -37,6 +37,7 @@ import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import CustomerSowPage from "@/pages/customer-sow";
 import MspCustomerSowPage from "@/pages/msp-customer-sow";
 import MspSowPublicPage from "@/pages/msp-sow-public";
+import SharedDocumentPublicPage from "@/pages/shared-document-public";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import AcceptInvitePage from "@/pages/accept-invite";
@@ -638,6 +639,11 @@ function Router() {
       {/* Public MSP SOW viewer — share token, no auth required */}
       <Route path="/sow/:shareToken">
         <MspSowPublicPage />
+      </Route>
+
+      {/* Public shared-document viewer — share token, no auth required */}
+      <Route path="/shared-documents/:shareToken">
+        <SharedDocumentPublicPage />
       </Route>
 
       {/* Public invite accept — no auth required */}

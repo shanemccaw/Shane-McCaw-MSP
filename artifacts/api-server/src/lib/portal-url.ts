@@ -31,37 +31,48 @@ export function getPortalBaseUrl(): string {
 }
 
 /**
+ * Domain selection shared by getPortalBaseUrl()/getMspPortalBaseUrl() — same
+ * priority order, but WITHOUT an artifact suffix (/crm or /portal) appended.
+ */
+function getDomainBase(): string {
+  if (process.env.PORTAL_BASE_URL) {
+    return process.env.PORTAL_BASE_URL.replace(/\/crm\/?$/, "");
+  }
+
+  const domains = (process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+
+  const custom = domains.find((d) => !d.includes("replit."));
+  if (custom) return `https://${custom}`;
+
+  const replitApp = domains.find((d) => d.endsWith(".replit.app"));
+  if (replitApp) return `https://${replitApp}`;
+
+  const replitDev = domains.find((d) => d.endsWith(".replit.dev")) ?? process.env.REPLIT_DEV_DOMAIN;
+  if (replitDev) return `https://${replitDev}`;
+
+  return "";
+}
+
+/**
+ * Returns the base URL for the msp-portal artifact (/portal), NOT the CRM
+ * artifact (/crm) that getPortalBaseUrl() targets. Use this for any link
+ * meant to land a customer/client user in msp-portal — e.g. share links
+ * for documents, SOWs, presentations.
+ */
+export function getMspPortalBaseUrl(): string {
+  return `${getDomainBase()}/portal`;
+}
+
+/**
  * Builds the account-setup URL that lands in the msp-portal artifact
  * (/portal/account-setup), NOT in the CRM artifact (/crm).
  *
  * Do NOT use getPortalBaseUrl() for this — it always appends /crm and would
  * send new customers to the wrong artifact.
- *
- * Priority mirrors getPortalBaseUrl() for domain selection but never appends /crm.
- * PORTAL_BASE_URL (if set) has its /crm suffix stripped before use.
  */
 export function buildAccountSetupUrl(token: string): string {
-  const domainBase = (() => {
-    if (process.env.PORTAL_BASE_URL) {
-      return process.env.PORTAL_BASE_URL.replace(/\/crm\/?$/, "");
-    }
-
-    const domains = (process.env.REPLIT_DOMAINS ?? "")
-      .split(",")
-      .map((d) => d.trim())
-      .filter(Boolean);
-
-    const custom = domains.find((d) => !d.includes("replit."));
-    if (custom) return `https://${custom}`;
-
-    const replitApp = domains.find((d) => d.endsWith(".replit.app"));
-    if (replitApp) return `https://${replitApp}`;
-
-    const replitDev = domains.find((d) => d.endsWith(".replit.dev")) ?? process.env.REPLIT_DEV_DOMAIN;
-    if (replitDev) return `https://${replitDev}`;
-
-    return "";
-  })();
-
-  return `${domainBase}/portal/account-setup?setup_token=${token}`;
+  return `${getMspPortalBaseUrl()}/account-setup?setup_token=${token}`;
 }

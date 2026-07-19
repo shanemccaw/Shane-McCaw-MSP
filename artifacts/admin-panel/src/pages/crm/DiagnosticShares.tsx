@@ -14,7 +14,10 @@ interface ShareClient {
 interface ResultShare {
   id: number;
   shareToken: string;
-  scoresSnapshot: Partial<Record<string, number>>;
+  shareKind: "quick_win_scores" | "document";
+  scoresSnapshot: Partial<Record<string, number>> | null;
+  documentId: number | null;
+  documentTitle: string | null;
   latestDate: string | null;
   expiresAt: string;
   viewCount: number;
@@ -110,8 +113,14 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
   );
 }
 
-function shareUrl(token: string): string {
-  return `${window.location.origin}/crm/shared-results/${token}`;
+function shareUrl(share: ResultShare): string {
+  if (share.shareKind === "document") {
+    // Document shares are served by the msp-portal artifact (mounted at
+    // /portal on this same origin — same convention as PresentationsPage's
+    // /portal/presentation/:token links), not this CRM app.
+    return `${window.location.origin}/portal/shared-documents/${share.shareToken}`;
+  }
+  return `${window.location.origin}/crm/shared-results/${share.shareToken}`;
 }
 
 export default function DiagnosticSharesPage() {
@@ -124,7 +133,7 @@ export default function DiagnosticSharesPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   function copyLink(share: ResultShare) {
-    const url = shareUrl(share.shareToken);
+    const url = shareUrl(share);
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(share.id);
       toast({ title: "Link copied", description: `Share link for ${share.client.name ?? share.client.email} copied to clipboard.` });
@@ -213,9 +222,9 @@ export default function DiagnosticSharesPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-semibold text-white">Diagnostic Result Shares</h2>
+        <h2 className="text-lg font-semibold text-white">Shared Links</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Clients who shared their M365 diagnostic results — a high view count signals internal buy-in worth following up.
+          Clients who shared diagnostic results or a document with a coworker — a high view count signals internal buy-in worth following up.
         </p>
       </div>
 
@@ -356,10 +365,12 @@ export default function DiagnosticSharesPage() {
                         </Link>
                       </td>
 
-                      {/* Scores */}
+                      {/* Scores / shared document */}
                       <td className="px-4 py-3">
                         <div className="space-y-1">
-                          {scores.length === 0 ? (
+                          {share.shareKind === "document" ? (
+                            <span className="text-xs text-white">{share.documentTitle ?? "Document"}</span>
+                          ) : scores.length === 0 ? (
                             <span className="text-xs text-muted-foreground/60">—</span>
                           ) : (
                             scores.map(([cat, score]) => (
@@ -433,7 +444,7 @@ export default function DiagnosticSharesPage() {
 
                           {/* Open in new tab */}
                           <a
-                            href={shareUrl(share.shareToken)}
+                            href={shareUrl(share)}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Open share link"

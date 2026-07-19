@@ -13,11 +13,22 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Check,
   Clock,
+  Copy,
   Download,
   FileText,
   FolderOpen,
   Loader2,
+  Share2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -134,6 +145,86 @@ function DownloadButton({
   );
 }
 
+// ── Sub-component: Share dialog ──────────────────────────────────────────────
+
+function ShareDialog({
+  docId,
+  title,
+  onClose,
+}: {
+  docId: number;
+  title: string;
+  onClose: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchWithAuth(`/api/portal/documents/${docId}/share`, { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          toast.error("Could not generate a share link. Please try again.");
+          return;
+        }
+        const data = (await res.json()) as { shareUrl: string; expiresAt: string };
+        if (mounted) {
+          setShareUrl(data.shareUrl);
+          setExpiresAt(data.expiresAt);
+        }
+      })
+      .catch(() => toast.error("Could not generate a share link. Please try again."))
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]);
+
+  const handleCopy = () => {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => toast.error("Could not copy link. Please copy it manually."));
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Share "{title}"</DialogTitle>
+          <DialogDescription>
+            Anyone with this link can view this document without signing in. The link expires
+            in 30 days.
+          </DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <Skeleton className="h-9 w-full rounded-lg" />
+        ) : shareUrl ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Input readOnly value={shareUrl} className="text-xs font-mono" onFocus={(e) => e.target.select()} />
+              <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={handleCopy}>
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            {expiresAt && (
+              <p className="text-xs text-muted-foreground">
+                Expires {new Date(expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Unable to generate a share link for this document.</p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Sub-component: Document viewer modal ───────────────────────────────────────
 
 function DocumentViewer({
@@ -212,6 +303,7 @@ export default function CustomerDocumentsPage() {
   const [loadingReports, setLoadingReports] = useState(true);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [viewingDoc, setViewingDoc] = useState<InsightDocument | null>(null);
+  const [sharingDoc, setSharingDoc] = useState<InsightDocument | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -311,6 +403,15 @@ export default function CustomerDocumentsPage() {
                       >
                         View
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() => setSharingDoc(doc)}
+                      >
+                        <Share2 className="size-3" />
+                        Share
+                      </Button>
                       <DownloadButton
                         url={`/api/portal/insights-documents/${doc.id}/pdf`}
                         filename={`${(doc.title ?? "document").replace(/[^a-zA-Z0-9 ]/g, "")}.pdf`}
@@ -371,6 +472,15 @@ export default function CustomerDocumentsPage() {
           docId={viewingDoc.id}
           title={viewingDoc.title}
           onClose={() => setViewingDoc(null)}
+        />
+      )}
+
+      {/* Share dialog */}
+      {sharingDoc && (
+        <ShareDialog
+          docId={sharingDoc.id}
+          title={sharingDoc.title}
+          onClose={() => setSharingDoc(null)}
         />
       )}
     </AppShell>

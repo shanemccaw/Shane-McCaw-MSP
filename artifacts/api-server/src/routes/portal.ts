@@ -30,7 +30,7 @@ import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCa
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
-import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
+import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { fireWorkflowsForEvent, emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
@@ -3016,6 +3016,220 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/pdf failed");
     res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+// ── CLIENT: General document sharing (extends the SOW share-link pattern to
+// any insights_generated_documents row — assessments, health reports, roadmaps) ──
+
+router.get("/portal/documents/:id/share", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const now = new Date();
+    const [existing] = await db
+      .select({
+        shareToken: quickWinResultSharesTable.shareToken,
+        expiresAt: quickWinResultSharesTable.expiresAt,
+        createdAt: quickWinResultSharesTable.createdAt,
+      })
+      .from(quickWinResultSharesTable)
+      .where(
+        and(
+          eq(quickWinResultSharesTable.shareKind, "document"),
+          eq(quickWinResultSharesTable.documentId, id),
+          eq(quickWinResultSharesTable.clientUserId, userId),
+          gte(quickWinResultSharesTable.expiresAt, now),
+        ),
+      )
+      .orderBy(desc(quickWinResultSharesTable.createdAt))
+      .limit(1);
+
+    if (!existing) { res.json({ share: null }); return; }
+
+    const baseUrl = getMspPortalBaseUrl();
+    res.json({
+      share: {
+        shareUrl: `${baseUrl}/shared-documents/${existing.shareToken}`,
+        expiresAt: existing.expiresAt.toISOString(),
+        createdAt: existing.createdAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "portal/documents/:id/share (get) failed");
+    res.status(500).json({ error: "Failed to load share link" });
+  }
+});
+
+router.post("/portal/documents/:id/share", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [doc] = await db
+      .select({
+        id: insightsGeneratedDocumentsTable.id,
+        status: insightsGeneratedDocumentsTable.status,
+        docType: insightsGeneratedDocumentsTable.docType,
+        customerId: insightsGeneratedDocumentsTable.customerId,
+      })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, id));
+
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+    if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!["approved", "delivered"].includes(doc.status ?? "") && doc.docType !== "scoped_sow") {
+      res.status(403).json({ error: "Document not available to share" });
+      return;
+    }
+
+    // Revoke any existing share for THIS document (per-document, not per-client —
+    // sharing one document must not invalidate a colleague's link to another).
+    await db.delete(quickWinResultSharesTable)
+      .where(
+        and(
+          eq(quickWinResultSharesTable.shareKind, "document"),
+          eq(quickWinResultSharesTable.documentId, id),
+        ),
+      );
+
+    const { randomBytes } = await import("crypto");
+    const shareToken = randomBytes(32).toString("hex");
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    const [share] = await db.insert(quickWinResultSharesTable).values({
+      clientUserId: userId,
+      shareToken,
+      shareKind: "document",
+      documentId: id,
+      expiresAt,
+    }).returning({ id: quickWinResultSharesTable.id, shareToken: quickWinResultSharesTable.shareToken });
+
+    const baseUrl = getMspPortalBaseUrl();
+    const shareUrl = `${baseUrl}/shared-documents/${share.shareToken}`;
+
+    res.json({ shareUrl, expiresAt: expiresAt.toISOString() });
+  } catch (err) {
+    req.log.error({ err }, "portal/documents/:id/share (post) failed");
+    res.status(500).json({ error: "Failed to generate share link" });
+  }
+});
+
+// ── PUBLIC: Shared document viewer — share token, no auth required ───────────
+// Mirrors /public/sows/:shareToken (msp-sow.ts). Records a view event into
+// presentation_doc_views (presentationId null — this view happened outside any
+// Quick Win presentation) so document shares get the same real dwell/view
+// tracking data as presentation docs do.
+
+router.get("/public/documents/:shareToken", async (req: Request, res: Response) => {
+  try {
+    const shareToken = String(req.params.shareToken ?? "");
+    if (!shareToken) { res.status(400).json({ error: "Missing token" }); return; }
+
+    const [share] = await db
+      .select({
+        id: quickWinResultSharesTable.id,
+        documentId: quickWinResultSharesTable.documentId,
+        expiresAt: quickWinResultSharesTable.expiresAt,
+        viewCount: quickWinResultSharesTable.viewCount,
+      })
+      .from(quickWinResultSharesTable)
+      .where(
+        and(
+          eq(quickWinResultSharesTable.shareToken, shareToken),
+          eq(quickWinResultSharesTable.shareKind, "document"),
+        ),
+      )
+      .limit(1);
+
+    if (!share || !share.documentId) { res.status(404).json({ error: "Share link not found" }); return; }
+    if (new Date() > share.expiresAt) { res.status(410).json({ error: "This share link has expired" }); return; }
+
+    const [doc] = await db
+      .select({
+        id: insightsGeneratedDocumentsTable.id,
+        title: insightsGeneratedDocumentsTable.title,
+        htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+        docType: insightsGeneratedDocumentsTable.docType,
+      })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, share.documentId));
+
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+
+    // Fire-and-forget: bump view count + record a real view event.
+    db.update(quickWinResultSharesTable)
+      .set({ viewCount: share.viewCount + 1 })
+      .where(eq(quickWinResultSharesTable.id, share.id))
+      .catch(() => { /* ignore */ });
+    db.insert(presentationDocViewsTable).values({
+      presentationId: null,
+      documentId: doc.id,
+      documentTitle: doc.title,
+      eventType: "view",
+    }).catch(() => { /* ignore */ });
+
+    res.json({
+      title: doc.title,
+      htmlContent: stripStagedForReviewBanner(doc.htmlContent ?? ""),
+      docType: doc.docType,
+      expiresAt: share.expiresAt.toISOString(),
+    });
+  } catch (err) {
+    log.error({ err }, "public/documents/:shareToken failed");
+    res.status(500).json({ error: "Failed to load document" });
+  }
+});
+
+// ── PUBLIC: Dwell-time tracking for a shared document ────────────────────────
+// Mirrors /portal/presentations/:id/doc-views (below) for the non-presentation
+// share path — same event shape, so admin analytics that read
+// presentation_doc_views by documentId see consistent data either way.
+
+router.post("/public/documents/:shareToken/doc-views", async (req: Request, res: Response) => {
+  try {
+    const shareToken = String(req.params.shareToken ?? "");
+    const { dwellSeconds } = req.body as { dwellSeconds?: number };
+    if (typeof dwellSeconds !== "number" || dwellSeconds < 0) {
+      res.status(400).json({ error: "dwellSeconds must be a non-negative number" });
+      return;
+    }
+
+    const [share] = await db
+      .select({ documentId: quickWinResultSharesTable.documentId, expiresAt: quickWinResultSharesTable.expiresAt })
+      .from(quickWinResultSharesTable)
+      .where(
+        and(
+          eq(quickWinResultSharesTable.shareToken, shareToken),
+          eq(quickWinResultSharesTable.shareKind, "document"),
+        ),
+      )
+      .limit(1);
+
+    if (!share || !share.documentId) { res.status(404).json({ error: "Share link not found" }); return; }
+    if (new Date() > share.expiresAt) { res.status(410).json({ error: "This share link has expired" }); return; }
+
+    const [doc] = await db
+      .select({ title: insightsGeneratedDocumentsTable.title })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, share.documentId));
+
+    await db.insert(presentationDocViewsTable).values({
+      presentationId: null,
+      documentId: share.documentId,
+      documentTitle: doc?.title ?? null,
+      dwellSeconds: Math.round(dwellSeconds),
+      eventType: "dwell",
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    log.error({ err }, "public/documents/:shareToken/doc-views failed");
+    res.status(500).json({ error: "Failed to record view" });
   }
 });
 
@@ -13736,9 +13950,17 @@ router.post("/portal/quick-win/share-results", requireAuth, async (req: Request,
       if (!latestDate || catLatest > latestDate) latestDate = catLatest;
     }
 
-    // Revoke any existing shares for this client (enforces at most one active share)
+    // Revoke any existing quick-win-scores shares for this client (enforces at
+    // most one active share of THIS kind — scoped by shareKind so this never
+    // touches the client's general-document shares, which are a separate
+    // link family sharing this table).
     await db.delete(quickWinResultSharesTable)
-      .where(eq(quickWinResultSharesTable.clientUserId, userId));
+      .where(
+        and(
+          eq(quickWinResultSharesTable.clientUserId, userId),
+          eq(quickWinResultSharesTable.shareKind, "quick_win_scores"),
+        ),
+      );
 
     const { randomUUID } = await import("crypto");
     const shareToken = randomUUID();
@@ -13770,7 +13992,10 @@ router.get("/admin/quick-win/result-shares", requireAdmin, async (_req: Request,
       .select({
         id: quickWinResultSharesTable.id,
         shareToken: quickWinResultSharesTable.shareToken,
+        shareKind: quickWinResultSharesTable.shareKind,
         scoresSnapshot: quickWinResultSharesTable.scoresSnapshot,
+        documentId: quickWinResultSharesTable.documentId,
+        documentTitle: insightsGeneratedDocumentsTable.title,
         latestDate: quickWinResultSharesTable.latestDate,
         expiresAt: quickWinResultSharesTable.expiresAt,
         viewCount: quickWinResultSharesTable.viewCount,
@@ -13782,13 +14007,17 @@ router.get("/admin/quick-win/result-shares", requireAdmin, async (_req: Request,
       })
       .from(quickWinResultSharesTable)
       .innerJoin(usersTable, eq(quickWinResultSharesTable.clientUserId, usersTable.id))
+      .leftJoin(insightsGeneratedDocumentsTable, eq(quickWinResultSharesTable.documentId, insightsGeneratedDocumentsTable.id))
       .orderBy(desc(quickWinResultSharesTable.viewCount), desc(quickWinResultSharesTable.createdAt));
 
     res.json({
       shares: rows.map(r => ({
         id: r.id,
         shareToken: r.shareToken,
+        shareKind: r.shareKind,
         scoresSnapshot: r.scoresSnapshot,
+        documentId: r.documentId,
+        documentTitle: r.documentTitle,
         latestDate: r.latestDate?.toISOString() ?? null,
         expiresAt: r.expiresAt.toISOString(),
         viewCount: r.viewCount,
@@ -13813,8 +14042,16 @@ router.get("/portal/quick-win/shared/:token", async (req: Request, res: Response
     const { token } = req.params as { token: string };
     if (!token) { res.status(400).json({ error: "Missing token" }); return; }
 
+    // Scoped to shareKind "quick_win_scores" so a general-document share token
+    // (see /public/documents/:shareToken) can never resolve here with a null
+    // scoresSnapshot — they are distinct link families sharing one table.
     const [share] = await db.select().from(quickWinResultSharesTable)
-      .where(eq(quickWinResultSharesTable.shareToken, token))
+      .where(
+        and(
+          eq(quickWinResultSharesTable.shareToken, token),
+          eq(quickWinResultSharesTable.shareKind, "quick_win_scores"),
+        ),
+      )
       .limit(1);
 
     if (!share) { res.status(404).json({ error: "Share link not found" }); return; }
