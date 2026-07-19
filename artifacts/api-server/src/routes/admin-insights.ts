@@ -2517,13 +2517,13 @@ export async function executeAutomation(
   const now = new Date();
   const runLog: RunLogEntry[] = [];
 
-  const log = (level: RunLogEntry["level"], message: string) => {
+  const recordRunLog = (level: RunLogEntry["level"], message: string) => {
     const entry: RunLogEntry = { ts: new Date().toISOString(), level, message };
     runLog.push(entry);
     onLog?.(entry);
   };
 
-  log("info", "Automation started");
+  recordRunLog("info", "Automation started");
 
   // Atomically claim the lock — only proceeds if running_at is currently NULL
   const [claimed] = await db.update(insightsAutomationsTable)
@@ -2540,7 +2540,7 @@ export async function executeAutomation(
     // ── 1. Trigger linked Azure script (if configured) ─────────────────────
     if (automation.linkedRunbookScriptId) {
       if (isAzureConfigured()) {
-        log("info", "Resolving linked Azure script…");
+        recordRunLog("info", "Resolving linked Azure script…");
         try {
           // Use the script ID as the job name (script name column has been removed)
           const scriptId = automation.linkedRunbookScriptId;
@@ -2550,30 +2550,30 @@ export async function executeAutomation(
             { automationId, scriptId, jobId: job.jobId },
             "insights: automation triggered Azure script job",
           );
-          log("info", `Triggered Azure script job ${job.jobId} for script ${scriptId}`);
+          recordRunLog("info", `Triggered Azure script job ${job.jobId} for script ${scriptId}`);
         } catch (scriptErr) {
           log.warn({ scriptErr, automationId }, "insights: Azure script trigger failed (non-fatal)");
-          log("warn", `Azure script trigger failed (non-fatal): ${String(scriptErr)}`);
+          recordRunLog("warn", `Azure script trigger failed (non-fatal): ${String(scriptErr)}`);
         }
       } else {
         log.info({ automationId }, "insights: Azure not configured — skipping script trigger");
-        log("warn", "Azure not configured — script trigger skipped");
+        recordRunLog("warn", "Azure not configured — script trigger skipped");
       }
     }
 
     // ── 2. Generate document (if enabled) ───────────────────────────────────
     if (automation.generateDocument) {
-      log("info", "Fetching telemetry runs for document generation…");
+      recordRunLog("info", "Fetching telemetry runs for document generation…");
       const runs = await fetchRunsForCustomer(
         automation.customerId ?? undefined,
         automation.projectId  ?? undefined,
         50,
       );
-      log("info", `Loaded ${runs.length} telemetry run(s)`);
+      recordRunLog("info", `Loaded ${runs.length} telemetry run(s)`);
       const healthScores = automation.customerId ? await fetchClientHealthScores(automation.customerId) : null;
       const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
       const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
-      log("info", `Scores — Security: ${scores.security}/100, Compliance: ${scores.compliance}/100, Copilot: ${scores.copilot}/100, Governance: ${scores.governance}/100 (source: ${healthScores ? "health-history" : "run-impacts"})`);
+      recordRunLog("info", `Scores — Security: ${scores.security}/100, Compliance: ${scores.compliance}/100, Copilot: ${scores.copilot}/100, Governance: ${scores.governance}/100 (source: ${healthScores ? "health-history" : "run-impacts"})`);
 
       const docType   = REPORT_DOC_TYPES_FOR_AUTOMATION[automation.automationType] ?? "executive_summary";
       const docLabel  = REPORT_DOC_TYPE_LABELS_AUTO[docType] ?? docType;
@@ -2593,7 +2593,7 @@ Configuration telemetry:
 ${profileSample || "  No telemetry captured yet."}
 Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Include: branded header, score summary table, findings section, recommendations section, footer. 400-900 words.`;
 
-      log("info", `AI document generation started (${docLabel})…`);
+      recordRunLog("info", `AI document generation started (${docLabel})…`);
       const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
@@ -2602,7 +2602,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
       });
 
       const htmlContent = extractAiHtml(aiResponse);
-      log("info", "AI generation complete — saving document draft…");
+      recordRunLog("info", "AI generation complete — saving document draft…");
 
       const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
         customerId: automation.customerId ?? null,
@@ -2622,7 +2622,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id));
 
       log.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and auto-approved");
-      log("info", `Document saved as draft — "${automation.name} — ${reportDate}" (ID ${newDoc!.id})`);
+      recordRunLog("info", `Document saved as draft — "${automation.name} — ${reportDate}" (ID ${newDoc!.id})`);
 
       // ── Notify admins that a new report is ready for review ─────────────────
       const notifTitle = `New report ready: ${automation.name}`;
@@ -2645,11 +2645,11 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
               linkPath: notifLink,
             })),
           );
-          log("info", `Admin notification sent to ${admins.length} admin(s)`);
+          recordRunLog("info", `Admin notification sent to ${admins.length} admin(s)`);
         }
       } catch (notifErr) {
         log.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");
-        log("warn", "Failed to insert admin notifications (non-fatal)");
+        recordRunLog("warn", "Failed to insert admin notifications (non-fatal)");
       }
 
       void sendWebPushToAdmins({
@@ -2657,13 +2657,13 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         body:     notifBody,
         linkPath: notifLink,
       });
-      log("info", "Web push notification dispatched");
+      recordRunLog("info", "Web push notification dispatched");
     }
 
     // ── 3. Update last/next run timestamps ──────────────────────────────────
     const nextRunAt = nextRunFromCron(automation.cronExpression);
-    log("info", `Next scheduled run: ${nextRunAt ? nextRunAt.toISOString() : "N/A"}`);
-    log("info", "Automation completed successfully");
+    recordRunLog("info", `Next scheduled run: ${nextRunAt ? nextRunAt.toISOString() : "N/A"}`);
+    recordRunLog("info", "Automation completed successfully");
 
     await db.update(insightsAutomationsTable)
       .set({ lastRunAt: now, nextRunAt, updatedAt: now, lastRunLog: runLog })
@@ -2671,7 +2671,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
 
   } catch (err) {
     log.warn({ err, automationId }, "insights: automation execution failed (non-fatal)");
-    log("error", `Automation failed: ${String(err)}`);
+    recordRunLog("error", `Automation failed: ${String(err)}`);
     // Persist the partial log even on failure
     await db.update(insightsAutomationsTable)
       .set({ lastRunAt: now, updatedAt: now, lastRunLog: runLog })

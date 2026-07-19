@@ -2101,7 +2101,7 @@ export interface WfNode {
     | "set_variable"
     | "update_variable"
     // Signals
-    | "get_tenant_signals"
+    | "get_tenant_signals" | "evaluate_signal_policies"
     // Intelligence Engines
     | "calculate_priority" | "calculate_pricing_engine" | "calculate_health"
     | "calculate_drift" | "calculate_forecast" | "calculate_crm" | "calculate_msp"

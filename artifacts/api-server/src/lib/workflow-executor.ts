@@ -75,7 +75,7 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent } from "./sse-channels";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
-import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
@@ -3380,8 +3380,8 @@ async function executeNode(
             const { firedSignals } = computeTenantSignals(
               mergedProfile,
               allFindings,
-              signalRules as Parameters<typeof computeTenantSignals>[2],
-              signalGroups as Parameters<typeof computeTenantSignals>[3],
+              coerceDecayRate(signalRules as unknown as SignalDerivationRule[]) as Parameters<typeof computeTenantSignals>[2],
+              coerceDecayRate(signalGroups as unknown as SignalRuleGroup[]) as Parameters<typeof computeTenantSignals>[3],
               disabledSignalKeys,
               gtsCustomerId != null && gtsMspId != null ? { customerId: gtsCustomerId, mspId: gtsMspId } : undefined,
             );
