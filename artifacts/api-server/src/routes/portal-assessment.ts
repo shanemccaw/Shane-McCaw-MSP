@@ -47,11 +47,12 @@ import {
   clientServicesTable,
   servicesTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, ne, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
 import { runDiagnostics } from "../lib/diagnostics-runner";
+import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
 import { randomUUID } from "crypto";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -373,6 +374,313 @@ router.post(
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/assessment/debug-trigger-scan failed");
       if (!res.headersSent) res.status(500).json({ error: "Failed to trigger scan" });
+    }
+  },
+);
+
+// ── Interactive SOW scope selector (Assessment wizard, task 4) ─────────────────
+//
+// The consolidated SOW is the last document in the wizard sequence. Unlike the
+// read-only findings reports, the customer can toggle optional workstream phases
+// on/off here. Two price surfaces:
+//   • Instant, free preview — the client sums the already-stored per-phase
+//     sowPricingLines on every checkbox click. No AI call, no round-trip.
+//   • Deliberate regeneration — POST .../sow/select produces a real, updated,
+//     telemetry-grounded SOW for the narrower scope (a genuine AI cost), UNLESS
+//     the requested scope exactly matches a version already in storage (e.g.
+//     "reset to full scope" restores the original document), in which case that
+//     stored version is simply re-activated for free.
+//
+// Versioning: exactly one consolidated_sow row is "approved" (active) at a time;
+// every superseded version is "archived" (hidden by the reader filters but still
+// retrievable by exact-scope match). The generator writes those transitions in
+// supersedeMode: "archive"; this route owns the free re-activation path.
+//
+// Pricing window (30-day / 72-hour rule): the SOW and its price are valid for 30
+// days from the first generation; a 72-hour pay-in-full discount window opens at
+// that same anchor. There is no dedicated timestamp column — the anchor is the
+// earliest non-failed consolidated_sow row's createdAt, which is preserved across
+// regenerations (superseded rows are archived, not deleted), so re-scoping never
+// resets the clock. The actual pay-in-full vs phased choice is task 5; this route
+// only surfaces where the customer sits in the window.
+
+const SOW_DOC_TYPE = "consolidated_sow";
+const DISCOUNT_WINDOW_MS = 72 * 60 * 60 * 1000; // 72 hours
+const VALIDITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Statuses that represent a real, persisted SOW (anchor-eligible); excludes
+// "generating" (not yet a document) and "failed" (never became one).
+const SOW_REAL_STATUSES = ["approved", "delivered", "archived"] as const;
+const SOW_ACTIVE_STATUSES = ["approved", "delivered"] as const;
+
+type SowPricingLineRow = {
+  title: string;
+  scope: string;
+  priceUsd: number;
+  notes?: string;
+  line_type?: "workstream" | "adjustment";
+  weeks?: number;
+  deliveryDate?: string;
+};
+
+interface SowDocRow {
+  id: number;
+  projectId: number | null;
+  title: string;
+  status: string;
+  htmlContent: string;
+  sowPricingLines: SowPricingLineRow[] | null;
+  sowTotalPrice: string | null;
+  createdAt: Date;
+}
+
+function loadSowDocs(userId: number): Promise<SowDocRow[]> {
+  return db
+    .select({
+      id: insightsGeneratedDocumentsTable.id,
+      projectId: insightsGeneratedDocumentsTable.projectId,
+      title: insightsGeneratedDocumentsTable.title,
+      status: insightsGeneratedDocumentsTable.status,
+      htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+      sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+      createdAt: insightsGeneratedDocumentsTable.createdAt,
+    })
+    .from(insightsGeneratedDocumentsTable)
+    .where(
+      and(
+        eq(insightsGeneratedDocumentsTable.customerId, userId),
+        eq(insightsGeneratedDocumentsTable.docType, SOW_DOC_TYPE),
+        ne(insightsGeneratedDocumentsTable.status, "failed"),
+      ),
+    )
+    .orderBy(insightsGeneratedDocumentsTable.createdAt) as Promise<SowDocRow[]>;
+}
+
+const linesOf = (d: SowDocRow): SowPricingLineRow[] => (d.sowPricingLines ?? []) as SowPricingLineRow[];
+// Only an explicit "adjustment" line_type is a mandatory (non-toggleable) adjustment;
+// anything else (incl. legacy rows without line_type) is treated as a toggleable workstream.
+const workstreamLinesOf = (d: SowDocRow): SowPricingLineRow[] => linesOf(d).filter((l) => l.line_type !== "adjustment");
+const adjustmentLinesOf = (d: SowDocRow): SowPricingLineRow[] => linesOf(d).filter((l) => l.line_type === "adjustment");
+const workstreamTitlesOf = (d: SowDocRow): string[] => workstreamLinesOf(d).map((l) => l.title);
+const normalizeSet = (titles: string[]): string => [...new Set(titles)].sort().join("");
+
+/**
+ * The baseline full-scope document = the SOW version containing the most
+ * workstream phases (the original generation always includes every fired-signal
+ * workstream; a narrowed regeneration has fewer). Ties break to the earliest.
+ * Its workstream lines define the complete toggleable set the client renders,
+ * even when a narrower version is currently active.
+ */
+function baselineDoc(docs: SowDocRow[]): SowDocRow | null {
+  let best: SowDocRow | null = null;
+  let bestCount = -1;
+  for (const d of docs) {
+    const count = workstreamLinesOf(d).length;
+    if (count > bestCount) {
+      best = d;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function buildSowState(docs: SowDocRow[]) {
+  const activeDoc =
+    [...docs]
+      .filter((d) => (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  const regenerating = docs.some((d) => d.status === "generating");
+
+  if (!activeDoc) {
+    return { ready: false as const, regenerating };
+  }
+
+  const baseline = baselineDoc(docs) ?? activeDoc;
+  const allWorkstreams = workstreamLinesOf(baseline).map((l) => ({
+    title: l.title,
+    scope: l.scope,
+    priceUsd: l.priceUsd,
+    weeks: l.weeks ?? null,
+    deliveryDate: l.deliveryDate ?? null,
+  }));
+  const adjustments = adjustmentLinesOf(activeDoc).map((l) => ({
+    title: l.title,
+    scope: l.scope,
+    priceUsd: l.priceUsd,
+  }));
+  const selectedWorkstreamTitles = workstreamTitlesOf(activeDoc);
+  const isFullScope = normalizeSet(selectedWorkstreamTitles) === normalizeSet(allWorkstreams.map((w) => w.title));
+
+  // Pricing window anchored to the earliest real SOW row (preserved across regens).
+  const anchorRow = docs.find((d) => (SOW_REAL_STATUSES as readonly string[]).includes(d.status)) ?? activeDoc;
+  const anchorAt = anchorRow.createdAt;
+  const discountWindowEndsAt = new Date(anchorAt.getTime() + DISCOUNT_WINDOW_MS);
+  const validUntil = new Date(anchorAt.getTime() + VALIDITY_WINDOW_MS);
+  const now = Date.now();
+  const windowState: "discount" | "standard" | "expired" =
+    now < discountWindowEndsAt.getTime() ? "discount" : now < validUntil.getTime() ? "standard" : "expired";
+
+  return {
+    ready: true as const,
+    regenerating,
+    doc: {
+      id: activeDoc.id,
+      title: activeDoc.title,
+      htmlContent: activeDoc.htmlContent,
+      totalPrice: activeDoc.sowTotalPrice != null ? Number(activeDoc.sowTotalPrice) : null,
+    },
+    allWorkstreams,
+    adjustments,
+    selectedWorkstreamTitles,
+    isFullScope,
+    pricing: {
+      anchorAt: anchorAt.toISOString(),
+      discountWindowEndsAt: discountWindowEndsAt.toISOString(),
+      validUntil: validUntil.toISOString(),
+      windowState,
+    },
+  };
+}
+
+// GET — current interactive SOW state (active doc, full toggleable phase set,
+// current selection, mandatory adjustments, and pricing-window countdown).
+router.get(
+  "/portal/assessment/sow",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const docs = await loadSowDocs(userId);
+      res.json(buildSowState(docs));
+    } catch (err) {
+      log.error({ err, userId }, "GET /portal/assessment/sow failed");
+      res.status(500).json({ error: "Failed to load statement of work" });
+    }
+  },
+);
+
+// POST — apply a scope selection.
+//   • Exact match to a stored version (incl. full scope) → re-activate it, free.
+//   • Genuinely new subset → regenerate a real, updated SOW (AI cost). Responds
+//     202 with the new "generating" docId once the row exists; generation
+//     continues in the background and the client polls GET .../sow for completion.
+router.post(
+  "/portal/assessment/sow/select",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const rawSelected = (req.body as { selectedWorkstreamTitles?: unknown })?.selectedWorkstreamTitles;
+    if (!Array.isArray(rawSelected) || !rawSelected.every((t) => typeof t === "string")) {
+      res.status(400).json({ error: "selectedWorkstreamTitles must be an array of strings" });
+      return;
+    }
+
+    try {
+      const docs = await loadSowDocs(userId);
+      const state = buildSowState(docs);
+      if (!state.ready) {
+        res.status(409).json({ error: "No active statement of work to update yet" });
+        return;
+      }
+      if (state.regenerating) {
+        res.status(409).json({ error: "A scope update is already in progress" });
+        return;
+      }
+
+      const activeDoc =
+        [...docs]
+          .filter((d) => (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]!;
+      const projectId = activeDoc.projectId;
+
+      // Constrain the request to real, toggleable workstream titles from the baseline.
+      const allTitles = new Set(state.allWorkstreams.map((w) => w.title));
+      const requested = [...new Set(rawSelected)].filter((t) => allTitles.has(t));
+      if (requested.length === 0) {
+        res.status(400).json({ error: "Select at least one workstream phase" });
+        return;
+      }
+      const requestedKey = normalizeSet(requested);
+
+      // Free path — a stored version already has exactly this workstream set.
+      // Re-activate it and archive every other version. Covers "reset to full
+      // scope" and re-selecting any previously-generated subset.
+      const match = docs.find((d) => normalizeSet(workstreamTitlesOf(d)) === requestedKey);
+      if (match) {
+        if (match.status !== "approved") {
+          await db
+            .update(insightsGeneratedDocumentsTable)
+            .set({ status: "approved", approvedAt: new Date(), updatedAt: new Date() })
+            .where(eq(insightsGeneratedDocumentsTable.id, match.id));
+        }
+        await db
+          .update(insightsGeneratedDocumentsTable)
+          .set({ status: "archived", updatedAt: new Date() })
+          .where(
+            and(
+              eq(insightsGeneratedDocumentsTable.customerId, userId),
+              projectId != null
+                ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
+                : isNull(insightsGeneratedDocumentsTable.projectId),
+              eq(insightsGeneratedDocumentsTable.docType, SOW_DOC_TYPE),
+              ne(insightsGeneratedDocumentsTable.id, match.id),
+              inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered"]),
+            ),
+          );
+        log.info(
+          { userId, docId: match.id, requestedCount: requested.length },
+          "portal/assessment/sow/select: re-activated stored scope version (no regeneration)",
+        );
+        res.json({ regenerated: false, docId: match.id });
+        return;
+      }
+
+      // Regeneration path — a genuinely new, narrower subset. Kick off a real
+      // generation and respond as soon as the "generating" row exists so the
+      // client can show its progress state; the AI step continues in the background.
+      log.info(
+        { userId, projectId, requestedCount: requested.length, selectedTitles: requested },
+        "portal/assessment/sow/select: regenerating SOW for new customer scope selection",
+      );
+
+      let responded = false;
+      let onRow: (docId: number) => void = () => {};
+      const rowReady = new Promise<number>((resolve, reject) => {
+        onRow = (docId: number) => resolve(docId);
+        void generateConsolidatedSowDocument({
+          clientUserId: userId,
+          projectId,
+          title: activeDoc.title,
+          selectedWorkstreamTitles: requested,
+          supersedeMode: "archive",
+          onRowCreated: (docId) => onRow(docId),
+        })
+          .then((result) => resolve(result.docId))
+          .catch((genErr) => {
+            if (responded) {
+              log.error({ genErr, userId }, "portal/assessment/sow/select: background SOW regeneration failed");
+            } else {
+              reject(genErr);
+            }
+          });
+      });
+
+      const newDocId = await rowReady;
+      responded = true;
+      res.status(202).json({ regenerated: true, docId: newDocId, status: "generating" });
+    } catch (err) {
+      log.error({ err, userId }, "POST /portal/assessment/sow/select failed");
+      if (!res.headersSent) res.status(500).json({ error: "Failed to update statement of work scope" });
     }
   },
 );

@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
+import { AssessmentSowSelector } from "./AssessmentSowSelector";
 import {
   CheckCircle2,
   ChevronRight,
@@ -106,7 +107,7 @@ const STEPS: StepDef[] = [
   { key: "scan", title: "Deep scan", subtitle: "Reading your tenant", icon: Radar },
   { key: "reports", title: "Reports", subtitle: "Generating findings", icon: FileText },
   { key: "review", title: "Review findings", subtitle: "Your results", icon: ScrollText },
-  { key: "sow", title: "Statement of work", subtitle: "Coming up", icon: FileSignature },
+  { key: "sow", title: "Statement of work", subtitle: "Tailor your scope", icon: FileSignature },
   { key: "payment", title: "Choose a plan", subtitle: "Coming up", icon: CreditCard },
 ];
 
@@ -172,6 +173,13 @@ export function AssessmentWizard() {
   // ── Derived step completion ────────────────────────────────────────────────
   const scanComplete = Boolean(status?.scan.everScanned && !status.scan.active);
   const reportsComplete = Boolean(status?.documents.allReady);
+  // The interactive SOW step unlocks once the consolidated SOW has finished
+  // generating (it's the last document produced by the same generation run).
+  const sowReady = Boolean(
+    status?.documents.items.some(
+      (d) => d.docType === "consolidated_sow" && (d.status === "approved" || d.status === "delivered"),
+    ),
+  );
 
   // The first incomplete, unlocked step — the flow's "current" position.
   const currentIndex = !scanComplete ? 1 : !reportsComplete ? 2 : 3;
@@ -244,7 +252,8 @@ export function AssessmentWizard() {
       return reportsComplete ? "complete" : "current";
     }
     if (index === 3) return reportsComplete ? "current" : "locked";
-    return "locked"; // sow, payment — future tasks
+    if (index === 4) return reportsComplete && sowReady ? "current" : "locked";
+    return "locked"; // payment — future task
   };
 
   const isUnlocked = (index: number): boolean => stepState(index) !== "locked";
@@ -315,8 +324,10 @@ export function AssessmentWizard() {
           scanProgress={scanProgress}
           scanComplete={scanComplete}
           reportsComplete={reportsComplete}
+          sowReady={sowReady}
           fetchWithAuth={fetchWithAuth}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
+          onGoToSow={() => isUnlocked(4) && setSelected(4)}
           debugTriggerScan={debugTriggerScan}
           debugTriggering={debugTriggering}
         />
@@ -363,8 +374,10 @@ function StepPanel({
   scanProgress,
   scanComplete,
   reportsComplete,
+  sowReady,
   fetchWithAuth,
   onGoToReview,
+  onGoToSow,
   debugTriggerScan,
   debugTriggering,
 }: {
@@ -373,8 +386,10 @@ function StepPanel({
   scanProgress: { index: number; total: number; label: string } | null;
   scanComplete: boolean;
   reportsComplete: boolean;
+  sowReady: boolean;
   fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
   onGoToReview: () => void;
+  onGoToSow: () => void;
   // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
   debugTriggerScan: () => Promise<void>;
   debugTriggering: boolean;
@@ -514,6 +529,9 @@ function StepPanel({
           </PanelShell>
         );
       }
+      // The SOW is surfaced interactively in its own dedicated step below — keep it
+      // out of the read-only findings viewer so it isn't shown twice.
+      const findingsDocs = status.documents.items.filter((d) => d.docType !== "consolidated_sow");
       return (
         <PanelShell icon={ScrollText} tone="emerald" title="Review findings">
           <p className="text-sm text-muted-foreground">
@@ -521,24 +539,40 @@ function StepPanel({
             by the full report.
           </p>
           <div className="mt-5">
-            <AssessmentDocumentViewer
-              documents={status.documents.items}
-              fetchWithAuth={fetchWithAuth}
-            />
+            <AssessmentDocumentViewer documents={findingsDocs} fetchWithAuth={fetchWithAuth} />
           </div>
+          {sowReady && (
+            <Button className="mt-6" onClick={onGoToSow}>
+              Continue to your statement of work <ChevronRight className="ml-1 size-4" />
+            </Button>
+          )}
         </PanelShell>
       );
     }
 
-    case "sow":
+    case "sow": {
+      if (!(reportsComplete && sowReady)) {
+        return (
+          <PanelShell icon={FileSignature} tone="muted" title="Statement of work">
+            <p className="text-sm text-muted-foreground">
+              Once your reports finish generating, you'll see a tailored statement of work
+              here — with the flexibility to adjust its scope before you proceed.
+            </p>
+          </PanelShell>
+        );
+      }
       return (
-        <PanelShell icon={FileSignature} tone="muted" title="Statement of work">
+        <PanelShell icon={FileSignature} tone="primary" title="Your statement of work">
           <p className="text-sm text-muted-foreground">
-            After you review your findings, you'll see a tailored statement of work here.
-            This step is coming in a later release.
+            Here's the plan we recommend, tailored to what we found. Fine-tune the scope to fit
+            your priorities — the price updates as you go.
           </p>
+          <div className="mt-5">
+            <AssessmentSowSelector fetchWithAuth={fetchWithAuth} />
+          </div>
         </PanelShell>
       );
+    }
 
     case "payment":
       return (

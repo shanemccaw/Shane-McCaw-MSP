@@ -12,7 +12,7 @@ import {
   mspCustomersTable,
   tenantMonitorProfilesTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray, sql } from "drizzle-orm";
+import { eq, ne, desc, and, inArray, isNull, sql } from "drizzle-orm";
 import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import {
@@ -265,6 +265,26 @@ export interface GenerateConsolidatedSowParams {
   /** When true, skips all persistence (no "generating" row, no final update, no prior-doc deletion,
    *  no presentation sync) and just returns the generated HTML. */
   testMode?: boolean;
+  /**
+   * Customer scope selection (Assessment interactive SOW). When provided (non-null),
+   * the signal-gated project list is further narrowed to ONLY these workstream titles —
+   * everything downstream (prompt catalogue, hallucination purge, missing-phase
+   * injection, phase-drift guard) uses the narrowed list, so the regenerated document
+   * is a real, full-quality SOW for the selected subset (adjustments re-gate automatically
+   * against the workstreams that remain present). Titles must be a subset of the
+   * signal-gated catalogue; unknown titles are ignored. Null/undefined = full scope (default).
+   */
+  selectedWorkstreamTitles?: string[] | null;
+  /**
+   * How to supersede the prior completed SOW on success.
+   *  - "delete" (default): hard-delete the single prior completed row (legacy behavior,
+   *    used by the admin/workflow generation paths).
+   *  - "archive": set every other completed consolidated_sow row for this
+   *    customer+project to status "archived" instead of deleting, so prior scope
+   *    versions (incl. the original full-scope document) are preserved and can be
+   *    re-activated for free by the Assessment scope selector without a new AI call.
+   */
+  supersedeMode?: "delete" | "archive";
 }
 
 export interface GenerateConsolidatedSowResult {
@@ -281,7 +301,7 @@ export interface GenerateConsolidatedSowResult {
 export async function generateConsolidatedSowDocument(
   params: GenerateConsolidatedSowParams,
 ): Promise<GenerateConsolidatedSowResult> {
-  const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, pricingFormulaOverride, testMode = false } = params;
+  const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, pricingFormulaOverride, testMode = false, selectedWorkstreamTitles = null, supersedeMode = "delete" } = params;
   const logCtx = { clientUserId, projectId, title, runId };
   const correlationId = runId;
   if (correlationId) startSowDebugRun(correlationId, clientUserId, projectId);
@@ -613,6 +633,41 @@ export async function generateConsolidatedSowDocument(
     throw new Error("SOW generation failed: could not evaluate tenant signals — please retry");
   }
   } // end else (signalsOverride == null)
+
+  // ── Customer scope narrowing (Assessment interactive SOW) ───────────────────
+  // When the customer has toggled off one or more workstream phases, narrow the
+  // signal-gated catalogue to ONLY their selected titles. This is the single,
+  // authoritative injection point: every downstream enforcement step below
+  // (prompt catalogue, hallucination purge, canonical-title enforcement,
+  // missing-phase injection, phase-drift guard) reads signalFilteredProjects, so
+  // the regenerated document is a real, full-quality SOW for exactly the selected
+  // subset. Adjustments re-gate automatically — purgeSowAdjustments strips any
+  // adjustment whose governing workstream is no longer present.
+  if (selectedWorkstreamTitles != null) {
+    const wanted = new Set(selectedWorkstreamTitles);
+    const beforeCount = signalFilteredProjects.length;
+    const narrowed = signalFilteredProjects.filter(p => wanted.has(p.title));
+    // Only apply if at least one requested title matched — an empty result would
+    // produce a phase-less SOW and fail the drift guard. Callers validate the
+    // selection is a non-empty subset before invoking; this is a belt-and-suspenders
+    // guard so a fully-mismatched selection falls back to full scope rather than aborting.
+    if (narrowed.length > 0) {
+      signalFilteredProjects = narrowed;
+      log.info(
+        { ...logCtx, docId, requestedCount: wanted.size, narrowedFrom: beforeCount, narrowedTo: narrowed.length,
+          selectedTitles: narrowed.map(p => p.title) },
+        "consolidated-sow-generator: narrowed to customer-selected workstream scope",
+      );
+      pushSowDebugLog(correlationId, "info", "Narrowed to customer-selected workstream scope", {
+        requestedCount: wanted.size, narrowedTo: narrowed.length,
+      });
+    } else {
+      log.warn(
+        { ...logCtx, docId, requestedTitles: [...wanted], catalogTitles: signalFilteredProjects.map(p => p.title) },
+        "consolidated-sow-generator: customer scope selection matched no catalogue workstreams — falling back to full scope",
+      );
+    }
+  }
 
   // ── Engine pre-computation ──────────────────────────────────────────────────
   // Compute every intelligence engine's output BEFORE building the Claude prompt
@@ -1065,7 +1120,24 @@ export async function generateConsolidatedSowDocument(
     })
     .where(eq(insightsGeneratedDocumentsTable.id, docId));
 
-  if (priorSowId !== null) {
+  if (supersedeMode === "archive") {
+    // Preserve prior scope versions (incl. the original full-scope document) so the
+    // Assessment scope selector can re-activate them for free. Archive every other
+    // completed consolidated_sow row for this customer+project — exactly one row
+    // (this newly-approved docId) stays "approved"/active; the rest become "archived"
+    // (superseded, hidden by the reader filters, but still retrievable by exact match).
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({ status: "archived", updatedAt: new Date() })
+      .where(and(
+        eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+        projectId != null
+          ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
+          : isNull(insightsGeneratedDocumentsTable.projectId),
+        eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+        ne(insightsGeneratedDocumentsTable.id, docId),
+        inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered"]),
+      ));
+  } else if (priorSowId !== null) {
     await db.delete(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, priorSowId));
   }
