@@ -5343,6 +5343,39 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         })();
       }
 
+      // ── Free/Assessment → Paid upgrade rescan ────────────────────────────────
+      // The buyer just transitioned into a paid CustomerUser (ensureClientMspUser
+      // above provisions the msp_users row). Fire a fresh diagnostics scan so the
+      // post-upgrade dashboard reflects current M365 posture rather than the
+      // pre-payment assessment scan (which may be days old). System-triggered and
+      // fire-and-forget — mirrors the consent.granted scan path. Not customer-
+      // callable; diagnostics are telemetry (no AI-credit spend), and
+      // runDiagnostics has no skip-if-recent guard, so this always yields a fresh
+      // scan. runDiagnostics resolves mspId/tenantId from customerId when found.
+      if (purchaseTenantId) {
+        void (async () => {
+          try {
+            const [customer] = await db
+              .select({ id: mspCustomersTable.id })
+              .from(mspCustomersTable)
+              .where(eq(mspCustomersTable.tenantId, purchaseTenantId!))
+              .limit(1);
+            const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
+            await runDiagnostics({
+              tenantId: purchaseTenantId!,
+              customerId: customer?.id,
+              triggeredByUserId: webhookUserIdOverride ?? undefined,
+            });
+            req.log.info(
+              { tenantId: purchaseTenantId, customerId: customer?.id },
+              "onboarding_purchase: Free→Paid upgrade rescan started",
+            );
+          } catch (rescanErr) {
+            req.log.warn({ err: rescanErr, tenantId: purchaseTenantId }, "onboarding_purchase: upgrade rescan failed (non-fatal)");
+          }
+        })();
+      }
+
       // SMS alert to Shane — look up buyer + services after provisioning
       try {
         const uid = webhookUserIdOverride ?? parseInt(session.metadata?.userId ?? "", 10);

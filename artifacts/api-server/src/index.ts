@@ -243,6 +243,26 @@ app.listen(port, (err) => {
     logger.warn({ err }, "notification-center: failed to load prune module (non-fatal)");
   });
 
+  // ── MSP SOWs: daily 30-day expiry sweep + rescan ───────────────────────────
+  // Auto-expires SOWs whose 30-day clock elapsed (previously only lazy/manual)
+  // and fires a fresh diagnostics rescan for each affected customer. A 30-day
+  // clock does not need sub-day granularity, so this follows the notification
+  // prune cadence: once shortly after startup, then every 24 hours.
+  import("./lib/sow-expiry-sweep").then(({ sweepExpiredSows }) => {
+    setTimeout(() => {
+      sweepExpiredSows().catch((err: unknown) => {
+        logger.warn({ err }, "sow-expiry-sweep: initial sweep failed (non-fatal)");
+      });
+    }, 15_000);
+    setInterval(() => {
+      sweepExpiredSows().catch((err: unknown) => {
+        logger.warn({ err }, "sow-expiry-sweep: scheduled sweep failed (non-fatal)");
+      });
+    }, 24 * 60 * 60 * 1000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "sow-expiry-sweep: failed to load sweep module (non-fatal)");
+  });
+
   // ── Pending approvals table ───────────────────────────────────────────────
   pool.query(`
     CREATE TABLE IF NOT EXISTS pending_approvals (

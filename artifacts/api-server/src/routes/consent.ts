@@ -405,6 +405,14 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
       await runDiagnostics({
         tenantId: tenant,
+        // Invite-link path (Assessment/MSP-channel) already has the msp_customers
+        // row — pass its id so the run is associated with the customer directly.
+        // Without it, runDiagnostics resolves the customer by tenantId, which
+        // orphans the run (customerId=null) when msp_customers.tenant_id was not
+        // yet stamped — leaving the Assessment wizard (scoped to the customerId
+        // JWT claim) unable to stream its own scan until the purchase-time
+        // backfill runs, which a pure-assessment customer may never reach.
+        customerId: inviteRecord?.customerId ?? undefined,
         packageKey: resolvedPackageKey ?? undefined,
         triggeredByUserId: undefined,
       });

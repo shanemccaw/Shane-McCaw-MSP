@@ -8,6 +8,7 @@ export default defineConfig({
       "src/routes/admin-live-stream.test.ts",
       "src/lib/compileReportToHtml.test.ts",
       "src/lib/sow-pricing.test.ts",
+      "src/lib/sow-expiry-sweep.test.ts",
       "src/lib/ai-analyzer.test.ts",
       "src/lib/kanban-workflow-e2e.test.ts",
       "src/lib/kanban-auto-fire-routing.test.ts",
