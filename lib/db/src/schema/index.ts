@@ -2835,6 +2835,18 @@ export const leadOfferRuleGroupsTable = pgTable("lead_offer_rule_groups", {
 export type InsertLeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferInsert;
 export type LeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferSelect;
 
+export const leadOfferPricingConfigTable = pgTable("lead_offer_pricing_config", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  maxDiscountPct: integer("max_discount_pct").notNull().default(20),
+  model: text("model").notNull().default("claude-haiku-4-5"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertLeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferInsert;
+export type LeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferSelect;
+
 export const leadScoringRulesTable = pgTable("lead_scoring_rules", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
