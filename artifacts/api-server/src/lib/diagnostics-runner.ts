@@ -708,6 +708,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       customerId,
       mspId,
       tenantId: resolvedTenantId,
+      packageKey,
       findingsCount,
       finalStatus,
     });
@@ -750,6 +751,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       customerId,
       mspId,
       tenantId: resolvedTenantId,
+      packageKey,
       findingsCount: 0,
       finalStatus: "failed",
     });
