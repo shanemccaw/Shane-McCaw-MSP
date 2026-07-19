@@ -5,8 +5,10 @@ import { sql, eq } from "drizzle-orm";
 import { db, analyticsSessionsTable, analyticsPageviewsTable, analyticsSiteEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { ingestIntentEvent, recomputeAndPersistHotScore, findLeadByEmail, HIGH_VALUE_PAGES } from "../lib/lead-intent";
+import { logger } from "../lib/logger";
 
 const router = Router();
+const log = logger.child({ channel: "growth.website-analytics" });
 
 const publicLimiter = rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false });
 const adminLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
@@ -84,7 +86,15 @@ const pageviewSchema = z.object({
 const eventSchema = z.object({
   sessionId: z.string().uuid(),
   page: z.string().max(500),
-  eventType: z.enum(["click", "nav_click", "cta_click", "outbound_click", "form_submit", "scroll_milestone"]),
+  eventType: z.enum([
+    "click", "nav_click", "cta_click", "outbound_click", "form_submit", "scroll_milestone",
+    // Form-field-level tracking
+    "form_viewed", "form_started", "form_abandoned", "field_focus", "field_blur", "field_error", "field_autofill_detected",
+    // Error / friction tracking
+    "error_404", "error_js", "error_api", "broken_link_click", "slow_page_load", "form_submission_failed",
+    // Lightweight behavioral tracking (not full heatmap/session-replay — just discrete signal events)
+    "rage_click", "dead_click", "idle_timeout",
+  ]),
   elementLabel: z.string().max(500).optional(),
   elementHref: z.string().max(500).optional(),
   metadata: z.record(z.unknown()).optional(),
@@ -247,6 +257,7 @@ router.post("/analytics/event", publicLimiter, async (req, res) => {
       sessionId: d.sessionId, page: d.page, eventType: d.eventType,
       elementLabel: d.elementLabel, elementHref: d.elementHref, metadata: d.metadata ?? {},
     });
+    log.info({ eventType: d.eventType, page: d.page }, "analytics event recorded");
   } catch { /* non-fatal */ }
   // Fire deduplicated intent events for high-signal event types
   if (d.eventType === "cta_click" || d.eventType === "form_submit") {
