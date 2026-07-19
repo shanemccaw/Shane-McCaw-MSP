@@ -39,4 +39,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | msp-users-user-id-fk-constraint | 8f24e76d |
 | 2026-07-18 | ✅ DONE | stripe-metadata-service-id-casing-fix | 4fcbc9da |
 | 2026-07-18 | ⏳ IN FLIGHT | tenant-profile-resolution-consolidation |  |
-| 2026-07-18 | ⏳ IN FLIGHT | api-server-typecheck-fixes | |
+| 2026-07-18 | ✅ DONE | api-server-typecheck-fixes | 7d375bfa |
