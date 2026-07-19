@@ -255,3 +255,126 @@ export async function aggregateMspTelemetry(
     },
   };
 }
+
+/**
+ * Platform-wide monitoring MRR, summed across every MSP.
+ *
+ * Re-runs Category A of aggregateMspTelemetry() above (same
+ * mspSubscriptionsTable ⋈ servicesTable join, same active/trialing/past_due
+ * status filter, same resolveCatalogPricing() split) with no mspId filter,
+ * so this stays reconcilable to Σ(monitoringMrr) across all MSPs — do not
+ * diverge this calculation from aggregateMspTelemetry()'s Category A.
+ */
+export async function aggregatePlatformMonitoringMrr(startDate?: Date): Promise<FinancialBreakdown> {
+  const subs = await db
+    .select({
+      priceCents: servicesTable.priceCents,
+      internalCostCents: servicesTable.internalCostCents,
+    })
+    .from(mspSubscriptionsTable)
+    .innerJoin(servicesTable, eq(mspSubscriptionsTable.serviceId, servicesTable.id))
+    .where(
+      and(
+        inArray(mspSubscriptionsTable.status, ["active", "trialing", "past_due"]),
+        startDate ? gte(mspSubscriptionsTable.createdAt, startDate) : undefined,
+      )
+    );
+
+  let retailCents = 0;
+  let wholesaleCents = 0;
+  for (const sub of subs) {
+    const pricing = resolveCatalogPricing({
+      priceCents: sub.priceCents ?? 0,
+      internalCostCents: sub.internalCostCents,
+    });
+    retailCents += pricing.retailPriceCents;
+    wholesaleCents += pricing.wholesaleCostCents;
+  }
+
+  log.debug(
+    { startDate: startDate?.toISOString() ?? null, subscriptionCount: subs.length, retailCents },
+    "platform-wide monitoringMrr aggregated",
+  );
+
+  return formatFinancials(retailCents, wholesaleCents);
+}
+
+export interface ColonyCompositeScore {
+  score: number;
+  momentumBonusApplied: boolean;
+  currentMonthRevenueUsd: number;
+  trailingThreeMonthAvgRevenueUsd: number;
+}
+
+function startOfCurrentMonth(): Date {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfTrailingThreeMonths(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
+}
+
+/**
+ * Factory Floor composite score (locked formula):
+ *   Score = (Subscriptions/Retainers revenue × 1.0)
+ *         + (Consulting revenue × 0.6)
+ *         + (Documents/Quick Fixes revenue × 0.4)
+ *         + Momentum Bonus
+ *   Momentum Bonus = +10% to the score if current month's revenue exceeds
+ *   the trailing 3-month average, else +0%.
+ *
+ * Category mapping (reuses aggregateMspTelemetry()'s existing categories —
+ * no new tables):
+ *   Subscriptions/Retainers → financials.monitoringMrr
+ *   Consulting              → financials.projectRevenue
+ *   Documents/Quick Fixes   → financials.remediationRevenue + financials.offerRevenue (one-time items)
+ */
+export async function calculateColonyCompositeScore(mspId: number): Promise<ColonyCompositeScore> {
+  const lifetime = await aggregateMspTelemetry(mspId);
+
+  const subscriptionsRetainersUsd = Number(lifetime.financials.monitoringMrr.grossRevenueUsd);
+  const consultingUsd = Number(lifetime.financials.projectRevenue.grossRevenueUsd);
+  const documentsQuickFixesUsd =
+    Number(lifetime.financials.remediationRevenue.grossRevenueUsd) +
+    Number(lifetime.financials.offerRevenue.grossRevenueUsd);
+
+  const baseScore =
+    subscriptionsRetainersUsd * 1.0 +
+    consultingUsd * 0.6 +
+    documentsQuickFixesUsd * 0.4;
+
+  const currentMonth = await aggregateMspTelemetry(mspId, startOfCurrentMonth());
+  const trailingThreeMonths = await aggregateMspTelemetry(mspId, startOfTrailingThreeMonths());
+
+  const currentMonthRevenueUsd = Number(currentMonth.financials.total.grossRevenueUsd);
+  const trailingThreeMonthAvgRevenueUsd = Number(trailingThreeMonths.financials.total.grossRevenueUsd) / 3;
+
+  const momentumBonusApplied = currentMonthRevenueUsd > trailingThreeMonthAvgRevenueUsd;
+  const score = momentumBonusApplied ? baseScore * 1.1 : baseScore;
+
+  log.debug(
+    {
+      mspId,
+      subscriptionsRetainersUsd,
+      consultingUsd,
+      documentsQuickFixesUsd,
+      baseScore,
+      currentMonthRevenueUsd,
+      trailingThreeMonthAvgRevenueUsd,
+      momentumBonusApplied,
+      score,
+    },
+    "colony composite score calculated",
+  );
+
+  return {
+    score,
+    momentumBonusApplied,
+    currentMonthRevenueUsd,
+    trailingThreeMonthAvgRevenueUsd,
+  };
+}
