@@ -14,7 +14,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { mspUsersTable, mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
+import { mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTable, signalRuleAuditLogTable, engineScoreSignalDeltasTable, db } from "@workspace/db";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 import {
@@ -309,9 +309,8 @@ async function writeEngineSnapshot(
   try {
     const [customerRow] = await db
       .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-      .from(mspUsersTable)
-      .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-      .where(eq(mspUsersTable.userId, customerId))
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.id, customerId))
       .limit(1);
     const resolvedCustomerId = customerRow?.customerId ?? null;
     const mspId = customerRow?.mspId ?? null;
@@ -319,7 +318,7 @@ async function writeEngineSnapshot(
       // Previously a silent return — the main reason engine runs looked
       // invisible: ids that don't resolve through msp_users (e.g. simulator
       // runs passing a customer id, not a portal user id) skip snapshots.
-      log.info({ engineKey, customerId }, "writeEngineSnapshot: skipped — id does not resolve to a customer via msp_users");
+      log.info({ engineKey, customerId }, "writeEngineSnapshot: skipped — no msp_customers row for this id");
       return;
     }
 
