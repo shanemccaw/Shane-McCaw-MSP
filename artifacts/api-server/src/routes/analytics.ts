@@ -4,7 +4,7 @@ import { z } from "zod";
 import { sql, eq } from "drizzle-orm";
 import { db, analyticsSessionsTable, analyticsPageviewsTable, analyticsSiteEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { ingestIntentEvent, recomputeAndPersistHotScore, findLeadByEmail, HIGH_VALUE_PAGES } from "../lib/lead-intent";
+import { ingestIntentEvent, recomputeAndPersistHotScore, findLeadByEmail, isHighValuePage } from "../lib/lead-intent";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -172,7 +172,7 @@ router.post("/analytics/identify", publicLimiter, async (req, res) => {
 async function maybeFireIntentEvent(sessionId: string, page: string): Promise<void> {
   try {
     const normalised = page.split("?")[0]?.replace(/\/$/, "") || "/";
-    if (!HIGH_VALUE_PAGES.has(normalised)) return;
+    if (!(await isHighValuePage(normalised))) return;
     const [session] = await execRows<{ identified_email: string | null }>(
       sql`SELECT identified_email FROM analytics_sessions WHERE session_id = ${sessionId} LIMIT 1`
     );

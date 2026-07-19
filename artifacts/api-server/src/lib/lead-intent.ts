@@ -1,46 +1,60 @@
-import { db, leadsTable, leadIntentEventsTable } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
+import {
+  db,
+  leadsTable,
+  leadIntentEventsTable,
+  leadScoringRulesTable,
+  leadScoringTrackedPagesTable,
+  leadScoringConfigTable,
+} from "@workspace/db";
+import { eq, and, gte, isNull } from "drizzle-orm";
 
-export const INTENT_SCORE_MAP: Record<string, number> = {
-  email_open: 1,
-  link_click: 3,
-  cta_click: 5,
-  site_visit: 2,
-  form_submit: 10,
-  reply: 15,
-};
-
-export const HIGH_VALUE_PAGES = new Set([
-  "/services",
-  "/services/microsoft-365",
-  "/services/copilot-ai",
-  "/services/sharepoint",
-  "/services/power-platform",
-  "/services/governance",
-  "/services/cloud-migration",
-  "/pricing",
-  "/quick-wins",
-  "/book",
-  "/contact",
-]);
+export async function isHighValuePage(page: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: leadScoringTrackedPagesTable.id })
+    .from(leadScoringTrackedPagesTable)
+    .where(and(eq(leadScoringTrackedPagesTable.path, page), eq(leadScoringTrackedPagesTable.isActive, true)))
+    .limit(1);
+  return row != null;
+}
 
 export async function recomputeAndPersistHotScore(leadId: number): Promise<number> {
   const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
   if (!lead) return 0;
 
-  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const [config] = await db
+    .select()
+    .from(leadScoringConfigTable)
+    .where(isNull(leadScoringConfigTable.mspId))
+    .limit(1);
+  const lookbackDays = config?.lookbackDays ?? 14;
+  const maxScore = config?.maxScore ?? 100;
+
+  const rules = await db
+    .select()
+    .from(leadScoringRulesTable)
+    .where(eq(leadScoringRulesTable.isActive, true));
+  const rulePoints = (ruleType: string, key: string): number =>
+    rules.find(r => r.ruleType === ruleType && r.key === key)?.points ?? 0;
+
+  const cutoff = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
   const events = await db.select().from(leadIntentEventsTable)
     .where(and(eq(leadIntentEventsTable.leadId, leadId), gte(leadIntentEventsTable.occurredAt, cutoff)));
 
-  const intentScore = events.reduce((sum, e) => sum + (INTENT_SCORE_MAP[e.eventType] ?? 1), 0);
+  const intentScore = events.reduce((sum, e) => {
+    const points = rules.find(r => r.ruleType === "intent_event" && r.key === e.eventType)?.points;
+    return sum + (points ?? 1);
+  }, 0);
 
+  // pain_point_bonus/engagement_signal_bonus/urgency_signal_bonus rules are per-count
+  // multipliers rather than per-specific-key like intent_event, so they're stored under
+  // a fixed key "default" rather than one row per possible pain point/signal value.
   const icpBonus =
-    (lead.painPoints?.length ?? 0) * 2 +
-    (lead.stage === "Hot" ? 15 : lead.stage === "Warm" ? 8 : 0) +
-    (lead.engagementSignals?.length ?? 0) * 3 +
-    (lead.urgencySignals?.length ?? 0) * 4;
+    (lead.painPoints?.length ?? 0) * rulePoints("pain_point_bonus", "default") +
+    (lead.stage === "Hot" ? rulePoints("stage_bonus", "Hot") : lead.stage === "Warm" ? rulePoints("stage_bonus", "Warm") : 0) +
+    (lead.engagementSignals?.length ?? 0) * rulePoints("engagement_signal_bonus", "default") +
+    (lead.urgencySignals?.length ?? 0) * rulePoints("urgency_signal_bonus", "default");
 
-  const newScore = Math.min(100, intentScore + icpBonus);
+  const newScore = Math.min(maxScore, intentScore + icpBonus);
   const prevScore = lead.score;
 
   await db.update(leadsTable)
