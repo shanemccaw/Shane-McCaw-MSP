@@ -46,5 +46,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ⏳ IN FLIGHT | Mission Control Canvas — CustomerUser |  |
 | 2026-07-18 | ✅ DONE | Portfolio Risk Tenant-Scoping Audit (read-only; verdict LEAK NOT CONFIRMED) | 43c24840 |
 | 2026-07-18 | ✅ DONE | MRR Canonical Source Audit | 8b5109a4 |
-| 2026-07-18 | ⏳ IN FLIGHT | Fix Monitoring MRR Date Scoping |  |
-| 2026-07-18 | ⏳ IN FLIGHT | MRR Metric Separation Audit |  |
+| 2026-07-18 | ✅ DONE | Fix Monitoring MRR Date Scoping | b8598440 |
+| 2026-07-18 | ✅ DONE | MRR Metric Separation Audit | b9dcb15f |
