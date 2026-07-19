@@ -55,5 +55,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Move ErrorBoundary Above AuthProvider | 655090ea |
 | 2026-07-19 | ✅ DONE | Three.js Integration Spike | a9377160 |
 | 2026-07-19 | ⏳ IN FLIGHT | Build Overlord Total and Colony Scoring | |
-| 2026-07-19 | ⏳ IN FLIGHT | Fix Inverted Health Score Display + Hero Polish | |
-| 2026-07-19 | ⏳ IN FLIGHT | Restyle CustomerDashboardExtras to Match Fluent Design System | |
+| 2026-07-19 | ✅ DONE | Fix Inverted Health Score Display + Hero Polish | 1c594a12 |
+| 2026-07-19 | ✅ DONE | Restyle CustomerDashboardExtras to Match Fluent Design System | f9140197 |
