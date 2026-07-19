@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | lead-offer-engine AI pricing |  |
 | 2026-07-19 | ⏳ IN FLIGHT | Assessment Document Generation Workflow — Service-Mapped, Sequenced SOW |  |
 | 2026-07-19 | ✅ DONE | analytics event type taxonomy extension | a2fb86b0 |
 | 2026-07-19 | ✅ DONE | lead-offer-pricing-config schema table | 96e1b3d3 |
