@@ -24,6 +24,7 @@ const createChain = (resolveValue: any) => {
   const chain = {
     from: vi.fn().mockImplementation(() => chain),
     innerJoin: vi.fn().mockImplementation(() => chain),
+    leftJoin: vi.fn().mockImplementation(() => chain),
     where: vi.fn().mockImplementation(() => chain),
     groupBy: vi.fn().mockImplementation(() => chain),
     then: (resolve: any) => resolve(resolveValue),
@@ -155,5 +156,100 @@ describe("aggregateMspTelemetry", () => {
     expect(scopedResult.financials.monitoringMrr).not.toEqual(
       unscopedResult.financials.monitoringMrr,
     );
+  });
+});
+
+describe("aggregateMspTelemetry categoryBreakdown (5-way split)", () => {
+  it("buckets every projectType/deliveryType value, including the disclosed 'other' residual", async () => {
+    const subsMock = [{ priceCents: 100000, internalCostCents: 70000 }]; // monitoring: 1000.00 / 700.00
+
+    const invoicesMock = [
+      { amount: "100.00", projectType: "project" }, // -> consulting
+      { amount: "200.00", projectType: "retainer" }, // -> subscriptionsRetainers
+      { amount: "300.00", projectType: "quick_win" }, // -> assessmentsQuickFixes
+      { amount: "50.00", projectType: null }, // no linked project -> other
+    ];
+
+    const tasksMock = [
+      { priceCents: 10000, internalCostCents: 10000, deliveryType: "document_generation" }, // -> documents
+      { priceCents: 20000, internalCostCents: 20000, deliveryType: "assessment" }, // -> assessmentsQuickFixes
+      { priceCents: 30000, internalCostCents: 30000, deliveryType: "retainer" }, // -> subscriptionsRetainers
+      { priceCents: 5000, internalCostCents: 5000, deliveryType: "bundle_subscription" }, // -> subscriptionsRetainers
+      { priceCents: 1000, internalCostCents: 1000, deliveryType: "none" }, // -> other
+    ];
+
+    const offersMock = [
+      { adjustedPriceCents: 4000, internalCostCents: 4000, deliveryType: "document_generation" }, // -> documents
+      { adjustedPriceCents: 6000, internalCostCents: 6000, deliveryType: undefined }, // unlinked service -> other
+    ];
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(createChain(subsMock) as any)
+      .mockReturnValueOnce(createChain(invoicesMock) as any)
+      .mockReturnValueOnce(createChain(tasksMock) as any)
+      .mockReturnValueOnce(createChain(offersMock) as any)
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any)
+      .mockReturnValueOnce(createChain([]) as any)
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any);
+
+    const result = await aggregateMspTelemetry(42);
+
+    expect(result.categoryBreakdown.monitoring).toEqual({
+      grossRevenueUsd: "1000.00",
+      wholesaleCostUsd: "700.00",
+      mspMarginUsd: "300.00",
+      mspMarginPct: "30.0%",
+    });
+
+    // Consulting: only the projectType="project" invoice (100.00 retail, default 70% wholesale)
+    expect(result.categoryBreakdown.consulting).toEqual({
+      grossRevenueUsd: "100.00",
+      wholesaleCostUsd: "70.00",
+      mspMarginUsd: "30.00",
+      mspMarginPct: "30.0%",
+    });
+
+    // Subscriptions/Retainers: retainer invoice (200/140) + retainer task (300/300) + bundle_subscription task (50/50)
+    expect(result.categoryBreakdown.subscriptionsRetainers).toEqual({
+      grossRevenueUsd: "550.00",
+      wholesaleCostUsd: "490.00",
+      mspMarginUsd: "60.00",
+      mspMarginPct: "10.9%",
+    });
+
+    // Assessments/Quick Fixes: quick_win invoice (300/210) + assessment task (200/200)
+    expect(result.categoryBreakdown.assessmentsQuickFixes).toEqual({
+      grossRevenueUsd: "500.00",
+      wholesaleCostUsd: "410.00",
+      mspMarginUsd: "90.00",
+      mspMarginPct: "18.0%",
+    });
+
+    // Documents: document_generation task (100/100) + document_generation offer (40/40)
+    expect(result.categoryBreakdown.documents).toEqual({
+      grossRevenueUsd: "140.00",
+      wholesaleCostUsd: "140.00",
+      mspMarginUsd: "0.00",
+      mspMarginPct: "0.0%",
+    });
+
+    // Other (disclosed residual): unlinked invoice (50/35) + deliveryType="none" task (10/10) + unlinked offer (60/60)
+    expect(result.categoryBreakdown.other).toEqual({
+      grossRevenueUsd: "120.00",
+      wholesaleCostUsd: "105.00",
+      mspMarginUsd: "15.00",
+      mspMarginPct: "12.5%",
+    });
+
+    // Sanity check: the 5-way + disclosed-other split must reconcile to the same
+    // total the 4 legacy categories already produce — no revenue silently dropped.
+    const categorySum =
+      Number(result.categoryBreakdown.monitoring.grossRevenueUsd) +
+      Number(result.categoryBreakdown.consulting.grossRevenueUsd) +
+      Number(result.categoryBreakdown.subscriptionsRetainers.grossRevenueUsd) +
+      Number(result.categoryBreakdown.assessmentsQuickFixes.grossRevenueUsd) +
+      Number(result.categoryBreakdown.documents.grossRevenueUsd) +
+      Number(result.categoryBreakdown.other.grossRevenueUsd);
+    expect(categorySum).toBeCloseTo(Number(result.financials.total.grossRevenueUsd), 5);
   });
 });

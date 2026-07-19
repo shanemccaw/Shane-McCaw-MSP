@@ -24,6 +24,21 @@ export interface FinancialBreakdown {
   mspMarginPct: string;
 }
 
+// Real 5-way split (RESOURCE_CATEGORY_DATA_AUDIT.md §3 Tier 2), reusing the
+// same rows already fetched for the 4 legacy categories above — bucketed by
+// projectsTable.projectType (for projectRevenue) and servicesTable.deliveryType
+// (for remediationRevenue/offerRevenue) instead of re-querying.
+// `other` is a deliberately disclosed residual for rows with no projectType
+// link or deliveryType = "none" — never silently folded into a real category.
+export interface CategoryBreakdown {
+  monitoring: FinancialBreakdown;
+  consulting: FinancialBreakdown;
+  subscriptionsRetainers: FinancialBreakdown;
+  assessmentsQuickFixes: FinancialBreakdown;
+  documents: FinancialBreakdown;
+  other: FinancialBreakdown;
+}
+
 export interface TelemetryPayload {
   financials: {
     monitoringMrr: FinancialBreakdown;
@@ -32,11 +47,44 @@ export interface TelemetryPayload {
     offerRevenue: FinancialBreakdown;
     total: FinancialBreakdown;
   };
+  categoryBreakdown: CategoryBreakdown;
   metrics: {
     activeSignalsCount: number;
     offerAcceptanceRate: number;
     openFulfillmentTasksCount: number;
   };
+}
+
+type FiveWayBucket = "consulting" | "subscriptionsRetainers" | "assessmentsQuickFixes" | "documents" | "other";
+
+function bucketByProjectType(projectType: string | null | undefined): FiveWayBucket {
+  switch (projectType) {
+    case "project":
+      return "consulting";
+    case "retainer":
+      return "subscriptionsRetainers";
+    case "quick_win":
+      return "assessmentsQuickFixes";
+    default:
+      // No linked projectsTable row (invoicesTable.projectId is nullable) — can't
+      // be attributed to a project type, so it goes to the disclosed residual.
+      return "other";
+  }
+}
+
+function bucketByDeliveryType(deliveryType: string | null | undefined): FiveWayBucket {
+  switch (deliveryType) {
+    case "document_generation":
+      return "documents";
+    case "assessment":
+      return "assessmentsQuickFixes";
+    case "retainer":
+    case "bundle_subscription":
+      return "subscriptionsRetainers";
+    default:
+      // Covers deliveryType "none" and missing/unlinked servicesTable rows.
+      return "other";
+  }
 }
 
 function formatFinancials(retailCents: number, wholesaleCents: number): FinancialBreakdown {
@@ -96,9 +144,11 @@ export async function aggregateMspTelemetry(
   const invoices = await db
     .select({
       amount: invoicesTable.amount,
+      projectType: projectsTable.projectType,
     })
     .from(invoicesTable)
     .innerJoin(mspUsersTable, eq(invoicesTable.clientUserId, mspUsersTable.userId))
+    .leftJoin(projectsTable, eq(invoicesTable.projectId, projectsTable.id))
     .where(
       and(
         eq(mspUsersTable.mspId, mspId),
@@ -106,6 +156,14 @@ export async function aggregateMspTelemetry(
         startDate ? gte(invoicesTable.paidAt, startDate) : undefined,
       )
     );
+
+  const fiveWayCents: Record<FiveWayBucket, { retail: number; wholesale: number }> = {
+    consulting: { retail: 0, wholesale: 0 },
+    subscriptionsRetainers: { retail: 0, wholesale: 0 },
+    assessmentsQuickFixes: { retail: 0, wholesale: 0 },
+    documents: { retail: 0, wholesale: 0 },
+    other: { retail: 0, wholesale: 0 },
+  };
 
   let projectRetailCents = 0;
   let projectWholesaleCents = 0;
@@ -116,6 +174,10 @@ export async function aggregateMspTelemetry(
     });
     projectRetailCents += pricing.retailPriceCents;
     projectWholesaleCents += pricing.wholesaleCostCents;
+
+    const bucket = fiveWayCents[bucketByProjectType(inv.projectType)];
+    bucket.retail += pricing.retailPriceCents;
+    bucket.wholesale += pricing.wholesaleCostCents;
   }
 
   // Category C: remediationRevenue (Completed kanban tasks linked to a catalog product)
@@ -123,6 +185,7 @@ export async function aggregateMspTelemetry(
     .select({
       priceCents: servicesTable.priceCents,
       internalCostCents: servicesTable.internalCostCents,
+      deliveryType: servicesTable.deliveryType,
     })
     .from(kanbanTasksTable)
     .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
@@ -147,6 +210,10 @@ export async function aggregateMspTelemetry(
     });
     remediationRetailCents += pricing.retailPriceCents;
     remediationWholesaleCents += pricing.wholesaleCostCents;
+
+    const bucket = fiveWayCents[bucketByDeliveryType(task.deliveryType)];
+    bucket.retail += pricing.retailPriceCents;
+    bucket.wholesale += pricing.wholesaleCostCents;
   }
 
   // Category D: offerRevenue (Accepted sales offers)
@@ -154,8 +221,10 @@ export async function aggregateMspTelemetry(
     .select({
       adjustedPriceCents: salesOffersTable.adjustedPriceCents,
       internalCostCents: salesOffersTable.internalCostCents,
+      deliveryType: servicesTable.deliveryType,
     })
     .from(salesOffersTable)
+    .leftJoin(servicesTable, eq(salesOffersTable.serviceId, servicesTable.id))
     .where(
       and(
         eq(salesOffersTable.mspId, mspId),
@@ -173,7 +242,31 @@ export async function aggregateMspTelemetry(
     });
     offerRetailCents += pricing.retailPriceCents;
     offerWholesaleCents += pricing.wholesaleCostCents;
+
+    const bucket = fiveWayCents[bucketByDeliveryType(offer.deliveryType)];
+    bucket.retail += pricing.retailPriceCents;
+    bucket.wholesale += pricing.wholesaleCostCents;
   }
+
+  const categoryBreakdown: CategoryBreakdown = {
+    monitoring: formatFinancials(monitoringMrrRetailCents, monitoringMrrWholesaleCents),
+    consulting: formatFinancials(fiveWayCents.consulting.retail, fiveWayCents.consulting.wholesale),
+    subscriptionsRetainers: formatFinancials(
+      fiveWayCents.subscriptionsRetainers.retail,
+      fiveWayCents.subscriptionsRetainers.wholesale,
+    ),
+    assessmentsQuickFixes: formatFinancials(
+      fiveWayCents.assessmentsQuickFixes.retail,
+      fiveWayCents.assessmentsQuickFixes.wholesale,
+    ),
+    documents: formatFinancials(fiveWayCents.documents.retail, fiveWayCents.documents.wholesale),
+    other: formatFinancials(fiveWayCents.other.retail, fiveWayCents.other.wholesale),
+  };
+
+  log.debug(
+    { mspId, categoryBreakdown },
+    "5-way category breakdown bucketed from projectType/deliveryType",
+  );
 
   // Total
   const totalRetailCents =
@@ -248,6 +341,7 @@ export async function aggregateMspTelemetry(
       offerRevenue: formatFinancials(offerRetailCents, offerWholesaleCents),
       total: formatFinancials(totalRetailCents, totalWholesaleCents),
     },
+    categoryBreakdown,
     metrics: {
       activeSignalsCount,
       offerAcceptanceRate,
@@ -304,6 +398,7 @@ export interface ColonyCompositeScore {
   momentumBonusApplied: boolean;
   currentMonthRevenueUsd: number;
   trailingThreeMonthAvgRevenueUsd: number;
+  categoryBreakdown: CategoryBreakdown;
 }
 
 function startOfCurrentMonth(): Date {
@@ -376,5 +471,6 @@ export async function calculateColonyCompositeScore(mspId: number): Promise<Colo
     momentumBonusApplied,
     currentMonthRevenueUsd,
     trailingThreeMonthAvgRevenueUsd,
+    categoryBreakdown: lifetime.categoryBreakdown,
   };
 }

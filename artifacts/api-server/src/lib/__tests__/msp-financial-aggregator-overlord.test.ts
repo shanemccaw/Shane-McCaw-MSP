@@ -28,6 +28,7 @@ const createChain = (resolveValue: any) => {
   const chain = {
     from: vi.fn().mockImplementation(() => chain),
     innerJoin: vi.fn().mockImplementation(() => chain),
+    leftJoin: vi.fn().mockImplementation(() => chain),
     where: vi.fn().mockImplementation(() => chain),
     groupBy: vi.fn().mockImplementation(() => chain),
     then: (resolve: any) => resolve(resolveValue),

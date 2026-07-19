@@ -40,6 +40,7 @@ router.get("/admin/overlord", requireAdmin, async (_req: Request, res: Response)
           mspId: msp.id,
           name: msp.name,
           compositeScore: compositeScore.score,
+          categoryBreakdown: compositeScore.categoryBreakdown,
           seatTier,
         };
       })
