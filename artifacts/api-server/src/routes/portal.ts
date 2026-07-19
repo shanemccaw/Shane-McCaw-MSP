@@ -1898,7 +1898,23 @@ router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response)
   const [{ unreadMessages }] = await db.select({ unreadMessages: count() }).from(messagesTable)
     .where(and(eq(messagesTable.clientUserId, userId), eq(messagesTable.readByClient, false)));
 
-  res.json({ projects: enrichedProjects, clientServices, invoices, reports, unreadNotifications: unread, unreadMessages });
+  // customerStatus/mspId power the account-inactive banner (app-shell.tsx) and
+  // the re-activation promo (customer-dashboard). Resolved from the JWT's
+  // customerId claim, same as portal-mission-control.ts's resolveCustomerId —
+  // req.user.mspId is already on the token, no join needed for it.
+  const customerId = req.user!.customerId;
+  let customerStatus: string | null = null;
+  if (customerId != null) {
+    const [customer] = await db.select({ status: mspCustomersTable.status })
+      .from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1);
+    customerStatus = customer?.status ?? null;
+  }
+
+  res.json({
+    projects: enrichedProjects, clientServices, invoices, reports,
+    unreadNotifications: unread, unreadMessages,
+    customerStatus, mspId: req.user!.mspId ?? null,
+  });
 });
 
 // ─── CLIENT: Projects ────────────────────────────────────────────────────────

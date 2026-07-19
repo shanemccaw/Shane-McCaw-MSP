@@ -73,7 +73,7 @@ export default function AccountSetupPage() {
         completeMfaLogin(json.accessToken, json.refreshToken, json.refreshExpiresAt);
         setDone(true);
         const slug = json.user?.mspSlug ?? null;
-        const landing = json.user?.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
+        const landing = json.user?.mspRole === "CustomerUser" ? "customer-dashboard" : "dashboard";
         if (slug) {
           storeSlug(slug);
           setTimeout(() => navigate(`/${slug}/${landing}`, { replace: true }), 1500);

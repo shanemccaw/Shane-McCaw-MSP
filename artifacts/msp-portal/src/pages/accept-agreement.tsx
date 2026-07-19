@@ -35,8 +35,8 @@ export default function AcceptAgreementPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Role-aware landing: resolves relative to the current router base.
-  // Inside slug scope → /portal/{slug}/dashboard or /portal/{slug}/customer-home.
-  const defaultLanding = user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+  // Inside slug scope → /portal/{slug}/dashboard or /portal/{slug}/customer-dashboard.
+  const defaultLanding = user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
 
   useEffect(() => {
     fetch("/api/platform/agreement/current")

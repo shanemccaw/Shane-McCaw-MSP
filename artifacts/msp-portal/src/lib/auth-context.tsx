@@ -272,10 +272,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // sessions have no refresh token), so we navigate client-side by
             // pushing the target URL and letting wouter re-render.
             if (targetSlug) {
-              // CustomerUser lands on the customer home; MSP-side roles land on
-              // the dashboard. mspRole is the impersonated identity's role.
+              // CustomerUser lands on the customer dashboard; MSP-side roles land
+              // on the dashboard. mspRole is the impersonated identity's role.
               const landing =
-                data.user.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
+                data.user.mspRole === "CustomerUser" ? "customer-dashboard" : "dashboard";
               const base = import.meta.env.BASE_URL.replace(/\/$/, "");
               const target = `${base}/${targetSlug}/${landing}`;
               window.history.pushState({}, "", target);

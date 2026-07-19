@@ -222,7 +222,7 @@ export default function LoginPage() {
   // In slug-scoped context navigate("/dashboard") auto-resolves to /portal/{slug}/dashboard.
   // In flat context it resolves to /portal/dashboard — acceptable fallback.
   const defaultLanding =
-    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -240,13 +240,13 @@ export default function LoginPage() {
       }
 
       // Compute landing from the freshly-resolved user so CustomerUser
-      // always goes to customer-home, not dashboard (pre-login user is null).
+      // always goes to customer-dashboard, not dashboard (pre-login user is null).
       const resolvedLanding =
-        result.user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+        result.user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
 
       if (ctxSlug) {
         // Inside slug-scoped router — navigate() auto-prefixes the slug.
-        // e.g. "/customer-home" → /portal/{slug}/customer-home
+        // e.g. "/customer-dashboard" → /portal/{slug}/customer-dashboard
         navigate(resolvedLanding);
       } else {
         // Flat /login context — no inner router to add the slug prefix.

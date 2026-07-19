@@ -200,7 +200,7 @@ function SlugInnerSwitch() {
   const { user, isLoading } = useAuth();
 
   const defaultLanding =
-    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
 
   return (
     <Switch>
@@ -536,7 +536,7 @@ function FlatLoggedInRedirect() {
     if (resolvedSlug) {
       // Persist slug so next visit resolves instantly without needing the JWT.
       if (!storedSlug) storeSlug(resolvedSlug);
-      const landing = user?.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
+      const landing = user?.mspRole === "CustomerUser" ? "customer-dashboard" : "dashboard";
       navigate(`/${resolvedSlug}/${landing}`, { replace: true });
       return;
     }
