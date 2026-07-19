@@ -2794,6 +2794,47 @@ export const policyRuleSuppressionsTable = pgTable("policy_rule_suppressions", {
 export type InsertPolicyRuleSuppression = typeof policyRuleSuppressionsTable.$inferInsert;
 export type PolicyRuleSuppression = typeof policyRuleSuppressionsTable.$inferSelect;
 
+export const leadOfferInferenceRulesTable = pgTable("lead_offer_inference_rules", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  quizCategorySlug: text("quiz_category_slug").notNull(),
+  scoreOperator: text("score_operator", { enum: ["lt", "gt"] }).notNull(),
+  scoreThreshold: numeric("score_threshold", { precision: 6, scale: 2 }).notNull(),
+  inferredSignalKey: text("inferred_signal_key").notNull(),
+  confidence: numeric("confidence", { precision: 3, scale: 2 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  categoryActiveIdx: index("lead_offer_inference_rules_category_active_idx").on(table.quizCategorySlug, table.isActive),
+}));
+
+export type InsertLeadOfferInferenceRule = typeof leadOfferInferenceRulesTable.$inferInsert;
+export type LeadOfferInferenceRule = typeof leadOfferInferenceRulesTable.$inferSelect;
+
+export const leadOfferRuleGroupsTable = pgTable("lead_offer_rule_groups", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  ruleType: text("rule_type", { enum: ["eligibility", "bundling", "pricing", "scoring", "expiration"] }).notNull().default("eligibility"),
+  serviceId: integer("service_id").references(() => servicesTable.id, { onDelete: "set null" }),
+  requiredSignalKeys: jsonb("required_signal_keys").$type<string[]>().notNull().default([]),
+  logic: text("logic", { enum: ["AND", "OR"] }).notNull().default("OR"),
+  minConfidence: numeric("min_confidence", { precision: 3, scale: 2 }).notNull().default("0.50"),
+  pricingAdjustmentPct: integer("pricing_adjustment_pct").notNull().default(0),
+  scoreContribution: integer("score_contribution").notNull().default(0),
+  expirationDays: integer("expiration_days").notNull().default(0),
+  bundleWithServiceIds: jsonb("bundle_with_service_ids").$type<number[]>().notNull().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertLeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferInsert;
+export type LeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
