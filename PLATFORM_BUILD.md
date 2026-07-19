@@ -38,3 +38,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Portal Shell Rebuild — CustomerUser | ab0e1f5f |
 | 2026-07-18 | ✅ DONE | msp-users-user-id-fk-constraint | PENDING_HASH |
 | 2026-07-18 | ✅ DONE | stripe-metadata-service-id-casing-fix | 4fcbc9da |
+| 2026-07-18 | ⏳ IN FLIGHT | api-server-typecheck-fixes | |
