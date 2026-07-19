@@ -35,4 +35,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | engine-snapshot-customer-resolution-fix | a8cb2558 |
 | 2026-07-18 | ✅ DONE | Engine Score Explain Dialog | 60b9f673 |
 | 2026-07-18 | ✅ DONE | signal-decay-rate-fractional-migration | 6208028f |
-| 2026-07-18 | ⏳ IN FLIGHT | Portal Shell Rebuild — CustomerUser | |
+| 2026-07-18 | ✅ DONE | Portal Shell Rebuild — CustomerUser | ab0e1f5f |
