@@ -69,6 +69,7 @@ import {
   FileCheck2,
   MessagesSquare,
   Star,
+  Rocket,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -393,7 +394,7 @@ export const WORKSPACES: WorkspaceDef[] = [
     description: "Inbox, security & settings",
     icon: Settings,
     prefix: "/system",
-    extraPrefixes: ["/msp"],
+    extraPrefixes: ["/msp", "/labs"],
     defaultPath: "/system/inbox",
     badgeKey: "unreadEmail",
     sections: [
@@ -435,6 +436,12 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "msp-plans", label: "Plan Management", path: "/msp/plans", icon: ClipboardList },
           { id: "msp-overrides", label: "Overrides", path: "/msp/overrides", icon: SlidersHorizontal },
           { id: "msp-reports", label: "Reports", path: "/msp/reports", icon: PieChart },
+        ],
+      },
+      {
+        id: "labs", label: "Labs", defaultOpen: false,
+        items: [
+          { id: "sys-factory-floor", label: "Factory Floor", path: "/labs/factory-floor", icon: Rocket },
         ],
       },
     ],

@@ -1,9 +1,10 @@
 /**
  * FactoryFloorLab — Three.js integration spike.
  *
- * Labs/WIP. Real colony data now flows from GET /api/admin/overlord, but the
- * scene is still unstyled — no belts, no animation, no final art. HQ is a
- * static placeholder; overlordTotal / growth-ladder wiring is a follow-up.
+ * Labs/WIP. Real colony + HQ data flows from GET /api/admin/overlord, but the
+ * scene is still unstyled — no belts, no animation, no final art. HQ's
+ * era-reset/prestige mechanic (Space-Empire -> Growth Era) is a follow-up;
+ * for now grossRevenueUsd past the Space-Empire threshold caps visually.
  */
 
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -18,8 +19,12 @@ interface Colony {
   seatTier: string | null;
 }
 
+interface OverlordTotal {
+  grossRevenueUsd: string;
+}
+
 interface OverlordResponse {
-  overlordTotal: unknown;
+  overlordTotal: OverlordTotal;
   colonies: Colony[];
 }
 
@@ -82,6 +87,92 @@ function TierGeometry({ tier, radius }: { tier: TierKey; radius: number }) {
   }
 }
 
+// ── HQ growth ladder (Founding Era) ─────────────────────────────────────────
+// Locked thresholds from the Factory Floor design doc. Era-reset/prestige
+// (Space-Empire -> Growth Era) is out of scope here — values past the
+// Space-Empire threshold just cap visually at that stage.
+type HqStage = "Garage" | "Factory" | "Launch Pad" | "Spaceport" | "Space-Empire";
+
+const HQ_STAGES: Array<{ stage: HqStage; threshold: number }> = [
+  { stage: "Garage", threshold: 0 },
+  { stage: "Factory", threshold: 100 },
+  { stage: "Launch Pad", threshold: 500 },
+  { stage: "Spaceport", threshold: 2_500 },
+  { stage: "Space-Empire", threshold: 10_000 },
+];
+
+function resolveHqStage(grossRevenueUsd: number): HqStage {
+  let current: HqStage = "Garage";
+  for (const { stage, threshold } of HQ_STAGES) {
+    if (grossRevenueUsd >= threshold) current = stage;
+  }
+  return current;
+}
+
+const HQ_COLOR: Record<HqStage, string> = {
+  Garage: "#9ca3af",
+  Factory: "#f97316",
+  "Launch Pad": "#facc15",
+  Spaceport: "#38bdf8",
+  "Space-Empire": "#c084fc",
+};
+
+// Same floored-growth-curve shape as domeRadius(), scoped to HQ's own stage
+// thresholds so HQ visibly grows within a stage, not just jumps between 5
+// fixed sizes.
+const HQ_SIZE_FLOOR = 1.0;
+const HQ_SIZE_SCALE = 0.35;
+
+function hqRadius(grossRevenueUsd: number, stage: HqStage): number {
+  const stageIndex = HQ_STAGES.findIndex(s => s.stage === stage);
+  const nextThreshold = HQ_STAGES[stageIndex + 1]?.threshold;
+  const cappedRevenue = nextThreshold !== undefined
+    ? Math.min(grossRevenueUsd, nextThreshold)
+    : grossRevenueUsd;
+  const revenueIntoStage = Math.max(0, cappedRevenue - HQ_STAGES[stageIndex].threshold);
+  return HQ_SIZE_FLOOR + Math.sqrt(revenueIntoStage) * HQ_SIZE_SCALE;
+}
+
+function HqGeometry({ stage, radius }: { stage: HqStage; radius: number }) {
+  switch (stage) {
+    // Garage — simple box, humble beginnings.
+    case "Garage":
+      return <boxGeometry args={[radius * 1.4, radius * 1.4, radius * 1.4]} />;
+    // Factory — squat cylinder, industrial.
+    case "Factory":
+      return <cylinderGeometry args={[radius, radius, radius * 1.4, 8]} />;
+    // Launch Pad — cone, rocket-adjacent.
+    case "Launch Pad":
+      return <coneGeometry args={[radius, radius * 2, 12]} />;
+    // Spaceport — torus, ring-shaped station.
+    case "Spaceport":
+      return <torusGeometry args={[radius, radius * 0.4, 12, 24]} />;
+    // Space-Empire — high-poly icosahedron, grandest silhouette.
+    case "Space-Empire":
+      return <icosahedronGeometry args={[radius, 2]} />;
+    default:
+      return <icosahedronGeometry args={[radius, 1]} />;
+  }
+}
+
+function Headquarters({ grossRevenueUsd }: { grossRevenueUsd: number }) {
+  const stage = resolveHqStage(grossRevenueUsd);
+  const radius = hqRadius(grossRevenueUsd, stage);
+  const color = HQ_COLOR[stage];
+
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    console.log(`[HQ] stage ${stage} — grossRevenueUsd ${grossRevenueUsd}`);
+  };
+
+  return (
+    <mesh position={[0, radius, 0]} castShadow onClick={handleClick}>
+      <HqGeometry stage={stage} radius={radius} />
+      <meshStandardMaterial color={color} flatShading />
+    </mesh>
+  );
+}
+
 function ColonyDome({ colony, position }: { colony: Colony; position: [number, number, number] }) {
   const tier = resolveTier(colony.seatTier);
   const radius = domeRadius(colony.compositeScore);
@@ -109,7 +200,7 @@ function colonyPositions(count: number): Array<[number, number, number]> {
   });
 }
 
-function Scene({ colonies }: { colonies: Colony[] }) {
+function Scene({ colonies, grossRevenueUsd }: { colonies: Colony[]; grossRevenueUsd: number }) {
   const positions = useMemo(() => colonyPositions(colonies.length), [colonies.length]);
 
   return (
@@ -123,11 +214,7 @@ function Scene({ colonies }: { colonies: Colony[] }) {
         <meshStandardMaterial color="#2f3336" flatShading />
       </mesh>
 
-      {/* HQ placeholder — static, not wired to overlordTotal yet */}
-      <mesh position={[0, 1.5, 0]} castShadow>
-        <icosahedronGeometry args={[1.5, 1]} />
-        <meshStandardMaterial color="#4f8ef7" flatShading />
-      </mesh>
+      <Headquarters grossRevenueUsd={grossRevenueUsd} />
 
       {colonies.map((colony, i) => (
         <ColonyDome key={colony.mspId} colony={colony} position={positions[i]} />
@@ -141,6 +228,7 @@ function Scene({ colonies }: { colonies: Colony[] }) {
 export default function FactoryFloorLab() {
   const { fetchWithAuth } = useAuth();
   const [colonies, setColonies] = useState<Colony[]>([]);
+  const [grossRevenueUsd, setGrossRevenueUsd] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,6 +238,7 @@ export default function FactoryFloorLab() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as OverlordResponse;
         setColonies(body.colonies);
+        setGrossRevenueUsd(Number(body.overlordTotal.grossRevenueUsd) || 0);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load overlord data"))
       .finally(() => setLoading(false));
@@ -176,7 +265,7 @@ export default function FactoryFloorLab() {
         className="w-full h-full"
       >
         <Suspense fallback={null}>
-          <Scene colonies={colonies} />
+          <Scene colonies={colonies} grossRevenueUsd={grossRevenueUsd} />
         </Suspense>
       </Canvas>
     </div>
