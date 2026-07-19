@@ -35,6 +35,8 @@ export function SlugProvider({
       try {
         const res = await fetchWithAuth(
           `/api/msp/resolve-slug/${encodeURIComponent(slug)}`,
+          undefined,
+          { silent: true },
         );
         if (!res.ok) return;
         const data = (await res.json()) as { mspId: number };

@@ -67,7 +67,11 @@ interface AuthContextValue extends AuthState {
   completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
   logout: () => Promise<void>;
   extendSession: () => Promise<void>;
-  fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  fetchWithAuth: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    opts?: { silent?: boolean },
+  ) => Promise<Response>;
   /** true while impersonating another user */
   isImpersonating: boolean;
 }
@@ -419,7 +423,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [doRefresh]);
 
   const fetchWithAuth = useCallback(
-    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+      opts?: { silent?: boolean },
+    ): Promise<Response> => {
       let token = state.accessToken;
 
       const headers = new Headers(init?.headers);
@@ -446,13 +454,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Surface non-OK responses as toasts so every caller gets consistent
       // error feedback without each page needing its own error handler.
-      if (!res.ok && res.status !== 401) {
+      // Callers doing best-effort background work (opts.silent) handle
+      // failure themselves and opt out of the global toast.
+      if (!res.ok && res.status !== 401 && !opts?.silent) {
         let message = `Request failed (${res.status})`;
         try {
           const clone = res.clone();
-          const data = (await clone.json()) as { error?: string; message?: string };
-          if (data.error) message = data.error;
-          else if (data.message) message = data.message;
+          const data = (await clone.json()) as {
+            error?: string | { code?: string; message?: string; details?: unknown; traceId?: string };
+            message?: string;
+          };
+          if (typeof data.error === "string") message = data.error;
+          else if (data.error && typeof data.error === "object" && typeof data.error.message === "string") {
+            message = data.error.message;
+          } else if (data.message) message = data.message;
         } catch {
           // body not JSON — keep generic message
         }
