@@ -31,5 +31,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | sales-offers list + fulfillment-queue mspId path migration | 47679db4 | |
 | 2026-07-18 | ✅ DONE | resolve-slug tenant restriction + settings ownership checks + sales-offers dead-route cleanup | ec4d68a3 |
 | 2026-07-18 | ✅ DONE | Wire Remediation Offers dashboard metric to sales_offers | 65ab285b |
-| 2026-07-18 | ⏳ IN FLIGHT | Portal Foundation Redesign | |
+| 2026-07-18 | ✅ DONE | Portal Foundation Redesign | 5f555414 |
 | 2026-07-18 | ✅ DONE | engine-snapshot-customer-resolution-fix | a8cb2558 |
