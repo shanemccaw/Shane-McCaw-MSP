@@ -83,3 +83,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Assessment Results Viewer + OMG Cards | bdd4308d |
 | 2026-07-19 | ✅ DONE | Account/Session Basics — Password, Login History, Real Sessions | 948f2bec |
 | 2026-07-19 | ✅ DONE | GDPR Export/Deletion — Bridge to Current Customer Schema (export + deletion-request enrichment shipped; admin destructive erasure deferred via stop-and-report) | 69811f66 |
+| 2026-07-19 | ⏳ IN FLIGHT | lead-offer-engine schema tables | |
