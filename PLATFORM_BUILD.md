@@ -67,3 +67,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | PowerShell Script Download for Requires-Script Findings | e453afb3 |
 | 2026-07-19 | ✅ DONE | Move Welcome Header Above Mission Control | c8fdb18b |
 | 2026-07-19 | ✅ DONE | Restyle DashboardTabs to Underline Pattern | a92bf210 |
+| 2026-07-19 | ⏳ IN FLIGHT | Resource Category Data Audit | |
