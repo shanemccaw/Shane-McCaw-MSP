@@ -13,7 +13,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 |------|--------|------|--------|
 | 2026-07-19 | ⏳ IN FLIGHT | lead-offer-engine AI pricing |  |
 | 2026-07-19 | ⏳ IN FLIGHT | Assessment Document Generation Workflow — Service-Mapped, Sequenced SOW |  |
-| 2026-07-19 | ⏳ IN FLIGHT | engagement-offer-engine schema |  |
+| 2026-07-19 | ✅ DONE | engagement-offer-engine schema — engagement_offer_rules + engagement_offer_firings tables, schema only, no evaluator logic. Note: landed inside 4f4fd222 because a concurrent session's commit swept up this session's separately-staged patch before it could be committed on its own — flagged, not silently absorbed. | 4f4fd222 |
 | 2026-07-19 | ✅ DONE | lead-scoring-engine refactor | efdcead6 |
 | 2026-07-19 | ✅ DONE | analytics event type taxonomy extension | a2fb86b0 |
 | 2026-07-19 | ✅ DONE | lead-offer-pricing-config schema table | 96e1b3d3 |
