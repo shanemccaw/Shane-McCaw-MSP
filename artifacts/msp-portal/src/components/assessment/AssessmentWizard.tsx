@@ -21,10 +21,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
+import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import {
   CheckCircle2,
   ChevronRight,
@@ -292,6 +292,7 @@ export function AssessmentWizard() {
           scanProgress={scanProgress}
           scanComplete={scanComplete}
           reportsComplete={reportsComplete}
+          fetchWithAuth={fetchWithAuth}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
         />
       </section>
@@ -337,6 +338,7 @@ function StepPanel({
   scanProgress,
   scanComplete,
   reportsComplete,
+  fetchWithAuth,
   onGoToReview,
 }: {
   stepKey: StepKey;
@@ -344,6 +346,7 @@ function StepPanel({
   scanProgress: { index: number; total: number; label: string } | null;
   scanComplete: boolean;
   reportsComplete: boolean;
+  fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
   onGoToReview: () => void;
 }) {
   if (!status) return null;
@@ -460,33 +463,14 @@ function StepPanel({
       return (
         <PanelShell icon={ScrollText} tone="emerald" title="Review findings">
           <p className="text-sm text-muted-foreground">
-            Your reports are ready to review. Each will open with a summary of the most
-            important findings.
+            Your reports are ready. Each opens with the findings that matter most, followed
+            by the full report.
           </p>
-          <div className="mt-5 space-y-2">
-            {status.documents.items.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Document ready — content view coming in a later task.
-              </div>
-            ) : (
-              status.documents.items.map((doc) => (
-                <div
-                  key={doc.id}
-                  className="flex items-center gap-3 rounded-xl border border-border bg-background/60 px-4 py-3"
-                >
-                  <FileText className="size-4 shrink-0 text-primary" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Document ready — content view coming in a later task.
-                    </p>
-                  </div>
-                  <Badge className="shrink-0 border-none bg-muted text-[10px] text-muted-foreground">
-                    Preview soon
-                  </Badge>
-                </div>
-              ))
-            )}
+          <div className="mt-5">
+            <AssessmentDocumentViewer
+              documents={status.documents.items}
+              fetchWithAuth={fetchWithAuth}
+            />
           </div>
         </PanelShell>
       );

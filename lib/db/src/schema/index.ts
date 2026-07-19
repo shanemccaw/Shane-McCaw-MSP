@@ -1820,6 +1820,29 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   sowTotalPrice: numeric("sow_total_price", { precision: 12, scale: 2 }),
   errorMessage: text("error_message"),
   /**
+   * "OMG cards" — AI-extracted, attention-grabbing findings for the customer-facing
+   * Assessment Results Viewer. Each card is one alarming/notable finding from this
+   * document, with a color-coded severity and a large headline number (a dollar
+   * estimate, risk count, etc.). Extracted lazily on first customer view of the
+   * document (see omg-card-extractor.ts) and persisted here so subsequent views —
+   * and every re-render — read the stored cards rather than re-running the AI call.
+   * NULL = not yet extracted; [] = extraction ran and found nothing card-worthy.
+   */
+  omgCards: jsonb("omg_cards").$type<Array<{
+    /** Traffic-light severity driving the card's color treatment. */
+    severity: "red" | "amber" | "green";
+    /** The big, attention-grabbing figure, pre-formatted for display (e.g. "$18,000", "0", "23"). */
+    metric: string;
+    /** Short qualifier rendered beneath the metric (e.g. "per year wasted", "MFA-exempt admins"). */
+    metricLabel: string;
+    /** Punchy, human headline for the finding (e.g. "Your admins can sign in without MFA"). */
+    headline: string;
+    /** One-sentence plain-language explanation of why this matters. */
+    detail: string;
+  }>>(),
+  /** When omgCards was populated — set alongside omgCards, cleared implicitly when a regenerated document overwrites the row. */
+  omgCardsGeneratedAt: timestamp("omg_cards_generated_at"),
+  /**
    * Populated at SOW generation time by the signal conflict detector.
    * Indicates whether signal filtering ran cleanly or had conflicting rules
    * that may have caused an incorrect project list.

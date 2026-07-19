@@ -1414,6 +1414,40 @@ Output requirements for the Pricing section:
 - Never invent new pricing models. Never use TBD.
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`,
   },
+  {
+    key: "assessment-omg-cards",
+    name: "Assessment — OMG Cards",
+    description: "Extracts 2–4 'OMG cards' (compelling/alarming findings with a color-coded severity and a big headline number) from a finished assessment document, for the customer-facing Assessment Results Viewer. Extracted lazily on first view. Tokens: {{docType}}, {{title}}, {{content}}. Must return ONLY a JSON array.",
+    category: "insights",
+    featureArea: "Assessment — Results Viewer",
+    featureRoute: "/assessment",
+    model: "claude-haiku-4-5",
+    body: `You are a Microsoft 365 security and modernization consultant reviewing a finished client assessment document. Your job is to pull out the most COMPELLING, ALARMING, or ATTENTION-GRABBING findings from it — the "oh my god" moments that make a business owner sit up and want to act.
+
+DOCUMENT TYPE: {{docType}}
+DOCUMENT TITLE: {{title}}
+
+DOCUMENT CONTENT (plain text extracted from the report):
+"""
+{{content}}
+"""
+
+Produce between 2 and 4 "OMG cards". Each card is one specific finding drawn from THIS document — never generic advice. For each card provide:
+- severity: "red" (urgent risk / money bleeding / active exposure), "amber" (notable gap worth fixing soon), or "green" (a genuine strength worth celebrating — include at most ONE green, and only if the document clearly supports it).
+- metric: a SHORT, punchy headline figure that captures the finding at a glance. Prefer a real number pulled from the document — a dollar amount ("$18,000"), a count ("23", "0"), or a percentage ("94%"). Keep it under ~10 characters. If the document gives no usable number for this finding, use a stark word like "NONE" or "OPEN".
+- metricLabel: a short phrase (a few words) that says what the metric measures — e.g. "per year wasted", "MFA-exempt admins", "unmanaged devices", "of licenses unused".
+- headline: a punchy one-line human headline, in plain business language, not jargon — e.g. "You're paying for 20 licenses nobody uses".
+- detail: one sentence explaining why it matters, grounded in the document's actual findings.
+
+RULES:
+- Base every card ONLY on what the document actually says. Do not invent numbers. If a finding has no number in the document, choose a word-based metric rather than fabricating a figure.
+- Lead with the scariest / most valuable findings first.
+- Dollar figures should reflect amounts stated or clearly implied by the document (e.g. wasted license spend). Never guess wildly.
+- Return ONLY a JSON array, no markdown fences, no preamble, no trailing commentary. Shape:
+[
+  { "severity": "red", "metric": "$18,000", "metricLabel": "per year wasted", "headline": "You're paying for 20 licenses nobody uses", "detail": "The license review found 20 assigned E3 licenses with no sign-in activity, costing roughly $18,000 annually." }
+]`,
+  },
 ];
 
 

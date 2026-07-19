@@ -40,6 +40,7 @@ import {
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -179,6 +180,96 @@ router.get(
     } catch (err) {
       log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
       res.status(500).json({ error: "Failed to load assessment status" });
+    }
+  },
+);
+
+// ── Single document — content + OMG cards for the Results Viewer ───────────────
+//
+// Returns one of the customer's own generated assessment documents: its rendered
+// HTML (for the iframe viewer, same pattern as customer-sow.tsx) plus its
+// AI-extracted "OMG cards".
+//
+// OMG cards are extracted LAZILY here, on the customer's first open of the
+// document, then persisted to insights_generated_documents.omg_cards. This avoids
+// spending an AI call on any document the customer never opens (assessments always
+// run a fresh scan and AI credits cost money). Every later view reads the stored
+// cards. Extraction failure never blocks the document — the HTML is always
+// returned; cards simply come back empty.
+router.get(
+  "/portal/assessment/documents/:id",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const documentId = Number(req.params.id);
+    if (!Number.isInteger(documentId) || documentId <= 0) {
+      res.status(400).json({ error: "Invalid document id" });
+      return;
+    }
+
+    try {
+      // Scope strictly to the caller's own documents (users.id space).
+      const [doc] = await db
+        .select({
+          id: insightsGeneratedDocumentsTable.id,
+          customerId: insightsGeneratedDocumentsTable.customerId,
+          docType: insightsGeneratedDocumentsTable.docType,
+          category: insightsGeneratedDocumentsTable.category,
+          title: insightsGeneratedDocumentsTable.title,
+          status: insightsGeneratedDocumentsTable.status,
+          htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+          omgCards: insightsGeneratedDocumentsTable.omgCards,
+        })
+        .from(insightsGeneratedDocumentsTable)
+        .where(
+          and(
+            eq(insightsGeneratedDocumentsTable.id, documentId),
+            eq(insightsGeneratedDocumentsTable.customerId, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!doc || doc.status === "archived") {
+        res.status(404).json({ error: "Document not found" });
+        return;
+      }
+
+      // Only expose documents that have finished generating and are ready to read.
+      const isReady = (READY_DOC_STATUSES as readonly string[]).includes(doc.status);
+      if (!isReady) {
+        res.status(409).json({ error: "Document is not ready yet", status: doc.status });
+        return;
+      }
+
+      // Lazily extract OMG cards on first view; reuse stored cards thereafter.
+      let omgCards: OmgCard[] = (doc.omgCards as OmgCard[] | null) ?? [];
+      if (doc.omgCards == null) {
+        omgCards = await extractAndStoreOmgCards({
+          id: doc.id,
+          docType: doc.docType,
+          title: doc.title,
+          htmlContent: doc.htmlContent,
+          customerUserId: doc.customerId,
+        });
+      }
+
+      res.json({
+        id: doc.id,
+        docType: doc.docType,
+        category: doc.category,
+        title: doc.title,
+        status: doc.status,
+        htmlContent: doc.htmlContent,
+        omgCards,
+      });
+    } catch (err) {
+      log.error({ err, userId, documentId }, "GET /portal/assessment/documents/:id failed");
+      res.status(500).json({ error: "Failed to load document" });
     }
   },
 );
