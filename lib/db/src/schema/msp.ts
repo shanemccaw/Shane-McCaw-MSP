@@ -212,6 +212,37 @@ export const mspRefreshTokensTable = pgTable("msp_refresh_tokens", {
 export type MspRefreshToken = typeof mspRefreshTokensTable.$inferSelect;
 export type InsertMspRefreshToken = typeof mspRefreshTokensTable.$inferInsert;
 
+// ── User Sessions (self-service device list + login history) ─────────────────
+// One row per logical login (password, MFA-completed, or impersonation
+// exchange) — distinct from msp_refresh_tokens above, which tracks the raw
+// rotating token chain. Refresh-token rotation updates currentTokenHash on
+// the SAME row (see session-tracking.ts in api-server) so lastActiveAt
+// reflects the real session lifetime instead of each individual rotation.
+// Impersonation sessions carry no token (they use a short-lived, non-refreshable
+// JWT) so currentTokenHash stays null for those rows.
+
+export const userSessionsTable = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  sessionType: text("session_type", { enum: ["standard", "impersonation"] }).notNull().default("standard"),
+  loginMethod: text("login_method", { enum: ["password", "totp", "sms", "passkey", "impersonation"] }).notNull(),
+  currentTokenHash: text("current_token_hash"),
+  impersonatedByUserId: integer("impersonated_by_user_id"),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [
+  index("user_sessions_user_id_idx").on(t.userId),
+  index("user_sessions_current_token_hash_idx").on(t.currentTokenHash),
+  index("user_sessions_created_at_idx").on(t.createdAt),
+]);
+
+export type UserSession = typeof userSessionsTable.$inferSelect;
+export type InsertUserSession = typeof userSessionsTable.$inferInsert;
+
 // ── Canonical Event Store (append-only) ───────────────────────────────────────
 
 export interface CanonicalEventMeta {

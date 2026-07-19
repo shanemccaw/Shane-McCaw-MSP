@@ -263,6 +263,25 @@ app.listen(port, (err) => {
     logger.warn({ err }, "sow-expiry-sweep: failed to load sweep module (non-fatal)");
   });
 
+  // ── Session Tracking: daily login-history retention prune ─────────────────
+  // Removes dead (revoked/expired) user_sessions rows older than 90 days.
+  // Active sessions are never touched regardless of age. Same cadence as the
+  // notification-center prune: once shortly after startup, then every 24 hours.
+  import("./lib/session-tracking").then(({ pruneOldSessions }) => {
+    setTimeout(() => {
+      pruneOldSessions().catch((err: unknown) => {
+        logger.warn({ err }, "session-tracking: initial prune failed (non-fatal)");
+      });
+    }, 20_000);
+    setInterval(() => {
+      pruneOldSessions().catch((err: unknown) => {
+        logger.warn({ err }, "session-tracking: scheduled prune failed (non-fatal)");
+      });
+    }, 24 * 60 * 60 * 1000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "session-tracking: failed to load prune module (non-fatal)");
+  });
+
   // ── Pending approvals table ───────────────────────────────────────────────
   pool.query(`
     CREATE TABLE IF NOT EXISTS pending_approvals (

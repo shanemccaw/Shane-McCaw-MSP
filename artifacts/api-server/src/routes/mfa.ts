@@ -8,6 +8,7 @@ import { eq, and, gt } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "auth" });
+import { createSession, type LoginMethod } from "../lib/session-tracking";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
 
@@ -211,7 +212,7 @@ router.post("/auth/mfa/totp/challenge", mfaLimiter, async (req: Request, res: Re
     return;
   }
 
-  return issueFullSession(userId, res);
+  return issueFullSession(userId, res, req, "totp");
 });
 
 router.delete("/auth/mfa/totp", requireAuth, async (req: Request, res: Response) => {
@@ -378,7 +379,7 @@ router.post("/auth/mfa/sms/verify", mfaLimiter, async (req: Request, res: Respon
     return;
   }
 
-  return issueFullSession(userId, res);
+  return issueFullSession(userId, res, req, "sms");
 });
 
 router.delete("/auth/mfa/sms", requireAuth, async (req: Request, res: Response) => {
@@ -626,7 +627,7 @@ router.post("/auth/mfa/passkey/verify-authentication", mfaLimiter, async (req: R
 
     await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.id, challengeRow.id));
 
-    return issueFullSession(userId, res);
+    return issueFullSession(userId, res, req, "passkey");
   } catch (err) {
     log.error({ err }, "Passkey authentication error");
     res.status(400).json({ error: "Authentication failed" });
@@ -785,7 +786,7 @@ router.post("/auth/mfa/verify", mfaLimiter, async (req: Request, res: Response) 
       res.status(401).json({ error: "Invalid code. Please try again." });
       return;
     }
-    return issueFullSession(userId, res);
+    return issueFullSession(userId, res, req, "totp");
   }
 
   if (method === "sms") {
@@ -794,7 +795,7 @@ router.post("/auth/mfa/verify", mfaLimiter, async (req: Request, res: Response) 
       res.status(401).json({ error: "Invalid or expired code" });
       return;
     }
-    return issueFullSession(userId, res);
+    return issueFullSession(userId, res, req, "sms");
   }
 
   res.status(400).json({ error: `Unsupported method: ${method}` });
@@ -912,7 +913,7 @@ async function getMspClaimsForUser(userId: number): Promise<{
   };
 }
 
-async function issueFullSession(userId: number, res: Response): Promise<void> {
+async function issueFullSession(userId: number, res: Response, req: Request, loginMethod: LoginMethod): Promise<void> {
   const secret = getJwtSecret();
   const REFRESH_TOKEN_TTL_DAYS = 7;
 
@@ -938,10 +939,24 @@ async function issueFullSession(userId: number, res: Response): Promise<void> {
   const rawRefreshToken = randomBytes(48).toString("hex");
   const tokenHash = createHash("sha256").update(rawRefreshToken).digest("hex");
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const userAgent = (req.headers["user-agent"] as string | undefined) ?? null;
+  const ipAddress = (req.ip ?? req.socket?.remoteAddress) ?? null;
 
   await db.insert(mspRefreshTokensTable).values({
     userId,
     tokenHash,
+    expiresAt,
+    userAgent,
+    ipAddress,
+  });
+
+  void createSession({
+    userId,
+    sessionType: "standard",
+    loginMethod,
+    tokenHash,
+    userAgent,
+    ipAddress,
     expiresAt,
   });
 

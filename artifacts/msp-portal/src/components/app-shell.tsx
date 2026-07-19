@@ -1287,8 +1287,7 @@ function CustomerTopBar({
               <Cog className="size-4 text-muted-foreground" />
               <span>Settings</span>
             </DropdownMenuItem>
-            {/* Placeholder-backed (UI now, backend later) */}
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/password-mfa")}>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings/security")}>
               <KeyRound className="size-4 text-muted-foreground" />
               <span>Password &amp; MFA</span>
             </DropdownMenuItem>

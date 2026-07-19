@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { startRegistration } from "@simplewebauthn/browser";
-import { Smartphone, MessageSquare, KeyRound, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Smartphone, MessageSquare, KeyRound, CheckCircle2, AlertCircle, Loader2, Lock, Monitor, History } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,46 @@ interface Enrollments {
   passkeyCount: number;
 }
 
+interface SessionItem {
+  id: number;
+  browser: string;
+  os: string;
+  ipAddress: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  isCurrent: boolean;
+}
+
+interface LoginHistoryItem {
+  id: number;
+  loginMethod: string;
+  browser: string;
+  os: string;
+  ipAddress: string | null;
+  createdAt: string;
+  revoked: boolean;
+}
+
+const LOGIN_METHOD_LABEL: Record<string, string> = {
+  password: "Password",
+  totp: "Authenticator App",
+  sms: "SMS Code",
+  passkey: "Passkey",
+};
+
 type AlertState = { type: "success" | "error"; message: string } | null;
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
 
 // ── AlertBox ─────────────────────────────────────────────────────────────────
 
@@ -491,6 +530,282 @@ function PasskeyCard({
   );
 }
 
+// ── Password Card ─────────────────────────────────────────────────────────────
+
+function PasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [alert, setAlert] = useState<AlertState>(null);
+  const { fetchWithAuth } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAlert(null);
+
+    if (newPassword.length < 8) {
+      setAlert({ type: "error", message: "New password must be at least 8 characters" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setAlert({ type: "error", message: "New passwords do not match" });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "Failed to change password");
+      setAlert({ type: "success", message: "Password updated. Your other signed-in devices have been signed out." });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Failed to change password" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-md bg-primary/10 p-2">
+            <Lock className="size-4 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-sm font-semibold">Password</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Change your account password</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <AlertBox alert={alert} />
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Current Password</Label>
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={e => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">New Password</Label>
+            <Input
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <p className="text-xs text-muted-foreground">At least 8 characters</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Confirm New Password</Label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+          </div>
+          <Button type="submit" disabled={loading || !currentPassword || !newPassword || !confirmPassword}>
+            {loading ? <><Loader2 className="size-3 mr-1.5 animate-spin" />Updating…</> : "Update Password"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Sessions Card ────────────────────────────────────────────────────────────
+
+function SessionsCard() {
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
+  const [alert, setAlert] = useState<AlertState>(null);
+  const { fetchWithAuth } = useAuth();
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/auth/sessions");
+      if (res.ok) {
+        const data = await res.json() as { sessions: SessionItem[] };
+        setSessions(data.sessions);
+      }
+    } catch {
+      // silently ignore — page still renders usefully
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleRevoke = async (id: number) => {
+    setBusyId(id);
+    setAlert(null);
+    try {
+      await fetchWithAuth(`/api/auth/sessions/${id}`, { method: "DELETE" });
+      await load();
+    } catch {
+      setAlert({ type: "error", message: "Failed to sign out that session" });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRevokeOthers = async () => {
+    if (!confirm("Sign out all other sessions? Any other signed-in devices will need to log in again.")) return;
+    setRevokingOthers(true);
+    setAlert(null);
+    try {
+      await fetchWithAuth("/api/auth/sessions/revoke-others", { method: "POST" });
+      await load();
+    } catch {
+      setAlert({ type: "error", message: "Failed to sign out other sessions" });
+    } finally {
+      setRevokingOthers(false);
+    }
+  };
+
+  const otherCount = sessions.filter(s => !s.isCurrent).length;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-md bg-primary/10 p-2">
+              <Monitor className="size-4 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold">Active Sessions</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">Devices currently signed in to your account</p>
+            </div>
+          </div>
+          {otherCount > 0 && (
+            <Button variant="outline" size="sm" onClick={() => void handleRevokeOthers()} disabled={revokingOthers} className="flex-shrink-0">
+              {revokingOthers ? <><Loader2 className="size-3 mr-1.5 animate-spin" />Signing out…</> : `Sign out others (${otherCount})`}
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <AlertBox alert={alert} />
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active sessions found.</p>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                    {s.browser} on {s.os}
+                    {s.isCurrent && <ActiveBadge label="This device" />}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {s.ipAddress ?? "Unknown location"} · Last active {relativeTime(s.lastActiveAt)}
+                  </p>
+                </div>
+                {!s.isCurrent && (
+                  <Button variant="outline" size="sm" onClick={() => void handleRevoke(s.id)} disabled={busyId === s.id} className="flex-shrink-0">
+                    {busyId === s.id ? <Loader2 className="size-3 animate-spin" /> : "Sign out"}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Login History Card ───────────────────────────────────────────────────────
+
+function LoginHistoryCard() {
+  const [history, setHistory] = useState<LoginHistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { fetchWithAuth } = useAuth();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithAuth("/api/auth/login-history");
+        if (res.ok && !cancelled) {
+          const data = await res.json() as { history: LoginHistoryItem[] };
+          setHistory(data.history);
+        }
+      } catch {
+        // silently ignore — page still renders usefully
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-md bg-primary/10 p-2">
+            <History className="size-4 text-primary" />
+          </div>
+          <div>
+            <CardTitle className="text-sm font-semibold">Login History</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Recent sign-ins to your account (last 90 days)</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : history.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No login history yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {history.map(h => (
+              <div key={h.id} className="flex items-center justify-between gap-3 text-sm border-b border-border/60 last:border-0 pb-2 last:pb-0">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {h.browser} on {h.os}{" "}
+                    <span className="text-muted-foreground font-normal">· {LOGIN_METHOD_LABEL[h.loginMethod] ?? h.loginMethod}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {h.ipAddress ?? "Unknown location"} · {new Date(h.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                {h.revoked && <span className="text-xs text-muted-foreground flex-shrink-0">Ended</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SecurityPage() {
@@ -562,6 +877,13 @@ export default function SecurityPage() {
                 </p>
               </div>
             )}
+
+            <div className="pt-2">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Password &amp; Sessions</h3>
+            </div>
+            <PasswordCard />
+            <SessionsCard />
+            <LoginHistoryCard />
           </div>
         )}
       </div>

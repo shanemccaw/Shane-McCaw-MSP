@@ -10,8 +10,18 @@ import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/ma
 import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken } from "./mfa.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import {
+  createSession,
+  touchSessionByTokenHash,
+  revokeSessionByTokenHash,
+  revokeSessionById,
+  revokeAllOtherSessions,
+  listActiveSessions,
+  listLoginHistory,
+  type LoginMethod,
+} from "../lib/session-tracking.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -156,22 +166,37 @@ function buildUserPayload(
 
 /**
  * Issue a new refresh token: generate, hash, store in DB.
+ * Also creates the user-facing session row (see session-tracking.ts) that
+ * powers self-service "Active Sessions" / "Login History".
  * Returns the raw token (for the client) and the DB row id.
  */
 async function issueRefreshToken(
   userId: number,
   req: Request,
+  loginMethod: LoginMethod = "password",
 ): Promise<{ rawToken: string; expiresAt: Date }> {
   const rawToken = generateRefreshToken();
   const tokenHash = hashRefreshToken(rawToken);
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const userAgent = (req.headers["user-agent"] as string | undefined) ?? null;
+  const ipAddress = (req.ip ?? req.socket?.remoteAddress) ?? null;
 
   await db.insert(mspRefreshTokensTable).values({
     userId,
     tokenHash,
     expiresAt,
-    userAgent: req.headers["user-agent"] ?? null,
-    ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
+    userAgent,
+    ipAddress,
+  });
+
+  void createSession({
+    userId,
+    sessionType: "standard",
+    loginMethod,
+    tokenHash,
+    userAgent,
+    ipAddress,
+    expiresAt,
   });
 
   return { rawToken, expiresAt };
@@ -320,6 +345,8 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
     .set({ revokedAt: now, replacedByHash: newTokenHash })
     .where(eq(mspRefreshTokensTable.id, storedToken.id));
 
+  void touchSessionByTokenHash(tokenHash, newTokenHash, newExpiresAt);
+
   void dispatchEvent({
     eventType: EVENT_TYPES.AUTH_TOKEN_REFRESH,
     actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
@@ -358,6 +385,7 @@ router.post("/auth/logout", async (req: Request, res: Response) => {
       .set({ revokedAt: new Date() })
       .where(eq(mspRefreshTokensTable.tokenHash, tokenHash))
       .catch(() => null);
+    void revokeSessionByTokenHash(tokenHash);
   }
 
   if (logoutUserId) {
@@ -538,6 +566,100 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── Change password (authenticated) ──────────────────────────────────────────
+router.post("/auth/change-password", requireAuth, async (req: Request, res: Response) => {
+  const authUser = req.user!;
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "currentPassword and newPassword are required" });
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, authUser.id)).limit(1);
+  if (!user?.passwordHash) {
+    res.status(400).json({ error: "No password set for this account." });
+    return;
+  }
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, authUser.id));
+
+  // Security best practice: changing your password ends every OTHER session.
+  const currentRawRefresh = (req.cookies?.refreshToken as string | undefined)
+    ?? (req.body as { refreshToken?: string })?.refreshToken;
+  const currentTokenHash = currentRawRefresh ? hashRefreshToken(currentRawRefresh) : null;
+  const revokedCount = await revokeAllOtherSessions(authUser.id, currentTokenHash);
+
+  void writeAuthAuditLog("AUTH_PASSWORD_CHANGED", req, {
+    userId: authUser.id,
+    mspId: authUser.mspId,
+    customerId: authUser.customerId,
+    mspRole: authUser.mspRole,
+    metadata: { revokedOtherSessions: revokedCount },
+  });
+
+  res.json({ ok: true, revokedOtherSessions: revokedCount });
+});
+
+// ─── Self-service sessions (active devices + login history) ──────────────────
+router.get("/auth/sessions", requireAuth, async (req: Request, res: Response) => {
+  const authUser = req.user!;
+  const rawRefresh = req.cookies?.refreshToken as string | undefined;
+  const currentTokenHash = rawRefresh ? hashRefreshToken(rawRefresh) : null;
+  const sessions = await listActiveSessions(authUser.id, currentTokenHash);
+  res.json({ sessions });
+});
+
+router.delete("/auth/sessions/:id", requireAuth, async (req: Request, res: Response) => {
+  const authUser = req.user!;
+  const sessionId = parseInt(req.params.id as string, 10);
+  if (isNaN(sessionId)) {
+    res.status(400).json({ error: "Invalid session id" });
+    return;
+  }
+
+  const ok = await revokeSessionById(authUser.id, sessionId);
+  if (!ok) {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  void writeAuthAuditLog("AUTH_SESSION_REVOKED", req, { userId: authUser.id, metadata: { sessionId } });
+  res.json({ ok: true });
+});
+
+router.post("/auth/sessions/revoke-others", requireAuth, async (req: Request, res: Response) => {
+  const authUser = req.user!;
+  const rawRefresh = req.cookies?.refreshToken as string | undefined;
+  const currentTokenHash = rawRefresh ? hashRefreshToken(rawRefresh) : null;
+  const revokedCount = await revokeAllOtherSessions(authUser.id, currentTokenHash);
+
+  void writeAuthAuditLog("AUTH_SESSIONS_REVOKED_OTHERS", req, {
+    userId: authUser.id,
+    metadata: { revokedCount },
+  });
+
+  res.json({ ok: true, revokedCount });
+});
+
+router.get("/auth/login-history", requireAuth, async (req: Request, res: Response) => {
+  const authUser = req.user!;
+  const history = await listLoginHistory(authUser.id);
+  res.json({ history });
+});
+
 // ─── Impersonation token exchange ─────────────────────────────────────────────
 // Consumes a single-use impersonation token (issued by POST /admin/impersonate/:userId
 // or POST /api/msp/:mspId/customers/:customerId/impersonate) and returns a short-lived
@@ -604,6 +726,17 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
   };
 
   const sessionToken = jwt.sign(jwtPayload, secret, { expiresIn: "30m" });
+
+  void createSession({
+    userId: targetUser.id,
+    sessionType: "impersonation",
+    loginMethod: "impersonation",
+    tokenHash: null,
+    impersonatedByUserId: record.adminUserId,
+    userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
+    ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+  });
 
   // Audit every impersonation session start (non-fatal — never blocks the response)
   // The canonical event actor carries `actingAs: impersonatedMspId` so downstream

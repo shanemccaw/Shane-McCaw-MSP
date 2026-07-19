@@ -2,7 +2,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
+import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -564,6 +565,39 @@ router.patch("/portal/profile", requireAuth, async (req: Request, res: Response)
 
   await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
   res.json({ ok: true });
+});
+
+// ─── CLIENT: Team member session management ──────────────────────────────────
+// Lets a team member managing their own customer account force-logout another
+// member of the SAME customer (e.g. an offboarded employee). Shares the real
+// user_sessions table + revocation logic with the self-service /auth/sessions
+// endpoints — see artifacts/api-server/src/lib/session-tracking.ts.
+router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [targetMspUser] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+
+  if (!targetMspUser?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  const revokedCount = await revokeAllOtherSessions(targetUserId, null);
+  res.json({ ok: true, revokedCount });
 });
 
 // ─── CLIENT: M365 Profile (self-service) ─────────────────────────────────────
