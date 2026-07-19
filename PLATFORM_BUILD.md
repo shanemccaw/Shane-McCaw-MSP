@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | engagement-offer-engine evaluator |  |
 | 2026-07-19 | ✅ DONE | lead-offer-engine AI pricing — AI-determined opportunistic pricing replacing rule-based pricing adjustment, hard-capped server-side (maxDiscountPct from lead_offer_pricing_config, clamped regardless of AI output); computeLeadOfferEngine restructured into two phases so AI is only called for candidates surviving scoring/filtering/cap, not every eligible candidate. Falls back to base price (no discount) on AI failure. | 4f4fd222 |
 | 2026-07-19 | ⏳ IN FLIGHT | Assessment Document Generation Workflow — Service-Mapped, Sequenced SOW |  |
 | 2026-07-19 | ✅ DONE | engagement-offer-engine schema — engagement_offer_rules + engagement_offer_firings tables, schema only, no evaluator logic. Note: landed inside 4f4fd222 because a concurrent session's commit swept up this session's separately-staged patch before it could be committed on its own — flagged, not silently absorbed. | 4f4fd222 |
