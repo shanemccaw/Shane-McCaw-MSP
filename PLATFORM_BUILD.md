@@ -57,3 +57,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Build Overlord Total and Colony Scoring | c9c2c544 |
 | 2026-07-19 | ✅ DONE | Fix Inverted Health Score Display + Hero Polish | 1c594a12 |
 | 2026-07-19 | ✅ DONE | Restyle CustomerDashboardExtras to Match Fluent Design System | f9140197 |
+| 2026-07-19 | ⏳ IN FLIGHT | Wire Live Colony Data Into 3D Scene | |
