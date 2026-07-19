@@ -292,8 +292,8 @@ export function MissionControl() {
   return (
     <section aria-label="Mission Control" className="space-y-4">
       {/* ── Hero ── */}
-      <Card className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="flex flex-col gap-2 min-w-0">
+      <Card className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+        <div className="flex flex-col gap-2 min-w-0 flex-1">
           <h2 className="text-3xl font-bold tracking-tight">
             <span
               className="bg-clip-text text-transparent"
@@ -370,7 +370,7 @@ export function MissionControl() {
             <Loader2 className="size-3.5 animate-spin" /> Checking engine status…
           </span>
         ) : engines ? (
-          <ul className="flex flex-wrap gap-x-6 gap-y-2.5">
+          <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-2.5">
             {engines.engines.map((engine) => {
               const meta = ENGINE_SEVERITY_META[engine.severity];
               return (
@@ -391,7 +391,7 @@ export function MissionControl() {
       {engines && engines.health.pillars.length > 0 && (
         <Card className="p-6">
           <h3 className="text-sm font-semibold text-foreground mb-4">Health breakdown</h3>
-          <div className="flex flex-wrap gap-x-6 gap-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-x-6 gap-y-6">
             {engines.health.pillars.map((p) => {
               const goodness = toGoodnessPercent(p.score);
               return (
@@ -402,6 +402,7 @@ export function MissionControl() {
                   size={64}
                   strokeWidth={6}
                   label={PILLAR_LABELS[p.pillar] ?? p.pillar}
+                  className="justify-self-center"
                 />
               );
             })}
