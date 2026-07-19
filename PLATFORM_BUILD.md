@@ -49,3 +49,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Fix Monitoring MRR Date Scoping | b8598440 |
 | 2026-07-18 | ✅ DONE | MRR Metric Separation Audit | b9dcb15f |
 | 2026-07-18 | ✅ DONE | Fix Global Toast Crash on Structured API Errors | 2c830cef |
+| 2026-07-18 | ⏳ IN FLIGHT | fix-fetchActiveTenants-id-space-regression | |
