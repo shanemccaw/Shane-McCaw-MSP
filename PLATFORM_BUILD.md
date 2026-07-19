@@ -97,4 +97,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | GDPR Export/Deletion — Bridge to Current Customer Schema (export + deletion-request enrichment shipped; admin destructive erasure deferred via stop-and-report) | 69811f66 |
 | 2026-07-19 | ✅ DONE | lead-offer-engine schema tables | e0e05be8 |
 | 2026-07-19 | ✅ DONE | lead-scoring-engine schema tables | 6fe1273e |
-| 2026-07-19 | ⏳ IN FLIGHT | quizLeadsTable lead offer result column | |
+| 2026-07-19 | ✅ DONE | quizLeadsTable lead offer result column | bf242f27 |
