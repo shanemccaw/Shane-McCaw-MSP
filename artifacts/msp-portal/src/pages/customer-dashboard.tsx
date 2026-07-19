@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { DashboardTabs } from "@/components/dashboard-view/DashboardView";
 import { MissionControl } from "@/components/mission-control/MissionControl";
-import { CustomerDashboardExtras, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
+import { CustomerDashboardExtras, NeedHelpCard, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
 
 export default function CustomerDashboardPage() {
   const { user } = useAuth();
@@ -28,8 +28,7 @@ export default function CustomerDashboardPage() {
             feed) — sits above the resolved dashboard(s); only customers with a
             customer identity get it (MSP staff visiting this route don't).
             CustomerDashboardExtras carries the real content relocated from the
-            old customer-home.tsx landing page (promo banner, quick actions,
-            projects/services/reports, help card). */}
+            old customer-home.tsx landing page (promo banner, recent reports). */}
         {user?.customerId != null && (
           <>
             <WelcomeHeader />
@@ -38,6 +37,9 @@ export default function CustomerDashboardPage() {
           </>
         )}
         <DashboardTabs scope={{ type: "customer", id: user?.customerId ?? 0 }} title="Dashboard" />
+        {/* Need-help card sits at the very bottom of the page, below the
+            resolved dashboard canvas. */}
+        {user?.customerId != null && <NeedHelpCard />}
       </div>
     </AppShell>
   );
