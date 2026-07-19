@@ -46,6 +46,9 @@ import {
   mspUsersTable,
   clientServicesTable,
   servicesTable,
+  usersTable,
+  couponsTable,
+  assessmentSowAgreementsTable,
 } from "@workspace/db";
 import { eq, ne, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
@@ -53,9 +56,15 @@ import { logger } from "../lib/logger";
 import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
+import { getStripeKey } from "../lib/stripe";
+import { verifyCaptchaToken } from "../lib/captcha";
+import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
 
 const log = logger.child({ channel: "engine.dashboard" });
+// Payment / checkout for the Assessment SOW belongs on the billing channel per the
+// locked logging taxonomy — the SOW flow-control above stays on engine.dashboard.
+const billingLog = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
 
@@ -684,5 +693,616 @@ router.post(
     }
   },
 );
+
+// ════════════════════════════════════════════════════════════════════════════
+// Task 5 — Assessment payment plan: choice, signature, checkout
+// ════════════════════════════════════════════════════════════════════════════
+//
+// After the customer settles a scope in the interactive selector (Task 4), they
+// pick a payment plan, sign, and pay. Everything here reads the SAME active
+// consolidated_sow + pricing-window state built above — it never re-derives
+// pricing or re-opens the scope selector.
+//
+// Deliverable map:
+//   • Pay-in-full  — REAL, end-to-end. Discount applied via the live PAY-TODAY
+//     coupon (the platform's real coupon system, same one the CRM presentation
+//     flow uses) as an ephemeral Stripe coupon on a hosted Checkout Session,
+//     mirroring portal.ts's proven `discounts: [{ coupon }]` pattern. $0 scopes
+//     skip Stripe. CAPTCHA gated. Marked paid by the dedicated webhook below.
+//   • Phased       — presented with a real per-phase breakdown, but its
+//     "proceed" does NOT create a Stripe charge. See the blocker note below.
+//   • Signature    — drawn-signature PNG (same contract as customer-sow.tsx),
+//     tied to the exact doc + scope + price via assessment_sow_agreements.
+//
+// ── PHASED-PAYMENT BLOCKER (investigated, reported, NOT worked around) ─────────
+// The platform's automatic per-phase invoicing is genuinely unavailable to the
+// Assessment SOW:
+//   • create_phased_invoices (the ENABLED node that creates the per-phase Stripe
+//     invoices) sources its schedule EXCLUSIVELY from
+//     quick_win_presentations.paymentSchedule (workflow-executor.ts ~7159-7176),
+//     erroring "no phased payment schedule found for project" otherwise.
+//   • That paymentSchedule is written ONLY by the CRM presentation checkout
+//     (portal.ts ~13097) — a CustomerUser-gated flow in the presentation/project
+//     entity space. The Assessment consolidated_sow lives in
+//     insights_generated_documents (users.id space) and never populates it.
+//   • edit_stripe_invoice (the due-date sync node) sits in a triggerEnabled:false
+//     workflow and resolves invoices via projects.clientUserId → Stripe customer
+//     → draft invoice tagged metadata.projectId — drafts that only exist once
+//     create_phased_invoices has run, which it can't here.
+// Wiring real phased auto-collection would require either bridging every
+// Assessment SOW into the CRM quick_win_presentations/projects space (touching
+// the known-fragile projectId→mspId/customerId linkage) or inventing a new
+// recurring-charge mechanism — both out of scope for "mirror the proven pattern".
+// So per the task's stop-and-report rule, phased is captured as a SIGNED
+// agreement handed to the provider (status awaiting_provider_setup), never a
+// Stripe deposit that silently can't invoice the remainder.
+
+// The real, live coupon that carries the pay-in-full discount (shared with the
+// CRM presentation flow, so both surfaces show the same discounted number for
+// the same coupon). Assessment has no separate hardcoded discount.
+const PAY_IN_FULL_COUPON_CODE = "PAY-TODAY";
+
+type ReadySowState = Extract<ReturnType<typeof buildSowState>, { ready: true }>;
+
+/** Sum the currently-selected workstream phases + mandatory adjustments (USD). */
+function effectiveSowTotals(state: ReadySowState): {
+  workstreamTotal: number;
+  adjustmentsTotal: number;
+  total: number;
+} {
+  const selected = new Set(state.selectedWorkstreamTitles);
+  const workstreamTotal = state.allWorkstreams
+    .filter((w) => selected.has(w.title))
+    .reduce((s, w) => s + w.priceUsd, 0);
+  const adjustmentsTotal = state.adjustments.reduce((s, a) => s + a.priceUsd, 0);
+  return { workstreamTotal, adjustmentsTotal, total: workstreamTotal + adjustmentsTotal };
+}
+
+type CouponRow = typeof couponsTable.$inferSelect;
+
+interface PayInFullOffer {
+  active: boolean;
+  originalCents: number;
+  discountedCents: number;
+  savingsCents: number;
+  variant: "adjustments_waived" | "percentage_off" | null;
+  discountPct: number | null;
+}
+
+/**
+ * Pay-in-full discount, computed exactly as the CRM presentation offer does
+ * (portal.ts ~12190-12212) so the two flows agree to the cent: within the 72h
+ * discount window, adjustments-waived when there are positive adjustment lines,
+ * otherwise percentage-off from the coupon's discountValue.
+ */
+function computePayInFullOffer(
+  totalDollars: number,
+  adjustmentsDollars: number,
+  windowState: "discount" | "standard" | "expired",
+  coupon: CouponRow | null,
+): PayInFullOffer {
+  const originalCents = Math.round(totalDollars * 100);
+  const inactive: PayInFullOffer = {
+    active: false, originalCents, discountedCents: originalCents, savingsCents: 0, variant: null, discountPct: null,
+  };
+  if (windowState !== "discount" || !coupon || !coupon.active) return inactive;
+  if (coupon.expiresAt && coupon.expiresAt < new Date()) return inactive;
+  if (originalCents <= 0) return inactive;
+
+  const adjustmentsCents = Math.round(adjustmentsDollars * 100);
+  if (adjustmentsCents > 0) {
+    const discountedCents = originalCents - adjustmentsCents;
+    return { active: true, originalCents, discountedCents, savingsCents: adjustmentsCents, variant: "adjustments_waived", discountPct: null };
+  }
+  const rawPct = parseFloat(String(coupon.discountValue));
+  const pct = rawPct / 100;
+  const discountedCents = Math.round(originalCents * (1 - pct));
+  return { active: true, originalCents, discountedCents, savingsCents: originalCents - discountedCents, variant: "percentage_off", discountPct: rawPct };
+}
+
+async function loadPayInFullCoupon(): Promise<CouponRow | null> {
+  const [coupon] = await db
+    .select()
+    .from(couponsTable)
+    .where(and(eq(couponsTable.code, PAY_IN_FULL_COUPON_CODE), eq(couponsTable.active, true)))
+    .limit(1);
+  return coupon ?? null;
+}
+
+/** Minimal Stripe-customer resolver (email match, else create) for a users.id. */
+async function resolveStripeCustomerForUser(
+  stripe: import("stripe").Stripe,
+  userId: number,
+): Promise<{ customerId: string | undefined; email: string | null }> {
+  const [profile] = await db
+    .select({
+      email: usersTable.email, name: usersTable.name, address: usersTable.address,
+      addressCity: usersTable.addressCity, addressState: usersTable.addressState, addressZip: usersTable.addressZip,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!profile?.email) return { customerId: undefined, email: null };
+  try {
+    const existing = await stripe.customers.search({ query: `email:"${profile.email}"`, limit: 1 });
+    if (existing.data.length > 0 && existing.data[0]) return { customerId: existing.data[0].id, email: profile.email };
+    const hasAddress = !!(profile.address || profile.addressCity || profile.addressState || profile.addressZip);
+    const created = await stripe.customers.create({
+      email: profile.email,
+      name: profile.name ?? undefined,
+      ...(hasAddress
+        ? { address: { line1: profile.address ?? undefined, city: profile.addressCity ?? undefined, state: profile.addressState ?? undefined, postal_code: profile.addressZip ?? undefined, country: "US" } }
+        : {}),
+    });
+    return { customerId: created.id, email: profile.email };
+  } catch (err) {
+    billingLog.warn({ err, userId }, "assessment-checkout: stripe customer resolution failed (non-fatal)");
+    return { customerId: undefined, email: profile.email };
+  }
+}
+
+/** Resolve msp_customers.id + msp_id for tenant scoping on the agreement row. */
+async function resolveTenantForCustomer(customerId: number | null): Promise<{ customerId: number | null; mspId: number | null }> {
+  if (customerId === null) return { customerId: null, mspId: null };
+  const [row] = await db
+    .select({ mspId: mspCustomersTable.mspId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+  return { customerId, mspId: row?.mspId ?? null };
+}
+
+// ── GET /portal/assessment/sow/payment-options ────────────────────────────────
+//
+// Everything the payment step needs: the effective total for the active scope,
+// the live pay-in-full discount (if inside the 72h window), the per-phase
+// breakdown for the phased option, and any existing agreement so a returning
+// customer sees their confirmed/paid state instead of re-paying.
+router.get(
+  "/portal/assessment/sow/payment-options",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const docs = await loadSowDocs(userId);
+      const state = buildSowState(docs);
+      if (!state.ready) {
+        res.json({ ready: false, regenerating: state.regenerating });
+        return;
+      }
+
+      const totals = effectiveSowTotals(state);
+      const coupon = await loadPayInFullCoupon();
+      const offer = computePayInFullOffer(totals.total, totals.adjustmentsTotal, state.pricing.windowState, coupon);
+
+      // Per-phase breakdown for the phased option — each selected workstream is a
+      // milestone (same sowPricingLines the selector uses); adjustments are billed
+      // with the first milestone.
+      const selected = new Set(state.selectedWorkstreamTitles);
+      const phases = state.allWorkstreams
+        .filter((w) => selected.has(w.title))
+        .map((w) => ({ title: w.title, amount: w.priceUsd, deliveryDate: w.deliveryDate }));
+
+      // Existing agreement (most recent) so the UI can show a terminal state.
+      const [existing] = await db
+        .select({
+          status: assessmentSowAgreementsTable.status,
+          paymentPlan: assessmentSowAgreementsTable.paymentPlan,
+          signerName: assessmentSowAgreementsTable.signerName,
+          signedAt: assessmentSowAgreementsTable.signedAt,
+        })
+        .from(assessmentSowAgreementsTable)
+        .where(and(eq(assessmentSowAgreementsTable.docId, state.doc.id), eq(assessmentSowAgreementsTable.clientUserId, userId)))
+        .orderBy(desc(assessmentSowAgreementsTable.createdAt))
+        .limit(1);
+
+      res.json({
+        ready: true,
+        docId: state.doc.id,
+        currency: "usd",
+        total: totals.total,
+        adjustmentsTotal: totals.adjustmentsTotal,
+        selectedWorkstreamTitles: state.selectedWorkstreamTitles,
+        pricing: state.pricing,
+        payInFull: {
+          active: offer.active,
+          discountedTotal: offer.active ? offer.discountedCents / 100 : null,
+          savings: offer.active ? offer.savingsCents / 100 : null,
+          variant: offer.variant,
+          discountPct: offer.discountPct,
+          couponCode: offer.active ? PAY_IN_FULL_COUPON_CODE : null,
+        },
+        phased: {
+          // Milestone billing is provider-arranged for Assessment (see blocker note) —
+          // the breakdown is informational; there is no self-serve deposit charge.
+          selfServe: false,
+          phases,
+          total: totals.total,
+        },
+        existingAgreement: existing
+          ? { status: existing.status, paymentPlan: existing.paymentPlan, signerName: existing.signerName, signedAt: existing.signedAt }
+          : null,
+      });
+    } catch (err) {
+      billingLog.error({ err, userId }, "GET /portal/assessment/sow/payment-options failed");
+      res.status(500).json({ error: "Failed to load payment options" });
+    }
+  },
+);
+
+// ── POST /portal/assessment/sow/checkout ──────────────────────────────────────
+//
+// CAPTCHA-gated. Records the signed agreement (tied to the exact active scope +
+// price) and branches:
+//   • $0 scope         → free_activated, no Stripe.
+//   • paymentPlan full → hosted Stripe Checkout (real coupon discount in-window);
+//                        marked paid by the webhook below.
+//   • paymentPlan phased → awaiting_provider_setup, no Stripe (blocker above).
+router.post(
+  "/portal/assessment/sow/checkout",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    const claimCustomerId = resolveCustomerId(req);
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const body = (req.body ?? {}) as {
+      captchaToken?: string;
+      paymentPlan?: string;
+      applyPayInFull?: boolean;
+      signatureData?: string;
+      signerName?: string;
+      selectedWorkstreamTitles?: unknown;
+    };
+
+    // CAPTCHA — same required-token → verify → 403 gate as portal-checkout.ts.
+    if (!body.captchaToken) {
+      res.status(400).json({ error: "CAPTCHA token is required" });
+      return;
+    }
+    const captcha = await verifyCaptchaToken(body.captchaToken);
+    if (!captcha.success) {
+      res.status(403).json({ error: "CAPTCHA verification failed" });
+      return;
+    }
+
+    const paymentPlan = body.paymentPlan;
+    if (paymentPlan !== "full" && paymentPlan !== "phased") {
+      res.status(400).json({ error: "paymentPlan must be 'full' or 'phased'" });
+      return;
+    }
+
+    // Signature — drawn PNG data URL + typed legal name (same contract enforced
+    // by the CRM sign route: data:image/ prefix, non-trivial length).
+    const signatureData = typeof body.signatureData === "string" ? body.signatureData : "";
+    const signerName = typeof body.signerName === "string" ? body.signerName.trim() : "";
+    if (!signatureData.startsWith("data:image/") || signatureData.length < 100) {
+      res.status(400).json({ error: "A drawn signature is required" });
+      return;
+    }
+    if (!signerName) {
+      res.status(400).json({ error: "Your full legal name is required to sign" });
+      return;
+    }
+
+    try {
+      const docs = await loadSowDocs(userId);
+      const state = buildSowState(docs);
+      if (!state.ready) {
+        res.status(409).json({ error: "No active statement of work to pay for yet" });
+        return;
+      }
+      if (state.regenerating) {
+        res.status(409).json({ error: "Your scope is still updating — please wait for it to finish before paying" });
+        return;
+      }
+      if (state.pricing.windowState === "expired") {
+        res.status(409).json({ error: "This statement of work has expired. A fresh scan is needed for current pricing." });
+        return;
+      }
+
+      // Integrity: the signature must bind to the exact scope the customer is
+      // looking at. Reject if the submitted scope no longer matches the active
+      // document (e.g. a concurrent re-scope), so no one signs a stale price.
+      const submitted = body.selectedWorkstreamTitles;
+      if (!Array.isArray(submitted) || !submitted.every((t) => typeof t === "string")) {
+        res.status(400).json({ error: "selectedWorkstreamTitles must be an array of strings" });
+        return;
+      }
+      const submittedKey = normalizeSet(submitted as string[]);
+      const activeKey = normalizeSet(state.selectedWorkstreamTitles);
+      if (submittedKey !== activeKey) {
+        res.status(409).json({ code: "scope_changed", error: "Your scope changed since you reviewed it. Please re-check your selection and sign again." });
+        return;
+      }
+
+      // Don't let a customer pay twice for the same signed document.
+      const [alreadyPaid] = await db
+        .select({ id: assessmentSowAgreementsTable.id })
+        .from(assessmentSowAgreementsTable)
+        .where(and(
+          eq(assessmentSowAgreementsTable.docId, state.doc.id),
+          eq(assessmentSowAgreementsTable.clientUserId, userId),
+          inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
+        ))
+        .limit(1);
+      if (alreadyPaid) {
+        res.status(409).json({ error: "This statement of work has already been settled." });
+        return;
+      }
+
+      const totals = effectiveSowTotals(state);
+      const coupon = await loadPayInFullCoupon();
+      const offer = computePayInFullOffer(totals.total, totals.adjustmentsTotal, state.pricing.windowState, coupon);
+      const tenant = await resolveTenantForCustomer(claimCustomerId);
+      const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null;
+
+      // Common agreement fields.
+      const baseAgreement = {
+        docId: state.doc.id,
+        clientUserId: userId,
+        customerId: tenant.customerId ?? undefined,
+        mspId: tenant.mspId ?? undefined,
+        selectedWorkstreamTitles: state.selectedWorkstreamTitles,
+        scopeKey: activeKey,
+        agreedTotalCents: offer.originalCents,
+        windowStateAtSigning: state.pricing.windowState,
+        signatureData,
+        signerName,
+        signatureIp: ip ?? undefined,
+      } as const;
+
+      // ── Branch: $0 scope → activate without Stripe ──────────────────────────
+      if (offer.originalCents <= 0) {
+        await db.insert(assessmentSowAgreementsTable).values({
+          ...baseAgreement,
+          paymentPlan,
+          status: "free_activated",
+          paidAt: new Date(),
+        });
+        billingLog.info({ userId, docId: state.doc.id }, "assessment-checkout: $0 scope activated without Stripe");
+        res.json({ outcome: "free_activated", message: "Your statement of work has been activated." });
+        return;
+      }
+
+      // ── Branch: phased → capture signed agreement, hand to provider ─────────
+      // No Stripe charge (see blocker note). Honest: we record the signed SOW and
+      // the plan preference; the provider arranges milestone billing.
+      if (paymentPlan === "phased") {
+        const [row] = await db.insert(assessmentSowAgreementsTable).values({
+          ...baseAgreement,
+          paymentPlan: "phased",
+          status: "awaiting_provider_setup",
+        }).returning({ id: assessmentSowAgreementsTable.id });
+        billingLog.info({ userId, docId: state.doc.id, agreementId: row?.id }, "assessment-checkout: phased plan signed — handed to provider for milestone billing");
+        res.json({
+          outcome: "provider_setup",
+          message: "You're all set. Your statement of work is signed — your provider will reach out to set up milestone billing for each phase.",
+        });
+        return;
+      }
+
+      // ── Branch: pay-in-full → hosted Stripe Checkout ────────────────────────
+      let stripeKey: string;
+      try {
+        stripeKey = getStripeKey();
+      } catch {
+        res.status(503).json({ error: "Payment service is not configured. Please contact support." });
+        return;
+      }
+      const { default: Stripe } = await import("stripe");
+      const stripe = new Stripe(stripeKey);
+
+      const { customerId: stripeCustomerId } = await resolveStripeCustomerForUser(stripe, userId);
+
+      // Apply the discount as a real, traceable Stripe coupon (Pattern B) — only
+      // when the customer opted in AND the offer is genuinely live server-side.
+      const applyDiscount = body.applyPayInFull === true && offer.active;
+      let stripeDiscounts: Array<{ coupon: string }> = [];
+      let couponCodeApplied: string | null = null;
+      let discountedTotalCents: number | null = null;
+      if (applyDiscount) {
+        const discountCents = offer.originalCents - offer.discountedCents;
+        if (discountCents > 0) {
+          const stripeCoupon = await stripe.coupons.create({
+            amount_off: discountCents,
+            currency: "usd",
+            duration: "once",
+            name: "Pay-in-Full Discount",
+            metadata: { docId: String(state.doc.id), couponCode: PAY_IN_FULL_COUPON_CODE, flow: "assessment" },
+          });
+          stripeDiscounts = [{ coupon: stripeCoupon.id }];
+          couponCodeApplied = PAY_IN_FULL_COUPON_CODE;
+          discountedTotalCents = offer.discountedCents;
+        }
+      }
+
+      // Insert the agreement first so the session metadata can reference it, and
+      // so an abandoned checkout still leaves a pending_payment audit trail.
+      const [agreement] = await db.insert(assessmentSowAgreementsTable).values({
+        ...baseAgreement,
+        paymentPlan: "full",
+        status: "pending_payment",
+        couponCode: couponCodeApplied ?? undefined,
+        discountedTotalCents: discountedTotalCents ?? undefined,
+      }).returning({ id: assessmentSowAgreementsTable.id });
+
+      if (!agreement) {
+        res.status(500).json({ error: "Failed to record agreement" });
+        return;
+      }
+
+      const portalBase = getMspPortalBaseUrl(); // ends in /portal
+      // Charge the full price and let Stripe apply the coupon on top, so the
+      // discount shows as a transparent line item (same as portal.ts:13029-13034).
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        customer: stripeCustomerId,
+        billing_address_collection: "required",
+        ...(stripeDiscounts.length > 0 && { discounts: stripeDiscounts }),
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            product_data: { name: `${state.doc.title} — Full Payment` },
+            unit_amount: offer.originalCents,
+          },
+          quantity: 1,
+        }],
+        mode: "payment",
+        success_url: `${portalBase}/assessment?payment=success`,
+        cancel_url: `${portalBase}/assessment?payment=cancelled`,
+        metadata: {
+          type: "assessment_checkout",
+          agreementId: String(agreement.id),
+          docId: String(state.doc.id),
+          userId: String(userId),
+          paymentPlan: "full",
+          totalPrice: String(totals.total),
+          ...(couponCodeApplied ? { couponCode: couponCodeApplied } : {}),
+          ...(discountedTotalCents !== null ? { discountedTotal: String(discountedTotalCents / 100) } : {}),
+        },
+      });
+
+      await db.update(assessmentSowAgreementsTable)
+        .set({ stripeSessionId: session.id, updatedAt: new Date() })
+        .where(eq(assessmentSowAgreementsTable.id, agreement.id));
+
+      billingLog.info(
+        { userId, docId: state.doc.id, agreementId: agreement.id, sessionId: session.id, discountApplied: couponCodeApplied != null },
+        "assessment-checkout: pay-in-full Stripe Checkout session created",
+      );
+      res.json({ outcome: "checkout", url: session.url });
+    } catch (err) {
+      billingLog.error({ err, userId }, "POST /portal/assessment/sow/checkout failed");
+      if (!res.headersSent) res.status(500).json({ error: "Failed to start checkout" });
+    }
+  },
+);
+
+// ── POST /portal/assessment/stripe/webhook ────────────────────────────────────
+//
+// Dedicated webhook for the Assessment pay-in-full checkout — separate event set
+// and fulfillment from the per-offer portal webhook (portal-checkout.ts). Marks
+// the agreement paid and records coupon redemption. It deliberately does NOT emit
+// agreement_signed: that event triggers create_phased_invoices, which is bound to
+// the CRM presentation/project space and would error for an Assessment SOW.
+//
+// Raw body for signature verification is registered in app.ts.
+router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Response): Promise<void> => {
+  const sig = req.headers["stripe-signature"];
+  if (!sig) {
+    res.status(400).json({ error: "Missing stripe-signature header" });
+    return;
+  }
+  const webhookSecret =
+    process.env["PORTAL_STRIPE_WEBHOOK_SECRET"] ??
+    process.env["STRIPE_WEBHOOK_SECRET"] ??
+    "";
+
+  let stripeKey: string;
+  try {
+    stripeKey = getStripeKey();
+  } catch (err) {
+    billingLog.warn({ err }, "assessment-webhook: Stripe not configured, ignoring event");
+    res.status(200).json({ received: true });
+    return;
+  }
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  let event: import("stripe").Stripe.Event;
+  try {
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig as string, webhookSecret);
+    } else {
+      billingLog.warn({}, "assessment-webhook: no webhook secret configured — skipping signature verification");
+      event = JSON.parse((req.body as Buffer).toString()) as import("stripe").Stripe.Event;
+    }
+  } catch (err) {
+    billingLog.warn({ err }, "assessment-webhook: signature verification failed");
+    res.status(400).json({ error: "Webhook signature verification failed" });
+    return;
+  }
+
+  // Acknowledge fast; Stripe requires a quick 2xx.
+  res.status(200).json({ received: true });
+
+  try {
+    if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return;
+    const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+    if (session.metadata?.["type"] !== "assessment_checkout") return;
+    if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
+      billingLog.info({ sessionId: session.id, paymentStatus: session.payment_status }, "assessment-webhook: session not paid — skipping");
+      return;
+    }
+
+    const agreementId = parseInt(session.metadata?.["agreementId"] ?? "", 10);
+    // Match on agreementId (primary) or stripe_session_id (belt-and-suspenders).
+    const [agreement] = await db
+      .select({ id: assessmentSowAgreementsTable.id, status: assessmentSowAgreementsTable.status })
+      .from(assessmentSowAgreementsTable)
+      .where(
+        !isNaN(agreementId)
+          ? eq(assessmentSowAgreementsTable.id, agreementId)
+          : eq(assessmentSowAgreementsTable.stripeSessionId, session.id),
+      )
+      .limit(1);
+
+    if (!agreement) {
+      billingLog.warn({ sessionId: session.id, agreementId }, "assessment-webhook: no matching agreement — skipping");
+      return;
+    }
+    if (agreement.status !== "paid") {
+      await db.update(assessmentSowAgreementsTable)
+        .set({ status: "paid", paidAt: new Date(), stripeSessionId: session.id, updatedAt: new Date() })
+        .where(eq(assessmentSowAgreementsTable.id, agreement.id));
+      billingLog.info({ agreementId: agreement.id, sessionId: session.id }, "assessment-webhook: agreement marked paid");
+    }
+
+    // Coupon redemption — idempotent by checkout_session_id, exactly as
+    // portal.ts:5386-5406.
+    const couponCodeUsed = session.metadata?.["couponCode"];
+    if (couponCodeUsed) {
+      const redemptionUserId = session.metadata?.["userId"] ? (parseInt(session.metadata["userId"], 10) || null) : null;
+      const purchaseAmount = session.amount_total != null ? String(session.amount_total / 100) : null;
+      const discountAmount = (session.total_details as { amount_discount?: number } | null)?.amount_discount != null
+        ? String((session.total_details as { amount_discount: number }).amount_discount / 100)
+        : null;
+      try {
+        const insertResult = await db.execute(
+          sql`INSERT INTO coupon_redemptions (coupon_code, checkout_session_id, coupon_id, user_id, purchase_amount, discount_amount)
+              VALUES (
+                ${couponCodeUsed},
+                ${session.id},
+                (SELECT id FROM coupons WHERE code = ${couponCodeUsed}),
+                ${redemptionUserId},
+                ${purchaseAmount},
+                ${discountAmount}
+              )
+              ON CONFLICT (checkout_session_id) DO NOTHING`,
+        );
+        if (((insertResult as { rowCount?: number }).rowCount ?? 0) > 0) {
+          await db.update(couponsTable)
+            .set({
+              usesCount: sql`${couponsTable.usesCount} + 1`,
+              active: sql`CASE WHEN ${couponsTable.maxUses} IS NOT NULL AND ${couponsTable.usesCount} + 1 >= ${couponsTable.maxUses} THEN false ELSE ${couponsTable.active} END`,
+            })
+            .where(eq(couponsTable.code, couponCodeUsed));
+        }
+      } catch (err) {
+        billingLog.warn({ err, couponCode: couponCodeUsed, sessionId: session.id }, "assessment-webhook: failed to record coupon redemption (non-fatal)");
+      }
+    }
+  } catch (err) {
+    billingLog.error({ err, eventType: event.type, eventId: event.id }, "assessment-webhook: handler failed");
+  }
+});
 
 export default router;

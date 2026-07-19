@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import { AssessmentSowSelector } from "./AssessmentSowSelector";
+import { AssessmentPaymentPlan } from "./AssessmentPaymentPlan";
 import {
   CheckCircle2,
   ChevronRight,
@@ -108,7 +109,7 @@ const STEPS: StepDef[] = [
   { key: "reports", title: "Reports", subtitle: "Generating findings", icon: FileText },
   { key: "review", title: "Review findings", subtitle: "Your results", icon: ScrollText },
   { key: "sow", title: "Statement of work", subtitle: "Tailor your scope", icon: FileSignature },
-  { key: "payment", title: "Choose a plan", subtitle: "Coming up", icon: CreditCard },
+  { key: "payment", title: "Choose a plan", subtitle: "Sign & pay", icon: CreditCard },
 ];
 
 type StepState = "complete" | "current" | "locked";
@@ -253,7 +254,10 @@ export function AssessmentWizard() {
     }
     if (index === 3) return reportsComplete ? "current" : "locked";
     if (index === 4) return reportsComplete && sowReady ? "current" : "locked";
-    return "locked"; // payment — future task
+    // Payment unlocks alongside the SOW step — the customer settles their scope
+    // there, then chooses a plan and signs here.
+    if (index === 5) return reportsComplete && sowReady ? "current" : "locked";
+    return "locked";
   };
 
   const isUnlocked = (index: number): boolean => stepState(index) !== "locked";
@@ -328,6 +332,7 @@ export function AssessmentWizard() {
           fetchWithAuth={fetchWithAuth}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
           onGoToSow={() => isUnlocked(4) && setSelected(4)}
+          onGoToPayment={() => isUnlocked(5) && setSelected(5)}
           debugTriggerScan={debugTriggerScan}
           debugTriggering={debugTriggering}
         />
@@ -378,6 +383,7 @@ function StepPanel({
   fetchWithAuth,
   onGoToReview,
   onGoToSow,
+  onGoToPayment,
   debugTriggerScan,
   debugTriggering,
 }: {
@@ -390,6 +396,7 @@ function StepPanel({
   fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
   onGoToReview: () => void;
   onGoToSow: () => void;
+  onGoToPayment: () => void;
   // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
   debugTriggerScan: () => Promise<void>;
   debugTriggering: boolean;
@@ -570,19 +577,35 @@ function StepPanel({
           <div className="mt-5">
             <AssessmentSowSelector fetchWithAuth={fetchWithAuth} />
           </div>
+          <Button className="mt-6" onClick={onGoToPayment}>
+            Continue to choose a plan <ChevronRight className="ml-1 size-4" />
+          </Button>
         </PanelShell>
       );
     }
 
-    case "payment":
+    case "payment": {
+      if (!(reportsComplete && sowReady)) {
+        return (
+          <PanelShell icon={CreditCard} tone="muted" title="Choose a plan">
+            <p className="text-sm text-muted-foreground">
+              Once your statement of work is ready, you'll choose how to pay — in full or phase by
+              phase — and sign here.
+            </p>
+          </PanelShell>
+        );
+      }
       return (
-        <PanelShell icon={CreditCard} tone="muted" title="Choose a plan">
+        <PanelShell icon={CreditCard} tone="primary" title="Choose a plan">
           <p className="text-sm text-muted-foreground">
-            The final step — choosing how you'd like to proceed — will appear here in a
-            later release.
+            You've settled your scope — now choose how you'd like to proceed and sign to confirm.
           </p>
+          <div className="mt-5">
+            <AssessmentPaymentPlan fetchWithAuth={fetchWithAuth} />
+          </div>
         </PanelShell>
       );
+    }
 
     default:
       return null;

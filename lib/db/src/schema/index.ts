@@ -1869,6 +1869,72 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
 export type InsertInsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferInsert;
 export type InsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferSelect;
 
+// ── Assessment SOW agreements — signature + payment for the Assessment wizard ──
+//
+// One row per time an Assessment customer signs a consolidated_sow scope and
+// chooses a payment plan (the Assessment "payment plan" step). This is the
+// signature + payment record that insights_generated_documents itself has no
+// columns for — the SOW document row holds scope/pricing, this row holds the
+// legally-binding acceptance (drawn signature tied to the exact scope + price the
+// customer saw), the chosen plan, and the checkout/payment lifecycle.
+//
+// Deliberately its own table rather than columns on insights_generated_documents:
+// that table is generic across report/consulting/SOW doc types and re-scoping
+// archives+replaces the active SOW row, so signature/payment state must not live
+// on a row that gets superseded. docId pins the exact signed version.
+//
+// paymentPlan:
+//   "full"   — pay-in-full; charged immediately via Assessment-scoped Stripe
+//              Checkout (real coupon discount inside the 72h window). status
+//              flows pending_payment → paid on the checkout.session webhook.
+//   "phased" — milestone billing. The platform's per-phase auto-invoicing
+//              (create_phased_invoices / edit_stripe_invoice) is bound to the CRM
+//              quick_win_presentations + projects entity space and cannot resolve
+//              an Assessment consolidated_sow, so phased is captured as a signed
+//              agreement handed to the provider (status awaiting_provider_setup),
+//              NOT a self-serve Stripe charge. See portal-assessment.ts Task-5
+//              section for the full blocker write-up.
+export const assessmentSowAgreementsTable = pgTable("assessment_sow_agreements", {
+  id: serial("id").primaryKey(),
+  // The exact signed consolidated_sow version (insights_generated_documents.id).
+  docId: integer("doc_id").notNull().references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
+  // The Assessment customer (users.id — same id space as insights_generated_documents.customer_id).
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  // msp_customers.id + msp.id for tenant scoping / telemetry (nullable — resolved from JWT claims).
+  customerId: integer("customer_id"),
+  mspId: integer("msp_id"),
+  // Scope snapshot at signing — the workstream titles the customer accepted, plus a
+  // normalized key for integrity checks against the document's current scope.
+  selectedWorkstreamTitles: jsonb("selected_workstream_titles").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  scopeKey: text("scope_key").notNull().default(""),
+  // Pricing captured at signing, in cents (matches what Stripe is charged).
+  agreedTotalCents: integer("agreed_total_cents").notNull(),
+  discountedTotalCents: integer("discounted_total_cents"),
+  couponCode: text("coupon_code"),
+  windowStateAtSigning: text("window_state_at_signing", { enum: ["discount", "standard", "expired"] }),
+  paymentPlan: text("payment_plan", { enum: ["full", "phased"] }).notNull(),
+  // Drawn-signature PNG data URL + typed legal name (same contract as customer-sow.tsx).
+  signatureData: text("signature_data").notNull(),
+  signerName: text("signer_name").notNull(),
+  signatureIp: text("signature_ip"),
+  signedAt: timestamp("signed_at").notNull().defaultNow(),
+  // Checkout / payment lifecycle.
+  status: text("status", {
+    enum: ["pending_payment", "paid", "awaiting_provider_setup", "free_activated"],
+  }).notNull().default("pending_payment"),
+  stripeSessionId: text("stripe_session_id"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("asa_doc_idx").on(t.docId),
+  index("asa_client_user_idx").on(t.clientUserId),
+  uniqueIndex("asa_stripe_session_uidx").on(t.stripeSessionId).where(sql`stripe_session_id IS NOT NULL`),
+]);
+
+export type InsertAssessmentSowAgreement = typeof assessmentSowAgreementsTable.$inferInsert;
+export type AssessmentSowAgreement = typeof assessmentSowAgreementsTable.$inferSelect;
+
 // ── Insights & Outputs — recurring automation schedules ───────────────────────
 export const insightsAutomationsTable = pgTable("insights_automations", {
   id: serial("id").primaryKey(),

@@ -103,6 +103,9 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 // Webhook endpoints need raw body for signature verification — must be before express.json()
 app.use("/api/portal/stripe/webhook", express.raw({ type: "application/json" }));
+// Assessment SOW checkout webhook — separate event set + fulfillment from the
+// per-offer portal webhook above (Assessment is role-floored below CustomerUser).
+app.use("/api/portal/assessment/stripe/webhook", express.raw({ type: "application/json" }));
 app.use("/api/msp/v1/webhooks", express.raw({ type: "application/json" }));
 // MSP platform billing webhook — separate from per-offer billing
 app.use("/api/msp/stripe/webhook", express.raw({ type: "application/json" }));
