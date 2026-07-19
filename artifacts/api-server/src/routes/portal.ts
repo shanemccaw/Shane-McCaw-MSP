@@ -6008,6 +6008,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       azureCredRows,
       quizLeadRows,
       generatedDocRows,
+      mspUserRows,
     ] = await Promise.all([
       db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.clientUserId, id)),
       db.select({ id: invoicesTable.id, status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.clientUserId, id)),
@@ -6021,6 +6022,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       db.select({ id: azureTenantCredentialsTable.id }).from(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id)),
       db.select({ id: quizLeadsTable.id }).from(quizLeadsTable).where(eq(quizLeadsTable.email, client.email)),
       db.select({ id: insightsGeneratedDocumentsTable.id }).from(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.customerId, id)),
+      db.select({ id: mspUsersTable.id }).from(mspUsersTable).where(eq(mspUsersTable.userId, id)),
     ]);
 
     const unpaidInvoices = invoiceRows.filter(inv => inv.status === "due" || inv.status === "overdue").length;
@@ -6040,6 +6042,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       azureCredentials: azureCredRows.length,
       quizLeads: quizLeadRows.length,
       generatedDocuments: generatedDocRows.length,
+      mspUsers: mspUserRows.length,
     });
   } catch (err) {
     req.log.error(err, "Failed to fetch client delete preview");
@@ -6116,6 +6119,7 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     if (client.email) {
       await db.delete(quizLeadsTable).where(eq(quizLeadsTable.email, client.email));
     }
+    await db.delete(mspUsersTable).where(eq(mspUsersTable.userId, id));
     await db.delete(usersTable).where(eq(usersTable.id, id));
 
     res.status(204).end();

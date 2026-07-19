@@ -81,6 +81,7 @@ export default defineConfig({
       "src/routes/dashboard-templates.test.ts",
       "src/routes/dashboard-overrides.test.ts",
       "src/routes/portal-mission-control.test.ts",
+      "src/routes/portal-client-delete-msp-users.test.ts",
     ],
     coverage: {
       provider: "v8",
