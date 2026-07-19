@@ -2835,6 +2835,47 @@ export const leadOfferRuleGroupsTable = pgTable("lead_offer_rule_groups", {
 export type InsertLeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferInsert;
 export type LeadOfferRuleGroup = typeof leadOfferRuleGroupsTable.$inferSelect;
 
+export const leadScoringRulesTable = pgTable("lead_scoring_rules", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  ruleType: text("rule_type", { enum: ["intent_event", "pain_point_bonus", "engagement_signal_bonus", "urgency_signal_bonus", "stage_bonus"] }).notNull(),
+  key: text("key").notNull(),
+  points: integer("points").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  typeKeyActiveIdx: index("lead_scoring_rules_type_key_active_idx").on(table.ruleType, table.key, table.isActive),
+}));
+
+export type InsertLeadScoringRule = typeof leadScoringRulesTable.$inferInsert;
+export type LeadScoringRule = typeof leadScoringRulesTable.$inferSelect;
+
+export const leadScoringTrackedPagesTable = pgTable("lead_scoring_tracked_pages", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  pathIdx: index("lead_scoring_tracked_pages_path_idx").on(table.path),
+}));
+
+export type InsertLeadScoringTrackedPage = typeof leadScoringTrackedPagesTable.$inferInsert;
+export type LeadScoringTrackedPage = typeof leadScoringTrackedPagesTable.$inferSelect;
+
+export const leadScoringConfigTable = pgTable("lead_scoring_config", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  lookbackDays: integer("lookback_days").notNull().default(14),
+  maxScore: integer("max_score").notNull().default(100),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertLeadScoringConfig = typeof leadScoringConfigTable.$inferInsert;
+export type LeadScoringConfig = typeof leadScoringConfigTable.$inferSelect;
+
 export const engineBaselineHistoryTable = pgTable("engine_baseline_history", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
