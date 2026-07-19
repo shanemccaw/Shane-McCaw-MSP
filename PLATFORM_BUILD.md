@@ -74,5 +74,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Build 5-Way Resource Category Split | 2ebb9b2f |
 | 2026-07-19 | ✅ DONE | Assessment RBAC Role — Foundation | bd63fee9 |
 | 2026-07-19 | ✅ DONE | Assessment Wizard — Scan Trigger, Progress Flow, First-Login Provisioning | 52e10b2a |
-| 2026-07-19 | ⏳ IN FLIGHT | Assessment Results Viewer + OMG Cards | |
+| 2026-07-19 | ✅ DONE | Assessment Results Viewer + OMG Cards | bdd4308d |
 | 2026-07-19 | ⏳ IN FLIGHT | Account/Session Basics — Password, Login History, Real Sessions | |
