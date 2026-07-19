@@ -13,6 +13,9 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, isNull, inArray, count } from "drizzle-orm";
 import { resolveCatalogPricing } from "./catalog-pricing.ts";
+import { logger } from "./logger";
+
+const log = logger.child({ channel: "billing" });
 
 export interface FinancialBreakdown {
   grossRevenueUsd: string;
@@ -70,6 +73,7 @@ export async function aggregateMspTelemetry(
       and(
         eq(mspSubscriptionsTable.mspId, mspId),
         inArray(mspSubscriptionsTable.status, ["active", "trialing", "past_due"]),
+        startDate ? gte(mspSubscriptionsTable.createdAt, startDate) : undefined,
       )
     );
 
@@ -83,6 +87,10 @@ export async function aggregateMspTelemetry(
     monitoringMrrRetailCents += pricing.retailPriceCents;
     monitoringMrrWholesaleCents += pricing.wholesaleCostCents;
   }
+  log.debug(
+    { mspId, startDate: startDate?.toISOString() ?? null, subscriptionCount: subs.length, monitoringMrrRetailCents },
+    "monitoringMrr scoped to startDate",
+  );
 
   // Category B: projectRevenue (Paid invoices for this MSP's customers)
   const invoices = await db

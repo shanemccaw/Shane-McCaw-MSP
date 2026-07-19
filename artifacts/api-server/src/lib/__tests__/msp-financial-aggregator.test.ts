@@ -99,4 +99,61 @@ describe("aggregateMspTelemetry", () => {
       openFulfillmentTasksCount: 4,
     });
   });
+
+  it("scopes monitoringMrr to startDate instead of always reflecting the current moment", async () => {
+    // Subscriptions query mock: startDate-filtered call returns only 1 of the 2
+    // subscriptions a "no startDate" call would return, proving the where()
+    // clause is actually applied rather than ignored.
+    const allSubs = [
+      { priceCents: 10000, internalCostCents: 7000 }, // created before startDate
+      { priceCents: 5000, internalCostCents: 3000 }, // created on/after startDate
+    ];
+    const scopedSubs = [allSubs[1]];
+
+    const emptyChain = createChain([]);
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(createChain(scopedSubs) as any) // Category A: monitoringMrr (scoped)
+      .mockReturnValueOnce(emptyChain as any) // Category B: invoices
+      .mockReturnValueOnce(emptyChain as any) // Category C: tasks
+      .mockReturnValueOnce(emptyChain as any) // Category D: offers
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any) // active signals
+      .mockReturnValueOnce(createChain([]) as any) // offer stats
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any); // open tasks
+
+    const scopedResult = await aggregateMspTelemetry(42, new Date("2026-07-01"));
+
+    // Only the second subscription (50.00 retail / 30.00 wholesale) should count.
+    expect(scopedResult.financials.monitoringMrr).toEqual({
+      grossRevenueUsd: "50.00",
+      wholesaleCostUsd: "30.00",
+      mspMarginUsd: "20.00",
+      mspMarginPct: "40.0%",
+    });
+
+    vi.mocked(db.select)
+      .mockReturnValueOnce(createChain(allSubs) as any) // Category A: monitoringMrr (unscoped)
+      .mockReturnValueOnce(emptyChain as any)
+      .mockReturnValueOnce(emptyChain as any)
+      .mockReturnValueOnce(emptyChain as any)
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any)
+      .mockReturnValueOnce(createChain([]) as any)
+      .mockReturnValueOnce(createChain([{ count: 0 }]) as any);
+
+    const unscopedResult = await aggregateMspTelemetry(42, undefined);
+
+    // Both subscriptions count when no startDate is given.
+    expect(unscopedResult.financials.monitoringMrr).toEqual({
+      grossRevenueUsd: "150.00",
+      wholesaleCostUsd: "100.00",
+      mspMarginUsd: "50.00",
+      mspMarginPct: "33.3%",
+    });
+
+    // The two results must differ — this is the actual proof that startDate
+    // changes monitoringMrr output instead of being a no-op.
+    expect(scopedResult.financials.monitoringMrr).not.toEqual(
+      unscopedResult.financials.monitoringMrr,
+    );
+  });
 });
