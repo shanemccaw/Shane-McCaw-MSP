@@ -35,4 +35,3 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | engine-snapshot-customer-resolution-fix | a8cb2558 |
 | 2026-07-18 | ⏳ IN FLIGHT | Engine Score Explain Dialog | |
 | 2026-07-18 | ⏳ IN FLIGHT | Orchestration Engine Validation | |
-| 2026-07-18 | ⏳ IN FLIGHT | Context Engine Retention Validation | |
