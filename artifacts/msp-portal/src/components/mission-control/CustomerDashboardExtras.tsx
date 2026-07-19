@@ -102,12 +102,29 @@ function relativeDate(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-500/15 text-green-400 border-green-500/30",
-  paused: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  completed: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  cancelled: "bg-red-500/15 text-red-400 border-red-500/30",
+const STATUS_DOT: Record<string, string> = {
+  active: "bg-status-green",
+  paused: "bg-status-amber",
+  completed: "bg-status-blue",
+  cancelled: "bg-status-red",
 };
+
+const STATUS_TEXT: Record<string, string> = {
+  active: "text-status-green",
+  paused: "text-status-amber",
+  completed: "text-status-blue",
+  cancelled: "text-status-red",
+};
+
+/** Status tag — same dot + text treatment as Mission Control's engine strip / finding cards, never color alone. */
+function StatusTag({ status }: { status: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground rounded-[var(--radius-control)] border border-border px-2 py-0.5">
+      <span className={`size-2 rounded-full ${STATUS_DOT[status] ?? "bg-muted-foreground"}`} aria-hidden="true" />
+      <span className={STATUS_TEXT[status] ?? "text-muted-foreground"}>{status}</span>
+    </span>
+  );
+}
 
 // ── Component ─────────────────────────────────────────────────────────────
 
@@ -184,8 +201,8 @@ export function CustomerDashboardExtras() {
         <Link href="/customer-documents">
           <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
             <CardContent className="flex items-center gap-3 py-5">
-              <div className="size-9 rounded-lg bg-blue-500/15 flex items-center justify-center group-hover:bg-blue-500/25 transition-colors">
-                <FileText className="size-4 text-blue-400" />
+              <div className="size-9 rounded-[var(--radius-control)] bg-muted flex items-center justify-center group-hover:bg-secondary transition-colors">
+                <FileText className="size-4 text-status-blue" />
               </div>
               <div>
                 <p className="text-sm font-medium">Documents</p>
@@ -199,8 +216,8 @@ export function CustomerDashboardExtras() {
         <Link href="/customer-diagnostics">
           <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
             <CardContent className="flex items-center gap-3 py-5">
-              <div className="size-9 rounded-lg bg-violet-500/15 flex items-center justify-center group-hover:bg-violet-500/25 transition-colors">
-                <Zap className="size-4 text-violet-400" />
+              <div className="size-9 rounded-[var(--radius-control)] bg-muted flex items-center justify-center group-hover:bg-secondary transition-colors">
+                <Zap className="size-4 text-status-violet" />
               </div>
               <div>
                 <p className="text-sm font-medium">Diagnostics</p>
@@ -214,8 +231,8 @@ export function CustomerDashboardExtras() {
         <Link href="/customer-sla">
           <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
             <CardContent className="flex items-center gap-3 py-5">
-              <div className="size-9 rounded-lg bg-emerald-500/15 flex items-center justify-center group-hover:bg-emerald-500/25 transition-colors">
-                <ShieldCheck className="size-4 text-emerald-400" />
+              <div className="size-9 rounded-[var(--radius-control)] bg-muted flex items-center justify-center group-hover:bg-secondary transition-colors">
+                <ShieldCheck className="size-4 text-status-green" />
               </div>
               <div>
                 <p className="text-sm font-medium">Service Levels</p>
@@ -229,8 +246,8 @@ export function CustomerDashboardExtras() {
         <Link href="/customer-scope">
           <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
             <CardContent className="flex items-center gap-3 py-5">
-              <div className="size-9 rounded-lg bg-sky-500/15 flex items-center justify-center group-hover:bg-sky-500/25 transition-colors">
-                <FolderSync className="size-4 text-sky-400" />
+              <div className="size-9 rounded-[var(--radius-control)] bg-muted flex items-center justify-center group-hover:bg-secondary transition-colors">
+                <FolderSync className="size-4 text-status-blue" />
               </div>
               <div>
                 <p className="text-sm font-medium">Project Scope</p>
@@ -243,7 +260,7 @@ export function CustomerDashboardExtras() {
 
         <Card className="opacity-60">
           <CardContent className="flex items-center gap-3 py-5">
-            <div className="size-9 rounded-lg bg-muted flex items-center justify-center">
+            <div className="size-9 rounded-[var(--radius-control)] bg-muted flex items-center justify-center">
               <MessageSquare className="size-4 text-muted-foreground" />
             </div>
             <div>
@@ -257,7 +274,7 @@ export function CustomerDashboardExtras() {
       {/* Active projects */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Active Projects</h3>
+          <h3 className="text-lg font-semibold tracking-tight text-foreground">Active Projects</h3>
           <Link href="/customer-documents">
             <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground h-7">
               View documents
@@ -273,7 +290,7 @@ export function CustomerDashboardExtras() {
             ))}
           </div>
         ) : data?.projects.length === 0 ? (
-          <Card className="border-dashed">
+          <Card>
             <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
               <FolderOpen className="size-8 text-muted-foreground/40" />
               <p className="text-sm text-muted-foreground">No active projects yet</p>
@@ -291,11 +308,7 @@ export function CustomerDashboardExtras() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-sm font-medium truncate">{project.title}</p>
-                        <Badge
-                          className={`text-[10px] px-1.5 py-0 h-4 border ${STATUS_COLORS[project.status] ?? "bg-muted text-muted-foreground border-border"}`}
-                        >
-                          {project.status}
-                        </Badge>
+                        <StatusTag status={project.status} />
                       </div>
                       {project.currentTask && (
                         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -337,23 +350,19 @@ export function CustomerDashboardExtras() {
       {/* Active subscriptions */}
       {(data?.clientServices?.length ?? 0) > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Active Services</h3>
+          <h3 className="text-lg font-semibold tracking-tight text-foreground mb-3">Active Services</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {data?.clientServices.slice(0, 4).map((cs) => (
               <Card key={cs.cs.id}>
                 <CardContent className="flex items-center gap-3 py-4">
-                  <CheckCircle2 className="size-4 text-green-400 shrink-0" />
+                  <CheckCircle2 className="size-4 text-status-green shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{cs.service.name}</p>
                     <p className="text-xs text-muted-foreground capitalize">
                       {cs.service.billingType.replace("_", " ")} · ${cs.service.price}
                     </p>
                   </div>
-                  <Badge
-                    className={`text-[10px] px-1.5 py-0 h-4 border ${STATUS_COLORS[cs.cs.status] ?? "bg-muted text-muted-foreground border-border"}`}
-                  >
-                    {cs.cs.status}
-                  </Badge>
+                  <StatusTag status={cs.cs.status} />
                 </CardContent>
               </Card>
             ))}
@@ -365,7 +374,7 @@ export function CustomerDashboardExtras() {
       {(data?.reports?.length ?? 0) > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-foreground">Recent Reports</h3>
+            <h3 className="text-lg font-semibold tracking-tight text-foreground">Recent Reports</h3>
             <Link href="/customer-documents">
               <Button variant="ghost" size="sm" className="gap-1 text-xs text-muted-foreground h-7">
                 All documents
@@ -396,7 +405,7 @@ export function CustomerDashboardExtras() {
       )}
 
       {/* Help card */}
-      <Card className="border-dashed bg-muted/20">
+      <Card className="bg-muted/20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Need help?</CardTitle>
           <CardDescription className="text-xs">
@@ -408,13 +417,13 @@ export function CustomerDashboardExtras() {
           <p className="text-xs text-muted-foreground">
             Review your diagnostics findings and pending offer under{" "}
             <Link href="/customer-diagnostics">
-              <span className="text-primary underline underline-offset-2 cursor-pointer">
+              <span className="text-status-blue underline underline-offset-2 cursor-pointer">
                 Diagnostics &amp; Offers
               </span>
             </Link>
             , or browse your documents under{" "}
             <Link href="/customer-documents">
-              <span className="text-primary underline underline-offset-2 cursor-pointer">
+              <span className="text-status-blue underline underline-offset-2 cursor-pointer">
                 Documents
               </span>
             </Link>
