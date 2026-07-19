@@ -255,6 +255,46 @@ router.get(
   },
 );
 
+// ── GET /api/msp/customers/:customerId/diagnostics/runs ───────────────────────
+// Run history list for the customer-detail Diagnostics tab. Returns a plain
+// array (most recent first) — unlike GET .../diagnostics above, which wraps
+// runs in a paginated { runs, total, limit, offset } envelope.
+
+router.get(
+  "/msp/customers/:customerId/diagnostics/runs",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params["customerId"] as string, 10);
+      if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
+      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
+
+      const limit = Math.min(parseInt(String((req.query as Record<string, unknown>).limit ?? "50"), 10), 100);
+
+      const runs = await db
+        .select()
+        .from(mspDiagnosticRunsTable)
+        .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(limit);
+
+      res.json(runs);
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      log.error({ err }, "GET /msp/customers/:id/diagnostics/runs error");
+      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
 // ── GET /api/msp/customers/:customerId/diagnostics/runs/:runId ────────────────
 
 router.get(

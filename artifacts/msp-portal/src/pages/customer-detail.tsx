@@ -264,8 +264,7 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken, isInactive }: 
       setTriggering(false);
       setIsRunning(true);
 
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const sseUrl = `${base}/api/msp/customers/${customerId}/diagnostics/runs/${runId}/stream?token=${encodeURIComponent(accessToken ?? "")}`;
+      const sseUrl = `/api/msp/customers/${customerId}/diagnostics/runs/${runId}/sse?jwt=${encodeURIComponent(accessToken ?? "")}`;
 
       const es = new EventSource(sseUrl);
       eventSourceRef.current = es;
