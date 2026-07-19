@@ -53,3 +53,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Merge Customer Home Content Into Mission Control + Flip Landing Route | ca751fe9 |
 | 2026-07-19 | ✅ DONE | Wire Client Errors Into Platform Observability | 62945841 |
 | 2026-07-19 | ✅ DONE | Move ErrorBoundary Above AuthProvider | 655090ea |
+| 2026-07-19 | ⏳ IN FLIGHT | Three.js Integration Spike | |
