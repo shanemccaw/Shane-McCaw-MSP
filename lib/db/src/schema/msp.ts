@@ -2326,3 +2326,30 @@ export const insertDashboardOverrideSchema = createInsertSchema(dashboardOverrid
 export type DashboardOverride = typeof dashboardOverridesTable.$inferSelect;
 export type InsertDashboardOverride = typeof dashboardOverridesTable.$inferInsert;
 
+// ── Dashboard AI Executive Summary ──────────────────────────────────────────
+//
+// One cached AI-generated summary per customer, covering their customer_default
+// dashboard's currently-resolved metrics. Mirrors the OMG-card caching pattern
+// (insightsGeneratedDocumentsTable.omgCards/omgCardsGeneratedAt in this same
+// file) — generated lazily, persisted, and reused until stale rather than
+// regenerated on every dashboard load. See dashboard-executive-summary.ts for
+// the staleness window and generation logic.
+
+export const dashboardExecutiveSummariesTable = pgTable("dashboard_executive_summaries", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().unique().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  headline: text("headline").notNull().default(""),
+  bullets: jsonb("bullets").$type<Array<{ severity: "red" | "amber" | "green"; text: string }>>().notNull().default([]),
+  model: text("model"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("dashboard_executive_summaries_msp_id_idx").on(t.mspId),
+]);
+
+export const insertDashboardExecutiveSummarySchema = createInsertSchema(dashboardExecutiveSummariesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type DashboardExecutiveSummary = typeof dashboardExecutiveSummariesTable.$inferSelect;
+export type InsertDashboardExecutiveSummary = typeof dashboardExecutiveSummariesTable.$inferInsert;
+

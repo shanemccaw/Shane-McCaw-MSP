@@ -15,6 +15,7 @@
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { DashboardTabs } from "@/components/dashboard-view/DashboardView";
+import { ExecutiveSummaryCard } from "@/components/dashboard-view/ExecutiveSummaryCard";
 import { MissionControl } from "@/components/mission-control/MissionControl";
 import { CustomerDashboardExtras, NeedHelpCard, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
 
@@ -34,6 +35,7 @@ export default function CustomerDashboardPage() {
             <WelcomeHeader />
             <MissionControl />
             <CustomerDashboardExtras />
+            <ExecutiveSummaryCard />
           </>
         )}
         <DashboardTabs scope={{ type: "customer", id: user?.customerId ?? 0 }} title="Dashboard" />
