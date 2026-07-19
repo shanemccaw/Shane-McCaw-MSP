@@ -2300,6 +2300,31 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  {
+    name: "__system__: Engagement Offer Evaluation",
+    description: "Runs every 15 minutes. Evaluates all active Engagement Offer Engine rules against every lead with activity in the last 24 hours, firing configured workflow events for anything that crosses its behavioral engagement thresholds — connects raw browsing behavior to a dispatched engagement offer.",
+    triggerType: "schedule",
+    cron: "*/15 * * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Every 15 min" } },
+        {
+          id: "evaluate",
+          type: "evaluate_engagement_offers",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "evaluate_engagement_offers",
+            label: "Evaluate Engagement Offers",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",    target: "evaluate" },
+        { id: "e2", source: "evaluate", target: "end"      },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
