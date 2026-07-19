@@ -242,7 +242,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
       recurring: { interval: "month" },
       product_data: {
         name: `MSP Platform — ${service.name}`,
-        metadata: { service_id: String(service.id), fulfillment_type: "msp_monthly_subscription" },
+        metadata: { serviceId: String(service.id), fulfillment_type: "msp_monthly_subscription" },
       },
     });
 
@@ -265,7 +265,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
           msp_domain: domain?.trim() ?? "",
           msp_contact_name: contactName?.trim() ?? "",
           msp_contact_email: contactEmail.trim(),
-          service_id: String(service.id),
+          serviceId: String(service.id),
           fulfillment_type: "msp_monthly_subscription",
         },
       },
@@ -274,7 +274,7 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
         msp_domain: domain?.trim() ?? "",
         msp_contact_email: contactEmail.trim(),
         msp_contact_name: contactName?.trim() ?? "",
-        service_id: String(service.id),
+        serviceId: String(service.id),
         signup_source: "msp_platform",
         // Agreement acceptance evidence — consumed by the billing webhook
         agreement_accepted: currentAgreement ? "true" : "none",
