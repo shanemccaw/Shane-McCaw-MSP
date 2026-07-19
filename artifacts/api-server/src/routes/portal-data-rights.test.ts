@@ -132,10 +132,10 @@ mock.module("../lib/logger.ts", {
   namedExports: { logger: noopLogger },
 });
 
-const sentEmails: { to: string; subject: string }[] = [];
+const sentEmails: { to: string; subject: string; html: string }[] = [];
 mock.module("../lib/mailer.ts", {
   namedExports: {
-    sendEmail: async (to: string, subject: string) => { sentEmails.push({ to, subject }); },
+    sendEmail: async (to: string, subject: string, html: string) => { sentEmails.push({ to, subject, html }); },
     sendEmailFromTemplate: async () => {},
     getEmailTemplateOrFallback: async () => ({ subject: "", html: "" }),
     purchaseConfirmationEmail: () => ({ subject: "", html: "" }),
@@ -241,12 +241,12 @@ for (const mod of [
 const { default: router } = await import("./portal.ts");
 import express from "express";
 
-function makeApp(userId = 42) {
+function makeApp(userId = 42, customerId?: number) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     // Inject auth user for requireAuth (which is stubbed to call next())
-    (req as unknown as Record<string, unknown>).user = { id: userId, role: "client", email: "client@test.example" };
+    (req as unknown as Record<string, unknown>).user = { id: userId, role: "client", email: "client@test.example", ...(customerId != null ? { customerId } : {}) };
     (req as unknown as Record<string, unknown>).log = noopLogger;
     next();
   });
@@ -343,6 +343,61 @@ describe("GET /api/portal/data-export", () => {
     assert.ok(Array.isArray(body.auditActivity), "auditActivity should be array");
     assert.ok(Array.isArray(body.quizResults), "quizResults should be array");
   });
+
+  it("omits currentSchema for a legacy-only account (no customerId on the JWT)", async () => {
+    dbQueue.length = 0;
+    dbQueue.push([{ id: 42, name: "Legacy", email: "client@test.example", company: null, phone: null, createdAt: new Date().toISOString() }]);
+    const { status, body } = await request(srv, { path: "/api/portal/data-export" });
+    assert.equal(status, 200);
+    assert.equal((body as Record<string, unknown>).currentSchema, null, "currentSchema should be null when no customerId");
+  });
+});
+
+// ── Current-schema (MSP tenant) export coverage ───────────────────────────────
+describe("GET /api/portal/data-export — current-schema customer", () => {
+  let srv: http.Server;
+
+  before(async () => {
+    srv = await listen(makeApp(42, 777)); // customerId = 777
+  });
+
+  after(() => srv.close());
+
+  it("includes a populated currentSchema section keyed by mspCustomers.id", async () => {
+    dbQueue.length = 0;
+    const fakeUser = { id: 42, name: "Test Client", email: "client@test.example", company: "ACME", phone: null, createdAt: new Date().toISOString() };
+    // Legacy selects (projects empty ⇒ documents query skipped): user, projects, invoices,
+    // messages, m365, clientDocuments, audit, quiz — extras beyond what we push resolve to [].
+    dbQueue.push([fakeUser]);
+    // Current-schema block: mspCustomer, then 13 more selects. Push a customer row +
+    // one finding so we can assert the section is genuinely populated; the rest fall through to [].
+    dbQueue.push([]); // projects
+    dbQueue.push([]); // invoices
+    dbQueue.push([]); // messages
+    dbQueue.push([]); // m365
+    dbQueue.push([]); // clientDocuments
+    dbQueue.push([]); // audit
+    dbQueue.push([]); // quiz
+    dbQueue.push([{ id: 777, name: "ACME Corp", domain: "acme.test", industry: "tech", status: "active", createdAt: new Date().toISOString() }]); // mspCustomer
+    dbQueue.push([]); // diagnosticRuns
+    dbQueue.push([{ findingId: "f1", checkKey: "mfa", checkLabel: "MFA", severity: "critical", title: "Enable MFA", description: null, recommendation: null, createdAt: new Date().toISOString() }]); // findings
+
+    const port = (srv.address() as AddressInfo).port;
+    const raw = await new Promise<string>((resolve, reject) => {
+      http.get({ hostname: "127.0.0.1", port, path: "/api/portal/data-export", headers: { "Content-Type": "application/json" } },
+        res => { let d = ""; res.on("data", c => { d += c; }); res.on("end", () => resolve(d)); }).on("error", reject);
+    });
+
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    assert.equal(body.exportVersion, "2", "export version should be bumped to 2");
+    const cs = body.currentSchema as Record<string, unknown> | null;
+    assert.ok(cs, "currentSchema should be present for a customerId account");
+    assert.ok(Array.isArray(cs!.diagnosticFindings), "diagnosticFindings should be an array");
+    assert.equal((cs!.diagnosticFindings as unknown[]).length, 1, "the seeded finding should be exported");
+    for (const key of ["diagnosticRuns", "engineScoreHistory", "sows", "documents", "tenantConsent", "salesBundleAssignments", "auditActivity"]) {
+      assert.ok(key in cs!, `currentSchema.${key} should be present`);
+    }
+  });
 });
 
 // ── Deletion Request Tests ────────────────────────────────────────────────────
@@ -380,5 +435,35 @@ describe("POST /api/portal/deletion-request", () => {
     assert.equal(sentEmails.length, 1);
     assert.equal(sentEmails[0].to, "admin@test.example");
     assert.ok(sentEmails[0].subject.includes("Deletion Request"), `unexpected subject: ${sentEmails[0].subject}`);
+    // Legacy-only account ⇒ email states no current-schema record is linked.
+    assert.ok(sentEmails[0].html.includes("No current-schema"), "legacy-only email should note absence of MSP data");
+  });
+});
+
+describe("POST /api/portal/deletion-request — current-schema customer", () => {
+  let srv: http.Server;
+
+  before(async () => {
+    sentEmails.length = 0;
+    srv = await listen(makeApp(42, 777)); // customerId = 777
+  });
+
+  after(() => srv.close());
+
+  it("surfaces the current-schema identity + footprint to the admin fulfillment email", async () => {
+    dbQueue.length = 0;
+    sentEmails.length = 0;
+    dbQueue.push([{ id: 42, name: "Test Client", email: "client@test.example", company: "ACME" }]); // user
+    dbQueue.push([{ id: 777, mspId: 5, name: "ACME Corp" }]); // mspCustomer (counts fall through to 0)
+
+    const { status, body } = await request(srv, { method: "POST", path: "/api/portal/deletion-request" });
+    assert.equal(status, 200);
+    assert.equal((body as { ok: boolean }).ok, true);
+
+    assert.equal(sentEmails.length, 1);
+    const html = sentEmails[0].html;
+    assert.ok(html.includes("Current-schema"), "email should include the current-schema block");
+    assert.ok(html.includes("777"), "email should include the resolved customer_id for manual erasure");
+    assert.ok(html.includes("signed SOWs"), "email should remind operator to retain signed SOWs");
   });
 });

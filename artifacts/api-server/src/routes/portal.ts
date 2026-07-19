@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
@@ -14644,10 +14644,121 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
       createdAt: quizLeadsTable.createdAt,
     }).from(quizLeadsTable).where(eq(quizLeadsTable.email, user.email)).orderBy(desc(quizLeadsTable.createdAt));
 
+    // ── Current-schema (MSP tenant) data ────────────────────────────────────────
+    // The legacy queries above are keyed by usersTable.id. Customers provisioned
+    // under the current schema hold their real data (diagnostics, engine scores,
+    // SOWs, MSP documents, consent, monitoring history) keyed by mspCustomers.id.
+    // req.user.customerId is that id (resolved from msp_users at login); it is
+    // undefined for staff/admin accounts and for legacy-only clients, in which
+    // case this whole section is omitted.
+    const customerId = req.user!.customerId;
+    let currentSchema: Record<string, unknown> | null = null;
+    if (typeof customerId === "number") {
+      const [
+        mspCustomer,
+        diagnosticRuns,
+        diagnosticFindings,
+        engineScoreHistory,
+        engineScoreDailyRollup,
+        engineBaselineHistory,
+        signalHistory,
+        mspDocuments,
+        sows,
+        reportRuns,
+        clickwraps,
+        consent,
+        bundleAssignments,
+        mspAudit,
+      ] = await Promise.all([
+        db.select({
+          id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain,
+          industry: mspCustomersTable.industry, status: mspCustomersTable.status, createdAt: mspCustomersTable.createdAt,
+        }).from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1),
+        db.select({
+          runId: mspDiagnosticRunsTable.runId, packageKey: mspDiagnosticRunsTable.packageKey,
+          status: mspDiagnosticRunsTable.status, checksTotal: mspDiagnosticRunsTable.checksTotal,
+          checksOk: mspDiagnosticRunsTable.checksOk, checksError: mspDiagnosticRunsTable.checksError,
+          startedAt: mspDiagnosticRunsTable.startedAt, completedAt: mspDiagnosticRunsTable.completedAt,
+          createdAt: mspDiagnosticRunsTable.createdAt,
+        }).from(mspDiagnosticRunsTable).where(eq(mspDiagnosticRunsTable.customerId, customerId)).orderBy(desc(mspDiagnosticRunsTable.createdAt)),
+        db.select({
+          findingId: mspDiagnosticFindingsTable.findingId, checkKey: mspDiagnosticFindingsTable.checkKey,
+          checkLabel: mspDiagnosticFindingsTable.checkLabel, severity: mspDiagnosticFindingsTable.severity,
+          title: mspDiagnosticFindingsTable.title, description: mspDiagnosticFindingsTable.description,
+          recommendation: mspDiagnosticFindingsTable.recommendation, createdAt: mspDiagnosticFindingsTable.createdAt,
+        }).from(mspDiagnosticFindingsTable).where(eq(mspDiagnosticFindingsTable.customerId, customerId)).orderBy(desc(mspDiagnosticFindingsTable.createdAt)).limit(2000),
+        db.select({
+          engineKey: tenantEngineSnapshotsTable.engineKey, score: tenantEngineSnapshotsTable.score,
+          previousScore: tenantEngineSnapshotsTable.previousScore, delta: tenantEngineSnapshotsTable.delta,
+          trendDirection: tenantEngineSnapshotsTable.trendDirection, capturedAt: tenantEngineSnapshotsTable.capturedAt,
+        }).from(tenantEngineSnapshotsTable).where(eq(tenantEngineSnapshotsTable.customerId, customerId)).orderBy(desc(tenantEngineSnapshotsTable.capturedAt)).limit(2000),
+        db.select({
+          engineKey: engineScoreDailyRollupTable.engineKey, day: engineScoreDailyRollupTable.day,
+          score: engineScoreDailyRollupTable.score,
+        }).from(engineScoreDailyRollupTable).where(eq(engineScoreDailyRollupTable.customerId, customerId)).orderBy(desc(engineScoreDailyRollupTable.day)).limit(2000),
+        db.select({
+          engineKey: engineBaselineHistoryTable.engineKey, baselineScore: engineBaselineHistoryTable.baselineScore,
+          resetTriggerType: engineBaselineHistoryTable.resetTriggerType, createdAt: engineBaselineHistoryTable.createdAt,
+        }).from(engineBaselineHistoryTable).where(eq(engineBaselineHistoryTable.customerId, customerId)).orderBy(desc(engineBaselineHistoryTable.createdAt)).limit(2000),
+        db.select({
+          signalKey: tenantSignalHistoryTable.signalKey, category: tenantSignalHistoryTable.category,
+          firedAt: tenantSignalHistoryTable.firedAt, resolvedAt: tenantSignalHistoryTable.resolvedAt,
+        }).from(tenantSignalHistoryTable).where(eq(tenantSignalHistoryTable.customerId, customerId)).orderBy(desc(tenantSignalHistoryTable.firedAt)).limit(2000),
+        db.select({
+          documentId: mspDocumentsTable.documentId, title: mspDocumentsTable.title,
+          documentType: mspDocumentsTable.documentType, status: mspDocumentsTable.status,
+          createdAt: mspDocumentsTable.createdAt,
+        }).from(mspDocumentsTable).where(eq(mspDocumentsTable.customerId, customerId)).orderBy(desc(mspDocumentsTable.createdAt)),
+        db.select({
+          sowId: mspSowsTable.sowId, title: mspSowsTable.title, amountCents: mspSowsTable.amountCents,
+          currency: mspSowsTable.currency, status: mspSowsTable.status, signerName: mspSowsTable.signerName,
+          signedAt: mspSowsTable.signedAt, signedIp: mspSowsTable.signedIp, createdAt: mspSowsTable.createdAt,
+        }).from(mspSowsTable).where(eq(mspSowsTable.customerId, customerId)).orderBy(desc(mspSowsTable.createdAt)),
+        db.select({
+          runId: mspReportRunsTable.runId, status: mspReportRunsTable.status, createdAt: mspReportRunsTable.createdAt,
+        }).from(mspReportRunsTable).where(eq(mspReportRunsTable.customerId, customerId)).orderBy(desc(mspReportRunsTable.createdAt)),
+        db.select({
+          agreementTextSnapshot: mspCustomerClickwrapsTable.agreementTextSnapshot,
+          ipAddress: mspCustomerClickwrapsTable.ipAddress, acceptedAt: mspCustomerClickwrapsTable.acceptedAt,
+        }).from(mspCustomerClickwrapsTable).where(eq(mspCustomerClickwrapsTable.customerId, customerId)).orderBy(desc(mspCustomerClickwrapsTable.acceptedAt)),
+        db.select({
+          consentStatus: tenantConsentTable.consentStatus, adminEmail: tenantConsentTable.adminEmail,
+          adminDisplayName: tenantConsentTable.adminDisplayName, scopesGranted: tenantConsentTable.scopesGranted,
+          consentedAt: tenantConsentTable.consentedAt, revokedAt: tenantConsentTable.revokedAt,
+        }).from(tenantConsentTable).where(eq(tenantConsentTable.customerId, customerId)),
+        db.select({
+          status: mspSalesBundleAssignmentsTable.status, activatedAt: mspSalesBundleAssignmentsTable.activatedAt,
+          trialExpiresAt: mspSalesBundleAssignmentsTable.trialExpiresAt, assignedAt: mspSalesBundleAssignmentsTable.assignedAt,
+          revokedAt: mspSalesBundleAssignmentsTable.revokedAt,
+        }).from(mspSalesBundleAssignmentsTable).where(eq(mspSalesBundleAssignmentsTable.customerId, customerId)).orderBy(desc(mspSalesBundleAssignmentsTable.assignedAt)),
+        db.select({
+          actionType: mspAuditLogsTable.actionType, entityType: mspAuditLogsTable.entityType,
+          outcome: mspAuditLogsTable.outcome, occurredAt: mspAuditLogsTable.occurredAt,
+        }).from(mspAuditLogsTable).where(eq(mspAuditLogsTable.customerId, customerId)).orderBy(desc(mspAuditLogsTable.occurredAt)).limit(500),
+      ]);
+
+      currentSchema = {
+        customerProfile: mspCustomer[0] ?? null,
+        diagnosticRuns,
+        diagnosticFindings,
+        engineScoreHistory,
+        engineScoreDailyRollup,
+        engineBaselineHistory,
+        signalHistory,
+        documents: mspDocuments,
+        sows,
+        reportRuns,
+        clickwrapAcceptances: clickwraps,
+        tenantConsent: consent,
+        salesBundleAssignments: bundleAssignments,
+        auditActivity: mspAudit,
+      };
+    }
+
     const archive = {
       exportedAt: new Date().toISOString(),
-      exportVersion: "1",
-      notice: "This archive contains all personal and project data held by Shane McCaw Consulting LLC for your account. Invoices and signed contracts are retained per legal requirements and are visible here but not deleted upon account deletion requests.",
+      exportVersion: "2",
+      notice: "This archive contains all personal and project data held by Shane McCaw Consulting LLC for your account, across both the legacy portal records and the current MSP platform records. Invoices, signed contracts, and signed statements of work are retained per legal requirements and are visible here but not deleted upon account deletion requests.",
       profile: user,
       projects,
       documents,
@@ -14657,6 +14768,7 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
       clientDocuments: clientDocs,
       auditActivity: auditEntries,
       quizResults,
+      currentSchema,
     };
 
     void createAuditLog({
@@ -14695,6 +14807,46 @@ router.post("/portal/deletion-request", requireAuth, async (req: Request, res: R
 
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+    // Resolve the customer's current-schema (MSP tenant) identity so the manual
+    // fulfillment process can reach data that is NOT keyed by usersTable.id.
+    // Without this, an admin processing the request via CRM → Delete Client would
+    // never see (and today's delete would never touch) the customer's diagnostics,
+    // engine-score history, SOWs, MSP documents, consent, or monitoring history.
+    const customerId = req.user!.customerId;
+    let currentSchemaSummary: {
+      customerId: number;
+      mspId: number | null;
+      customerName: string | null;
+      diagnosticRuns: number;
+      diagnosticFindings: number;
+      sows: number;
+      mspDocuments: number;
+      engineSnapshots: number;
+    } | null = null;
+    if (typeof customerId === "number") {
+      const [mspCustomer] = await db.select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId, name: mspCustomersTable.name })
+        .from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1);
+      if (mspCustomer) {
+        const [[runs], [findings], [sowCount], [docCount], [snapCount]] = await Promise.all([
+          db.select({ n: count() }).from(mspDiagnosticRunsTable).where(eq(mspDiagnosticRunsTable.customerId, customerId)),
+          db.select({ n: count() }).from(mspDiagnosticFindingsTable).where(eq(mspDiagnosticFindingsTable.customerId, customerId)),
+          db.select({ n: count() }).from(mspSowsTable).where(eq(mspSowsTable.customerId, customerId)),
+          db.select({ n: count() }).from(mspDocumentsTable).where(eq(mspDocumentsTable.customerId, customerId)),
+          db.select({ n: count() }).from(tenantEngineSnapshotsTable).where(eq(tenantEngineSnapshotsTable.customerId, customerId)),
+        ]);
+        currentSchemaSummary = {
+          customerId,
+          mspId: mspCustomer.mspId ?? null,
+          customerName: mspCustomer.name ?? null,
+          diagnosticRuns: runs?.n ?? 0,
+          diagnosticFindings: findings?.n ?? 0,
+          sows: sowCount?.n ?? 0,
+          mspDocuments: docCount?.n ?? 0,
+          engineSnapshots: snapCount?.n ?? 0,
+        };
+      }
+    }
+
     void createAuditLog({
       actorUserId: userId,
       actorName: user.name ?? user.email,
@@ -14703,11 +14855,26 @@ router.post("/portal/deletion-request", requireAuth, async (req: Request, res: R
       entityType: "user",
       entityId: userId,
       clientId: userId,
-      metadata: { requestedAt: new Date().toISOString() },
+      metadata: { requestedAt: new Date().toISOString(), currentSchema: currentSchemaSummary },
     });
 
     const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
     if (adminEmailAddr) {
+      const currentSchemaBlock = currentSchemaSummary
+        ? `
+        <p style="margin-top:16px;"><strong>Current-schema (MSP tenant) data — NOT reached by CRM → Delete Client today:</strong></p>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Customer ID (msp_customers.id)</td><td style="padding:6px 0;">${currentSchemaSummary.customerId}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">MSP ID</td><td style="padding:6px 0;">${currentSchemaSummary.mspId ?? "—"}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Customer name</td><td style="padding:6px 0;">${currentSchemaSummary.customerName ?? "—"}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Diagnostic runs</td><td style="padding:6px 0;">${currentSchemaSummary.diagnosticRuns}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Diagnostic findings</td><td style="padding:6px 0;">${currentSchemaSummary.diagnosticFindings}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">SOWs (retain if signed)</td><td style="padding:6px 0;">${currentSchemaSummary.sows}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">MSP documents</td><td style="padding:6px 0;">${currentSchemaSummary.mspDocuments}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Engine snapshots</td><td style="padding:6px 0;">${currentSchemaSummary.engineSnapshots}</td></tr>
+        </table>
+        <p style="color:#b45309;"><strong>Manual step required:</strong> this current-schema data must be erased separately (by customer_id above), preserving signed SOWs per legal retention — CRM → Delete Client only clears the legacy portal records.</p>`
+        : `<p style="margin-top:16px;color:#64748b;">No current-schema (MSP tenant) record is linked to this account — legacy portal records only.</p>`;
       const html = `
         <p>A client has submitted a <strong>data deletion request</strong>.</p>
         <table style="border-collapse:collapse;width:100%;font-size:14px;">
@@ -14717,8 +14884,9 @@ router.post("/portal/deletion-request", requireAuth, async (req: Request, res: R
           <tr><td style="padding:6px 0;color:#64748b;">User ID</td><td style="padding:6px 0;">${user.id}</td></tr>
           <tr><td style="padding:6px 0;color:#64748b;">Requested at</td><td style="padding:6px 0;">${new Date().toUTCString()}</td></tr>
         </table>
+        ${currentSchemaBlock}
         <p style="margin-top:16px;">
-          <strong>Action required within 30 days:</strong> process this deletion via the Admin Panel (CRM → Clients → Delete Client), retain signed contracts and invoices per legal requirements, then send the client the standard retention notice.
+          <strong>Action required within 30 days:</strong> process this deletion via the Admin Panel (CRM → Clients → Delete Client), erase the current-schema data listed above by customer_id, retain signed contracts, invoices, and signed SOWs per legal requirements, then send the client the standard retention notice.
         </p>
         <p>See the <a href="https://shanemccaw.com/admin-panel">Admin Panel</a> and the <code>data-subject-rights.md</code> runbook for the full procedure.</p>
       `;
