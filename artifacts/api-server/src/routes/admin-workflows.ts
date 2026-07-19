@@ -923,6 +923,17 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
 
   try {
+    const [def] = await db
+      .select({ metadata: wfDefinitionsTable.metadata })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.id, defId))
+      .limit(1);
+    if (!def) return sendError(res, 404, "Workflow definition not found");
+    const metadata = (def.metadata ?? {}) as Record<string, unknown>;
+    if (metadata.allowManualTrigger === false) {
+      return sendError(res, 403, "This workflow is marked critical and cannot be run manually. Use the rerun endpoint on a specific past run instead.");
+    }
+
     const versionId = req.body.versionId ? parseInt(req.body.versionId as string, 10) : undefined;
     const inputValues = (req.body.inputValues && typeof req.body.inputValues === "object")
       ? req.body.inputValues as Record<string, string | string[]>
@@ -958,6 +969,17 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
   if (!body.success) return sendError(res, 400, body.error.message);
 
   try {
+    const [def] = await db
+      .select({ metadata: wfDefinitionsTable.metadata })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.id, defId))
+      .limit(1);
+    if (!def) return sendError(res, 404, "Workflow definition not found");
+    const metadata = (def.metadata ?? {}) as Record<string, unknown>;
+    if (metadata.allowManualTrigger === false) {
+      return sendError(res, 403, "This workflow is marked critical and cannot be run manually. Use the rerun endpoint on a specific past run instead.");
+    }
+
     // Use the latest existing version (any status) for the FK — do NOT insert a new one
     const [latestVersion] = await db
       .select({ id: wfVersionsTable.id })
