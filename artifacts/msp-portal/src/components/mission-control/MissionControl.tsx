@@ -16,7 +16,9 @@
  *     diagnostics run is active, otherwise a minimal "Last scan" line — no
  *     empty idle block.
  *   - Six-engine status strip (functional severity colors only).
- *   - Diagnostics-first findings feed using FindingCard, with the linked
+ *   - Severity-grouped findings: three clickable summary boxes (High
+ *     Severity / Watch / Nominal) driven by overview.summary counts; each
+ *     opens a modal listing that severity's FindingCards, with the linked
  *     OfferCard / InstantRemediationCard where the server matched an offer.
  *     The instant variant only ever appears when the server flagged the offer
  *     `instant` (testbed customers only); the execute endpoint enforces the
@@ -33,6 +35,13 @@ import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ScoreRing, type ScoreRingColor } from "@/components/ui/score-ring";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   FindingCard,
   OfferCard,
@@ -117,6 +126,18 @@ const FINDING_SEVERITY: Record<OverviewFinding["severity"], FindingSeverity> = {
   warning: "watch",
   info: "good",
 };
+
+const SEVERITY_BOX_META: Array<{
+  key: OverviewFinding["severity"];
+  label: string;
+  border: string;
+  text: string;
+  dot: string;
+}> = [
+  { key: "critical", label: "High Severity", border: "border-l-status-red", text: "text-status-red", dot: "bg-status-red" },
+  { key: "warning", label: "Watch", border: "border-l-status-amber", text: "text-status-amber", dot: "bg-status-amber" },
+  { key: "info", label: "Nominal", border: "border-l-status-green", text: "text-status-green", dot: "bg-status-green" },
+];
 
 const PILLAR_LABELS: Record<string, string> = {
   governance: "Governance",
@@ -290,6 +311,52 @@ export function MissionControl() {
   const summary = overview?.summary;
   const hasScanHistory = overview != null && (overview.scan.lastScanAt != null || overview.scan.active);
 
+  // ── Severity box modal drill-in ───────────────────────────────────────────
+  const [openSeverity, setOpenSeverity] = useState<OverviewFinding["severity"] | null>(null);
+  const modalFindings = overview && openSeverity ? overview.findings.filter((f) => f.severity === openSeverity) : [];
+
+  function renderFinding(finding: OverviewFinding) {
+    const offer = finding.offer;
+    return (
+      <div key={finding.id} className={cn(offer && "grid gap-3 md:grid-cols-2")}>
+        <FindingCard
+          severity={FINDING_SEVERITY[finding.severity]}
+          engineSource={finding.checkLabel}
+          title={finding.title}
+          description={finding.description ?? ""}
+          consequence={findingConsequence(finding)}
+          timestamp={formatWhen(finding.createdAt)}
+        />
+        {offer &&
+          (triggeredOfferIds.has(offer.id) ? (
+            <Card className="p-4 flex flex-col justify-center gap-1 border-l-2 border-l-status-green">
+              <span className="text-sm font-medium text-status-green">Remediation started</span>
+              <span className="text-xs text-muted-foreground">
+                The configuration pack is being applied to your tenant.
+              </span>
+            </Card>
+          ) : offer.instant ? (
+            <InstantRemediationCard
+              title={offer.title}
+              rationale={offer.rationale ?? "Applies the recommended configuration to your tenant automatically."}
+              actionLabel={remediatingOfferId === offer.id ? "Starting…" : "Run remediation"}
+              onAction={() => {
+                if (remediatingOfferId == null) void runInstantRemediation(offer.id);
+              }}
+            />
+          ) : (
+            <OfferCard
+              title={offer.title}
+              rationale={offer.rationale ?? "Recommended follow-up for this finding."}
+              price={formatPrice(offer.adjustedPriceCents)}
+              actionLabel="View offer"
+              onAction={() => setLocation("/customer-offers")}
+            />
+          ))}
+      </div>
+    );
+  }
+
   return (
     <section aria-label="Mission Control" className="space-y-4">
       {/* ── Hero ── */}
@@ -408,65 +475,66 @@ export function MissionControl() {
         )}
       </Card>
 
-      {/* ── Diagnostics findings feed ── */}
+      {/* ── Severity-grouped findings boxes ── */}
       {!overviewLoading && overview && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">Latest diagnostics findings</h3>
-          {overview.findings.length === 0 ? (
-            hasScanHistory ? (
-              <p className="text-sm text-secondary-foreground/90 inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-status-green" aria-hidden="true" />
-                No open findings from the latest scan
-                {summary?.checksTotal != null ? ` — ${summary.checksOk ?? 0} of ${summary.checksTotal} checks passing.` : "."}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Findings will appear here after your first diagnostics scan.</p>
-            )
+          {!hasScanHistory ? (
+            <p className="text-sm text-muted-foreground">Findings will appear here after your first diagnostics scan.</p>
           ) : (
-            overview.findings.map((finding) => {
-              const offer = finding.offer;
-              return (
-                <div key={finding.id} className={cn(offer && "grid gap-3 md:grid-cols-2")}>
-                  <FindingCard
-                    severity={FINDING_SEVERITY[finding.severity]}
-                    engineSource={finding.checkLabel}
-                    title={finding.title}
-                    description={finding.description ?? ""}
-                    consequence={findingConsequence(finding)}
-                    timestamp={formatWhen(finding.createdAt)}
-                  />
-                  {offer &&
-                    (triggeredOfferIds.has(offer.id) ? (
-                      <Card className="p-4 flex flex-col justify-center gap-1 border-l-2 border-l-status-green">
-                        <span className="text-sm font-medium text-status-green">Remediation started</span>
-                        <span className="text-xs text-muted-foreground">
-                          The configuration pack is being applied to your tenant.
-                        </span>
-                      </Card>
-                    ) : offer.instant ? (
-                      <InstantRemediationCard
-                        title={offer.title}
-                        rationale={offer.rationale ?? "Applies the recommended configuration to your tenant automatically."}
-                        actionLabel={remediatingOfferId === offer.id ? "Starting…" : "Run remediation"}
-                        onAction={() => {
-                          if (remediatingOfferId == null) void runInstantRemediation(offer.id);
-                        }}
-                      />
-                    ) : (
-                      <OfferCard
-                        title={offer.title}
-                        rationale={offer.rationale ?? "Recommended follow-up for this finding."}
-                        price={formatPrice(offer.adjustedPriceCents)}
-                        actionLabel="View offer"
-                        onAction={() => setLocation("/customer-offers")}
-                      />
-                    ))}
-                </div>
-              );
-            })
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {SEVERITY_BOX_META.map((meta) => {
+                const count = summary?.[meta.key] ?? 0;
+                return (
+                  <button
+                    key={meta.key}
+                    type="button"
+                    onClick={() => setOpenSeverity(meta.key)}
+                    className="text-left"
+                  >
+                    <Card
+                      className={cn(
+                        "p-4 border-l-2 flex items-center justify-between gap-3 transition-colors hover:bg-accent/50",
+                        meta.border,
+                      )}
+                    >
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+                        <span className={cn("size-2 rounded-full", meta.dot)} aria-hidden="true" />
+                        {meta.label}
+                      </span>
+                      <span className={cn("text-2xl font-bold", meta.text)}>{count}</span>
+                    </Card>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
+
+      {/* ── Findings drill-in modal ── */}
+      <Dialog open={openSeverity != null} onOpenChange={(v) => !v && setOpenSeverity(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {openSeverity ? SEVERITY_BOX_META.find((m) => m.key === openSeverity)?.label : ""} findings
+            </DialogTitle>
+            <DialogDescription>
+              {openSeverity === "critical" && "Findings flagged as critical from the latest diagnostics scan."}
+              {openSeverity === "warning" && "Findings flagged to watch from the latest diagnostics scan."}
+              {openSeverity === "info" && "Informational findings from the latest diagnostics scan."}
+            </DialogDescription>
+          </DialogHeader>
+          {modalFindings.length === 0 ? (
+            <p className="text-sm text-secondary-foreground/90 inline-flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-status-green" aria-hidden="true" />
+              No findings in this category.
+            </p>
+          ) : (
+            <div className="space-y-3">{modalFindings.map(renderFinding)}</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
