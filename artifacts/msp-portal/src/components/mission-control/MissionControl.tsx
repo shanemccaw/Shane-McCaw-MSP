@@ -11,9 +11,10 @@
  *     (live SSE progress strip while a diagnostics run is active, otherwise a
  *     minimal "Last scan" line — no empty idle block).
  *   - Six-engine status strip (functional severity colors only).
- *   - Health Engine pillar breakdown as small ScoreRings (informational blue;
- *     only the overall ring carries severity color — pillar scores are raw
- *     impact sums without their own severity semantics).
+ *   - Health Engine pillar breakdown as small ScoreRings. Raw pillar scores
+ *     are higher-is-worse risk sums; both the overall ring and every pillar
+ *     ring invert them to a goodness percentage (see toGoodnessPercent) and
+ *     color by the same severity thresholds.
  *   - Diagnostics-first findings feed using FindingCard, with the linked
  *     OfferCard / InstantRemediationCard where the server matched an offer.
  *     The instant variant only ever appears when the server flagged the offer
@@ -126,10 +127,20 @@ const PILLAR_LABELS: Record<string, string> = {
   security: "Security",
 };
 
-function healthRingColor(score: number | null): ScoreRingColor {
-  if (score == null) return "blue";
-  if (score < 60) return "red";
-  if (score < 85) return "amber";
+/**
+ * Health Engine scores (overall + all seven pillars) are raw risk/impact
+ * sums where higher is worse and unbounded — not a 0-100 completion
+ * percentage. Invert to a customer-facing "goodness" percentage before
+ * display, clamping into the 0-100 range the ScoreRing expects.
+ */
+function toGoodnessPercent(rawScore: number): number {
+  return Math.max(0, Math.min(100, 100 - rawScore));
+}
+
+function healthRingColor(goodnessPercent: number | null): ScoreRingColor {
+  if (goodnessPercent == null) return "blue";
+  if (goodnessPercent < 60) return "red";
+  if (goodnessPercent < 85) return "amber";
   return "green";
 }
 
@@ -281,9 +292,18 @@ export function MissionControl() {
   return (
     <section aria-label="Mission Control" className="space-y-4">
       {/* ── Hero ── */}
-      <Card className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <h2 className="text-xl font-bold tracking-tight">Mission Control</h2>
+      <Card className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div className="flex flex-col gap-2 min-w-0">
+          <h2 className="text-3xl font-bold tracking-tight">
+            <span
+              className="bg-clip-text text-transparent"
+              style={{
+                backgroundImage: "linear-gradient(90deg, hsl(var(--status-blue)), hsl(var(--status-violet)))",
+              }}
+            >
+              Mission Control
+            </span>
+          </h2>
           {overviewLoading ? (
             <span className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
               <Loader2 className="size-3.5 animate-spin" /> Loading tenant status…
@@ -332,8 +352,10 @@ export function MissionControl() {
           ) : null}
         </div>
         <ScoreRing
-          value={engines?.health.score ?? 0}
-          color={healthRingColor(enginesLoading ? null : (engines?.health.score ?? null))}
+          value={engines?.health.score != null ? toGoodnessPercent(engines.health.score) : 0}
+          color={healthRingColor(
+            enginesLoading || engines?.health.score == null ? null : toGoodnessPercent(engines.health.score),
+          )}
           size={112}
           strokeWidth={9}
           label="Overall health"
@@ -342,13 +364,13 @@ export function MissionControl() {
       </Card>
 
       {/* ── Six-engine status strip ── */}
-      <Card className="px-4 py-3">
+      <Card className="px-6 py-4">
         {enginesLoading ? (
           <span className="text-sm text-muted-foreground inline-flex items-center gap-1.5">
             <Loader2 className="size-3.5 animate-spin" /> Checking engine status…
           </span>
         ) : engines ? (
-          <ul className="flex flex-wrap gap-x-6 gap-y-2">
+          <ul className="flex flex-wrap gap-x-6 gap-y-2.5">
             {engines.engines.map((engine) => {
               const meta = ENGINE_SEVERITY_META[engine.severity];
               return (
@@ -367,19 +389,22 @@ export function MissionControl() {
 
       {/* ── Health pillar breakdown ── */}
       {engines && engines.health.pillars.length > 0 && (
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Health breakdown</h3>
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Health breakdown</h3>
           <div className="flex flex-wrap gap-x-6 gap-y-4">
-            {engines.health.pillars.map((p) => (
-              <ScoreRing
-                key={p.pillar}
-                value={p.score}
-                color="blue"
-                size={64}
-                strokeWidth={6}
-                label={PILLAR_LABELS[p.pillar] ?? p.pillar}
-              />
-            ))}
+            {engines.health.pillars.map((p) => {
+              const goodness = toGoodnessPercent(p.score);
+              return (
+                <ScoreRing
+                  key={p.pillar}
+                  value={goodness}
+                  color={healthRingColor(goodness)}
+                  size={64}
+                  strokeWidth={6}
+                  label={PILLAR_LABELS[p.pillar] ?? p.pillar}
+                />
+              );
+            })}
           </div>
         </Card>
       )}

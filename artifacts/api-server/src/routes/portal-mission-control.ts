@@ -107,8 +107,10 @@ function toStatusEntry(key: string, label: string, result: unknown): EngineStatu
 
   switch (key) {
     case "health": {
+      // score is a higher-is-worse risk/impact sum (see health-engine.ts) —
+      // same direction as security below, not a 0-100 completion percentage.
       const score = num(r.score) ?? 0;
-      const severity: EngineSeverity = score < 60 ? "high" : score < 85 ? "watch" : "good";
+      const severity: EngineSeverity = score > 85 ? "high" : score > 60 ? "watch" : "good";
       const statusLabel = severity === "high" ? "Critical risk" : severity === "watch" ? "Needs attention" : "Healthy";
       return { key, label, severity, statusLabel, detail: `Overall health index at ${score}.` };
     }
