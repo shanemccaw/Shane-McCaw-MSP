@@ -113,6 +113,17 @@ function msUntilRefreshExpiry(): number {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Mirror of the current access token, kept in sync alongside AuthState.
+ * Exists so the top-level ErrorBoundary (a class component that must sit
+ * above this provider to catch crashes anywhere, including inside auth
+ * plumbing) can attach a token to its crash beacon without needing the hook.
+ */
+let currentAccessToken: string | null = null;
+export function getCurrentAccessToken(): string | null {
+  return currentAccessToken;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -352,6 +363,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimers();
   }, [clearTimers]);
 
+  useEffect(() => {
+    currentAccessToken = state.accessToken;
+  }, [state.accessToken]);
+
   // ── Public API ───────────────────────────────────────────────────────────
 
   const login = useCallback(
@@ -472,6 +487,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // body not JSON — keep generic message
         }
         toast.error(message);
+
+        // Also beacon every failed request into the exception tracker so it
+        // shows up in Simulator Studio / the log stream, not just as a toast
+        // the user may have already dismissed.
+        const requestUrl =
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        reportClientEvent(token, "ApiRequestFailed", message, "client.frontend", {
+          url: requestUrl,
+          status: res.status,
+        });
       }
 
       return res;

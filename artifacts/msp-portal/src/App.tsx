@@ -689,6 +689,7 @@ function AppInner() {
 
 import { SupportChatProvider } from "@/lib/support-chat-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 function App() {
   return (
@@ -700,10 +701,12 @@ function App() {
               class on <html> from here on (main.tsx no longer hardcodes it). */}
           <ThemeProvider>
             <SupportChatProvider>
-              <WouterRouter base={BASE_PATH}>
-                <AppInner />
-              </WouterRouter>
-              <Toaster richColors position="top-right" />
+              <ErrorBoundary>
+                <WouterRouter base={BASE_PATH}>
+                  <AppInner />
+                </WouterRouter>
+                <Toaster richColors position="top-right" />
+              </ErrorBoundary>
             </SupportChatProvider>
           </ThemeProvider>
         </AuthProvider>
