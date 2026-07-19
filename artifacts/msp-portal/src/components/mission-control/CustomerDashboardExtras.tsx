@@ -128,8 +128,24 @@ function StatusTag({ status }: { status: string }) {
 
 // ── Component ─────────────────────────────────────────────────────────────
 
+export function WelcomeHeader() {
+  const { user } = useAuth();
+  const firstName = user?.name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "there";
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold tracking-tight">
+        Welcome back, {firstName}
+      </h2>
+      <p className="text-muted-foreground text-sm mt-1">
+        Your Microsoft 365 modernisation dashboard
+      </p>
+    </div>
+  );
+}
+
 export function CustomerDashboardExtras() {
-  const { user, fetchWithAuth } = useAuth();
+  const { fetchWithAuth } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -151,20 +167,8 @@ export function CustomerDashboardExtras() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const firstName = user?.name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "there";
-
   return (
     <div className="space-y-6">
-      {/* Welcome header */}
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">
-          Welcome back, {firstName}
-        </h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Your Microsoft 365 modernisation dashboard
-        </p>
-      </div>
-
       {/* Re-activation promo campaign banner for offboarded customers */}
       {data?.customerStatus === "inactive" && data?.mspId === 1 && (
         <Card className="border-primary/45 bg-gradient-to-r from-primary/10 via-primary/5 to-background overflow-hidden relative shadow-lg">

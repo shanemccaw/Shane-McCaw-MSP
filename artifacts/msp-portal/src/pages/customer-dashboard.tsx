@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { DashboardTabs } from "@/components/dashboard-view/DashboardView";
 import { MissionControl } from "@/components/mission-control/MissionControl";
-import { CustomerDashboardExtras } from "@/components/mission-control/CustomerDashboardExtras";
+import { CustomerDashboardExtras, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
 
 export default function CustomerDashboardPage() {
   const { user } = useAuth();
@@ -32,6 +32,7 @@ export default function CustomerDashboardPage() {
             projects/services/reports, help card). */}
         {user?.customerId != null && (
           <>
+            <WelcomeHeader />
             <MissionControl />
             <CustomerDashboardExtras />
           </>
