@@ -21,6 +21,10 @@ import type { Request, Response, NextFunction } from "express";
 process.env.JWT_SECRET = "consent-test-secret";
 process.env.MT_APP_CLIENT_ID = "mt-client-id";
 process.env.MT_APP_CLIENT_SECRET = "mt-client-secret";
+// consent.ts pulls in workflow-executor → ps-script-gen → the Anthropic AI
+// integration client, which throws at module load if these are unset.
+process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL = "https://anthropic.test";
+process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
 
 // ── Mock jsonwebtoken ──────────────────────────────────────────────────────────
 vi.mock("jsonwebtoken", () => ({
@@ -53,7 +57,14 @@ const mockInsertValues = vi.fn().mockReturnValue({
 const mockInsert = vi.fn().mockReturnValue({ values: mockInsertValues });
 
 const mockUpdateReturning = vi.fn().mockResolvedValue([{ tenantId: "tenant-abc" }]);
-const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockUpdateReturning });
+// The where() result is both awaitable (thenable — some update calls are awaited
+// directly with no .returning()) and carries .returning()/.catch() for the calls
+// that chain those (e.g. the status-flip and adminEmail updates use .catch()).
+const mockUpdateWhere = vi.fn().mockReturnValue({
+  returning: mockUpdateReturning,
+  then: (resolve: (v: unknown) => unknown) => Promise.resolve([{ tenantId: "tenant-abc" }]).then(resolve),
+  catch: (reject: (e: unknown) => unknown) => Promise.resolve([{ tenantId: "tenant-abc" }]).catch(reject),
+});
 const mockUpdateSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
 const mockUpdate = vi.fn().mockReturnValue({ set: mockUpdateSet });
 
@@ -76,9 +87,23 @@ vi.mock("@workspace/db", () => ({
     select: () => mockSelect(),
     insert: (...args: unknown[]) => mockInsert(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
+    // markTenantConsentRevoked (graph.ts) runs its updates inside a transaction;
+    // execute the callback with a tx that proxies to the same update/select/insert mocks.
+    transaction: (cb: (tx: unknown) => unknown) =>
+      cb({
+        select: () => mockSelect(),
+        insert: (...args: unknown[]) => mockInsert(...args),
+        update: (...args: unknown[]) => mockUpdate(...args),
+      }),
   },
   tenantConsentTable: { tenantId: "tc.tenantId", consentStatus: "tc.consent_status", updatedAt: "tc.updated_at", customerId: "tc.customer_id" },
   consentInviteTokensTable: { token: "cit.token", customerId: "cit.customer_id", clientUserId: "cit.client_user_id", usedAt: "cit.used_at", expiresAt: "cit.expires_at", tenantId: "cit.tenant_id" },
+  mspsTable: { id: "m.id", isDirectBusiness: "m.is_direct_business" },
+  mspCustomersTable: { id: "mc.id", mspId: "mc.msp_id", tenantId: "mc.tenant_id", status: "mc.status" },
+  checkoutSessionsTable: { id: "cs.id", email: "cs.email", productSlug: "cs.product_slug", status: "cs.status", tenantId: "cs.tenant_id", expiresAt: "cs.expires_at", updatedAt: "cs.updated_at" },
+  servicesTable: { slug: "s.slug" },
+  usersTable: { id: "u.id", email: "u.email" },
+  tenantMonitorProfilesTable: { tenantId: "tmp.tenant_id", status: "tmp.status" },
   auditLogsTable: {},
 }));
 
@@ -87,16 +112,37 @@ vi.mock("drizzle-orm", () => ({
   and:    vi.fn((...args) => ({ type: "and", args })),
   isNull: vi.fn((col) => ({ type: "isNull", col })),
   gte:    vi.fn((_col, _val) => ({ type: "gte" })),
+  ne:     vi.fn((_col, _val) => ({ type: "ne" })),
   desc:   vi.fn((col) => ({ type: "desc", col })),
+  sql:    vi.fn((...args) => ({ type: "sql", args })),
+}));
+
+// consent.ts imports emitWorkflowEvent from workflow-executor, which statically
+// pulls ps-script-gen → the Anthropic AI integration client (throws at module
+// load without provisioning). Mock it — the consent flow's event emission is
+// fire-and-forget and not under test here.
+vi.mock("../lib/workflow-executor.ts", () => ({
+  emitWorkflowEvent: vi.fn(),
 }));
 
 vi.mock("../lib/audit.ts", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock("../lib/logger.ts", () => {
+  // `.child()` returns the same logger so both the module-level binding in
+  // consent.ts (logger.child({ channel: "auth" })) and transitive imports
+  // (graph.ts → simulator-events → monitor-executor, which also call
+  // logger.child at module load) resolve to a working logger.
+  const logger: Record<string, unknown> = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
+  logger.child = vi.fn(() => logger);
+  return { logger };
+});
 
 vi.mock("../lib/portal-url.ts", () => ({
   getPortalBaseUrl: vi.fn().mockReturnValue("https://app.example.com/crm"),
@@ -367,6 +413,61 @@ describe("consent route handlers", () => {
       });
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
+      expect(store.redirectUrl).toContain("/consent/success");
+    });
+  });
+
+  // Regression: cross-MSP tenant boundary guard on the direct self-service
+  // checkout path. A checkout session (UUID state) whose Microsoft tenant is
+  // already registered as a customer under a DIFFERENT MSP must be REJECTED
+  // before the session is marked consented and before any write happens —
+  // never silently cross-linked.
+  describe("GET /consent/callback — cross-MSP tenant conflict (checkout session)", () => {
+    // Valid UUID v4 so UUID_RE.test(state) === true (checkout-session path).
+    const CHECKOUT_STATE = "11111111-1111-4111-8111-111111111111";
+
+    it("rejects a checkout tenant already linked to a different MSP, before any write", async () => {
+      dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
+      dbSelectQueue.push([{ id: 1, mspId: 1 }]);      // existing customer under a DIFFERENT mspId
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-conflict", admin_consent: "True", state: CHECKOUT_STATE },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/consent/tenant-conflict");
+      expect(store.redirectUrl).toContain("tenant=tenant-conflict");
+      // Session must NOT be marked consented and tenant_consent must NOT be written.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it("proceeds when the checkout tenant's existing customer is under the SAME (direct) MSP", async () => {
+      dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
+      dbSelectQueue.push([{ id: 5, mspId: 89 }]);     // existing customer under the SAME mspId — no conflict
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-ok", admin_consent: "True", state: CHECKOUT_STATE },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).not.toContain("/consent/tenant-conflict");
+      expect(store.redirectUrl).toContain("/consent/success");
+    });
+
+    it("proceeds when no customer exists for the checkout tenant yet", async () => {
+      dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
+      dbSelectQueue.push([]);                          // no existing customer for this tenant
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-new", admin_consent: "True", state: CHECKOUT_STATE },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).not.toContain("/consent/tenant-conflict");
       expect(store.redirectUrl).toContain("/consent/success");
     });
   });

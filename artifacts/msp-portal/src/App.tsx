@@ -61,6 +61,7 @@ import CustomerBillingPage from "@/pages/customer-billing";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
+import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import AccountSetupPage from "@/pages/account-setup";
@@ -656,6 +657,15 @@ function Router() {
           page explaining next steps. */}
       <Route path="/consent/success">
         <ConsentSuccessPage />
+      </Route>
+
+      {/* Cross-MSP tenant conflict — public, no auth required.
+          The API consent callback redirects here when a self-service checkout's
+          Microsoft tenant is already connected to a different MSP/account. The
+          purchase is rejected before payment; this explains why and points to
+          support. See routes/consent.ts cross-MSP tenant boundary guard. */}
+      <Route path="/consent/tenant-conflict">
+        <ConsentTenantConflictPage />
       </Route>
 
       {/* Root — redirect to last-used slug or flat login */}

@@ -190,7 +190,7 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * Should be called AFTER provisionOnboardingProject so that the msp_customers
  * row created during provisioning is available for the tenantId lookup.
  */
-async function ensureClientMspUser(
+export async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
 ): Promise<void> {
@@ -211,7 +211,7 @@ async function ensureClientMspUser(
 
   // Check whether a row already exists
   const [existing] = await db
-    .select({ id: mspUsersTable.id, existingCustomerId: mspUsersTable.customerId })
+    .select({ id: mspUsersTable.id, existingCustomerId: mspUsersTable.customerId, existingMspId: mspUsersTable.mspId })
     .from(mspUsersTable)
     .where(eq(mspUsersTable.userId, userId))
     .limit(1);
@@ -220,6 +220,28 @@ async function ensureClientMspUser(
     // Row exists — patch customer_id if it is still null and we resolved one.
     // This handles users created before the customer record was provisioned.
     if (existing.existingCustomerId == null && customerId != null) {
+      // Cross-MSP boundary backstop (defense in depth — the consent-time check in
+      // consent.ts should reject this before payment; see "Reject cross-MSP tenant
+      // consent conflicts"). The resolved customerId comes from a tenantId match; if
+      // that customer belongs to a DIFFERENT MSP than this user's existing msp_users
+      // row, patching would link the user across the tenant boundary and leak the
+      // other MSP's engine history/findings/SOWs (confirmed live: user 92 mspId 89 →
+      // customer 1 mspId 1). Refuse the patch, leave customerId untouched (null), and
+      // log at error level for manual admin follow-up. This should never fire if the
+      // consent-time guard is intact — treat any occurrence as a gap in that guard.
+      if (existing.existingMspId != null && existing.existingMspId !== mspId) {
+        log.error(
+          {
+            userId,
+            tenantId,
+            conflictingCustomerId: customerId,
+            existingMspId: existing.existingMspId,
+            resolvedMspId: mspId,
+          },
+          "ensureClientMspUser: REFUSED cross-MSP customerId patch — tenantId resolves to a customer under a different MSP than the user's existing msp_users row; leaving customerId unchanged (payment already succeeded, manual admin follow-up required)",
+        );
+        return;
+      }
       await db
         .update(mspUsersTable)
         .set({ customerId, updatedAt: new Date() })

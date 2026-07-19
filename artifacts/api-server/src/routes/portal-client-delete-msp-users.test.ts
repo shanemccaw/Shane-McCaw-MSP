@@ -126,7 +126,7 @@ vi.mock("@workspace/db", () => {
     fulfillmentSlaConfigTable: table("fulfillmentSlaConfig"),
     FULFILLMENT_DELIVERY_STATUSES: ["queued", "delivered"],
     FULFILLMENT_SOURCE_TYPES: ["manual", "automated"],
-    mspCustomersTable: { id: "id", mspId: "msp_id", status: "status", name: "name", domain: "domain" },
+    mspCustomersTable: { id: "id", mspId: "msp_id", tenantId: "tenant_id", status: "status", name: "name", domain: "domain" },
     mspUsersTable: { id: "id", userId: "user_id", mspId: "msp_id", customerId: "customer_id", mspRole: "msp_role" },
     mspAuditLogsTable: table("mspAuditLogs"),
     monitorChecksTable: table("monitorChecks"),
@@ -312,8 +312,8 @@ vi.mock("pdf-lib", () => ({
   StandardFonts: {},
 }));
 
-import router from "./portal.ts";
-import { db, mspUsersTable, usersTable } from "@workspace/db";
+import router, { ensureClientMspUser } from "./portal.ts";
+import { db, mspUsersTable, usersTable, mspCustomersTable } from "@workspace/db";
 
 const app = express();
 app.use(express.json());
@@ -374,5 +374,60 @@ describe("DELETE /api/portal/admin/clients/:id", () => {
     expect(usersDeleteIndex).toBeGreaterThanOrEqual(0);
     // mspUsersTable delete happens before the usersTable delete (FK-safe ordering).
     expect(mspUsersDeleteIndex).toBeLessThan(usersDeleteIndex);
+  });
+});
+
+// Cross-MSP tenant boundary backstop in ensureClientMspUser. This is the
+// post-payment defense-in-depth half of "Reject cross-MSP tenant consent
+// conflicts" (the consent-time check in routes/consent.ts is the primary gate).
+// When a tenantId resolves to a customer under a DIFFERENT MSP than the user's
+// existing msp_users row, the customerId patch must be REFUSED so the user is
+// never cross-linked to another MSP's customer (which would leak that MSP's
+// engine history / findings / SOWs — confirmed live for user 92).
+describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSelectResultsQueue = [];
+    mockDefaultSelectResult = [];
+  });
+
+  it("REFUSES to patch customerId when the tenantId customer is under a different MSP", async () => {
+    mockSelectResultsQueue = [
+      // 1. tenantId → customer lookup: customer 1 lives under mspId 1
+      [{ id: 1, mspId: 1 }],
+      // 2. existing msp_users row for this user: under mspId 89, customerId still null
+      [{ id: 500, existingCustomerId: null, existingMspId: 89 }],
+    ];
+
+    await ensureClientMspUser(92, "tenant-conflict");
+
+    // The buggy patch must NOT run — leave the existing row's customerId untouched.
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("patches customerId when the tenantId customer is under the SAME MSP", async () => {
+    mockSelectResultsQueue = [
+      // 1. tenantId → customer lookup: customer 5 under mspId 89 (matches the user's MSP)
+      [{ id: 5, mspId: 89 }],
+      // 2. existing msp_users row: under mspId 89, customerId null → safe to patch
+      [{ id: 500, existingCustomerId: null, existingMspId: 89 }],
+    ];
+
+    await ensureClientMspUser(92, "tenant-ok");
+
+    // No conflict → the customerId patch proceeds on mspUsersTable.
+    expect(db.update).toHaveBeenCalledWith(mspUsersTable);
+  });
+
+  it("does not patch (nothing to do) when the existing row already has a customerId", async () => {
+    mockSelectResultsQueue = [
+      [{ id: 5, mspId: 89 }],
+      // existing row already linked → no patch regardless of MSP
+      [{ id: 500, existingCustomerId: 5, existingMspId: 89 }],
+    ];
+
+    await ensureClientMspUser(92, "tenant-ok");
+
+    expect(db.update).not.toHaveBeenCalled();
   });
 });

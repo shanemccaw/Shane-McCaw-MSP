@@ -24,7 +24,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable, mspCustomersTable } from "@workspace/db";
+import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable, mspCustomersTable, mspsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -151,6 +151,47 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Determine whether `state` is a checkout session UUID or an MSP invite token.
   const isCheckoutSession = !!state && UUID_RE.test(state);
+
+  // ── Cross-MSP tenant boundary guard (direct self-service checkout path only) ──
+  // A checkout session always belongs to the isDirectBusiness MSP (checkout_sessions
+  // has no mspId column). If the Microsoft tenant that just consented is ALREADY
+  // registered as a customer under a DIFFERENT MSP, letting this purchase proceed
+  // would silently cross-link the buyer to that other MSP's customer record —
+  // leaking its engine history, findings, and SOWs across the tenant boundary
+  // (confirmed live: user 92 under mspId 89 saw customer 1's data under mspId 1).
+  // Reject BEFORE marking the session consented and before payment ever happens.
+  // Do not cross-link, do not create a duplicate customer. The equivalent check in
+  // ensureClientMspUser (portal.ts) is a post-payment backstop for this same case.
+  if (isCheckoutSession && state) {
+    const [directMsp] = await db
+      .select({ id: mspsTable.id })
+      .from(mspsTable)
+      .where(eq(mspsTable.isDirectBusiness, true))
+      .limit(1);
+
+    const [conflictingCustomer] = await db
+      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.tenantId, tenant))
+      .limit(1);
+
+    if (directMsp && conflictingCustomer && conflictingCustomer.mspId !== directMsp.id) {
+      log.warn(
+        {
+          tenantId: tenant,
+          sessionId: state,
+          conflictingCustomerId: conflictingCustomer.id,
+          existingMspId: conflictingCustomer.mspId,
+          directMspId: directMsp.id,
+        },
+        "Consent callback: REJECTED cross-MSP tenant conflict — this Microsoft tenant is already connected to a customer under a different MSP; not marking the checkout session consented",
+      );
+      res.redirect(
+        `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
+      );
+      return;
+    }
+  }
 
   // Validate and burn the invite token (only for non-UUID state values)
   let inviteRecord: { customerId: number | null; clientUserId: number | null } | null = null;
