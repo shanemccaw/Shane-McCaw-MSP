@@ -62,5 +62,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Wire Live Colony Data Into 3D Scene | 3acbcb95 |
 | 2026-07-19 | ✅ DONE | Add Factory Floor Nav Link and Wire HQ to Overlord Total | 5b223044 |
 | 2026-07-19 | ✅ DONE | Merge Health Breakdown Into Hero | f3ed188e |
-| 2026-07-19 | ⏳ IN FLIGHT — Auto-Trigger Sales Offer Generation On Diagnostics Completion | |
+| 2026-07-19 | ✅ DONE | Auto-Trigger Sales Offer Generation On Diagnostics Completion | 128ba852 |
 | 2026-07-19 | ⏳ IN FLIGHT — Add Animated Revenue Belts to HQ | |
