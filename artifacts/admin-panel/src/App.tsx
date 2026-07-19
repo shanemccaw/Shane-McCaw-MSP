@@ -31,6 +31,9 @@ import PlanManagementPage from "@/pages/PlanManagement";
 import MspOverridesPage from "@/pages/MspOverrides";
 import MspReportsPage from "@/pages/MspReports";
 
+// ─── Labs (experimental spikes, full-bleed, no IDE shell) ─────────────────────
+import FactoryFloorLab from "@/pages/labs/FactoryFloorLab";
+
 // ─── Standalone pages (remain at legacy paths, tree leaves in the IDE shell) ─
 import DocumentsPage from "@/pages/crm/Documents";
 import StatusReportsPage from "@/pages/crm/StatusReports";
@@ -303,6 +306,15 @@ function Router() {
       <Route path="/inbox"><Redirect to="/system/inbox" /></Route>
       <Route path="/security"><Redirect to="/system/security" /></Route>
       <Route path="/crm/quiz-pain-config"><Redirect to="/system/signal-mappings" /></Route>
+
+      {/* ── Labs (experimental spikes, full-bleed) ── */}
+      <Route path="/labs/factory-floor">
+        <RequireAdmin>
+          <div className="relative w-full h-full">
+            <FactoryFloorLab />
+          </div>
+        </RequireAdmin>
+      </Route>
 
       {/* ── MSP Platform admin pages ── */}
       <Route path="/msp">
