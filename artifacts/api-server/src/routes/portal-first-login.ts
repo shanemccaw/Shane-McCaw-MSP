@@ -14,6 +14,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAuth } from "../middlewares/requireAuth";
 import { runFirstLoginProvisioning } from "../lib/first-login-provisioning";
+import { onFirstLoginComplete } from "../lib/assessment-doc-trigger";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.provisioning" });
@@ -45,6 +46,14 @@ router.post(
 
     const displayName = user.name ?? user.email ?? `Client ${user.id}`;
     void runFirstLoginProvisioning({ userId: user.id, displayName });
+
+    // First-login side of the Assessment/Free document-generation trigger. This
+    // endpoint firing IS the customer's first-login event, so onFirstLoginComplete
+    // assumes the login condition met and fires doc generation iff the order is
+    // assessment-tier AND the scan has already completed. No-op for everyone else.
+    // Fire-and-forget and self-guarded — never blocks the 202 below.
+    void onFirstLoginComplete(user.id);
+
     log.info({ userId: user.id }, "first-login provisioning requested");
 
     res.status(202).json({ ok: true, provisioning: true });

@@ -32,6 +32,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
+import { onDiagnosticsRunCompleted } from "./assessment-doc-trigger";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -710,6 +711,12 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       findingsCount,
       finalStatus,
     });
+
+    // Assessment/Free-tier document-generation trigger (telemetry-ready side of the
+    // two-sided "wait for both" gate). No-op unless the customer's order is
+    // assessment-tier AND they've already logged in — paid monitoring subs are
+    // unaffected. Fire-and-forget: must never delay or fail the diagnostics result.
+    void onDiagnosticsRunCompleted({ customerId, tenantId: resolvedTenantId, finalStatus });
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, findingsCount, documentId };
 
