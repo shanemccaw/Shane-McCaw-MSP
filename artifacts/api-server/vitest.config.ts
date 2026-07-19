@@ -27,6 +27,7 @@ export default defineConfig({
       "src/lib/health-engine.test.ts",
       "src/lib/crm-engine.test.ts",
       "src/lib/msp-engine.test.ts",
+      "src/lib/msp-engine-tenant-id-space.test.ts",
       "src/lib/engine-determinism.test.ts",
       "src/lib/msp.test.ts",
       "src/lib/portal-workflow-engine.test.ts",

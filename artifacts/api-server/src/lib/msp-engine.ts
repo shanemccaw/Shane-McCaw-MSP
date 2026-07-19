@@ -184,7 +184,7 @@ function getSignalWeightsFromRulesAndGroups(
  */
 async function fetchActiveTenants(mspId: number): Promise<{ id: number; name: string | null }[]> {
   return db
-    .select({ id: usersTable.id, name: usersTable.name })
+    .select({ id: mspCustomersTable.id, name: usersTable.name })
     .from(usersTable)
     .innerJoin(mspUsersTable, eq(usersTable.id, mspUsersTable.userId))
     .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
@@ -201,8 +201,10 @@ async function fetchActiveTenants(mspId: number): Promise<{ id: number; name: st
  */
 async function fetchAllActiveTenantsPlatformWide(): Promise<{ id: number; name: string | null }[]> {
   return db
-    .select({ id: usersTable.id, name: usersTable.name })
+    .select({ id: mspCustomersTable.id, name: usersTable.name })
     .from(usersTable)
+    .innerJoin(mspUsersTable, eq(usersTable.id, mspUsersTable.userId))
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
     .where(eq(usersTable.role, "client"));
 }
 
