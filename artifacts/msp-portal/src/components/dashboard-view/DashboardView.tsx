@@ -393,9 +393,13 @@ export function DashboardTabs({ scope, title = "Dashboard" }: DashboardTabsProps
 
   return (
     <Tabs value={activeKey} onValueChange={setActiveKey}>
-      <TabsList>
+      <TabsList className="h-auto w-full justify-start rounded-none border-b border-border bg-transparent p-0">
         {entries.map((entry) => (
-          <TabsTrigger key={entry.targetKey ?? "__default__"} value={entry.targetKey ?? "__default__"}>
+          <TabsTrigger
+            key={entry.targetKey ?? "__default__"}
+            value={entry.targetKey ?? "__default__"}
+            className="rounded-none border-b-2 border-transparent px-4 py-2 text-sm font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none"
+          >
             {entry.label}
           </TabsTrigger>
         ))}
