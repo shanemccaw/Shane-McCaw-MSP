@@ -51,3 +51,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Fix Global Toast Crash on Structured API Errors | 2c830cef |
 | 2026-07-18 | ✅ DONE | fix-fetchActiveTenants-id-space-regression | 4520fe58 |
 | 2026-07-18 | ✅ DONE | Merge Customer Home Content Into Mission Control + Flip Landing Route | ca751fe9 |
+| 2026-07-19 | ⏳ IN FLIGHT | Wire Client Errors Into Platform Observability | |
