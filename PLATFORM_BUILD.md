@@ -42,6 +42,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | msp-users-user-id-fk-constraint | 8f24e76d |
 | 2026-07-18 | ✅ DONE | stripe-metadata-service-id-casing-fix | 4fcbc9da |
 | 2026-07-18 | ✅ DONE | tenant-profile-resolution-consolidation | 16908195 |
+| 2026-07-19 | ⏳ IN FLIGHT | Severity-Grouped Findings Boxes With Modal Drill-In | |
 | 2026-07-18 | ✅ DONE | api-server-typecheck-fixes | 7d375bfa |
 | 2026-07-18 | ✅ DONE | Portal Multi-Template Dashboard Resolve + Tabs (project/assessment excluded, pending projectsTable->mspId/customerId backlog fix) | 40e24e67 |
 | 2026-07-18 | ✅ DONE | Mission Control Canvas — CustomerUser | 68dca058 |
