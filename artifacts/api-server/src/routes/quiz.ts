@@ -3,12 +3,13 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable, servicesTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable, servicesTable, leadOfferRuleGroupsTable } from "@workspace/db";
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "growth.quiz" });
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
+import { inferSignalsFromQuizScores, computeLeadOfferEngine } from "../lib/lead-offer-engine.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
@@ -588,6 +589,52 @@ Respond ONLY with valid JSON in this exact shape:
   }
 
   if (leadId !== null) {
+    try {
+      const inferredSignals = await inferSignalsFromQuizScores(scores, null);
+      if (inferredSignals.size > 0) {
+        const ruleGroups = await db.select().from(leadOfferRuleGroupsTable).where(eq(leadOfferRuleGroupsTable.isActive, true));
+        const services = await db
+          .select({ id: servicesTable.id, name: servicesTable.name, price: servicesTable.price, basePrice: servicesTable.basePrice })
+          .from(servicesTable);
+
+        const offerResult = await computeLeadOfferEngine(
+          leadId,
+          null,
+          inferredSignals,
+          ruleGroups,
+          services,
+          { minScore: 30, maxCandidates: 3, defaultExpirationDays: 14, bundlingThreshold: 2 },
+        );
+
+        if (offerResult.candidates.length > 0) {
+          await db.update(quizLeadsTable)
+            .set({
+              leadOfferResult: {
+                inferredSignals: offerResult.inferredSignals,
+                candidates: offerResult.candidates.map(c => ({
+                  serviceId: c.serviceId,
+                  serviceName: c.serviceName,
+                  title: c.title,
+                  rationale: c.rationale,
+                  basePriceCents: c.basePriceCents,
+                  adjustedPriceCents: c.adjustedPriceCents,
+                  aiPricingReasoning: c.aiPricingReasoning,
+                  score: c.score,
+                  expirationDays: c.expirationDays,
+                })),
+                generatedAt: new Date().toISOString(),
+              },
+            })
+            .where(eq(quizLeadsTable.id, leadId));
+          log.info({ leadId, candidateCount: offerResult.candidates.length }, "quiz/submit: lead offer generated");
+        }
+      }
+    } catch (err) {
+      log.warn({ err, leadId }, "quiz/submit: lead offer generation failed (non-fatal) — quiz submission still succeeds");
+    }
+  }
+
+  if (leadId !== null) {
     void emitWorkflowEvent("quiz.lead_submitted", {
       quizLeadId: leadId,
       name,
@@ -862,6 +909,7 @@ router.get("/quiz/results/:leadId", resultsLimiter, async (req, res) => {
     roiProjection: analysis.roiProjection ?? "",
     createdAt: lead.createdAt,
     detectedSeats: lead.detectedSeats ?? null,
+    leadOffer: lead.leadOfferResult ?? null,
   });
 });
 
