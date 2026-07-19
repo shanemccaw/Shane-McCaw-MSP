@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
 
 // ── Module mocks ────────────────────────────────────────────────────────────────
 
@@ -63,8 +65,15 @@ vi.mock("../lib/msp-financial-aggregator.ts", () => ({
   })
 }));
 
-vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+vi.mock("../lib/logger.ts", () => {
+  const mockLogger: any = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  mockLogger.child = vi.fn().mockReturnValue(mockLogger);
+  return { logger: mockLogger };
+});
+
+const calculateMspPortfolioRiskMock = vi.fn();
+vi.mock("../lib/msp-engine.ts", () => ({
+  calculateMspPortfolioRisk: (...args: unknown[]) => calculateMspPortfolioRiskMock(...args),
 }));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
@@ -207,6 +216,93 @@ describe("GET /api/msp/dashboard", () => {
     expect(res.body).toHaveProperty("signalsFiredThisMonth");
     expect(res.body).toHaveProperty("offerAcceptanceRate");
     expect(res.body).toHaveProperty("revenueUsdThisMonth");
+  });
+});
+
+// ── Portfolio risk tenant-scoping regression ─────────────────────────────────────
+//
+// This route must resolve mspId via resolveMspIdStrict (session-only, no query
+// override) rather than resolveMspId/resolveMspIdOrZero (which honor ?mspId=/
+// ?slug= for admin-role callers). Swapping in the override-honoring helper here
+// would let an MSPAdmin JWT for MSP A pull MSP B's rankedTenants via ?mspId=.
+// See PLATFORM_BUILD.md "Portfolio Risk Tenant-Scoping Audit".
+
+describe("GET /api/msp/portfolio-risk", () => {
+  beforeEach(() => {
+    calculateMspPortfolioRiskMock.mockReset();
+  });
+
+  it("ignores a ?mspId= override attempt and only ever returns the caller's own MSP data", async () => {
+    const mspAOutput = {
+      mspId: 42,
+      portfolioRisk: 12,
+      rankedTenants: [{ customerId: 1001, combinedScore: 12 }],
+    };
+    const mspBOutput = {
+      mspId: 999,
+      portfolioRisk: 87,
+      rankedTenants: [{ customerId: 2002, combinedScore: 87 }],
+    };
+    calculateMspPortfolioRiskMock.mockImplementation(async (mspId: number) =>
+      mspId === 42 ? mspAOutput : mspBOutput,
+    );
+
+    const { default: router } = await import("./msp-portal.ts");
+    const app = express();
+    app.use(express.json());
+    app.use("/api", router);
+
+    // MSPAdmin JWT for MSP A (mspId: 42), attempting to override to MSP B (999).
+    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const res = await request(app)
+      .get("/api/msp/portfolio-risk?mspId=999")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // Must be called with the session mspId (42), never the query override (999).
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42);
+    expect(res.body.rankedTenants).toEqual(mspAOutput.rankedTenants);
+    expect(res.body.rankedTenants).not.toEqual(mspBOutput.rankedTenants);
+  });
+
+  it("ignores a ?slug= override attempt as well", async () => {
+    calculateMspPortfolioRiskMock.mockResolvedValue({
+      mspId: 42,
+      portfolioRisk: 12,
+      rankedTenants: [{ customerId: 1001, combinedScore: 12 }],
+    });
+
+    const { default: router } = await import("./msp-portal.ts");
+    const app = express();
+    app.use(express.json());
+    app.use("/api", router);
+
+    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const res = await request(app)
+      .get("/api/msp/portfolio-risk?slug=other-msp-tenant")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42);
+  });
+
+  it("source-level guard: the route imports resolveMspIdStrict, never resolveMspId/resolveMspIdOrZero", () => {
+    // Runtime tests above prove *a* correct-looking mspId was used, but can't by
+    // themselves distinguish "resolveMspIdStrict was called" from "resolveMspId
+    // happened to also return 42 in this test's mock shape". Assert directly
+    // against the source that the portfolio-risk handler is wired to the strict,
+    // non-overridable helper.
+    const routeFile = fileURLToPath(new URL("./msp-portal.ts", import.meta.url));
+    const source = readFileSync(routeFile, "utf8");
+
+    const routeStart = source.indexOf('"/msp/portfolio-risk"');
+    expect(routeStart).toBeGreaterThan(-1);
+    const routeEnd = source.indexOf("// ── GET /api/msp/dashboard", routeStart);
+    const routeHandlerSource = source.slice(routeStart, routeEnd === -1 ? undefined : routeEnd);
+
+    expect(routeHandlerSource).toContain("resolveMspIdStrict(req)");
+    expect(routeHandlerSource).not.toMatch(/\bresolveMspIdOrZero\(/);
+    expect(routeHandlerSource).not.toMatch(/(?<!Strict)\bresolveMspId\(/);
   });
 });
 
