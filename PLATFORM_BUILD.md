@@ -11,7 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
-| 2026-07-19 | ⏳ IN FLIGHT | evaluate_engagement_offers workflow node |  |
+| 2026-07-19 | ✅ DONE | evaluate_engagement_offers workflow node | 5da9a1e1 |
 | 2026-07-19 | ✅ DONE | engagement-offer-engine evaluator — standalone evaluateEngagementOfferForLead/evaluateAllEngagementOffers, local ENGAGEMENT_INTENT_POINTS map (not imported from lead-intent.ts), platform-only rules (mspId IS NULL), cooldown dedup mirroring policy-engine.ts's raw-SQL style. Not wired into any route/workflow yet. | 6f693bea |
 | 2026-07-19 | ✅ DONE | lead-offer-engine AI pricing — AI-determined opportunistic pricing replacing rule-based pricing adjustment, hard-capped server-side (maxDiscountPct from lead_offer_pricing_config, clamped regardless of AI output); computeLeadOfferEngine restructured into two phases so AI is only called for candidates surviving scoring/filtering/cap, not every eligible candidate. Falls back to base price (no discount) on AI failure. | 4f4fd222 |
 | 2026-07-19 | ⏳ IN FLIGHT | Assessment Document Generation Workflow — Service-Mapped, Sequenced SOW |  |
