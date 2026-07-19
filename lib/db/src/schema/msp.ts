@@ -127,6 +127,10 @@ export const mspUsersTable = pgTable("msp_users", {
   // approve regardless of this flag. Checked live (not cached in the JWT) so
   // permission changes take effect immediately.
   canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
+  // Account-level theme preference (light/dark), so the customer never has to
+  // re-toggle after logging in on a new device or a cache clear. Null means
+  // "no preference set yet" — the client falls back to OS prefers-color-scheme.
+  themePreference: text("theme_preference", { enum: ["light", "dark"] }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

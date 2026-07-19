@@ -69,6 +69,7 @@ import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
 import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
+import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
@@ -374,6 +375,12 @@ function SlugInnerSwitch() {
           are later steps. */}
       <Route path="/dashboard-canvas-preview">
         <ProtectedRoute component={DashboardCanvasPreviewPage} />
+      </Route>
+
+      {/* Portal Foundation Redesign — internal token/component style guide,
+          not linked in nav. Visual QA only; no real page migrates yet. */}
+      <Route path="/dev/style-guide">
+        <ProtectedRoute component={DevStyleGuidePage} />
       </Route>
 
       {/* AI Billing */}

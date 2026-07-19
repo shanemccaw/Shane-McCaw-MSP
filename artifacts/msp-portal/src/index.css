@@ -39,6 +39,12 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
+  --color-status-red: hsl(var(--status-red));
+  --color-status-amber: hsl(var(--status-amber));
+  --color-status-green: hsl(var(--status-green));
+  --color-status-blue: hsl(var(--status-blue));
+  --color-status-violet: hsl(var(--status-violet));
+
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -91,14 +97,26 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-large: var(--radius-large);
 }
 
 /*
- * Brand palette:
- *   Deep Navy   #0A2540  → HSL 213 74% 15%
- *   Electric Blue #0078D4 → HSL 210 100% 42%
- *   Bright Teal  #00B4D8 → HSL 194 100% 42%
- *   Off-White    #F7F9FC → HSL 216 38% 98%
+ * Brand palette — Fluent 2, neutral (not blue-tinted):
+ *   Dark bg      #1a1a1a  → HSL 0 0% 10.2%
+ *   Dark layer1  #1f1f1f  → HSL 0 0% 12.2%
+ *   Dark card    #242424  → HSL 0 0% 14.1%
+ *   Dark elevated #2b2b2b → HSL 0 0% 16.9%
+ *   Accent blue  #479ef5  → HSL 212 87% 64%
+ *   Status red   #e0554f  → HSL 3 68% 58%
+ *   Status amber #d9a441  → HSL 40 65% 55%
+ *   Status green #4caf7d  → HSL 149 36% 49%
+ *   Status violet #b28ee0 → HSL 271 51% 71%
+ *
+ * Corner radius scale (Fluent 2): control/button 4px, card 6px, large 8px.
+ * Spacing scale (4px base unit): 4 / 8 / 12 / 16 / 20 / 24 / 32.
  */
 
 /* LIGHT MODE */
@@ -109,77 +127,87 @@
   --elevate-1: rgba(0,0,0,.03);
   --elevate-2: rgba(0,0,0,.08);
 
-  /* Off-White background */
-  --background: 216 38% 98%;
-  --foreground: 213 74% 15%;
+  /* Neutral off-white background (not blue-white) */
+  --background: 0 0% 98%;
+  --foreground: 0 0% 13%;
 
-  /* Card */
+  /* Card — one step more distinct than background */
   --card: 0 0% 100%;
-  --card-foreground: 213 74% 15%;
-  --card-border: 216 20% 92%;
+  --card-foreground: 0 0% 13%;
+  --card-border: 0 0% 88%;
 
   /* Popovers */
   --popover: 0 0% 100%;
-  --popover-foreground: 213 74% 15%;
-  --popover-border: 216 20% 90%;
+  --popover-foreground: 0 0% 13%;
+  --popover-border: 0 0% 87%;
 
-  /* Primary — Electric Blue #0078D4 */
-  --primary: 210 100% 42%;
+  /* Primary — accent blue */
+  --primary: 212 87% 52%;
   --primary-foreground: 0 0% 100%;
 
   /* Secondary */
-  --secondary: 213 30% 92%;
-  --secondary-foreground: 213 74% 15%;
+  --secondary: 0 0% 92%;
+  --secondary-foreground: 0 0% 13%;
 
   /* Muted */
-  --muted: 213 20% 94%;
-  --muted-foreground: 213 30% 45%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 38%;
 
-  /* Accent — Bright Teal #00B4D8 */
-  --accent: 194 100% 42%;
+  /* Accent — reuses status violet as the secondary accent category color */
+  --accent: 271 45% 52%;
   --accent-foreground: 0 0% 100%;
 
-  /* Destructive */
-  --destructive: 4 86% 58%;
+  /* Destructive — status red */
+  --destructive: 3 65% 50%;
   --destructive-foreground: 0 0% 100%;
 
-  /* Sidebar — Deep Navy #0A2540 */
-  --sidebar: 213 74% 15%;
-  --sidebar-foreground: 0 0% 96%;
-  --sidebar-border: 213 40% 22%;
-  --sidebar-primary: 210 100% 52%;
+  /* Status colors (functional only) */
+  --status-red: 3 65% 50%;
+  --status-amber: 40 70% 42%;
+  --status-green: 149 45% 36%;
+  --status-blue: 212 87% 52%;
+  --status-violet: 271 45% 52%;
+
+  /* Sidebar — layered one step darker than page background */
+  --sidebar: 0 0% 96%;
+  --sidebar-foreground: 0 0% 13%;
+  --sidebar-border: 0 0% 87%;
+  --sidebar-primary: 212 87% 52%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 213 40% 22%;
-  --sidebar-accent-foreground: 0 0% 92%;
-  --sidebar-ring: 210 100% 52%;
+  --sidebar-accent: 0 0% 91%;
+  --sidebar-accent-foreground: 0 0% 13%;
+  --sidebar-ring: 212 87% 52%;
 
   /* Inputs */
-  --border: 216 20% 88%;
-  --input: 216 20% 88%;
-  --ring: 210 100% 42%;
+  --border: 0 0% 87%;
+  --input: 0 0% 87%;
+  --ring: 212 87% 52%;
 
   /* Charts */
-  --chart-1: 210 100% 42%;
-  --chart-2: 194 100% 42%;
-  --chart-3: 213 74% 25%;
-  --chart-4: 38 92% 50%;
-  --chart-5: 4 86% 58%;
+  --chart-1: 212 87% 52%;
+  --chart-2: 271 45% 52%;
+  --chart-3: 0 0% 30%;
+  --chart-4: 40 70% 42%;
+  --chart-5: 3 65% 50%;
 
   /* Typography */
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Segoe UI', 'Inter', system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
-  --app-font-mono: Menlo, monospace;
+  --app-font-mono: 'IBM Plex Mono', monospace;
   --radius: .375rem;
+  --radius-control: .25rem;
+  --radius-card: .375rem;
+  --radius-large: .5rem;
 
-  /* Shadows */
-  --shadow-2xs: 0px 1px 2px 0px rgba(10,37,64,.06);
-  --shadow-xs: 0px 1px 3px 0px rgba(10,37,64,.08);
-  --shadow-sm: 0px 1px 2px 0px rgba(10,37,64,.05), 0px 2px 4px -1px rgba(10,37,64,.05);
-  --shadow: 0px 1px 3px 0px rgba(10,37,64,.08), 0px 4px 6px -2px rgba(10,37,64,.05);
-  --shadow-md: 0px 4px 6px -1px rgba(10,37,64,.08), 0px 2px 4px -2px rgba(10,37,64,.05);
-  --shadow-lg: 0px 10px 15px -3px rgba(10,37,64,.08), 0px 4px 6px -4px rgba(10,37,64,.05);
-  --shadow-xl: 0px 20px 25px -5px rgba(10,37,64,.10), 0px 8px 10px -6px rgba(10,37,64,.05);
-  --shadow-2xl: 0px 25px 50px -12px rgba(10,37,64,.20);
+  /* Shadows — soft, not glowing */
+  --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,.06);
+  --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,.08);
+  --shadow-sm: 0px 1px 2px 0px rgba(0,0,0,.05), 0px 2px 4px -1px rgba(0,0,0,.05);
+  --shadow: 0px 1px 3px 0px rgba(0,0,0,.08), 0px 4px 6px -2px rgba(0,0,0,.05);
+  --shadow-md: 0px 4px 6px -1px rgba(0,0,0,.08), 0px 2px 4px -2px rgba(0,0,0,.05);
+  --shadow-lg: 0px 10px 15px -3px rgba(0,0,0,.08), 0px 4px 6px -4px rgba(0,0,0,.05);
+  --shadow-xl: 0px 20px 25px -5px rgba(0,0,0,.10), 0px 8px 10px -6px rgba(0,0,0,.05);
+  --shadow-2xl: 0px 25px 50px -12px rgba(0,0,0,.20);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 
@@ -206,52 +234,63 @@
   --elevate-1: rgba(255,255,255,.04);
   --elevate-2: rgba(255,255,255,.09);
 
-  /* Deep Navy background */
-  --background: 213 74% 10%;
-  --foreground: 216 38% 95%;
+  /* Neutral gray background — #1a1a1a, not navy */
+  --background: 0 0% 10.2%;
+  --foreground: 0 0% 94.1%;
 
-  --card: 213 60% 13%;
-  --card-foreground: 216 38% 95%;
-  --card-border: 213 40% 22%;
+  /* Card — one layer lighter than background: #242424 */
+  --card: 0 0% 14.1%;
+  --card-foreground: 0 0% 94.1%;
+  --card-border: 0 0% 100% / .08;
 
-  --popover: 213 60% 13%;
-  --popover-foreground: 216 38% 95%;
-  --popover-border: 213 40% 22%;
+  --popover: 0 0% 14.1%;
+  --popover-foreground: 0 0% 94.1%;
+  --popover-border: 0 0% 100% / .08;
 
-  /* Primary — lighter in dark mode */
-  --primary: 210 100% 55%;
-  --primary-foreground: 0 0% 100%;
+  /* Primary — accent blue #479ef5 */
+  --primary: 212 87% 64%;
+  --primary-foreground: 0 0% 10%;
 
-  --secondary: 213 40% 22%;
-  --secondary-foreground: 216 30% 85%;
+  /* Secondary — elevated surface #2b2b2b */
+  --secondary: 0 0% 16.9%;
+  --secondary-foreground: 0 0% 90%;
 
-  --muted: 213 40% 18%;
-  --muted-foreground: 213 20% 60%;
+  --muted: 0 0% 16.9%;
+  --muted-foreground: 0 0% 54%;
 
-  --accent: 194 100% 48%;
-  --accent-foreground: 213 74% 10%;
+  /* Accent — status violet, secondary category accent */
+  --accent: 271 51% 71%;
+  --accent-foreground: 0 0% 10%;
 
-  --destructive: 4 86% 60%;
+  --destructive: 3 68% 58%;
   --destructive-foreground: 0 0% 100%;
 
-  --sidebar: 213 74% 8%;
+  /* Status colors (functional only) */
+  --status-red: 3 68% 58%;
+  --status-amber: 40 65% 55%;
+  --status-green: 149 36% 49%;
+  --status-blue: 212 87% 64%;
+  --status-violet: 271 51% 71%;
+
+  /* Sidebar / header layer — #1f1f1f, one step above page bg */
+  --sidebar: 0 0% 12.2%;
   --sidebar-foreground: 0 0% 92%;
-  --sidebar-border: 213 40% 18%;
-  --sidebar-primary: 210 100% 55%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 213 40% 18%;
-  --sidebar-accent-foreground: 0 0% 88%;
-  --sidebar-ring: 210 100% 55%;
+  --sidebar-border: 0 0% 100% / .08;
+  --sidebar-primary: 212 87% 64%;
+  --sidebar-primary-foreground: 0 0% 10%;
+  --sidebar-accent: 0 0% 16.9%;
+  --sidebar-accent-foreground: 0 0% 90%;
+  --sidebar-ring: 212 87% 64%;
 
-  --border: 213 40% 22%;
-  --input: 213 40% 22%;
-  --ring: 210 100% 55%;
+  --border: 0 0% 100% / .08;
+  --input: 0 0% 100% / .08;
+  --ring: 212 87% 64%;
 
-  --chart-1: 210 100% 55%;
-  --chart-2: 194 100% 48%;
-  --chart-3: 213 40% 50%;
-  --chart-4: 38 92% 55%;
-  --chart-5: 4 86% 60%;
+  --chart-1: 212 87% 64%;
+  --chart-2: 271 51% 71%;
+  --chart-3: 0 0% 60%;
+  --chart-4: 40 65% 55%;
+  --chart-5: 3 68% 58%;
 
   --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,.30);
   --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,.35);
