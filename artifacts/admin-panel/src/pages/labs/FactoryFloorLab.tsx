@@ -1,15 +1,18 @@
 /**
  * FactoryFloorLab — Three.js integration spike.
  *
- * Labs/WIP. Real colony + HQ data flows from GET /api/admin/overlord, but the
- * scene is still unstyled — no belts, no animation, no final art. HQ's
- * era-reset/prestige mechanic (Space-Empire -> Growth Era) is a follow-up;
- * for now grossRevenueUsd past the Space-Empire threshold caps visually.
+ * Labs/WIP. Real colony + HQ data flows from GET /api/admin/overlord. Colonies
+ * now have animated revenue belts to HQ (generic per-colony, not the
+ * per-resource-type breakdown from the design doc's §4 zoomed colony view —
+ * that stays a separate future task). HQ's era-reset/prestige mechanic
+ * (Space-Empire -> Growth Era) is also still a follow-up; for now
+ * grossRevenueUsd past the Space-Empire threshold caps visually.
  */
 
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { Canvas, type ThreeEvent } from "@react-three/fiber";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Colony {
@@ -40,6 +43,19 @@ const SIZE_SCALE = 0.18;
 function domeRadius(compositeScore: number): number {
   const score = Number.isFinite(compositeScore) ? Math.max(0, compositeScore) : 0;
   return SIZE_FLOOR + Math.sqrt(score) * SIZE_SCALE;
+}
+
+// ── Belt speed curve ─────────────────────────────────────────────────────
+// Same floored-sqrt shape as domeRadius(): a colony at score 0 still shows
+// a slow but clearly-moving belt (not frozen), and speed keeps climbing with
+// score without blowing up for high scorers. Units are "laps per second"
+// along the colony->HQ path.
+const BELT_SPEED_FLOOR = 0.08;
+const BELT_SPEED_SCALE = 0.05;
+
+function beltSpeed(compositeScore: number): number {
+  const score = Number.isFinite(compositeScore) ? Math.max(0, compositeScore) : 0;
+  return BELT_SPEED_FLOOR + Math.sqrt(score) * BELT_SPEED_SCALE;
 }
 
 // ── Shape ladder ─────────────────────────────────────────────────────────
@@ -191,6 +207,74 @@ function ColonyDome({ colony, position }: { colony: Colony; position: [number, n
   );
 }
 
+// Markers per belt — enough to read as a continuous flow without per-frame
+// cost scaling badly as colony count grows.
+const MARKERS_PER_BELT = 3;
+const MARKER_RADIUS = 0.12;
+
+// One shared marker geometry/material per tier color, reused across every
+// colony's markers instead of each <mesh> allocating its own — keeps
+// useFrame() cheap (ref.position writes only, no geometry churn) even as
+// colony count grows.
+function RevenueBelt({ colony, from }: { colony: Colony; from: [number, number, number] }) {
+  const tier = resolveTier(colony.seatTier);
+  const color = TIER_COLOR[tier];
+  const speed = beltSpeed(colony.compositeScore);
+
+  // HQ sits at the origin; belts run along the ground plane at a slight
+  // lift so the tube and markers don't z-fight with the ground mesh.
+  // Vector3s are memoized once per belt — useFrame() below only reads them,
+  // never reallocates, so per-frame cost is just a lerp + position write.
+  const start = useMemo(() => new THREE.Vector3(from[0], 0.05, from[2]), [from]);
+  const end = useMemo(() => new THREE.Vector3(0, 0.05, 0), []);
+
+  const curve = useMemo(
+    () => new THREE.LineCurve3(start, end),
+    [start, end],
+  );
+  const tubeGeometry = useMemo(
+    () => new THREE.TubeGeometry(curve, 1, 0.04, 6, false),
+    [curve],
+  );
+
+  const markerRefs = useRef<Array<THREE.Mesh | null>>([]);
+  const offsets = useMemo(
+    () => Array.from({ length: MARKERS_PER_BELT }, (_, i) => i / MARKERS_PER_BELT),
+    [],
+  );
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    for (let i = 0; i < markerRefs.current.length; i++) {
+      const mesh = markerRefs.current[i];
+      if (!mesh) continue;
+      // 1 - progress: markers travel colony -> HQ, so progress 0 is at the
+      // colony and progress 1 (looped) arrives at HQ.
+      const progress = 1 - ((t * speed + offsets[i]) % 1);
+      mesh.position.lerpVectors(start, end, progress);
+    }
+  });
+
+  return (
+    <group>
+      <mesh geometry={tubeGeometry}>
+        <meshStandardMaterial color={color} flatShading />
+      </mesh>
+      {offsets.map((_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => {
+            markerRefs.current[i] = el;
+          }}
+        >
+          <sphereGeometry args={[MARKER_RADIUS, 8, 6]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} flatShading />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function colonyPositions(count: number): Array<[number, number, number]> {
   if (count === 0) return [];
   const layoutRadius = Math.max(6, 3 + count * 1.5);
@@ -215,6 +299,10 @@ function Scene({ colonies, grossRevenueUsd }: { colonies: Colony[]; grossRevenue
       </mesh>
 
       <Headquarters grossRevenueUsd={grossRevenueUsd} />
+
+      {colonies.map((colony, i) => (
+        <RevenueBelt key={colony.mspId} colony={colony} from={positions[i]} />
+      ))}
 
       {colonies.map((colony, i) => (
         <ColonyDome key={colony.mspId} colony={colony} position={positions[i]} />
