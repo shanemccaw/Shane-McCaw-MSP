@@ -349,6 +349,20 @@ export interface SignalRuleGroup extends SignalIntelligenceFields {
   createdAt: Date;
 }
 
+/**
+ * `decay_rate` is a `numeric(4,3)` column, which the `pg` driver returns as
+ * a string. Every raw-SQL fetch site that casts DB rows to
+ * `SignalDerivationRule[]`/`SignalRuleGroup[]` must run rows through this so
+ * `decayRate` matches its `number` type contract (consumed as a fraction by
+ * forecasting-engine.ts / drift-engine.ts's `1 - decayRate` formula).
+ */
+export function coerceDecayRate<T extends { decayRate?: unknown }>(rows: T[]): T[] {
+  for (const row of rows) {
+    if (row.decayRate !== undefined) (row as { decayRate: number }).decayRate = Number(row.decayRate);
+  }
+  return rows;
+}
+
 export interface RuleTraceEntry {
   signalKey: string;
   groupId: number | null;

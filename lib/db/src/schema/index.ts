@@ -600,7 +600,7 @@ const SIGNAL_INTELLIGENCE_FIELDS = {
   licensingImpact: integer("licensing_impact").notNull().default(0),
   trendValue: integer("trend_value").notNull().default(0),
   trendDirection: text("trend_direction", { enum: ["up", "down", "flat"] }).notNull().default("flat"),
-  decayRate: integer("decay_rate").notNull().default(0),
+  decayRate: numeric("decay_rate", { precision: 4, scale: 3 }).notNull().default("0"),
   ttlDays: integer("ttl_days").notNull().default(0),
   confidence: integer("confidence").notNull().default(0),
   severity: text("severity", { enum: ["low", "medium", "high", "critical"] }).notNull().default("low"),

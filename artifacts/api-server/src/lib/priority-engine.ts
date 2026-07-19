@@ -23,6 +23,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import {
   computeTenantSignals,
   getDisabledSignalKeys,
+  coerceDecayRate,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
@@ -138,8 +139,8 @@ export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<
   ]);
 
   return {
-    rules: rulesRes.rows as unknown as SignalDerivationRule[],
-    groups: groupsRes.rows as unknown as SignalRuleGroup[],
+    rules: coerceDecayRate(rulesRes.rows as unknown as SignalDerivationRule[]),
+    groups: coerceDecayRate(groupsRes.rows as unknown as SignalRuleGroup[]),
   };
 }
 

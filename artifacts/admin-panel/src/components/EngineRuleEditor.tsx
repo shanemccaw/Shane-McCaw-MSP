@@ -135,8 +135,8 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
   const cls = "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs font-mono w-full";
   const sel = "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full";
   const lbl = "block text-[10px] text-muted-foreground mb-0.5";
-  const num = (k: keyof IntelFormFields, label: string) => (
-    <div><label className={lbl}>{label}</label><input type="number" value={value[k]} onChange={e => set(k, e.target.value)} className={cls} /></div>
+  const num = (k: keyof IntelFormFields, label: string, extra?: { step?: string; min?: string; max?: string }) => (
+    <div><label className={lbl}>{label}</label><input type="number" step={extra?.step} min={extra?.min} max={extra?.max} value={value[k]} onChange={e => set(k, e.target.value)} className={cls} /></div>
   );
   return (
     <div className="space-y-2.5">
@@ -189,7 +189,7 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
               <option value="up">up</option><option value="down">down</option><option value="flat">flat</option>
             </select>
           </div>
-          {num("decayRate", "Decay rate")}
+          {num("decayRate", "Decay rate (0–1)", { step: "0.01", min: "0", max: "1" })}
           {num("ttlDays", "TTL (days)")}
         </div>
       </div>

@@ -130,10 +130,24 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
     ? "border border-border bg-background text-foreground/90 rounded px-2 py-1 text-xs w-full"
     : "w-full border border-border bg-background text-foreground/90 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
   const labelCls = compact ? "block text-[10px] text-muted-foreground mb-0.5" : "block text-xs text-muted-foreground mb-1";
-  const numField = (key: keyof IntelFormFields, label: string, placeholder = "0") => (
+  const numField = (
+    key: keyof IntelFormFields,
+    label: string,
+    placeholder = "0",
+    extra?: { step?: string; min?: string; max?: string },
+  ) => (
     <div>
       <label className={labelCls}>{label}</label>
-      <input type="number" value={value[key]} onChange={e => set(key, e.target.value)} placeholder={placeholder} className={inputCls} />
+      <input
+        type="number"
+        step={extra?.step}
+        min={extra?.min}
+        max={extra?.max}
+        value={value[key]}
+        onChange={e => set(key, e.target.value)}
+        placeholder={placeholder}
+        className={inputCls}
+      />
     </div>
   );
   const gridCls = compact ? "grid grid-cols-3 gap-2" : "grid grid-cols-3 gap-3";
@@ -197,7 +211,7 @@ function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFor
               <option value="flat">flat</option>
             </select>
           </div>
-          {numField("decayRate", "Decay rate")}
+          {numField("decayRate", "Decay rate (0–1)", "0", { step: "0.01", min: "0", max: "1" })}
           {numField("ttlDays", "TTL (days)")}
         </div>
       </div>

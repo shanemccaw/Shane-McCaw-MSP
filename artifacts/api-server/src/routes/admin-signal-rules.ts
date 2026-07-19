@@ -12,6 +12,7 @@ import {
   getDisabledSignalKeys,
   SIGNAL_TREND_DIRECTIONS,
   SIGNAL_SEVERITIES,
+  coerceDecayRate,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -152,7 +153,7 @@ export async function getAllRules(): Promise<SignalDerivationRule[]> {
     WHERE msp_id IS NULL
     ORDER BY signal_key, sort_order, id
   `);
-  return rows.rows as unknown as SignalDerivationRule[];
+  return coerceDecayRate(rows.rows as unknown as SignalDerivationRule[]);
 }
 
 export async function getAllGroups(): Promise<SignalRuleGroup[]> {
@@ -164,7 +165,7 @@ export async function getAllGroups(): Promise<SignalRuleGroup[]> {
     WHERE msp_id IS NULL
     ORDER BY signal_key, sort_order, id
   `);
-  return rows.rows as unknown as SignalRuleGroup[];
+  return coerceDecayRate(rows.rows as unknown as SignalRuleGroup[]);
 }
 
 // ── Signal enabled/disabled state ──────────────────────────────────────────────
@@ -583,7 +584,7 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                 ${INTELLIGENCE_FIELDS_SELECT}
     `);
-    const created = result.rows[0] as unknown as SignalDerivationRule;
+    const [created] = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule]);
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
     await appendAuditLog({ action: "create", signalKey: signalKey as string, ruleId: created.id, after: created, adminUserId: adminId });
     res.status(201).json(created);
@@ -606,7 +607,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
              ${INTELLIGENCE_FIELDS_SELECT}
       FROM signal_derivation_rules WHERE id = ${id}
     `);
-    const prior = priorResult.rows[0] as unknown as SignalDerivationRule | undefined;
+    const prior = coerceDecayRate([priorResult.rows[0] as unknown as SignalDerivationRule])[0] as SignalDerivationRule | undefined;
     if (!prior) { res.status(404).json({ error: "Not found" }); return; }
 
     const { groupId, ruleType, sourceKey, compareValue, description, sortOrder, ...intelligenceBody } =
@@ -686,7 +687,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                 ${INTELLIGENCE_FIELDS_SELECT}
     `);
-    const updated = result.rows[0] as unknown as SignalDerivationRule;
+    const [updated] = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule]);
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
     await appendAuditLog({ action: "update", signalKey: updated.signalKey, ruleId: id, before: prior, after: updated, adminUserId: adminId });
     res.json(updated);
