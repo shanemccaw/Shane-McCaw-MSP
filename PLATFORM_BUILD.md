@@ -36,3 +36,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Engine Score Explain Dialog | 60b9f673 |
 | 2026-07-18 | ✅ DONE | signal-decay-rate-fractional-migration | 6208028f |
 | 2026-07-18 | ✅ DONE | Portal Shell Rebuild — CustomerUser | ab0e1f5f |
+| 2026-07-18 | ⏳ IN FLIGHT | msp-users-user-id-fk-constraint | |
+| 2026-07-18 | ⏳ IN FLIGHT | stripe-metadata-service-id-casing-fix | |
