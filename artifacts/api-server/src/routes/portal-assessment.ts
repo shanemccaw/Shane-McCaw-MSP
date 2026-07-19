@@ -1,4 +1,10 @@
 /**
+ * ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+ * This file's POST /portal/assessment/debug-trigger-scan route (below) exists
+ * only so scan progress can be watched live during development. It is hard-gated
+ * to isTestbed=true customers, but must be fully removed before this flow reaches
+ * real customers. See backlog: [Shane to add ticket].
+ *
  * portal-assessment.ts
  *
  * Customer-facing flow-control endpoint for the Assessment wizard (the shell
@@ -36,11 +42,17 @@ import {
   insightsGeneratedDocumentsTable,
   mfaEnrollmentsTable,
   webauthnCredentialsTable,
+  mspCustomersTable,
+  mspUsersTable,
+  clientServicesTable,
+  servicesTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
+import { runDiagnostics } from "../lib/diagnostics-runner";
+import { randomUUID } from "crypto";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -144,6 +156,15 @@ router.get(
         .limit(1);
       const mfaEnrolled = enrollments.length > 0 || passkey != null;
 
+      // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+      // isTestbed is exposed here only so the wizard can show the debug scan
+      // trigger button to testbed customers. Remove alongside that button.
+      const [customerRow] = await db
+        .select({ isTestbed: mspCustomersTable.isTestbed })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
       res.json({
         scan: {
           active: scanActive,
@@ -176,6 +197,8 @@ router.get(
         mfa: {
           enrolled: mfaEnrolled,
         },
+        // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see note above)
+        isTestbed: customerRow?.isTestbed === true,
       });
     } catch (err) {
       log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
@@ -270,6 +293,86 @@ router.get(
     } catch (err) {
       log.error({ err, userId, documentId }, "GET /portal/assessment/documents/:id failed");
       res.status(500).json({ error: "Failed to load document" });
+    }
+  },
+);
+
+// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+// POST /portal/assessment/debug-trigger-scan
+// Exists only so scan progress can be watched live during development. Real
+// customers never get a self-serve scan trigger (prevents AI-credit spam) —
+// this is a narrow, hard-gated exception: testbed customers only, enforced
+// server-side (not just by hiding the button client-side). Reuses the exact
+// packageKey resolution + runDiagnostics call from msp-diagnostics.ts's
+// POST /msp/customers/:customerId/diagnostics/run — do not reimplement that
+// logic elsewhere. Remove this route entirely before production. See
+// backlog: [Shane to add ticket].
+router.post(
+  "/portal/assessment/debug-trigger-scan",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      // Hard server-side testbed guard — this check is what actually prevents
+      // real customers from triggering scans, not the button's visibility.
+      const [customer] = await db
+        .select({ isTestbed: mspCustomersTable.isTestbed, mspId: mspCustomersTable.mspId, tenantId: mspCustomersTable.tenantId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
+      if (!customer || customer.isTestbed !== true) {
+        log.warn({ customerId }, "debug-trigger-scan: blocked — customer is not a testbed tenant");
+        res.status(403).json({ error: "Scan trigger is not available for this account" });
+        return;
+      }
+
+      // Same packageKey resolution as msp-diagnostics.ts's diagnostics/run route.
+      const [pkgRow] = await db
+        .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
+        .from(mspUsersTable)
+        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+        .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+        .where(
+          and(
+            eq(mspUsersTable.customerId, customerId),
+            eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
+            eq(clientServicesTable.status, "active"),
+          )
+        )
+        .limit(1);
+      const packageKey = pkgRow?.packageKey ?? "core:security-baseline";
+
+      const triggeredByUserId = req.user!.id;
+      const runId = randomUUID();
+
+      await db
+        .insert(mspDiagnosticRunsTable)
+        .values({
+          runId,
+          mspId: customer.mspId,
+          customerId,
+          tenantId: customer.tenantId ?? undefined,
+          packageKey,
+          status: "pending",
+          triggeredByUserId,
+        });
+
+      res.status(202).json({ runId, status: "pending", message: "Debug scan trigger started" });
+
+      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId }).catch(
+        (err: unknown) => {
+          log.error({ err, runId }, "debug-trigger-scan: async run failed");
+        },
+      );
+    } catch (err) {
+      log.error({ err, customerId }, "POST /portal/assessment/debug-trigger-scan failed");
+      if (!res.headersSent) res.status(500).json({ error: "Failed to trigger scan" });
     }
   },
 );

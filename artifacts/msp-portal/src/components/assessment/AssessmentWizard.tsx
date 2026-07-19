@@ -1,4 +1,13 @@
 /**
+ * ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+ * This file renders a testbed-only debug scan trigger button (see the "scan"
+ * case in renderStepContent, guarded by `status.isTestbed`) that exists only so
+ * scan progress can be watched live during development. It calls
+ * POST /portal/assessment/debug-trigger-scan, which is hard-gated server-side to
+ * isTestbed=true customers — this client-side check is only a second layer, not
+ * the real safeguard. Must be fully removed before this flow reaches real
+ * customers. See backlog: [Shane to add ticket].
+ *
  * AssessmentWizard.tsx
  *
  * The Assessment flow container — the locked, sequential step experience that
@@ -69,6 +78,8 @@ interface AssessmentStatus {
     allReady: boolean;
   };
   mfa: { enrolled: boolean };
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  isTestbed: boolean;
 }
 
 // Live diagnostics SSE events (same discriminated union as Mission Control).
@@ -128,6 +139,18 @@ export function AssessmentWizard() {
       setLoaded(true);
     }
   }, [fetchWithAuth]);
+
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  const [debugTriggering, setDebugTriggering] = useState(false);
+  const debugTriggerScan = useCallback(async () => {
+    setDebugTriggering(true);
+    try {
+      await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      await loadStatus();
+    } finally {
+      setDebugTriggering(false);
+    }
+  }, [fetchWithAuth, loadStatus]);
 
   useEffect(() => {
     void loadStatus();
@@ -294,6 +317,8 @@ export function AssessmentWizard() {
           reportsComplete={reportsComplete}
           fetchWithAuth={fetchWithAuth}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
+          debugTriggerScan={debugTriggerScan}
+          debugTriggering={debugTriggering}
         />
       </section>
     </div>
@@ -340,6 +365,8 @@ function StepPanel({
   reportsComplete,
   fetchWithAuth,
   onGoToReview,
+  debugTriggerScan,
+  debugTriggering,
 }: {
   stepKey: StepKey;
   status: AssessmentStatus | null;
@@ -348,6 +375,9 @@ function StepPanel({
   reportsComplete: boolean;
   fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
   onGoToReview: () => void;
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  debugTriggerScan: () => Promise<void>;
+  debugTriggering: boolean;
 }) {
   if (!status) return null;
 
@@ -376,6 +406,18 @@ function StepPanel({
             <div className="mt-4 flex items-center gap-2 text-sm text-emerald-500">
               <CheckCircle2 className="size-4" /> Scan finished
             </div>
+            {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only re-trigger button, see file header note */}
+            {status.isTestbed ? (
+              <Button
+                className="mt-4"
+                variant="outline"
+                onClick={() => void debugTriggerScan()}
+                disabled={debugTriggering}
+              >
+                {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
+                [DEBUG] Re-trigger scan
+              </Button>
+            ) : null}
           </PanelShell>
         );
       }
@@ -385,6 +427,18 @@ function StepPanel({
             We're reading your Microsoft&nbsp;365 configuration and security posture. This
             usually takes a couple of minutes — you can watch the progress below.
           </p>
+          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note */}
+          {status.isTestbed && !status.scan.active ? (
+            <Button
+              className="mt-4"
+              variant="outline"
+              onClick={() => void debugTriggerScan()}
+              disabled={debugTriggering}
+            >
+              {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
+              [DEBUG] Trigger scan
+            </Button>
+          ) : null}
           {scanProgress ? (
             <div className="mt-6 space-y-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
