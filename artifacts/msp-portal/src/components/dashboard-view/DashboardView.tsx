@@ -16,12 +16,24 @@
  *
  * Used by both the MSP-facing (`msp_overview`) and customer-facing
  * (`customer_default`) pages — same component, different `scope` prop.
+ *
+ * A customer with more than one applicable dashboard (customer_default plus
+ * any active monitoring_package templates) gets a tab strip above the canvas
+ * — see <DashboardTabs> below, which fetches GET /api/dashboard/resolved-list
+ * just to learn which tabs exist, and mounts one <DashboardView
+ * targetKey=...> per tab. Each mounted DashboardView independently calls
+ * /resolved-list itself and reads out its own entry (a second network round
+ * trip, traded for each tab's load/edit/save state staying fully isolated —
+ * see the DashboardTabs comment for the reasoning). Passing `targetKey` also
+ * threads through the PUT/DELETE override calls so editing/reset apply to
+ * that specific monitoring_package template instead of the caller's default.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DashboardCanvas,
   createDashboardDataFetcher,
@@ -51,9 +63,18 @@ export interface DashboardViewProps {
   /** The scope this dashboard resolves against (drives POST /api/dashboard/resolve calls for each widget). */
   scope: DashboardResolveScope;
   title?: string;
+  /**
+   * Present only when this instance renders a monitoring_package tab (see
+   * <DashboardTabs>). Selects that specific entry out of GET
+   * /api/dashboard/resolved-list instead of the caller's default template,
+   * and is threaded through to PUT/DELETE /overrides so editing/reset apply
+   * to that template rather than the default. Omitted for the plain
+   * customer_default/msp_overview case — behaves exactly as before tabs existed.
+   */
+  targetKey?: string;
 }
 
-export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps) {
+export function DashboardView({ scope, title = "Dashboard", targetKey }: DashboardViewProps) {
   const { user, fetchWithAuth } = useAuth();
   const fetcher = useMemo(() => createDashboardDataFetcher(fetchWithAuth), [fetchWithAuth]);
 
@@ -77,14 +98,28 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetchWithAuth("/api/dashboard/resolved");
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setLoadError(body.error ?? `Failed to load dashboard (${res.status})`);
-        setResolved(null);
-        return;
+      let data: ResolvedDashboard;
+      if (targetKey) {
+        const res = await fetchWithAuth("/api/dashboard/resolved-list");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setLoadError(body.error ?? `Failed to load dashboard (${res.status})`);
+          setResolved(null);
+          return;
+        }
+        const body = (await res.json()) as { dashboards: Array<{ targetKey: string | null; resolved: ResolvedDashboard }> };
+        const entry = body.dashboards.find((d) => d.targetKey === targetKey);
+        data = entry?.resolved ?? { configured: false };
+      } else {
+        const res = await fetchWithAuth("/api/dashboard/resolved");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          setLoadError(body.error ?? `Failed to load dashboard (${res.status})`);
+          setResolved(null);
+          return;
+        }
+        data = (await res.json()) as ResolvedDashboard;
       }
-      const data = (await res.json()) as ResolvedDashboard;
       setResolved(data);
       setDraftWidgets(data.widgets ?? []);
       setHiddenIds(new Set());
@@ -94,7 +129,7 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, targetKey]);
 
   useEffect(() => {
     void load();
@@ -129,7 +164,7 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
       const res = await fetchWithAuth("/api/dashboard/overrides", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hidden: [...hiddenIds], positions }),
+        body: JSON.stringify({ hidden: [...hiddenIds], positions, targetKey: targetKey ?? null }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -150,7 +185,10 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await fetchWithAuth("/api/dashboard/overrides", { method: "DELETE" });
+      const resetUrl = targetKey
+        ? `/api/dashboard/overrides?targetKey=${encodeURIComponent(targetKey)}`
+        : "/api/dashboard/overrides";
+      const res = await fetchWithAuth(resetUrl, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setSaveError(body.error ?? `Failed to reset (${res.status})`);
@@ -264,6 +302,110 @@ export function DashboardView({ scope, title = "Dashboard" }: DashboardViewProps
         <DashboardCanvas widgets={visibleWidgets} editable={false} scope={scope} fetcher={fetcher} refreshKey={refreshKey} />
       )}
     </div>
+  );
+}
+
+// ── DashboardTabs: multi-dashboard entry point ─────────────────────────────
+//
+// Wraps <DashboardView> rather than folding tab logic into it, so the common
+// single-dashboard case (msp_overview, and most customer_default callers with
+// no monitoring package assigned) stays exactly as it rendered before this
+// existed — no extra fetch, no tab chrome — by simply not using this
+// component. Only customer-dashboard.tsx (the one page where a caller can
+// have >1 applicable dashboard) needs to switch to it.
+//
+// It calls /resolved-list purely to learn WHICH tabs exist (labels/keys);
+// each tab's actual data is fetched by that tab's own <DashboardView> (which
+// also calls /resolved-list and reads its own entry back out — see
+// DashboardView's `targetKey` prop doc above). That means switching tabs is a
+// fresh mount, not a cache read, which keeps each tab's edit state fully
+// isolated for free (matches ConstrainedEditor's existing per-instance state).
+
+interface DashboardListEntry {
+  templateType: string;
+  targetKey: string | null;
+  label: string;
+  resolved: ResolvedDashboard;
+}
+
+export interface DashboardTabsProps {
+  scope: DashboardResolveScope;
+  title?: string;
+}
+
+export function DashboardTabs({ scope, title = "Dashboard" }: DashboardTabsProps) {
+  const { fetchWithAuth } = useAuth();
+  const [entries, setEntries] = useState<DashboardListEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = useState<string>("__default__");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const res = await fetchWithAuth("/api/dashboard/resolved-list");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          if (!cancelled) setLoadError(body.error ?? `Failed to load dashboards (${res.status})`);
+          return;
+        }
+        const body = (await res.json()) as { dashboards: DashboardListEntry[] };
+        if (!cancelled) {
+          setEntries(body.dashboards);
+          setActiveKey(body.dashboards[0]?.targetKey ?? "__default__");
+        }
+      } catch {
+        if (!cancelled) setLoadError("Failed to load dashboards");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  // Zero or one applicable dashboard: render exactly as the plain single-
+  // dashboard case, no tab strip.
+  if (!entries || entries.length <= 1) {
+    return <DashboardView scope={scope} title={title} />;
+  }
+
+  return (
+    <Tabs value={activeKey} onValueChange={setActiveKey}>
+      <TabsList>
+        {entries.map((entry) => (
+          <TabsTrigger key={entry.targetKey ?? "__default__"} value={entry.targetKey ?? "__default__"}>
+            {entry.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {entries.map((entry) => (
+        <TabsContent key={entry.targetKey ?? "__default__"} value={entry.targetKey ?? "__default__"}>
+          <DashboardView scope={scope} title={entry.label} targetKey={entry.targetKey ?? undefined} />
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 

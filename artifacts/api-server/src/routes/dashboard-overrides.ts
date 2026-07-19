@@ -8,8 +8,12 @@
  * This is deliberately narrow, matching the two viewer-facing template types:
  *   - "customer_default" -> CustomerUser,  scopeType "customer",  scopeId = msp_customers.id
  *   - "msp_overview"     -> MSPOperator+,  scopeType "msp_user",  scopeId = msp_users.id
- * Resolving/merging "assessment"/"project"/"monitoring_package" templates is
- * out of scope here (separate per-page wiring decision, not yet made).
+ * Resolving/merging "assessment"/"project" templates is out of scope here —
+ * blocked on a separate, already-tracked backlog gap: projectsTable links to
+ * a customer via clientUserId -> usersTable.id with no working path back to
+ * mspId/customerId. "monitoring_package" resolution IS supported (see
+ * resolveMonitoringPackageKeys below) — a customer's active Sales Bundle
+ * assignments determine which monitoring_package dashboards apply to them.
  *
  * Editing is constrained, not freeform: an override can only hide/reposition/
  * resize widgets that already exist in the template's own canvasLayout. It can
@@ -23,9 +27,14 @@
  *   }
  *
  * Routes:
- *   GET    /api/dashboard/resolved   resolve the caller's template + override -> merged view
- *   PUT    /api/dashboard/overrides  save the caller's override deltas (insert or update)
- *   DELETE /api/dashboard/overrides  reset — delete the caller's override row
+ *   GET    /api/dashboard/resolved       resolve the caller's single default template
+ *                                         (customer_default or msp_overview) + override -> merged view
+ *   GET    /api/dashboard/resolved-list  resolve EVERY applicable dashboard for the caller —
+ *                                         customer_default/msp_overview plus one entry per active
+ *                                         monitoring_package the caller's customer has been sold
+ *                                         (and an MSP has actually built a template for)
+ *   PUT    /api/dashboard/overrides      save the caller's override deltas (insert or update)
+ *   DELETE /api/dashboard/overrides      reset — delete the caller's override row
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -35,9 +44,12 @@ import {
   dashboardTemplatesTable,
   dashboardOverridesTable,
   mspUsersTable,
+  mspSalesBundleAssignmentsTable,
+  mspSalesBundlesTable,
+  monitoringPackagesTable,
   type DashboardTemplate,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -137,6 +149,95 @@ async function findOverride(templateId: number, scopeType: "customer" | "msp_use
   return override ?? null;
 }
 
+/** Merge a specific template against the caller's override for that scope -> the same shape GET /resolved returns. */
+async function resolveTemplate(template: DashboardTemplate, scopeType: "customer" | "msp_user", scopeId: number) {
+  const override = await findOverride(template.id, scopeType, scopeId);
+  const overrideLayout = override ? parseOverrideLayout(override.overrideLayout) : emptyOverrideLayout();
+  const widgets = mergeLayout(template.canvasLayout, overrideLayout);
+
+  return {
+    configured: true as const,
+    editable: template.allowCustomerEdit,
+    templateId: template.id,
+    templateType: template.templateType,
+    widgets,
+    hasOverride: Boolean(override),
+  };
+}
+
+/**
+ * Resolves the template a PUT/DELETE /overrides call should target.
+ *
+ * - No targetKey supplied (the common case, and the only case before tabs
+ *   existed): the caller's default template for their scope's templateType
+ *   (customer_default or msp_overview) — identical to prior behavior.
+ * - targetKey supplied: must be a monitoring_package the caller's customer
+ *   actually has active (per resolveMonitoringPackageKeys) — anything else is
+ *   rejected, not silently ignored, since this is also the write-path
+ *   authorization check (a customer can't save overrides against a package
+ *   they were never sold, or another MSP's template).
+ */
+async function resolveTargetTemplate(
+  mspId: number,
+  scope: ResolvedScope,
+  targetKey: string | null,
+): Promise<DashboardTemplate | null | "forbidden"> {
+  if (targetKey == null) {
+    return findDefaultTemplate(mspId, scope.templateType);
+  }
+  if (scope.templateType !== "customer_default") return "forbidden";
+
+  const customerId = scope.scopeId;
+  const allowedKeys = await resolveMonitoringPackageKeys(mspId, customerId);
+  if (!allowedKeys.includes(targetKey)) return "forbidden";
+
+  const [template] = await db
+    .select()
+    .from(dashboardTemplatesTable)
+    .where(
+      and(
+        eq(dashboardTemplatesTable.mspId, mspId),
+        eq(dashboardTemplatesTable.templateType, "monitoring_package"),
+        eq(dashboardTemplatesTable.targetKey, targetKey),
+      ),
+    )
+    .limit(1);
+  return template ?? null;
+}
+
+/**
+ * Which monitoring_package targetKeys apply to a customer, derived from their
+ * active Sales Bundle assignments. A customer can have more than one active
+ * assignment — msp_sales_bundle_assignments has no uniqueness constraint on
+ * customerId alone, only plain indexes — so each active assignment's bundle
+ * contributes its own package keys, deduped across all of them.
+ */
+async function resolveMonitoringPackageKeys(mspId: number, customerId: number): Promise<string[]> {
+  const assignments = await db
+    .select({ bundleId: mspSalesBundleAssignmentsTable.bundleId })
+    .from(mspSalesBundleAssignmentsTable)
+    .where(
+      and(
+        eq(mspSalesBundleAssignmentsTable.mspId, mspId),
+        eq(mspSalesBundleAssignmentsTable.customerId, customerId),
+        eq(mspSalesBundleAssignmentsTable.status, "active"),
+      ),
+    );
+  if (assignments.length === 0) return [];
+
+  const bundleIds = [...new Set(assignments.map((a) => a.bundleId))];
+  const bundles = await db
+    .select({ monitoringPackageKeys: mspSalesBundlesTable.monitoringPackageKeys })
+    .from(mspSalesBundlesTable)
+    .where(inArray(mspSalesBundlesTable.bundleId, bundleIds));
+
+  const keys = new Set<string>();
+  for (const bundle of bundles) {
+    for (const key of bundle.monitoringPackageKeys) keys.add(key);
+  }
+  return [...keys];
+}
+
 // ── GET /api/dashboard/resolved ────────────────────────────────────────────
 
 router.get("/dashboard/resolved", requireRole("CustomerUser"), async (req: Request, res: Response) => {
@@ -163,21 +264,95 @@ router.get("/dashboard/resolved", requireRole("CustomerUser"), async (req: Reque
       return;
     }
 
-    const override = await findOverride(template.id, scope.scopeType, scope.scopeId);
-    const overrideLayout = override ? parseOverrideLayout(override.overrideLayout) : emptyOverrideLayout();
-    const widgets = mergeLayout(template.canvasLayout, overrideLayout);
-
-    res.json({
-      configured: true,
-      editable: template.allowCustomerEdit,
-      templateId: template.id,
-      templateType: template.templateType,
-      widgets,
-      hasOverride: Boolean(override),
-    });
+    res.json(await resolveTemplate(template, scope.scopeType, scope.scopeId));
   } catch (err) {
     log.error({ err, userId: user.id, templateType: scope.templateType }, "dashboard-overrides: resolve failed");
     res.status(500).json({ error: "Failed to resolve dashboard" });
+  }
+});
+
+// ── GET /api/dashboard/resolved-list — every applicable dashboard ─────────
+//
+// customer_default/msp_overview (same as /resolved) plus one entry per active
+// monitoring_package the caller's customer has been sold AND an MSP has
+// actually built a dashboard_templates row for. "project"/"assessment" are
+// excluded — blocked on the projectsTable -> mspId/customerId linkage gap.
+
+router.get("/dashboard/resolved-list", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+  const user = req.user!;
+  if (user.mspId == null) {
+    res.status(400).json({ error: "No MSP association on this session" });
+    return;
+  }
+
+  const scope = await resolveCallerScope(req);
+  if (scope == null) {
+    res.status(403).json({ error: "This role cannot resolve a dashboard" });
+    return;
+  }
+  if ("error" in scope) {
+    res.status(400).json({ error: scope.error });
+    return;
+  }
+
+  try {
+    const entries: Array<{
+      templateType: DashboardTemplate["templateType"];
+      targetKey: string | null;
+      label: string;
+      resolved: Awaited<ReturnType<typeof resolveTemplate>> | { configured: false };
+    }> = [];
+
+    const defaultTemplate = await findDefaultTemplate(user.mspId, scope.templateType);
+    if (defaultTemplate) {
+      entries.push({
+        templateType: scope.templateType,
+        targetKey: null,
+        label: scope.templateType === "customer_default" ? "Overview" : "MSP Overview",
+        resolved: await resolveTemplate(defaultTemplate, scope.scopeType, scope.scopeId),
+      });
+    }
+
+    // Monitoring package dashboards only apply to customer-scoped viewers —
+    // an MSPOperator/MSPAdmin/PlatformAdmin viewing "msp_overview" has no
+    // single customerId to resolve packages against.
+    if (scope.templateType === "customer_default" && user.customerId != null) {
+      const packageKeys = await resolveMonitoringPackageKeys(user.mspId, user.customerId);
+      if (packageKeys.length > 0) {
+        const packageTemplates = await db
+          .select()
+          .from(dashboardTemplatesTable)
+          .where(
+            and(
+              eq(dashboardTemplatesTable.mspId, user.mspId),
+              eq(dashboardTemplatesTable.templateType, "monitoring_package"),
+              inArray(dashboardTemplatesTable.targetKey, packageKeys),
+            ),
+          );
+
+        if (packageTemplates.length > 0) {
+          const packages = await db
+            .select({ key: monitoringPackagesTable.key, label: monitoringPackagesTable.label })
+            .from(monitoringPackagesTable)
+            .where(inArray(monitoringPackagesTable.key, packageTemplates.map((t) => t.targetKey!)));
+          const labelByKey = new Map(packages.map((p) => [p.key, p.label]));
+
+          for (const template of packageTemplates) {
+            entries.push({
+              templateType: "monitoring_package",
+              targetKey: template.targetKey,
+              label: labelByKey.get(template.targetKey!) ?? template.targetKey!,
+              resolved: await resolveTemplate(template, scope.scopeType, scope.scopeId),
+            });
+          }
+        }
+      }
+    }
+
+    res.json({ dashboards: entries });
+  } catch (err) {
+    log.error({ err, userId: user.id, templateType: scope.templateType }, "dashboard-overrides: resolved-list failed");
+    res.status(500).json({ error: "Failed to resolve dashboards" });
   }
 });
 
@@ -193,6 +368,9 @@ const positionSchema = z.object({
 const saveOverrideBodySchema = z.object({
   hidden: z.array(z.string().min(1)).optional().default([]),
   positions: z.record(z.string(), positionSchema).optional().default({}),
+  // Present only when saving an override for a monitoring_package tab; omitted
+  // (or null) targets the caller's default template, same as before tabs existed.
+  targetKey: z.string().min(1).nullable().optional(),
 });
 
 router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Request, res: Response) => {
@@ -219,7 +397,11 @@ router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Requ
   }
 
   try {
-    const template = await findDefaultTemplate(user.mspId, scope.templateType);
+    const template = await resolveTargetTemplate(user.mspId, scope, parsed.data.targetKey ?? null);
+    if (template === "forbidden") {
+      res.status(403).json({ error: "You do not have access to that dashboard" });
+      return;
+    }
     if (!template) {
       res.status(404).json({ error: "No dashboard template configured for this scope" });
       return;
@@ -309,8 +491,15 @@ router.delete("/dashboard/overrides", requireRole("CustomerUser"), async (req: R
     return;
   }
 
+  const rawTargetKey = req.query.targetKey;
+  const targetKey = typeof rawTargetKey === "string" && rawTargetKey.length > 0 ? rawTargetKey : null;
+
   try {
-    const template = await findDefaultTemplate(user.mspId, scope.templateType);
+    const template = await resolveTargetTemplate(user.mspId, scope, targetKey);
+    if (template === "forbidden") {
+      res.status(403).json({ error: "You do not have access to that dashboard" });
+      return;
+    }
     if (!template) {
       res.status(404).json({ error: "No dashboard template configured for this scope" });
       return;
