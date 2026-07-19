@@ -43,5 +43,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | api-server-typecheck-fixes | 7d375bfa |
 | 2026-07-18 | ✅ DONE | Portal Multi-Template Dashboard Resolve + Tabs (project/assessment excluded, pending projectsTable->mspId/customerId backlog fix) | 40e24e67 |
 | 2026-07-18 | ⏳ IN FLIGHT | Mission Control Canvas — CustomerUser |  |
-| 2026-07-18 | ⏳ IN FLIGHT | Portfolio Risk Tenant-Scoping Audit |  |
+| 2026-07-18 | ✅ DONE | Portfolio Risk Tenant-Scoping Audit (read-only; verdict LEAK NOT CONFIRMED) | 43c24840 |
 | 2026-07-18 | ⏳ IN FLIGHT | MRR Canonical Source Audit |  |
