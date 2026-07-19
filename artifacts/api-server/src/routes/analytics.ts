@@ -5,6 +5,7 @@ import { sql, eq } from "drizzle-orm";
 import { db, analyticsSessionsTable, analyticsPageviewsTable, analyticsSiteEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { ingestIntentEvent, recomputeAndPersistHotScore, findLeadByEmail, isHighValuePage } from "../lib/lead-intent";
+import { evaluateEngagementOfferForLead } from "../lib/engagement-offer-engine.ts";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -191,6 +192,7 @@ async function maybeFireIntentEvent(sessionId: string, page: string): Promise<vo
     `);
     if (existing) return;
     await ingestIntentEvent(lead.id, "site_visit", { page: normalised, sessionId });
+    void evaluateEngagementOfferForLead(lead.id).catch(() => { /* non-fatal — never block the pageview response */ });
   } catch { /* non-fatal — never block the pageview response */ }
 }
 
@@ -226,6 +228,7 @@ async function maybeFireCtaFormIntentEvent(
     // Only recompute score when a row was actually written (not a duplicate)
     if (!inserted) return;
     await recomputeAndPersistHotScore(lead.id);
+    void evaluateEngagementOfferForLead(lead.id).catch(() => { /* non-fatal — never block the event response */ });
   } catch { /* non-fatal — never block the event response */ }
 }
 
