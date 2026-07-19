@@ -33,5 +33,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | Wire Remediation Offers dashboard metric to sales_offers | 65ab285b |
 | 2026-07-18 | ✅ DONE | Portal Foundation Redesign | 5f555414 |
 | 2026-07-18 | ✅ DONE | engine-snapshot-customer-resolution-fix | a8cb2558 |
-| 2026-07-18 | ⏳ IN FLIGHT | Engine Score Explain Dialog | |
+| 2026-07-18 | ✅ DONE | Engine Score Explain Dialog | 60b9f673 |
 | 2026-07-18 | ✅ DONE | signal-decay-rate-fractional-migration | 6208028f |
