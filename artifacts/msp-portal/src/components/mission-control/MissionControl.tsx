@@ -7,14 +7,15 @@
  * does not modify the DashboardTabs/DashboardView/canvas system).
  *
  * Sections:
- *   - Hero: overall health ring + findings summary + scan status line
- *     (live SSE progress strip while a diagnostics run is active, otherwise a
- *     minimal "Last scan" line — no empty idle block).
+ *   - Hero: findings summary + scan status line (left), the seven Health
+ *     Engine pillar breakdown ScoreRings (middle, when available), and the
+ *     overall health ring (right). Raw pillar/overall scores are
+ *     higher-is-worse risk sums; every ring inverts them to a goodness
+ *     percentage (see toGoodnessPercent) and colors by the same severity
+ *     thresholds. Scan status line shows a live SSE progress strip while a
+ *     diagnostics run is active, otherwise a minimal "Last scan" line — no
+ *     empty idle block.
  *   - Six-engine status strip (functional severity colors only).
- *   - Health Engine pillar breakdown as small ScoreRings. Raw pillar scores
- *     are higher-is-worse risk sums; both the overall ring and every pillar
- *     ring invert them to a goodness percentage (see toGoodnessPercent) and
- *     color by the same severity thresholds.
  *   - Diagnostics-first findings feed using FindingCard, with the linked
  *     OfferCard / InstantRemediationCard where the server matched an offer.
  *     The instant variant only ever appears when the server flagged the offer
@@ -351,6 +352,26 @@ export function MissionControl() {
             </span>
           ) : null}
         </div>
+
+        {engines && engines.health.pillars.length > 0 && (
+          <div className="grid grid-cols-4 sm:grid-cols-7 gap-x-4 gap-y-4 sm:flex-1 sm:max-w-xl">
+            {engines.health.pillars.map((p) => {
+              const goodness = toGoodnessPercent(p.score);
+              return (
+                <ScoreRing
+                  key={p.pillar}
+                  value={goodness}
+                  color={healthRingColor(goodness)}
+                  size={48}
+                  strokeWidth={5}
+                  label={PILLAR_LABELS[p.pillar] ?? p.pillar}
+                  className="justify-self-center"
+                />
+              );
+            })}
+          </div>
+        )}
+
         <ScoreRing
           value={engines?.health.score != null ? toGoodnessPercent(engines.health.score) : 0}
           color={healthRingColor(
@@ -386,29 +407,6 @@ export function MissionControl() {
           <span className="text-sm text-muted-foreground">Engine status unavailable right now.</span>
         )}
       </Card>
-
-      {/* ── Health pillar breakdown ── */}
-      {engines && engines.health.pillars.length > 0 && (
-        <Card className="p-6">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Health breakdown</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-x-6 gap-y-6">
-            {engines.health.pillars.map((p) => {
-              const goodness = toGoodnessPercent(p.score);
-              return (
-                <ScoreRing
-                  key={p.pillar}
-                  value={goodness}
-                  color={healthRingColor(goodness)}
-                  size={64}
-                  strokeWidth={6}
-                  label={PILLAR_LABELS[p.pillar] ?? p.pillar}
-                  className="justify-self-center"
-                />
-              );
-            })}
-          </div>
-        </Card>
-      )}
 
       {/* ── Diagnostics findings feed ── */}
       {!overviewLoading && overview && (
