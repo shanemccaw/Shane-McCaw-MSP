@@ -22,6 +22,7 @@ import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.msp-admin" });
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   type SignalDerivationRule,
@@ -31,7 +32,6 @@ import { computeHealthEngine, type HealthPillarBreakdown } from "./health-engine
 import { computeDriftEngine, type DriftBreakdownEntry } from "./drift-engine.ts";
 import {
   fetchSignalRulesAndGroups,
-  buildTenantProfileAndFindings,
   rankFiredSignals,
   sumPriorityScore,
   getSignalWeights,
@@ -229,7 +229,7 @@ export async function calculateMspPortfolioRisk(mspId: number, ctx?: { evaluatio
 
   const tenantScores = await Promise.all(
     tenants.map(async tenant => {
-      const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenant.id);
+      const { mergedProfile, findings } = await buildTenantProfile(tenant.id);
       return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
     }),
   );
@@ -269,7 +269,7 @@ export async function calculatePlatformPortfolioRisk(ctx?: { evaluationTimestamp
 
   const tenantScores = await Promise.all(
     tenants.map(async tenant => {
-      const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenant.id);
+      const { mergedProfile, findings } = await buildTenantProfile(tenant.id);
       return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys, ctx);
     }),
   );

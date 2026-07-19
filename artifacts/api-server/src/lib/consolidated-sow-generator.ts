@@ -10,6 +10,7 @@ import {
   quickWinPresentationsTable,
   mspUsersTable,
   mspCustomersTable,
+  tenantMonitorProfilesTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
@@ -29,6 +30,10 @@ import { computePricingEngine } from "./engine-registry";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
+// Signal-evaluation input assembly (tenant/monitor resolution) logs on the
+// shared engine.signals channel so it lines up with the same work done in
+// tenant-signals.ts:buildTenantProfile and the per-engine callers.
+const signalsLog = logger.child({ channel: "engine.signals" });
 import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "./prompt-loader";
 import {
   extractAiHtml,
@@ -482,14 +487,51 @@ export async function generateConsolidatedSowDocument(
     // Always evaluate signals — empty rules means no signals fire, which is the correct
     // deterministic baseline. Projects with signal-key triggers require a matching fired
     // signal to be included; the legacy guard allows old plan-name strings through.
+    // clientUserId is a portal user id (usersTable.id) throughout this file, so
+    // the customer/msp/tenant it belongs to are resolved through the msp_users
+    // bridge (userId → customer), NOT by treating the id as an msp_customers.id.
+    // We pull tenantId here too so monitor-derived threshold signals can fire —
+    // without the tenant_monitor_profiles merge below, every "threshold" rule
+    // (orphaned Teams, Copilot oversharing, Secure Score drift, disabled
+    // accounts, licensing/SharePoint oversharing) silently evaluates to 0.
     const [slaCustomerRow] = await db
-      .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId, tenantId: mspCustomersTable.tenantId })
       .from(mspUsersTable)
       .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
       .where(eq(mspUsersTable.userId, clientUserId))
       .limit(1);
     const slaResolvedCustomerId = slaCustomerRow?.customerId ?? null;
     const slaResolvedMspId = slaCustomerRow?.mspId ?? null;
+    const slaResolvedTenantId = slaCustomerRow?.tenantId ?? null;
+
+    // Merge monitor-derived item counts into the signal-evaluation profile,
+    // exactly as tenant-signals.ts:buildTenantProfile does for the engines, so
+    // threshold-type signals have their `<checkKey>__itemCount` inputs. Keyed by
+    // the resolved tenantId; a null tenant means no monitor data can contribute.
+    if (slaResolvedTenantId) {
+      const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
+        checkKey: tenantMonitorProfilesTable.checkKey,
+        extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+      })
+        .from(tenantMonitorProfilesTable)
+        .where(eq(tenantMonitorProfilesTable.tenantId, slaResolvedTenantId))
+        .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
+
+      for (const row of monitorRows) {
+        const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+        mergedSowProfileForSignals[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+      }
+      signalsLog.info(
+        { ...logCtx, tenantId: slaResolvedTenantId, monitorCheckKeys: monitorRows.length },
+        "consolidated-sow-generator: merged tenant_monitor_profiles into SOW signal profile",
+      );
+    } else {
+      signalsLog.warn(
+        { ...logCtx, customerId: slaResolvedCustomerId },
+        "consolidated-sow-generator: no tenantId resolved for client — monitor-derived threshold signals cannot fire in this SOW",
+      );
+    }
+
     const { firedSignals } = computeTenantSignals(
       mergedSowProfileForSignals,
       allFindingsForSignals,

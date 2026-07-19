@@ -18,19 +18,18 @@ import {
   salesOfferConfigTable,
   salesOfferRuleGroupsTable,
   servicesTable,
-  mspUsersTable,
   type SalesOffer,
   type SalesOfferRuleGroup,
   type SalesOfferConfig,
   type SalesOfferState,
 } from "@workspace/db";
-import { eq, and, inArray, isNull, or, desc } from "drizzle-orm";
+import { eq, and, isNull, or, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.offer" });
-import { buildTenantProfileAndFindings, fetchSignalRulesAndGroups } from "./priority-engine";
-import { computeTenantSignals, getDisabledSignalKeys } from "./tenant-signals";
+import { fetchSignalRulesAndGroups } from "./priority-engine";
+import { buildTenantProfile, computeTenantSignals, getDisabledSignalKeys, resolveCustomerPortalUserId } from "./tenant-signals";
 import { createNotification } from "./notification-center";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -241,7 +240,7 @@ export async function runSalesOfferEngineForTenant(
 ): Promise<SalesOfferEngineOutput> {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId: resolvedMspId }, { rules, groups }, disabledSignalKeys, ruleGroups, services, config] =
     await Promise.all([
-      buildTenantProfileAndFindings(customerId),
+      buildTenantProfile(customerId),
       fetchSignalRulesAndGroups(),
       getDisabledSignalKeys(),
       loadSalesOfferRuleGroups(),
@@ -262,21 +261,6 @@ export async function runSalesOfferEngineForTenant(
 }
 
 // ── Offer persistence ─────────────────────────────────────────────────────────
-
-/**
- * Resolve the active portal user (usersTable.id) for an engine customerId
- * (mspCustomersTable.id) via the msp_users bridge. Mirrors the resolution the
- * admin-engines routes use for the same testbed→portal-user mapping. Returns
- * null when the customer has no active portal user to notify.
- */
-async function resolveCustomerPortalUserId(customerId: number): Promise<number | null> {
-  const [row] = await db
-    .select({ userId: mspUsersTable.userId })
-    .from(mspUsersTable)
-    .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
-    .limit(1);
-  return row?.userId ?? null;
-}
 
 /**
  * Persist generated candidates as draft sales_offers rows.

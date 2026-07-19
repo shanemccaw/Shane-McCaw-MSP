@@ -24,9 +24,8 @@
  * five independent dimensions plus a combined total.
  */
 
-import { db, clientM365ProfilesTable, scriptRunResultsTable } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   type SignalDerivationRule,
@@ -189,36 +188,6 @@ export function sumCrmScore(entries: CrmBreakdownEntry[]): CrmScoreBreakdown {
 }
 
 /**
- * Builds a merged M365 profile + findings list for a tenant, exactly the
- * same way `buildTenantProfileAndFindings` does in `priority-engine.ts`.
- */
-async function buildTenantProfileAndFindings(
-  clientUserId: number,
-): Promise<{ mergedProfile: Record<string, unknown>; findings: string[] }> {
-  const [profileRow] = await db
-    .select({ profile: clientM365ProfilesTable.profile })
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientUserId))
-    .limit(1);
-
-  const scriptRuns = await db
-    .select({
-      parsedFindings: scriptRunResultsTable.parsedFindings,
-      profileUpdates: scriptRunResultsTable.profileUpdates,
-    })
-    .from(scriptRunResultsTable)
-    .where(and(eq(scriptRunResultsTable.customerId, clientUserId), eq(scriptRunResultsTable.status, "completed")))
-    .orderBy(desc(scriptRunResultsTable.createdAt))
-    .limit(50);
-
-  const mergedProfile: Record<string, unknown> = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
-  for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
-  const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
-
-  return { mergedProfile, findings };
-}
-
-/**
  * Computes the tenant's currently-fired, enabled signal keys using the same
  * evaluator every other call site uses (`computeTenantSignals`), so this
  * engine can never drift from what the SOW/priority/CRM/workflow paths
@@ -228,13 +197,20 @@ async function getFiredSignalKeysForTenant(customerId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
-  const { mergedProfile, findings } = await buildTenantProfileAndFindings(customerId);
+  const { mergedProfile, findings, customerId: resolvedCustomerId, mspId } = await buildTenantProfile(customerId);
   const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
 
-  const { firedSignals } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledSignalKeys);
+  const { firedSignals } = computeTenantSignals(
+    mergedProfile,
+    findings,
+    rules,
+    groups,
+    disabledSignalKeys,
+    resolvedCustomerId != null && mspId != null ? { customerId: resolvedCustomerId, mspId } : undefined,
+  );
 
   return { firedSignalKeys: [...firedSignals], rules };
 }

@@ -18,9 +18,10 @@
  *   { engine, score, breakdown, rawSignals, rawRules, workflowVariables, timestamp }
  */
 
-import { db, clientM365ProfilesTable, scriptRunResultsTable, mspUsersTable, mspCustomersTable, tenantMonitorProfilesTable } from "@workspace/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   coerceDecayRate,
@@ -145,67 +146,6 @@ export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<
 }
 
 /**
- * Builds a merged M365 profile + findings list for a tenant, exactly the
- * same way `computeSignalDrivenAdjustments` does in `portal.ts` — the
- * client's stored profile overlaid with every completed script run's
- * `profileUpdates`, oldest-first so newer runs win on conflicting keys.
- */
-export async function buildTenantProfileAndFindings(
-  clientUserId: number,
-): Promise<{ mergedProfile: Record<string, unknown>; findings: string[]; customerId: number | null; mspId: number | null }> {
-  const [profileRow] = await db
-    .select({ profile: clientM365ProfilesTable.profile })
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientUserId))
-    .limit(1);
-
-  const scriptRuns = await db
-    .select({
-      parsedFindings: scriptRunResultsTable.parsedFindings,
-      profileUpdates: scriptRunResultsTable.profileUpdates,
-    })
-    .from(scriptRunResultsTable)
-    .where(and(eq(scriptRunResultsTable.customerId, clientUserId), eq(scriptRunResultsTable.status, "completed")))
-    .orderBy(desc(scriptRunResultsTable.createdAt))
-    .limit(50);
-
-  const mergedProfile: Record<string, unknown> = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
-  for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
-  const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
-
-  const [customerRow] = await db
-    .select({
-      tenantId: mspCustomersTable.tenantId,
-      customerId: mspCustomersTable.id,
-      mspId: mspCustomersTable.mspId,
-    })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, clientUserId))
-    .limit(1);
-  const tenantId = customerRow?.tenantId ?? null;
-  const customerId = customerRow?.customerId ?? null;
-  const mspId = customerRow?.mspId ?? null;
-
-  if (tenantId) {
-    const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
-      checkKey: tenantMonitorProfilesTable.checkKey,
-      extractedProperties: tenantMonitorProfilesTable.extractedProperties,
-    })
-      .from(tenantMonitorProfilesTable)
-      .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
-      .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
-
-    for (const row of monitorRows) {
-      const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
-      mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
-    }
-  }
-
-  return { mergedProfile, findings, customerId, mspId };
-}
-
-/**
  * Computes the tenant's currently-fired, enabled signal keys using the same
  * evaluator every other call site uses (`computeTenantSignals`), so this
  * engine can never drift from what the SOW/CRM/workflow paths consider fired.
@@ -214,7 +154,7 @@ export async function getFiredSignalKeysForTenant(customerId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
-  const { mergedProfile, findings, customerId: resolvedCustomerId, mspId } = await buildTenantProfileAndFindings(customerId);
+  const { mergedProfile, findings, customerId: resolvedCustomerId, mspId } = await buildTenantProfile(customerId);
   const [{ rules, groups }, disabledSignalKeys] = await Promise.all([
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),

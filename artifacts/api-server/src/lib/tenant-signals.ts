@@ -1,5 +1,12 @@
-import { db } from "@workspace/db";
-import { sql } from "drizzle-orm";
+import {
+  db,
+  clientM365ProfilesTable,
+  scriptRunResultsTable,
+  mspCustomersTable,
+  mspUsersTable,
+  tenantMonitorProfilesTable,
+} from "@workspace/db";
+import { sql, eq, and, desc } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.signals" });
 import { startSlaTimer } from "./sla-engine";
@@ -24,6 +31,124 @@ export async function getDisabledSignalKeys(): Promise<Set<string>> {
     SELECT signal_key AS "signalKey" FROM signal_enabled_state WHERE enabled = false
   `);
   return new Set((rows.rows as Array<{ signalKey: string }>).map(r => r.signalKey));
+}
+
+/**
+ * Resolve the active portal user (`usersTable.id`) for an engine customerId
+ * (`mspCustomersTable.id`) via the `msp_users` bridge. Returns null when the
+ * customer has no active portal user — a valid state for an unclaimed customer,
+ * not an error.
+ *
+ * This is the single canonical customer→portal-user resolver. It lives here
+ * (rather than per-engine) because `buildTenantProfile` needs it to key the
+ * two `users.id`-scoped data tables, and every other consumer (e.g. sales-offer
+ * notification routing) should resolve the recipient the exact same way.
+ */
+export async function resolveCustomerPortalUserId(customerId: number): Promise<number | null> {
+  const [row] = await db
+    .select({ userId: mspUsersTable.userId })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+    .limit(1);
+  return row?.userId ?? null;
+}
+
+// ─── Tenant profile builder (single source of truth for signal evaluation) ────
+//
+// Builds the merged M365 profile + findings list a tenant's signals are
+// evaluated against. This is the ONE place that assembles this profile — every
+// engine (priority, pricing, drift, forecasting, security, sales_offer, health,
+// crm) and the SOW generator call this so they can never drift.
+//
+// The input is a *customer id* (`mspCustomersTable.id`) — the id every real
+// engine caller already carries (runForTenant / admin-engines testbed flow).
+//
+// Two independent id spaces are in play, and this function bridges them
+// explicitly rather than assuming they coincide (the old per-engine copies
+// assumed they did, which is what silently zeroed signals in production):
+//
+//   • tenantId / mspId live on `msp_customers`, keyed by the customer id
+//     directly — resolved with one `WHERE id = customerId` lookup.
+//   • `client_m365_profiles` and `script_run_results` are keyed by
+//     `users.id` (a *portal user* id), NOT the customer id. So we first
+//     resolve the customer's active portal user via `msp_users`
+//     (`resolveCustomerPortalUserId`) and key those two tables by that id.
+//
+// A customer with no active portal user (unclaimed) is valid: the profile /
+// script-run half simply contributes nothing, but tenant/msp resolution and
+// the monitor merge still proceed off the customer id.
+export async function buildTenantProfile(customerId: number): Promise<{
+  mergedProfile: Record<string, unknown>;
+  findings: string[];
+  customerId: number;
+  mspId: number | null;
+  tenantId: string | null;
+}> {
+  // tenant/msp — keyed directly by the customer id (no user involved).
+  const [customerRow] = await db
+    .select({ tenantId: mspCustomersTable.tenantId, mspId: mspCustomersTable.mspId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+  const tenantId = customerRow?.tenantId ?? null;
+  const mspId = customerRow?.mspId ?? null;
+
+  // profile + script-run findings — keyed by the customer's active *portal user*
+  // id, since both those tables FK to users.id. Null portal user = unclaimed
+  // customer: contribute an empty profile/findings rather than error.
+  const portalUserId = await resolveCustomerPortalUserId(customerId);
+
+  let mergedProfile: Record<string, unknown> = {};
+  let findings: string[] = [];
+  if (portalUserId != null) {
+    const [profileRow] = await db
+      .select({ profile: clientM365ProfilesTable.profile })
+      .from(clientM365ProfilesTable)
+      .where(eq(clientM365ProfilesTable.clientId, portalUserId))
+      .limit(1);
+
+    const scriptRuns = await db
+      .select({
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        profileUpdates: scriptRunResultsTable.profileUpdates,
+      })
+      .from(scriptRunResultsTable)
+      .where(and(eq(scriptRunResultsTable.customerId, portalUserId), eq(scriptRunResultsTable.status, "completed")))
+      .orderBy(desc(scriptRunResultsTable.createdAt))
+      .limit(50);
+
+    mergedProfile = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
+    for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
+    findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
+  } else {
+    log.warn(
+      { customerId },
+      "buildTenantProfile: customer has no active portal user — profile/script-run signals contribute nothing (unclaimed customer)",
+    );
+  }
+
+  // monitor-derived threshold inputs — keyed by tenantId off the customer row.
+  if (tenantId) {
+    const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
+      checkKey: tenantMonitorProfilesTable.checkKey,
+      extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+    })
+      .from(tenantMonitorProfilesTable)
+      .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
+      .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
+
+    for (const row of monitorRows) {
+      const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+      mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+    }
+  } else {
+    log.warn(
+      { customerId },
+      "buildTenantProfile: no tenantId on msp_customers row — monitor-derived threshold signals cannot fire for this customer",
+    );
+  }
+
+  return { mergedProfile, findings, customerId, mspId, tenantId };
 }
 
 // ─── Tenant health block vars (used by email templates) ──────────────────────

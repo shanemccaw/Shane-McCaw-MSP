@@ -18,6 +18,7 @@ import { mspCustomersTable, tenantEngineSnapshotsTable, engineBaselineHistoryTab
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.signals" });
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   type SignalDerivationRule,
@@ -29,7 +30,6 @@ import { computeMonitoringEngine } from "./monitor-executor.ts";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine.ts";
 import {
   fetchSignalRulesAndGroups,
-  buildTenantProfileAndFindings,
   getSignalWeights,
   calculatePriorityScore,
   getFiredSignalKeysForTenant,
@@ -130,7 +130,7 @@ export function computePricingEngine(
 
 async function calculatePricingImpact(customerId: number, ctx?: EngineContext): Promise<PricingEngineOutput> {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
@@ -144,7 +144,7 @@ async function calculatePricingImpact(customerId: number, ctx?: EngineContext): 
 
 async function calculateDriftForTenant(customerId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
@@ -156,7 +156,7 @@ async function calculateDriftForTenant(customerId: number, ctx?: EngineContext) 
 
 async function calculateForecastForTenant(customerId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
@@ -168,7 +168,7 @@ async function calculateForecastForTenant(customerId: number, ctx?: EngineContex
 
 async function calculateMspForTenant(customerId: number, ctx?: EngineContext) {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
@@ -724,7 +724,7 @@ export async function runEngineManifestForTenant(
 
 export async function buildEngineTestInputForTenant(customerId: number): Promise<EngineTestInput> {
   const [{ mergedProfile, findings }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);

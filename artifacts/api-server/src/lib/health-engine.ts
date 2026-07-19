@@ -28,9 +28,8 @@
  * engines, admin UI, workflow nodes, SOW wiring.
  */
 
-import { db, clientM365ProfilesTable, scriptRunResultsTable, mspUsersTable, mspCustomersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   type SignalDerivationRule,
@@ -198,54 +197,13 @@ export function computeHealthEngine(
 }
 
 /**
- * Builds a merged M365 profile + findings list for a tenant, exactly the
- * same way `priority-engine.ts` does — the client's stored profile overlaid
- * with every completed script run's `profileUpdates`, oldest-first so newer
- * runs win on conflicting keys.
- */
-async function buildTenantProfileAndFindings(
-  clientUserId: number,
-): Promise<{ mergedProfile: Record<string, unknown>; findings: string[]; customerId: number | null; mspId: number | null }> {
-  const [profileRow] = await db
-    .select({ profile: clientM365ProfilesTable.profile })
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientUserId))
-    .limit(1);
-
-  const scriptRuns = await db
-    .select({
-      parsedFindings: scriptRunResultsTable.parsedFindings,
-      profileUpdates: scriptRunResultsTable.profileUpdates,
-    })
-    .from(scriptRunResultsTable)
-    .where(and(eq(scriptRunResultsTable.customerId, clientUserId), eq(scriptRunResultsTable.status, "completed")))
-    .orderBy(desc(scriptRunResultsTable.createdAt))
-    .limit(50);
-
-  const mergedProfile: Record<string, unknown> = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
-  for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
-  const findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
-
-  const [customerRow] = await db
-    .select({ customerId: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
-    .from(mspUsersTable)
-    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
-    .where(eq(mspUsersTable.userId, clientUserId))
-    .limit(1);
-  const customerId = customerRow?.customerId ?? null;
-  const mspId = customerRow?.mspId ?? null;
-
-  return { mergedProfile, findings, customerId, mspId };
-}
-
-/**
  * Calculates a tenant's architecture health score by fetching its profile,
  * findings, and the live signal rule/group configuration from the DB, then
  * delegating to the pure `computeHealthEngine`.
  */
 export async function calculateArchitectureHealthScore(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<HealthEngineOutput> {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);

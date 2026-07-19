@@ -7,12 +7,13 @@
  */
 
 import {
+  buildTenantProfile,
   computeTenantSignals,
   getDisabledSignalKeys,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
-import { fetchSignalRulesAndGroups, buildTenantProfileAndFindings } from "./priority-engine.ts";
+import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { getSignalHealthImpacts, PILLAR_FIELD } from "./health-engine.ts";
 
 export interface SecurityEngineOutput {
@@ -59,7 +60,7 @@ export function computeSecurityEngine(
 
 export async function runSecurityEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SecurityEngineOutput> {
   const [{ mergedProfile, findings, customerId: fetchedCustomerId, mspId }, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    buildTenantProfileAndFindings(customerId),
+    buildTenantProfile(customerId),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);
