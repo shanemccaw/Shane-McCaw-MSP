@@ -2847,6 +2847,39 @@ export const leadOfferPricingConfigTable = pgTable("lead_offer_pricing_config", 
 export type InsertLeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferInsert;
 export type LeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferSelect;
 
+export const engagementOfferRulesTable = pgTable("engagement_offer_rules", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  minDistinctPagesViewed: integer("min_distinct_pages_viewed").notNull().default(3),
+  minIntentScore: integer("min_intent_score").notNull().default(15),
+  windowMinutes: integer("window_minutes").notNull().default(30),
+  eligibleServiceIds: jsonb("eligible_service_ids").$type<number[]>().notNull().default([]),
+  discountPct: integer("discount_pct").notNull().default(10),
+  eventName: text("event_name").notNull(),
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(1440),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  mspActiveIdx: index("engagement_offer_rules_msp_active_idx").on(table.mspId, table.isActive),
+}));
+
+export type InsertEngagementOfferRule = typeof engagementOfferRulesTable.$inferInsert;
+export type EngagementOfferRule = typeof engagementOfferRulesTable.$inferSelect;
+
+export const engagementOfferFiringsTable = pgTable("engagement_offer_firings", {
+  id: serial("id").primaryKey(),
+  ruleId: integer("rule_id").notNull().references(() => engagementOfferRulesTable.id, { onDelete: "cascade" }),
+  leadId: integer("lead_id"),
+  firedAt: timestamp("fired_at").notNull().defaultNow(),
+}, (table) => ({
+  ruleLeadFiredIdx: index("engagement_offer_firings_rule_lead_fired_idx").on(table.ruleId, table.leadId, table.firedAt),
+}));
+
+export type InsertEngagementOfferFiring = typeof engagementOfferFiringsTable.$inferInsert;
+export type EngagementOfferFiring = typeof engagementOfferFiringsTable.$inferSelect;
+
 export const leadScoringRulesTable = pgTable("lead_scoring_rules", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),

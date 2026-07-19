@@ -18,9 +18,10 @@
  *    with sales-offer-engine's idempotency keys, even by coincidence.
  */
 
-import { db, leadOfferInferenceRulesTable, type LeadOfferRuleGroup } from "@workspace/db";
+import { db, leadOfferInferenceRulesTable, leadOfferPricingConfigTable, type LeadOfferRuleGroup } from "@workspace/db";
 import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { createHash } from "crypto";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.offer" });
 
@@ -36,6 +37,7 @@ export interface LeadOfferCandidate {
   bundledOfferIds: number[];
   basePriceCents: number;
   adjustedPriceCents: number;
+  aiPricingReasoning: string | null;
   score: number;
   expirationDays: number;
   idempotencyKey: string;
@@ -107,13 +109,14 @@ export async function inferSignalsFromQuizScores(
  * Given confidence-weighted inferred signals, the rule groups, product catalog
  * entries, and engine config, produces a ranked list of offer candidates.
  */
-export function computeLeadOfferEngine(
+export async function computeLeadOfferEngine(
   leadId: number,
+  mspId: number | null,
   inferredSignals: Map<string, number>,
   ruleGroups: LeadOfferRuleGroup[],
   services: Array<{ id: number; name: string; price: string | null; basePrice: string | null }>,
   config: { minScore: number; maxCandidates: number; defaultExpirationDays: number; bundlingThreshold: number },
-): LeadOfferEngineOutput {
+): Promise<LeadOfferEngineOutput> {
   const inferredSignalKeyArray = [...inferredSignals.keys()];
   const serviceMap = new Map(services.map(s => [s.id, s]));
 
@@ -121,7 +124,6 @@ export function computeLeadOfferEngine(
   const byType = (type: string) => ruleGroups.filter(g => g.ruleType === type);
 
   const eligibilityGroups = byType("eligibility");
-  const pricingGroups = byType("pricing");
   const scoringGroups = byType("scoring");
   const bundlingGroups = byType("bundling");
   const expirationGroups = byType("expiration");
@@ -148,14 +150,6 @@ export function computeLeadOfferEngine(
       inferredForService.length === 0
         ? 0
         : inferredForService.reduce((sum, sig) => sum + (inferredSignals.get(sig) ?? 0), 0) / inferredForService.length;
-
-    // ── Pricing adjustment ────────────────────────────────────────────────
-    let totalAdjPct = 0;
-    for (const pg of pricingGroups) {
-      if (pg.serviceId != null && pg.serviceId !== serviceId) continue;
-      if (leadGroupFires(pg, inferredSignals)) totalAdjPct += pg.pricingAdjustmentPct;
-    }
-    const adjustedPriceCents = Math.max(0, Math.round(basePriceCents * (1 + totalAdjPct / 100)));
 
     // ── Scoring ────────────────────────────────────────────────────────────
     let score = 0;
@@ -195,7 +189,8 @@ export function computeLeadOfferEngine(
       avgConfidence,
       bundledOfferIds,
       basePriceCents,
-      adjustedPriceCents,
+      adjustedPriceCents: basePriceCents,
+      aiPricingReasoning: null,
       score,
       expirationDays,
       idempotencyKey,
@@ -205,6 +200,66 @@ export function computeLeadOfferEngine(
   // Sort by score descending, cap at maxCandidates
   candidates.sort((a, b) => b.score - a.score);
   const capped = config.maxCandidates > 0 ? candidates.slice(0, config.maxCandidates) : candidates;
+
+  // ── AI-determined opportunistic pricing (only for surviving candidates) ────
+  const [pricingConfig] = await db
+    .select()
+    .from(leadOfferPricingConfigTable)
+    .where(mspId != null
+      ? or(eq(leadOfferPricingConfigTable.mspId, mspId), isNull(leadOfferPricingConfigTable.mspId))
+      : isNull(leadOfferPricingConfigTable.mspId))
+    .orderBy(sql`${leadOfferPricingConfigTable.mspId} NULLS LAST`)
+    .limit(1);
+
+  const maxDiscountPct = pricingConfig?.maxDiscountPct ?? 20;
+  const model = pricingConfig?.model ?? "claude-haiku-4-5";
+
+  for (const candidate of capped) {
+    try {
+      const prompt = `A prospective customer's quiz answers suggest the following inferred gaps in their Microsoft 365 environment, each with a confidence score (0-1, where 1 is highest confidence this is a real issue):
+${candidate.inferredSignalKeys.map(k => `- ${k} (confidence: ${(inferredSignals.get(k) ?? 0).toFixed(2)})`).join("\n") || "- no specific gaps inferred, general fit"}
+
+Average confidence across inferred signals: ${candidate.avgConfidence.toFixed(2)}
+Service being offered: ${candidate.serviceName}
+Base price: $${(candidate.basePriceCents / 100).toFixed(2)}
+Maximum allowed discount: ${maxDiscountPct}%
+
+Recommend a discount percentage (0 to ${maxDiscountPct}) that reflects how urgent and well-substantiated this offer is. Higher confidence and more inferred gaps should generally warrant a discount closer to the maximum, to encourage fast action on a real problem. Lower confidence or no specific gaps should warrant a smaller discount or none.
+
+Respond with ONLY a JSON object, no other text: {"discountPct": <number 0-${maxDiscountPct}>, "reasoning": "<one sentence>"}`;
+
+      const message = await anthropic.messages.create({
+        model,
+        max_tokens: 200,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const block = message.content.find(b => b.type === "text");
+      if (!block || block.type !== "text") throw new Error("No text block in AI response");
+
+      const jsonMatch = block.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON found in AI response");
+      const parsed = JSON.parse(jsonMatch[0]) as { discountPct?: unknown; reasoning?: unknown };
+
+      const rawDiscount = typeof parsed.discountPct === "number" ? parsed.discountPct : 0;
+      const clampedDiscount = Math.max(0, Math.min(maxDiscountPct, Math.round(rawDiscount)));
+      const reasoning = typeof parsed.reasoning === "string" ? parsed.reasoning.slice(0, 500) : null;
+
+      candidate.adjustedPriceCents = Math.max(0, Math.round(candidate.basePriceCents * (1 - clampedDiscount / 100)));
+      candidate.aiPricingReasoning = reasoning;
+
+      log.info(
+        { leadId, serviceId: candidate.serviceId, rawDiscount, clampedDiscount, maxDiscountPct },
+        "lead-offer-engine: AI pricing applied",
+      );
+    } catch (err) {
+      log.warn(
+        { err, leadId, serviceId: candidate.serviceId },
+        "lead-offer-engine: AI pricing call failed — falling back to base price, no discount",
+      );
+      candidate.adjustedPriceCents = candidate.basePriceCents;
+      candidate.aiPricingReasoning = null;
+    }
+  }
 
   return {
     engine: "lead_offer",
