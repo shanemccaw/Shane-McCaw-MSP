@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | Assessment Flow as Visible Workflows — First Login + Document Generation | |
 | 2026-07-19 | ✅ DONE | Extend Document Sharing + View Tracking Beyond SOWs | 208af156 |
 | 2026-07-19 | ✅ DONE | Interactive SOW Scope Selector | e825be49 |
 | 2026-07-19 | ✅ DONE | TEMP DEBUG — Testbed-Only Assessment Scan Trigger Button (temporary debug code, not a permanent feature — awaiting a backlog removal ticket) | 967551d2 |
