@@ -71,3 +71,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | Resource Category Data Audit | a7cf1c55 |
 | 2026-07-19 | ✅ DONE | Reject cross-MSP tenant consent conflicts | c6d764de |
 | 2026-07-19 | ⏳ IN FLIGHT | Fix Missing Diagnostics Runs List Endpoint + Malformed SSE URL | |
+| 2026-07-19 | ⏳ IN FLIGHT | Build 5-Way Resource Category Split | |
