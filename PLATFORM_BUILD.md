@@ -11,7 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
-| 2026-07-19 | ⏳ IN FLIGHT | Assessment Payment Plan Screen | — |
+| 2026-07-19 | ✅ DONE | Assessment Payment Plan Screen — pay-in-full built real (PAY-TODAY coupon + hosted Stripe Checkout + signature + dedicated webhook, Assessment role floor). Phased BLOCKED (per-phase auto-invoicing is bound to CRM quick_win_presentations/projects space; can't resolve an Assessment consolidated_sow) → captured as signed provider-handoff, reported not worked around. portal-checkout.ts untouched. Needs manual SQL: assessment_sow_agreements. | e9c12356 |
 | 2026-07-19 | ✅ DONE | Assessment Flow as Visible Workflows — safe slice only (packageKey added to diagnostics.run_completed; Deliverable 1 presentation SSE endpoint confirmed already-existing, no build). First Login + Document Generation workflows (D3/D4) NOT built — deferred pending redesign: prompt's build_presentation/packageKey-doc-mapping/one-shot-wait-for-both assumptions did not hold against the codebase (stop-and-report). Corrected direction captured in memory. | fd9a7511 |
 | 2026-07-19 | ✅ DONE | Extend Document Sharing + View Tracking Beyond SOWs | 208af156 |
 | 2026-07-19 | ✅ DONE | Interactive SOW Scope Selector | e825be49 |
