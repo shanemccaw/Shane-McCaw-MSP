@@ -695,21 +695,21 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
-          {/* ThemeProvider must live inside AuthProvider — it reads the session
-              to load the account-level theme preference. It owns the `dark`
-              class on <html> from here on (main.tsx no longer hardcodes it). */}
-          <ThemeProvider>
-            <SupportChatProvider>
-              <ErrorBoundary>
+        <ErrorBoundary>
+          <AuthProvider>
+            {/* ThemeProvider must live inside AuthProvider — it reads the session
+                to load the account-level theme preference. It owns the `dark`
+                class on <html> from here on (main.tsx no longer hardcodes it). */}
+            <ThemeProvider>
+              <SupportChatProvider>
                 <WouterRouter base={BASE_PATH}>
                   <AppInner />
                 </WouterRouter>
                 <Toaster richColors position="top-right" />
-              </ErrorBoundary>
-            </SupportChatProvider>
-          </ThemeProvider>
-        </AuthProvider>
+              </SupportChatProvider>
+            </ThemeProvider>
+          </AuthProvider>
+        </ErrorBoundary>
       </TooltipProvider>
     </QueryClientProvider>
   );
