@@ -28,6 +28,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-18 | ✅ DONE | #6 Portal 404 Redesign + Audit Logging | ffe0f36d |
 | 2026-07-18 | ✅ DONE | #B Portal Favicon Fix | fbc3a616 |
 | 2026-07-18 | ✅ DONE | Portal Dashboard Designer | 7c5215ba |
+| 2026-07-19 | ⏳ IN FLIGHT | Trim Dashboard Extras — Remove Quick Actions/Projects/Services, Move Help Card to Bottom | |
 | 2026-07-18 | ✅ DONE | Guard Portfolio Risk Route Against resolveMspId Swap | 06dee9bd |
 | 2026-07-18 | ✅ DONE | Factory Floor Data Audit | a4841a53 |
 | 2026-07-18 | ✅ DONE | sales-offers list + fulfillment-queue mspId path migration | 47679db4 | |
