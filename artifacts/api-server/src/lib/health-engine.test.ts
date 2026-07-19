@@ -14,14 +14,41 @@
  *   pnpm --filter @workspace/api-server run test
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// ── Module mocks for calculateArchitectureHealthScore's DB-touching deps ───────
+//
+// calculateArchitectureHealthScore fetches profile/rules/disabled-signal data
+// via tenant-signals.ts and priority-engine.ts before delegating to the pure
+// computeHealthEngine/computeSecurityEngine. Mocking these named exports keeps
+// the test pure and DB-free, mirroring build-tenant-profile.test.ts's approach
+// of mocking at the module boundary rather than reaching into @workspace/db.
+vi.mock("./tenant-signals.ts", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    buildTenantProfile: vi.fn(),
+    getDisabledSignalKeys: vi.fn(),
+  };
+});
+vi.mock("./priority-engine.ts", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetchSignalRulesAndGroups: vi.fn(),
+  };
+});
+
 import {
   computeHealthEngine,
   getSignalHealthImpacts,
   sumArchitectureHealth,
+  calculateArchitectureHealthScore,
   HEALTH_PILLARS,
   type SignalHealthImpactConfig,
 } from "./health-engine.ts";
+import { buildTenantProfile, getDisabledSignalKeys } from "./tenant-signals.ts";
+import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import type { SignalDerivationRule, SignalRuleGroup } from "./tenant-signals.ts";
 
 const BASE_DATE = new Date("2024-01-01T00:00:00Z");
@@ -145,7 +172,6 @@ describe("sumArchitectureHealth", () => {
     const byPillar = Object.fromEntries(breakdown.map(b => [b.pillar, b.score]));
     expect(byPillar).toEqual({
       governance: 8,   // 5 + 3
-      security: 10,    // 10 + 0
       compliance: 4,   // 0 + 4
       adoption: 2,     // 2 + 0
       copilot: 6,      // 0 + 6
@@ -153,8 +179,8 @@ describe("sumArchitectureHealth", () => {
       licensing: 0,    // 0 + 0
     });
 
-    // overall score is exactly the sum of the six pillar sums
-    const handComputedOverall = 8 + 10 + 4 + 2 + 6 + 1;
+    // overall score is exactly the sum of the six pillar sums (security is excluded — standalone engine)
+    const handComputedOverall = 8 + 4 + 2 + 6 + 1;
     expect(score).toBe(handComputedOverall);
     expect(breakdown.reduce((sum, p) => sum + p.score, 0)).toBe(score);
   });
@@ -210,7 +236,6 @@ describe("computeHealthEngine — end-to-end pure sum, no conditional logic", ()
     const byPillar = Object.fromEntries(result.breakdown.map(b => [b.pillar, b.score]));
     expect(byPillar).toEqual({
       governance: 12,
-      security: 15,
       compliance: 5,
       adoption: 3,
       copilot: 8,
@@ -218,10 +243,11 @@ describe("computeHealthEngine — end-to-end pure sum, no conditional logic", ()
       licensing: 0,
     });
 
-    const handComputedScore = 12 + 15 + 5 + 3 + 8 + 0;
+    // security is excluded from computeHealthEngine — scored separately by the Security Engine
+    const handComputedScore = 12 + 5 + 3 + 8 + 0;
     expect(result.score).toBe(handComputedScore);
     expect(result.workflowVariables.architectureHealthScore).toBe(handComputedScore);
-    expect(result.workflowVariables.securityHealthContribution).toBe(15);
+    expect(result.workflowVariables.securityHealthContribution).toBeUndefined();
     expect(result.workflowVariables.governanceHealthContribution).toBe(12);
   });
 
@@ -243,7 +269,7 @@ describe("computeHealthEngine — end-to-end pure sum, no conditional logic", ()
 
   it("excludes disabled signals from both firing and the health sum entirely", () => {
     const rules: SignalDerivationRule[] = [
-      makeRule({ signalKey: "hasSecurityGaps", ruleType: "profile_key_falsy", sourceKey: "mfaEnforced", securityImpact: 20 }),
+      makeRule({ signalKey: "hasSecurityGaps", ruleType: "profile_key_falsy", sourceKey: "mfaEnforced", governanceImpact: 20 }),
     ];
     const profile = { mfaEnforced: false };
 
@@ -280,5 +306,42 @@ describe("computeHealthEngine — end-to-end pure sum, no conditional logic", ()
     // Only one AND condition true → signal does not fire → zero contribution.
     const notFired = computeHealthEngine({ governanceScore: 40 }, [], [rule1, rule2], [group]);
     expect(notFired.score).toBe(0);
+  });
+});
+
+describe("calculateArchitectureHealthScore — combines the standalone Health and Security engines", () => {
+  it("final score is healthResult.score + securityResult.score, and breakdown appends security after the 6 health pillars", async () => {
+    const rules: SignalDerivationRule[] = [
+      makeRule({
+        signalKey: "hasSecurityGaps", ruleType: "profile_key_falsy", sourceKey: "mfaEnforced",
+        securityImpact: 15, governanceImpact: 4,
+      }),
+    ];
+    const profile = { mfaEnforced: false };
+
+    vi.mocked(buildTenantProfile).mockResolvedValue({
+      mergedProfile: profile,
+      findings: [],
+      customerId: 1,
+      mspId: null,
+      tenantId: null,
+    } as Awaited<ReturnType<typeof buildTenantProfile>>);
+    vi.mocked(fetchSignalRulesAndGroups).mockResolvedValue({ rules, groups: [] });
+    vi.mocked(getDisabledSignalKeys).mockResolvedValue(new Set());
+
+    const result = await calculateArchitectureHealthScore(1);
+
+    // computeHealthEngine excludes security: only governanceImpact(4) counts here.
+    // computeSecurityEngine scores securityImpact(15) independently.
+    expect(result.score).toBe(4 + 15);
+
+    expect(result.breakdown).toHaveLength(HEALTH_PILLARS.length + 1);
+    expect(result.breakdown.slice(0, HEALTH_PILLARS.length).map(b => b.pillar)).toEqual([...HEALTH_PILLARS]);
+    const securityBreakdown = result.breakdown[HEALTH_PILLARS.length];
+    expect(securityBreakdown.pillar).toBe("security");
+    expect(securityBreakdown.score).toBe(15);
+    expect(securityBreakdown.contributions).toEqual(
+      expect.arrayContaining([{ signalKey: "hasSecurityGaps", value: 15 }]),
+    );
   });
 });

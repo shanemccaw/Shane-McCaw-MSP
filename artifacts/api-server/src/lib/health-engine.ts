@@ -3,16 +3,27 @@
  *
  * Architecture-health scoring engine. Reuses `computeTenantSignals` to
  * determine which signals are currently fired (and enabled) for a tenant,
- * then sums the seven impact fields already stored on each fired signal's
- * rules/groups — `governanceImpact`, `securityImpact`, `complianceImpact`,
+ * then sums six of the seven impact fields already stored on each fired
+ * signal's rules/groups — `governanceImpact`, `complianceImpact`,
  * `adoptionImpact`, `copilotImpact`, `architectureImpact`, `licensingImpact`
  * — into an overall `architectureHealthScore` plus a per-pillar breakdown.
  *
- * Scoring is intentionally a pure sum with zero conditional business logic:
+ * `securityImpact` is deliberately excluded from `computeHealthEngine`.
+ * Security is scored by the standalone Security Engine
+ * (`security-engine.ts`), which is computed separately and combined in one
+ * level up by `calculateArchitectureHealthScore`:
  *
- *   architectureHealthScore =
- *     sum(governanceImpact + securityImpact + complianceImpact +
- *         adoptionImpact + copilotImpact + architectureImpact + licensingImpact)
+ *   healthResult    = computeHealthEngine(...)     // 6 pillars, no security
+ *   securityResult  = computeSecurityEngine(...)   // security pillar only
+ *   final.score     = healthResult.score + securityResult.score
+ *   final.breakdown = [...healthResult.breakdown, securityResult.breakdown]
+ *
+ * Scoring within `computeHealthEngine` is intentionally a pure sum with zero
+ * conditional business logic:
+ *
+ *   computeHealthEngine's score =
+ *     sum(governanceImpact + complianceImpact + adoptionImpact +
+ *         copilotImpact + architectureImpact + licensingImpact)
  *     over the tenant's currently-fired, enabled signals.
  *
  * Per-pillar values live on individual rule/group rows in the schema (not on

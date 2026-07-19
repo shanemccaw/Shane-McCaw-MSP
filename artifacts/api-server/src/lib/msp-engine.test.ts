@@ -124,15 +124,17 @@ describe("computeTenantEngineScores", () => {
 
     const result = computeTenantEngineScores(1, "Acme", profile, [], rules, groups, new Set());
 
-    // health: for signal hasSecurityGaps, each pillar takes the MAX configured across its
-    // rules — securityImpact 10 (rule 1) + governanceImpact 3 (rule 2) = 13
-    expect(result.architectureHealthScore).toBe(13);
+    // health (computeHealthEngine): security is a standalone engine and is NOT
+    // part of this sum — only governanceImpact 3 (rule 2) counts here. The
+    // securityImpact(10) on rule 1 belongs to the separate Security Engine and
+    // is combined in one level up by calculateArchitectureHealthScore, not here.
+    expect(result.architectureHealthScore).toBe(3);
     // drift: trendValue(5) + governanceImpact(3) from the drift:-tagged rule = 8
     expect(result.driftScore).toBe(8);
     // priority: priorityScoreContribution 40 for hasSecurityGaps + alwaysInclude(0) = 40
     expect(result.priorityScore).toBe(40);
     expect(result.combinedScore).toBe(result.architectureHealthScore + result.driftScore + result.priorityScore);
-    expect(result.combinedScore).toBe(61);
+    expect(result.combinedScore).toBe(51);
   });
 
   it("respects disabled signals across all three underlying engines identically", () => {
