@@ -73,7 +73,7 @@ import { generateScriptFromService, generateScriptFromDocument } from "./ps-scri
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent } from "./sse-channels";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
@@ -750,6 +750,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       if (at === "update_m365_profile")
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
+      if (at === "assessment_doc_gate")  return { dryRun: true, eligible: true, reason: "dry run", clientUserId: 1, projectId: 1, serviceId: 1, customerId: 1, tenantId: "dry-run-tenant" };
       if (at === "calculate_pricing")    return { dryRun: true, documentId: num("documentId"), totalPrice: 0, lineCount: 0 };
       if (at === "send_email")           return { dryRun: true, sent: true, messageId: "dry-run", recipient: str("to", "test@example.com"), subject: str("subject", "Dry-run subject") };
       if (at === "charge_msp_card")      return { dryRun: true, success: true, status: "paid", stripePaymentIntentId: "pi_dry_run" };
@@ -1477,6 +1478,24 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
           ],
           selectedPhaseIds: ["phase-1", "phase-2"],
           createdAt:        new Date().toISOString(),
+        };
+      }
+      if (foType === "service") {
+        const dryDocs = [
+          { docType: "executive_summary", category: "report", title: "Executive Summary", customerVisible: true },
+          { docType: "security_posture_report", category: "report", title: "Security Posture Report", customerVisible: false },
+        ];
+        return {
+          dryRun: true,
+          found: true,
+          objectType: "service",
+          objectId: 1,
+          serviceId: 1,
+          serviceName: "Dry-run Assessment Service",
+          deliveryType: "assessment",
+          associatedDocuments: dryDocs,
+          documentsToGenerate: dryDocs,
+          documentCount: dryDocs.length,
         };
       }
       return { dryRun: true, found: true, objectType: foType, objectId: 1 };
@@ -2339,6 +2358,165 @@ async function executeNode(
                 });
               }
             }
+
+            // Terminal run-ID SSE signal — any workflow emitting an event whose
+            // name ends in ".completed"/".complete" or ".failed"/".error" pushes a
+            // matching terminal event onto the run-scoped stream, so a subscribed
+            // browser can react instantly (progress bar closes, screen routes).
+            // Purely additive; status polling remains the source of truth.
+            if (runId != null) {
+              if (/\.(completed|complete)$/.test(emitEventType)) {
+                broadcastWorkflowRunComplete(String(runId), { ...extraPayload });
+              } else if (/\.(failed|error)$/.test(emitEventType)) {
+                broadcastWorkflowRunError(String(runId), String(mergedPayload.message ?? mergedPayload.reason ?? "Document generation failed"));
+              }
+            }
+          }
+        } else if (actionType === "assessment_doc_gate") {
+          // Two-sided "wait for both" gate for Assessment/Free-tier document
+          // generation, ported verbatim from the retired assessment-doc-trigger.ts.
+          // Fires eligible=true ONLY when the order is Assessment-tier AND a
+          // diagnostics scan has completed AND the customer has logged in at least
+          // once — whichever of the two conditions becomes true second is the run
+          // that proceeds. Never trusts the event; re-checks everything against
+          // live DB state (events can be missed or replayed). Also guards
+          // idempotency so a redundant second trigger (or a concurrent one) does
+          // not burn AI credit regenerating documents.
+          //
+          // Accepts identity from either trigger payload:
+          //   - diagnostics.run_completed → customerId (msp_customers.id) + tenantId
+          //   - portal.first_login        → userId (users.id)
+          // and resolves a canonical clientUserId (users.id) + the assessment
+          // serviceId + projectId the downstream nodes need.
+          const { clientServicesTable: gClientSvc, userSessionsTable: gSessions,
+                  mspDiagnosticRunsTable: gRuns, tenantConsentTable: gConsent } =
+            await import("@workspace/db");
+
+          const gUserIdRaw   = interp(node.data.userId as string | undefined, payload) ?? "";
+          const gCustIdRaw   = interp(node.data.customerId as string | undefined, payload) ?? "";
+          const gTenantIdRaw = (interp(node.data.tenantId as string | undefined, payload) ?? "").trim();
+
+          let gClientUserId = gUserIdRaw.trim() ? parseInt(gUserIdRaw.trim(), 10) : NaN;
+          let gCustomerId   = gCustIdRaw.trim() ? parseInt(gCustIdRaw.trim(), 10) : NaN;
+          let gTenantId: string | null = gTenantIdRaw || null;
+
+          // Resolve clientUserId when only customer/tenant identity was supplied
+          // (the diagnostics side). tenant_consent.clientUserId is the exact user
+          // who consented; msp_users is the fallback bridge from the customer org.
+          if (isNaN(gClientUserId)) {
+            if (gTenantId) {
+              const [gc] = await db.select({ clientUserId: gConsent.clientUserId })
+                .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
+              if (gc?.clientUserId != null) gClientUserId = gc.clientUserId;
+            }
+            if (isNaN(gClientUserId) && !isNaN(gCustomerId)) {
+              const [gm] = await db.select({ userId: mspUsersTable.userId })
+                .from(mspUsersTable).where(eq(mspUsersTable.customerId, gCustomerId)).limit(1);
+              if (gm?.userId != null) gClientUserId = gm.userId;
+            }
+          }
+
+          if (isNaN(gClientUserId)) {
+            output = { eligible: false, reason: "could not resolve client users.id from payload" };
+            log.info({ runId }, "assessment_doc_gate: no resolvable client user — skip");
+          } else {
+            // Backfill customer/tenant context from the resolved user, for the
+            // scan-scoping query (mirrors resolveCustomerContextForUser).
+            if (isNaN(gCustomerId)) {
+              const [gmu] = await db.select({ customerId: mspUsersTable.customerId })
+                .from(mspUsersTable).where(eq(mspUsersTable.userId, gClientUserId)).limit(1);
+              if (gmu?.customerId != null) gCustomerId = gmu.customerId;
+            }
+            if (!gTenantId) {
+              const [gcn] = await db.select({ tenantId: gConsent.tenantId, customerId: gConsent.customerId })
+                .from(gConsent).where(eq(gConsent.clientUserId, gClientUserId)).limit(1);
+              if (gcn?.tenantId != null) gTenantId = gcn.tenantId;
+              if (isNaN(gCustomerId) && gcn?.customerId != null) gCustomerId = gcn.customerId;
+            }
+            if (!gTenantId && !isNaN(gCustomerId)) {
+              const [gcust] = await db.select({ tenantId: mspCustomersTable.tenantId })
+                .from(mspCustomersTable).where(eq(mspCustomersTable.id, gCustomerId)).limit(1);
+              if (gcust?.tenantId != null) gTenantId = gcust.tenantId;
+            }
+
+            // 1) Assessment-tier discriminator — keeps paid monitoring subs untouched.
+            //    Also captures the assessment serviceId (drives find_object "service").
+            const [gAssess] = await db
+              .select({ serviceId: gClientSvc.serviceId })
+              .from(gClientSvc)
+              .innerJoin(servicesTable, eq(servicesTable.id, gClientSvc.serviceId))
+              .where(and(eq(gClientSvc.clientUserId, gClientUserId), eq(servicesTable.deliveryType, "assessment")))
+              .limit(1);
+
+            // 2) Logged-in signal — a real standard user_sessions row.
+            const [gLogin] = await db.select({ id: gSessions.id })
+              .from(gSessions)
+              .where(and(eq(gSessions.userId, gClientUserId), eq(gSessions.sessionType, "standard")))
+              .limit(1);
+
+            // 3) Completed-scan signal — DB source of truth, scoped by customer/tenant.
+            let gScanDone = false;
+            const gScanScope = [];
+            if (!isNaN(gCustomerId)) gScanScope.push(eq(gRuns.customerId, gCustomerId));
+            if (gTenantId) gScanScope.push(eq(gRuns.tenantId, gTenantId));
+            if (gScanScope.length > 0) {
+              const [gsr] = await db.select({ id: gRuns.id })
+                .from(gRuns)
+                .where(and(eq(gRuns.status, "completed"), gScanScope.length === 1 ? gScanScope[0] : or(...gScanScope)))
+                .limit(1);
+              gScanDone = gsr != null;
+            }
+
+            // 4) Idempotency — skip if this customer already has a delivered SOW
+            //    (the whole flow finished; SOW is always last) OR one is currently
+            //    generating (a concurrent run holds the slot).
+            const [gExisting] = await db
+              .select({ status: insightsGeneratedDocumentsTable.status })
+              .from(insightsGeneratedDocumentsTable)
+              .where(and(
+                eq(insightsGeneratedDocumentsTable.customerId, gClientUserId),
+                eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+                inArray(insightsGeneratedDocumentsTable.status, ["delivered", "approved", "generating"]),
+              ))
+              .limit(1);
+            const gAlreadyDone = gExisting != null;
+
+            // 5) Resolve the client's project for generate_document (most recent).
+            let gProjectId = NaN;
+            const [gProj] = await db.select({ id: projectsTable.id })
+              .from(projectsTable)
+              .where(eq(projectsTable.clientUserId, gClientUserId))
+              .orderBy(desc(projectsTable.id))
+              .limit(1);
+            if (gProj?.id != null) gProjectId = gProj.id;
+
+            // Client display identity for the final presentation (best-effort).
+            const [gUserRow] = await db
+              .select({ name: usersTable.name, email: usersTable.email, company: usersTable.company })
+              .from(usersTable).where(eq(usersTable.id, gClientUserId)).limit(1);
+
+            const gIsAssessment = gAssess != null;
+            const gLoggedIn = gLogin != null;
+            const gEligible = gIsAssessment && gLoggedIn && gScanDone && !gAlreadyDone;
+            const gReason = !gIsAssessment ? "not an assessment-tier order"
+              : !gLoggedIn ? "customer has not logged in yet — waiting for first login"
+              : !gScanDone ? "scan not completed yet — waiting for diagnostics.run_completed"
+              : gAlreadyDone ? "documents already generated (or generating) — idempotent skip"
+              : "eligible";
+
+            output = {
+              eligible: gEligible,
+              reason: gReason,
+              clientUserId: gClientUserId,
+              projectId: !isNaN(gProjectId) ? gProjectId : null,
+              serviceId: gAssess?.serviceId ?? null,
+              customerId: !isNaN(gCustomerId) ? gCustomerId : null,
+              tenantId: gTenantId,
+              clientName: gUserRow?.company ?? gUserRow?.name ?? "Valued Client",
+              clientEmail: gUserRow?.email ?? "",
+            };
+            log.info({ runId, clientUserId: gClientUserId, eligible: gEligible, reason: gReason },
+              "assessment_doc_gate evaluated");
           }
         } else if (actionType === "sql_query") {
           // Execute a SQL statement and spread first-row fields into the step output.
@@ -5388,6 +5566,56 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               : { found: false, objectType: "project", fieldName: foField, fieldValue: foValue };
             break;
           }
+          case "service": {
+            // Resolve a sellable service and expose its associated-documents mapping
+            // (servicesTable.associatedDocuments) to a document-generation workflow.
+            // Supported fieldNames:
+            //   - "id" (default): services.id
+            //   - "packageKey": a service references a monitoring package only inside
+            //     type_attributes->>'packageKey' (many-to-one, no FK) — first match wins.
+            let foSvcRow: typeof servicesTable.$inferSelect | undefined;
+            if (foField === "packageKey") {
+              const foSvcRows = await db
+                .select()
+                .from(servicesTable)
+                .where(sql`${servicesTable.typeAttributes}->>'packageKey' = ${foValue}`)
+                .limit(1);
+              foSvcRow = foSvcRows[0];
+            } else {
+              const foSvcId = parseInt(foValue, 10);
+              if (isNaN(foSvcId)) {
+                output = { found: false, objectType: "service", reason: "id fieldValue must be a number" };
+                break;
+              }
+              const foSvcRows = await db.select().from(servicesTable).where(eq(servicesTable.id, foSvcId)).limit(1);
+              foSvcRow = foSvcRows[0];
+            }
+            if (!foSvcRow) {
+              output = { found: false, objectType: "service", fieldName: foField, fieldValue: foValue };
+              break;
+            }
+            // Split the associated docs for the generation workflow:
+            //   documentsToGenerate = all non-SOW docs. The consolidated_sow is always
+            //   generated separately (after these, so it grounds against them) and is
+            //   never iterated here.
+            const foSvcDocs = Array.isArray(foSvcRow.associatedDocuments) ? foSvcRow.associatedDocuments : [];
+            const foIsSow = (dt: string) => dt === "sow" || dt === "consolidated_sow" || dt === "scoped_sow";
+            const foDocsToGenerate = foSvcDocs.filter(
+              d => d && typeof d.docType === "string" && !foIsSow(d.docType),
+            );
+            output = {
+              found: true,
+              objectType: "service",
+              objectId: foSvcRow.id,
+              serviceId: foSvcRow.id,
+              serviceName: foSvcRow.name,
+              deliveryType: foSvcRow.deliveryType ?? null,
+              associatedDocuments: foSvcDocs,
+              documentsToGenerate: foDocsToGenerate,
+              documentCount: foDocsToGenerate.length,
+            };
+            break;
+          }
           case "article": {
             const rows = await db.select().from(articlesTable).where(
               foField === "id"   ? eq(articlesTable.id, parseInt(foValue, 10)) :
@@ -7620,6 +7848,19 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           });
         }
 
+        // Also broadcast keyed on the workflow RUN ID — the only stable handle for
+        // event-fired workflows whose presentation/project ids may not exist yet
+        // (e.g. the Assessment Document Generation workflow). Additive and harmless
+        // for every other workflow: with no run-scoped subscribers it is a no-op.
+        if (runId != null) {
+          broadcastWorkflowRunProgress(String(runId), {
+            message: progressMsg,
+            nodeId: node.id,
+            ...(typeof meta.step === "number" ? { step: meta.step } : {}),
+            ...(typeof meta.total === "number" ? { total: meta.total } : {}),
+          });
+        }
+
         output = {};
         break;
       }
@@ -8585,6 +8826,9 @@ async function executeWorkflowRunInner(
             errorMessage: (output.error as string) ?? `Node ${nodeId} failed`,
             branchPath: branchPath as unknown as string[],
           }).where(eq(wfRunsTable.id, runId));
+          // Run-scoped SSE error — lets a subscribed browser (e.g. the Assessment
+          // wizard) react instantly to any hard failure. Additive/no-op elsewhere.
+          if (runId != null) broadcastWorkflowRunError(String(runId), (output.error as string) ?? `Step failed: ${nodeId}`);
           log.warn({ runId, nodeId }, "wf-executor: node error, no handler — run failed");
           return;
         }
@@ -8738,6 +8982,7 @@ async function executeWorkflowRunInner(
               status: "failed", finishedAt: new Date(), errorMessage: errMsg,
               branchPath: branchPath as unknown as string[],
             }).where(eq(wfRunsTable.id, runId));
+            if (runId != null) broadcastWorkflowRunError(String(runId), errMsg);
             log.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
               "wf-executor: foreach — node error in loop body, no handler — run failed");
             return;
@@ -9290,6 +9535,7 @@ async function executeWorkflowRunInner(
       broadcastPresentationPhaseGenError(presId, errMsg);
     }
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+    if (runId != null) broadcastWorkflowRunError(String(runId), errMsg);
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
     log.warn({ runId, err }, "wf-executor: run failed");
   }

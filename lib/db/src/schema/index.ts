@@ -240,7 +240,29 @@ export const servicesTable = pgTable("services", {
   // subscription tier capabilities, document product tiers, etc.) live here.
   // Shape is validated by productTypeConfig.ts at import/export time.
   typeAttributes: jsonb("type_attributes").$type<Record<string, unknown>>(),
+
+  // ── Associated documents ───────────────────────────────────────────────────
+  // Structured mapping of which engagement documents this service's automated
+  // document-generation workflow should produce. Distinct from the marketing
+  // `deliverables` string[] above — this drives real generation. Each entry:
+  //   - docType: matches the document-generation docType taxonomy
+  //     (see REPORT_DOC_TYPE_LABELS / CONSULTING_TYPE_LABELS in document-generator.ts)
+  //   - category: "report" | "consulting" — selects the generator path
+  //   - title:   human title for the generated doc + presentation deliverable row
+  //   - customerVisible: when false, the doc is generated internal-only (it grounds
+  //     the SOW's accuracy) and is EXCLUDED from the customer-facing presentation.
+  // The consolidated_sow is always generated separately (after these) and is always
+  // customer-visible — it need not be listed here.
+  associatedDocuments: jsonb("associated_documents").$type<ServiceAssociatedDocument[]>(),
 });
+
+/** One entry in servicesTable.associatedDocuments — see column comment. */
+export interface ServiceAssociatedDocument {
+  docType: string;
+  category: "report" | "consulting";
+  title: string;
+  customerVisible: boolean;
+}
 
 export type InsertService = typeof servicesTable.$inferInsert;
 export type Service = typeof servicesTable.$inferSelect;

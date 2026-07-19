@@ -188,6 +188,42 @@ export function clearDiagnosticsRunSSEState(runId: string): void {
   clearHubReplayState("engine.monitor", runId);
 }
 
+// ── Workflow Run progress SSE (late-join replay) ── channel "workflow.run-progress", scope = workflow run ID ──
+// Mirrors the diagnostics run stream exactly, but keyed on the WORKFLOW run ID
+// (wf_runs.id, stringified) — the only stable handle available from the very
+// first node of an event-fired workflow. Used by the Assessment Document
+// Generation workflow so the customer sees live step/total progress while
+// documents generate, before any client_presentations row exists. Register
+// replays the last cached event on connect (progress fires ms after the run
+// starts, usually before the browser subscribes). Completion/failure remain
+// authoritatively detected via status polling — these events are a live-UX
+// enhancement layered on top, never the source of truth.
+
+export function registerWorkflowRunSSEClient(runId: string, res: Response, onClose: () => void): void {
+  registerHubClient("workflow.run-progress", runId, res, onClose, true);
+}
+
+export function broadcastWorkflowRunProgress(runId: string, data: {
+  message: string;
+  step?: number;
+  total?: number;
+  nodeId?: string;
+}): void {
+  broadcastToHubWithReplay("workflow.run-progress", runId, { type: "workflow_run_progress", ...data });
+}
+
+export function broadcastWorkflowRunComplete(runId: string, data: Record<string, unknown>): void {
+  broadcastToHubWithReplay("workflow.run-progress", runId, { type: "workflow_run_complete", ...data });
+}
+
+export function broadcastWorkflowRunError(runId: string, message: string): void {
+  broadcastToHubWithReplay("workflow.run-progress", runId, { type: "workflow_run_error", message });
+}
+
+export function clearWorkflowRunSSEState(runId: string): void {
+  clearHubReplayState("workflow.run-progress", runId);
+}
+
 // ── Offer pipeline SSE ── channel "engine.offer" ───────────────────────────────
 // Two sub-channels share the taxonomy channel but MUST stay isolated: mspId and
 // customerId are both serials starting at 1, so a raw shared numeric scope would

@@ -142,7 +142,12 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   {
     nodeType: "find_object",
     isAIDependent: false,
-    description: "Looks up a record (lead, client, project, etc.) by id or field",
+    description: "Looks up a record (lead, client, project, service, etc.) by id or field",
+  },
+  {
+    nodeType: "assessment_doc_gate",
+    isAIDependent: false,
+    description: "Two-sided wait gate: resolves eligibility (assessment-tier + scan-completed + logged-in, idempotent) for Assessment document generation",
   },
   {
     nodeType: "run_workflow",

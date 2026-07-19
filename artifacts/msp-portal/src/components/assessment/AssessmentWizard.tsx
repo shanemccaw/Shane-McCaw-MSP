@@ -47,6 +47,7 @@ import {
   Radar,
   ScrollText,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 
 // ── Status payload (mirrors GET /api/portal/assessment/status) ────────────────
@@ -78,6 +79,10 @@ interface AssessmentStatus {
     ready: number;
     failed: number;
     allReady: boolean;
+    // Live doc-generation workflow run: run ID for the progress SSE stream, and
+    // its status as the reliable terminal signal (failed/cancelled → failure UI).
+    workflowRunId: number | null;
+    workflowStatus: string | null;
   };
   mfa: { enrolled: boolean };
   // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
@@ -89,6 +94,12 @@ type DiagnosticsSSEEvent =
   | { type: "diagnostics_progress"; checkKey: string; checkLabel: string; status: string; index: number; total: number }
   | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; findings: number }
   | { type: "diagnostics_error"; message: string };
+
+// Live document-generation workflow run SSE events (run-ID-scoped stream).
+type DocWorkflowSSEEvent =
+  | { type: "workflow_run_progress"; message: string; step?: number; total?: number; nodeId?: string }
+  | { type: "workflow_run_complete"; presentationId?: number | string }
+  | { type: "workflow_run_error"; message: string };
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -123,6 +134,7 @@ export function AssessmentWizard() {
   const [mfaJustEnrolled, setMfaJustEnrolled] = useState(false);
   const [selected, setSelected] = useState<number>(1); // default to the scan step
   const [scanProgress, setScanProgress] = useState<{ index: number; total: number; label: string } | null>(null);
+  const [docProgress, setDocProgress] = useState<{ message: string; step?: number; total?: number } | null>(null);
 
   const prevCurrentRef = useRef<number | null>(null);
   const provisionFiredRef = useRef(false);
@@ -182,6 +194,15 @@ export function AssessmentWizard() {
     ),
   );
 
+  // Document generation failed if the workflow run terminated unsuccessfully or a
+  // document row is marked failed. Poll-derived (reliable) — the SSE stream only
+  // makes it feel instant. A failed run must never leave the wizard spinning.
+  const reportsFailed =
+    !reportsComplete &&
+    ((status?.documents.failed ?? 0) > 0 ||
+      status?.documents.workflowStatus === "failed" ||
+      status?.documents.workflowStatus === "cancelled");
+
   // The first incomplete, unlocked step — the flow's "current" position.
   const currentIndex = !scanComplete ? 1 : !reportsComplete ? 2 : 3;
 
@@ -223,6 +244,40 @@ export function AssessmentWizard() {
       setScanProgress(null);
     };
   }, [scanActive, scanRunId, customerId, accessToken, loadStatus]);
+
+  // ── Live document-generation progress via the workflow run-ID SSE stream ────
+  // Keyed on the workflow run ID (the only stable handle before the presentation
+  // exists). Live progress only — completion/failure are authoritatively detected
+  // by the status poll (workflowStatus / allReady / failed), so a dropped stream
+  // never strands the wizard. Subscribes only while docs are still generating.
+  const docWorkflowRunId = status?.documents.workflowRunId ?? null;
+  const docGenActive = docWorkflowRunId != null && !reportsComplete && !reportsFailed;
+  useEffect(() => {
+    if (!docGenActive || docWorkflowRunId == null || !accessToken) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const es = new EventSource(
+      `${base}/api/portal/assessment/doc-workflow/${docWorkflowRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+    );
+    es.onmessage = (event) => {
+      const parsed = JSON.parse(event.data) as DocWorkflowSSEEvent;
+      if (parsed.type === "workflow_run_progress") {
+        setDocProgress({ message: parsed.message, step: parsed.step, total: parsed.total });
+      } else if (parsed.type === "workflow_run_complete") {
+        es.close();
+        setDocProgress(null);
+        setTimeout(() => void loadStatus(), 600);
+      } else if (parsed.type === "workflow_run_error") {
+        es.close();
+        setDocProgress(null);
+        setTimeout(() => void loadStatus(), 600);
+      }
+    };
+    es.onerror = () => es.close();
+    return () => {
+      es.close();
+      setDocProgress(null);
+    };
+  }, [docGenActive, docWorkflowRunId, accessToken, loadStatus]);
 
   // ── Mandatory MFA gate ─────────────────────────────────────────────────────
   // Block the entire flow until the customer enrolls a portal-login second factor.
@@ -326,8 +381,10 @@ export function AssessmentWizard() {
           stepKey={STEPS[selected].key}
           status={status}
           scanProgress={scanProgress}
+          docProgress={docProgress}
           scanComplete={scanComplete}
           reportsComplete={reportsComplete}
+          reportsFailed={reportsFailed}
           sowReady={sowReady}
           fetchWithAuth={fetchWithAuth}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
@@ -377,8 +434,10 @@ function StepPanel({
   stepKey,
   status,
   scanProgress,
+  docProgress,
   scanComplete,
   reportsComplete,
+  reportsFailed,
   sowReady,
   fetchWithAuth,
   onGoToReview,
@@ -390,8 +449,10 @@ function StepPanel({
   stepKey: StepKey;
   status: AssessmentStatus | null;
   scanProgress: { index: number; total: number; label: string } | null;
+  docProgress: { message: string; step?: number; total?: number } | null;
   scanComplete: boolean;
   reportsComplete: boolean;
+  reportsFailed: boolean;
   sowReady: boolean;
   fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
   onGoToReview: () => void;
@@ -498,15 +559,48 @@ function StepPanel({
         );
       }
       if (reportsComplete) {
+        const readyCount = status.documents.ready;
         return (
-          <PanelShell icon={FileText} tone="emerald" title="Your reports are ready">
+          <PanelShell icon={FileText} tone="emerald" title="Your assessment is ready">
             <p className="text-sm text-muted-foreground">
-              We've finished generating your assessment reports. Head to{" "}
-              <span className="font-medium text-foreground">Review findings</span> to read them.
+              We've finished generating your assessment{" "}
+              {readyCount > 0 ? (
+                <>
+                  — <span className="font-medium text-foreground">{readyCount} document{readyCount === 1 ? "" : "s"}</span>{" "}
+                  including your tailored Statement of Work.
+                </>
+              ) : (
+                "documents, including your tailored Statement of Work."
+              )}{" "}
+              Review the findings that matter most, then tailor your scope and choose a plan.
             </p>
-            <Button className="mt-5" onClick={onGoToReview}>
-              Review findings <ChevronRight className="ml-1 size-4" />
-            </Button>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button onClick={onGoToReview}>
+                Review findings <ChevronRight className="ml-1 size-4" />
+              </Button>
+              {sowReady && (
+                <Button variant="outline" onClick={onGoToSow}>
+                  View statement of work
+                </Button>
+              )}
+            </div>
+          </PanelShell>
+        );
+      }
+      // Honest failure screen — never leave the customer on a perpetual spinner.
+      if (reportsFailed) {
+        return (
+          <PanelShell icon={AlertTriangle} tone="muted" title="We hit a snag generating your reports">
+            <p className="text-sm text-muted-foreground">
+              Something went wrong while preparing your assessment documents, and we couldn't
+              finish them automatically. This is on us — nothing you did caused it, and your
+              scan data is safe.
+            </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Our team has been notified automatically and will get your reports sorted. This
+              page keeps checking, so you can leave it open — it'll update the moment your
+              documents are ready.
+            </p>
           </PanelShell>
         );
       }
@@ -518,10 +612,18 @@ function StepPanel({
           </p>
           <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            {status.documents.generating > 0
-              ? `Generating ${status.documents.generating} report${status.documents.generating === 1 ? "" : "s"}…`
-              : "Preparing your reports…"}
+            {docProgress?.message
+              ? docProgress.message
+              : status.documents.generating > 0
+                ? `Generating ${status.documents.generating} report${status.documents.generating === 1 ? "" : "s"}…`
+                : "Preparing your reports…"}
           </div>
+          {docProgress?.total != null && docProgress.total > 0 && (
+            <Progress
+              className="mt-4"
+              value={Math.min(100, Math.round(((docProgress.step ?? 0) / docProgress.total) * 100))}
+            />
+          )}
         </PanelShell>
       );
     }

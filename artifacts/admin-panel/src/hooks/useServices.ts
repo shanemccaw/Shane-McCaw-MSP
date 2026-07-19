@@ -22,6 +22,7 @@ export interface ServiceRow {
   description: string | null;
   category: string | null;
   deliverables: string[] | null;
+  associatedDocuments: { docType: string; category: "report" | "consulting"; title: string; customerVisible: boolean }[] | null;
   price: string | null;
   basePrice: string | null;
   maxPrice: string | null;

@@ -32,7 +32,6 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
-import { onDiagnosticsRunCompleted } from "./assessment-doc-trigger";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -703,6 +702,15 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
     log.info({ runId, finalStatus, checksTotal, checksOk, checksError, findingsCount }, "diagnostics-runner: run completed");
 
+    // Diagnostics-completion event. This is the diagnostics/scan side of the
+    // Assessment document-generation "wait for both" gate: the seeded workflow
+    // "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW"
+    // triggers on this event and re-checks (via its assessment_doc_gate node)
+    // whether the customer has also logged in before generating. Paid monitoring
+    // subs are unaffected — the gate no-ops for non-assessment orders. The sibling
+    // sales-offer workflow also listens here (independent fan-out). No direct
+    // function call here anymore — the old hidden assessment-doc-trigger path is
+    // retired in favor of this visible workflow.
     await emitWorkflowEvent("diagnostics.run_completed", {
       runId,
       customerId,
@@ -712,12 +720,6 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       findingsCount,
       finalStatus,
     });
-
-    // Assessment/Free-tier document-generation trigger (telemetry-ready side of the
-    // two-sided "wait for both" gate). No-op unless the customer's order is
-    // assessment-tier AND they've already logged in — paid monitoring subs are
-    // unaffected. Fire-and-forget: must never delay or fail the diagnostics result.
-    void onDiagnosticsRunCompleted({ customerId, tenantId: resolvedTenantId, finalStatus });
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, findingsCount, documentId };
 

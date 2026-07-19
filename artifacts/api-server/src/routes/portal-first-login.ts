@@ -14,7 +14,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAuth } from "../middlewares/requireAuth";
 import { runFirstLoginProvisioning } from "../lib/first-login-provisioning";
-import { onFirstLoginComplete } from "../lib/assessment-doc-trigger";
+import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.provisioning" });
@@ -47,12 +47,14 @@ router.post(
     const displayName = user.name ?? user.email ?? `Client ${user.id}`;
     void runFirstLoginProvisioning({ userId: user.id, displayName });
 
-    // First-login side of the Assessment/Free document-generation trigger. This
-    // endpoint firing IS the customer's first-login event, so onFirstLoginComplete
-    // assumes the login condition met and fires doc generation iff the order is
-    // assessment-tier AND the scan has already completed. No-op for everyone else.
-    // Fire-and-forget and self-guarded — never blocks the 202 below.
-    void onFirstLoginComplete(user.id);
+    // First-login side of the Assessment/Free document-generation "wait for both"
+    // gate. This endpoint firing IS the customer's first-login event. Rather than
+    // calling document generation directly (the retired assessment-doc-trigger
+    // path), we emit a visible workflow event: the seeded "Assessment Document
+    // Generation" workflow triggers on it and its assessment_doc_gate node
+    // re-checks whether the scan has already completed before generating. No-op
+    // for non-assessment customers. Fire-and-forget — never blocks the 202 below.
+    void emitWorkflowEvent("portal.first_login", { userId: user.id });
 
     log.info({ userId: user.id }, "first-login provisioning requested");
 

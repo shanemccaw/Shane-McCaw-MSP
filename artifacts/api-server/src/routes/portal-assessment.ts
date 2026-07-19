@@ -49,9 +49,22 @@ import {
   usersTable,
   couponsTable,
   assessmentSowAgreementsTable,
+  wfRunsTable,
+  wfDefinitionsTable,
 } from "@workspace/db";
+
+/**
+ * Name of the seeded Assessment document-generation workflow (see
+ * seed-system-workflows.ts). Used to look up the customer's current doc-gen run
+ * so the wizard can subscribe to its run-ID progress stream and detect
+ * completion/failure via polling (the reliable source of truth).
+ */
+const ASSESSMENT_DOC_WORKFLOW_NAME =
+  "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
 import { eq, ne, and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
+import jwt from "jsonwebtoken";
+import { registerWorkflowRunSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
 import { extractAndStoreOmgCards, type OmgCard } from "../lib/omg-card-extractor";
 import { runDiagnostics } from "../lib/diagnostics-runner";
@@ -142,6 +155,27 @@ router.get(
       ).length;
       const failedCount = documents.filter((d) => d.status === "failed").length;
 
+      // ── Doc-generation workflow run (for live progress + terminal state) ──
+      // Match the seeded workflow's most recent run for this customer via the
+      // trigger payload: diagnostics.run_completed carries customerId (msp_customers.id),
+      // portal.first_login carries userId (users.id). The run ID lets the wizard
+      // subscribe to the run-scoped SSE stream (client_presentations doesn't exist
+      // until the very end, so the run ID is the only stable early handle). The run
+      // status is the reliable, poll-based terminal signal (failed/cancelled →
+      // failure screen; completed + allReady → success).
+      const [docWfRun] = await db
+        .select({ id: wfRunsTable.id, status: wfRunsTable.status })
+        .from(wfRunsTable)
+        .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfRunsTable.definitionId))
+        .where(
+          and(
+            eq(wfDefinitionsTable.name, ASSESSMENT_DOC_WORKFLOW_NAME),
+            sql`(${wfRunsTable.payload}->>'customerId' = ${String(customerId)} OR ${wfRunsTable.payload}->>'userId' = ${String(userId)} OR ${wfRunsTable.payload}->>'clientUserId' = ${String(userId)})`,
+          ),
+        )
+        .orderBy(desc(wfRunsTable.id))
+        .limit(1);
+
       // ── MFA enrollment state (users.id space) ────────────────────────────
       // Only the two customer-offered methods count toward the gate: Authenticator
       // (TOTP) and Passkey. SMS is intentionally excluded (no SMS vendor is wired
@@ -200,9 +234,13 @@ router.get(
           ready: readyCount,
           failed: failedCount,
           // "Reports are done" = at least one finished document and nothing still
-          // generating. Zero documents means generation hasn't started yet (its
-          // trigger is a later task), so the wizard stays in the wait state.
+          // generating. Zero documents means generation hasn't started yet, so the
+          // wizard stays in the wait state.
           allReady: documents.length > 0 && generatingCount === 0 && readyCount > 0,
+          // Live doc-generation workflow run — run ID to subscribe to the SSE
+          // progress stream, and its status as the reliable terminal signal.
+          workflowRunId: docWfRun?.id ?? null,
+          workflowStatus: docWfRun?.status ?? null,
         },
         mfa: {
           enrolled: mfaEnrolled,
@@ -213,6 +251,79 @@ router.get(
     } catch (err) {
       log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
       res.status(500).json({ error: "Failed to load assessment status" });
+    }
+  },
+);
+
+// ── Assessment document-generation live progress SSE ───────────────────────────
+//
+//   GET /api/portal/assessment/doc-workflow/:runId/sse?jwt=<accessToken>
+//
+// Run-ID-scoped Server-Sent Events for the seeded Assessment Document Generation
+// workflow. Keyed on the WORKFLOW run ID (wf_runs.id) — the only stable handle
+// from the very first node, since client_presentations doesn't exist until the
+// end. Mirrors the diagnostics-run SSE pattern exactly (query-JWT auth because
+// EventSource can't set headers, 25s heartbeat, replay-on-connect from the hub).
+// Emits { type: "workflow_run_progress" | "workflow_run_complete" | "workflow_run_error", ... }.
+// A customer may subscribe only to a run whose trigger payload references their
+// own customerId/userId. Completion/failure remain authoritatively detected via
+// the status endpoint's workflowStatus; this stream is a live-UX enhancement.
+router.get(
+  "/portal/assessment/doc-workflow/:runId/sse",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const runIdNum = parseInt(String(req.params["runId"] ?? ""), 10);
+      if (isNaN(runIdNum)) { res.status(400).json({ error: "Invalid run id" }); return; }
+
+      // Authenticate via query JWT (EventSource cannot set an Authorization header).
+      const token = String((req.query as Record<string, unknown>).jwt ?? "");
+      if (!token) { res.status(401).json({ error: "JWT required" }); return; }
+      const jwtSecret = process.env.JWT_SECRET ?? "dev-secret";
+      let decoded: Record<string, unknown>;
+      try {
+        decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+      } catch {
+        res.status(401).json({ error: "Invalid or expired JWT" }); return;
+      }
+      const tokenUserId = decoded.id as number | undefined;
+      const tokenCustomerId = decoded.customerId as number | undefined;
+      if (tokenUserId == null && tokenCustomerId == null) {
+        res.status(403).json({ error: "No customer identity on token" }); return;
+      }
+
+      // Ownership: the run must be an Assessment doc-gen run whose trigger payload
+      // references this customer/user. Prevents cross-tenant subscription.
+      const [ownedRun] = await db
+        .select({ id: wfRunsTable.id })
+        .from(wfRunsTable)
+        .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfRunsTable.definitionId))
+        .where(
+          and(
+            eq(wfRunsTable.id, runIdNum),
+            eq(wfDefinitionsTable.name, ASSESSMENT_DOC_WORKFLOW_NAME),
+            sql`(${wfRunsTable.payload}->>'customerId' = ${String(tokenCustomerId ?? "")} OR ${wfRunsTable.payload}->>'userId' = ${String(tokenUserId ?? "")} OR ${wfRunsTable.payload}->>'clientUserId' = ${String(tokenUserId ?? "")})`,
+          ),
+        )
+        .limit(1);
+      if (!ownedRun) { res.status(404).json({ error: "Run not found" }); return; }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+
+      registerWorkflowRunSSEClient(String(runIdNum), res, () => {
+        log.info({ runId: runIdNum }, "assessment doc-workflow SSE client disconnected");
+      });
+
+      const heartbeat = setInterval(() => {
+        try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
+      }, 25_000);
+      res.on("close", () => clearInterval(heartbeat));
+    } catch (err) {
+      log.error({ err }, "GET /portal/assessment/doc-workflow/:runId/sse error");
+      if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
     }
   },
 );

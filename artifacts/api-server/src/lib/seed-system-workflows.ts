@@ -27,6 +27,7 @@ interface SystemWorkflowSeed {
   /** Multiple event names — inserts one trigger row per event name. Takes precedence over eventName when provided. */
   eventNames?: string[];
   triggerEnabled?: boolean;
+  allowManualTrigger?: boolean;
   graph: {
     nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
     edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
@@ -1854,6 +1855,7 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
     description: "Runs nightly at 04:00 UTC. Compacts tenant_engine_snapshots rows older than 90 days into engine_score_daily_rollup (one row per customer/engine/day, preserving the day's final score and every distinct signal that changed that day), then deletes only the original rows already confirmed present in the rollup \u2014 never deletes anything that wasn't safely preserved first.",
     triggerType: "schedule",
     cron: "0 4 * * *",
+    allowManualTrigger: false,
     graph: {
       nodes: [
         { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 04:00" } },
@@ -1971,6 +1973,333 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Assessment Document Generation — Service-Mapped, Sequenced SOW ─────────
+  {
+    name: "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW",
+    description:
+      "Two-sided 'wait for both' gate for Assessment/Free-tier document generation. " +
+      "Fires on diagnostics.run_completed OR portal.first_login; the shared assessment_doc_gate " +
+      "node re-checks ALL conditions against live DB (assessment-tier + scan-completed + logged-in) " +
+      "plus idempotency, so whichever condition becomes true second is the run that proceeds — and no " +
+      "AI credit is ever spent on a lead who never logs in. On eligibility it resolves the service's " +
+      "associated documents, generates each sequentially (retry-on-failure, live run-ID progress), then " +
+      "generates the consolidated SOW AFTER the rest exist (so it grounds against them), then builds the " +
+      "customer presentation from the customer-visible documents + the SOW. Emits assessment.docs.completed " +
+      "on success and assessment.docs.failed on unrecoverable failure. Replaces the retired " +
+      "assessment-doc-trigger.ts / autoFireAllDocumentCards hidden mechanism.",
+    triggerType: "event",
+    eventNames: ["diagnostics.run_completed", "portal.first_login"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 400, y: 40 },
+          data: { nodeType: "start", label: "Scan completed OR first login" },
+        },
+        {
+          // Ported two-sided gate — resolves clientUserId/projectId/serviceId from
+          // either trigger payload and returns eligible=true only when
+          // assessment-tier + logged-in + scan-completed and not already generated.
+          id: "gate",
+          type: "action",
+          position: { x: 400, y: 170 },
+          data: {
+            nodeType: "action",
+            actionType: "assessment_doc_gate",
+            label: "Assessment Doc Gate (wait for both)",
+            userId: "{{userId}}",
+            customerId: "{{customerId}}",
+            tenantId: "{{tenantId}}",
+          },
+        },
+        {
+          id: "cond_eligible",
+          type: "condition",
+          position: { x: 400, y: 300 },
+          data: {
+            nodeType: "condition",
+            label: "Both conditions met?",
+            expression: "{{eligible}} == true",
+          },
+        },
+        {
+          // Deliverable 2 — resolve the assessment service + its associated documents.
+          // documentsToGenerate excludes any SOW entry (SOW is generated separately).
+          id: "find_service",
+          type: "find_object",
+          position: { x: 250, y: 430 },
+          data: {
+            nodeType: "find_object",
+            label: "Find Service + Associated Docs",
+            objectType: "service",
+            fieldName: "id",
+            fieldValueExpr: "{{serviceId}}",
+          },
+        },
+        {
+          id: "progress_start",
+          type: "report_progress",
+          position: { x: 250, y: 550 },
+          data: {
+            nodeType: "report_progress",
+            label: "Progress: Preparing",
+            message: "Preparing your assessment documents…",
+            step: "0",
+            total: "{{documentCount}}",
+          },
+        },
+        {
+          id: "loop",
+          type: "foreach",
+          position: { x: 250, y: 670 },
+          data: {
+            nodeType: "foreach",
+            label: "For Each Document",
+            arrayPath: "documentsToGenerate",
+            itemAlias: "doc",
+          },
+        },
+        {
+          id: "progress_doc",
+          type: "report_progress",
+          position: { x: 100, y: 800 },
+          data: {
+            nodeType: "report_progress",
+            label: "Progress: Generating doc",
+            message: "Generating {{doc.title}}…",
+            step: "{{itemIndex}}",
+            total: "{{itemsTotal}}",
+          },
+        },
+        {
+          // Generic per-document generation. docCategory/docType/title come from the
+          // service's associated-documents mapping (item alias "doc").
+          id: "gen_doc",
+          type: "action",
+          position: { x: 100, y: 920 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Generate {{doc.title}}",
+            docType: "{{doc.docType}}",
+            docCategory: "{{doc.category}}",
+            docTitle: "{{doc.title}}",
+            clientId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+          },
+        },
+        {
+          // Single retry (mirrors the SOW Generation retry idiom). No onError edge:
+          // a second failure is an unhandled body error → the whole run fails
+          // (status='failed' + run-ID SSE error), so no presentation is built.
+          id: "gen_doc_retry",
+          type: "action",
+          position: { x: 300, y: 920 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Retry: {{doc.title}}",
+            docType: "{{doc.docType}}",
+            docCategory: "{{doc.category}}",
+            docTitle: "{{doc.title}}",
+            clientId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+          },
+        },
+        {
+          id: "progress_sow",
+          type: "report_progress",
+          position: { x: 400, y: 800 },
+          data: {
+            nodeType: "report_progress",
+            label: "Progress: SOW",
+            message: "Generating your statement of work…",
+          },
+        },
+        {
+          // Consolidated SOW runs AFTER the foreach so generateConsolidatedSowDocument
+          // grounds against the now-existing documents for this customer.
+          id: "gen_sow",
+          type: "action",
+          position: { x: 400, y: 920 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            docCategory: "consulting",
+            clientId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+            title: "Statement of Work",
+          },
+        },
+        {
+          id: "refresh_profile",
+          type: "update_m365_profile",
+          position: { x: 650, y: 920 },
+          data: {
+            nodeType: "update_m365_profile",
+            label: "Refresh M365 Profile",
+            runbookName: "Update-M365-Profile",
+            clientId: "{{clientUserId}}",
+          },
+        },
+        {
+          id: "refresh_intel",
+          type: "update_intelligence_tables",
+          position: { x: 650, y: 1040 },
+          data: {
+            nodeType: "update_intelligence_tables",
+            label: "Refresh Intelligence Tables",
+            clientId: "{{clientUserId}}",
+          },
+        },
+        {
+          id: "retry_sow",
+          type: "action",
+          position: { x: 650, y: 1160 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Retry: Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            docCategory: "consulting",
+            clientId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+            title: "Statement of Work",
+          },
+        },
+        {
+          // Build the customer-facing deliverable list from the actually-delivered
+          // documents: customer-visible associated docs (per the service config) +
+          // the SOW. Internal-only docs (customerVisible=false) are excluded.
+          id: "build_doc_list",
+          type: "sql_query",
+          position: { x: 400, y: 1160 },
+          data: {
+            nodeType: "sql_query",
+            label: "Build Presentation Doc List",
+            query:
+              "SELECT COALESCE(json_agg(json_build_object('name', d.title) ORDER BY d.created_at), '[]'::json) AS \"docs\" " +
+              "FROM insights_generated_documents d " +
+              "WHERE d.customer_id = $1::int AND d.status = 'delivered' AND (" +
+              "  d.doc_type = 'consolidated_sow' OR d.doc_type = ANY(" +
+              "    SELECT jd->>'docType' FROM services s, jsonb_array_elements(COALESCE(s.associated_documents, '[]'::jsonb)) jd " +
+              "    WHERE s.id = $2::int AND (jd->>'customerVisible')::boolean = true" +
+              "  )" +
+              ")",
+            params: ["{{clientUserId}}", "{{serviceId}}"],
+          },
+        },
+        {
+          id: "progress_pres",
+          type: "report_progress",
+          position: { x: 400, y: 1280 },
+          data: {
+            nodeType: "report_progress",
+            label: "Progress: Presentation",
+            message: "Building your presentation…",
+          },
+        },
+        {
+          // Creates the client_presentations row fresh, at the very end, including
+          // only customer-visible documents + the SOW (from build_doc_list).
+          id: "build_pres",
+          type: "build_presentation",
+          position: { x: 400, y: 1400 },
+          data: {
+            nodeType: "build_presentation",
+            label: "Build Client Presentation",
+            clientName: "{{clientName}}",
+            clientEmail: "{{clientEmail}}",
+            projectTitle: "Your Microsoft 365 Assessment",
+            documents: "{{steps.build_doc_list.docs}}",
+          },
+        },
+        {
+          id: "success_emit",
+          type: "emit_event",
+          position: { x: 400, y: 1520 },
+          data: {
+            nodeType: "emit_event",
+            label: "Emit assessment.docs.completed",
+            eventType: "assessment.docs.completed",
+            extraPayload: JSON.stringify({
+              presentationId: "{{steps.build_pres.presentationId}}",
+              clientUserId: "{{clientUserId}}",
+              projectId: "{{projectId}}",
+              customerId: "{{customerId}}",
+            }),
+          },
+        },
+        {
+          id: "end_ok",
+          type: "end",
+          position: { x: 400, y: 1640 },
+          data: { nodeType: "end", label: "Documents Delivered" },
+        },
+        {
+          id: "fail_emit",
+          type: "emit_event",
+          position: { x: 750, y: 1400 },
+          data: {
+            nodeType: "emit_event",
+            label: "Emit assessment.docs.failed",
+            eventType: "assessment.docs.failed",
+            extraPayload: JSON.stringify({
+              reason: "SOW generation failed after retry",
+              clientUserId: "{{clientUserId}}",
+              projectId: "{{projectId}}",
+              customerId: "{{customerId}}",
+            }),
+          },
+        },
+        {
+          id: "end_fail",
+          type: "end",
+          position: { x: 750, y: 1520 },
+          data: { nodeType: "end", label: "Generation Failed" },
+        },
+        {
+          id: "end_skip",
+          type: "end",
+          position: { x: 600, y: 430 },
+          data: { nodeType: "end", label: "Not eligible yet — waiting for other condition" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "gate" },
+        { id: "e2", source: "gate", target: "cond_eligible" },
+        { id: "e3", source: "cond_eligible", target: "find_service", sourceHandle: "yes" },
+        { id: "e4", source: "cond_eligible", target: "end_skip", sourceHandle: "no" },
+        { id: "e5", source: "find_service", target: "progress_start" },
+        { id: "e6", source: "progress_start", target: "loop" },
+        // foreach body: progress → generate (+retry). No retry onError = fail-run.
+        { id: "e7", source: "loop", target: "progress_doc", sourceHandle: "body" },
+        { id: "e8", source: "progress_doc", target: "gen_doc" },
+        { id: "e9", source: "gen_doc", target: "gen_doc_retry", sourceHandle: "onError" },
+        // foreach done → sequenced SOW generation
+        { id: "e10", source: "loop", target: "progress_sow", sourceHandle: "done" },
+        { id: "e11", source: "progress_sow", target: "gen_sow" },
+        { id: "e12", source: "gen_sow", target: "build_doc_list" },
+        // SOW recovery + retry (mirrors SOW Generation workflow)
+        { id: "e13", source: "gen_sow", target: "refresh_profile", sourceHandle: "onError" },
+        { id: "e14", source: "refresh_profile", target: "refresh_intel" },
+        { id: "e15", source: "refresh_intel", target: "retry_sow" },
+        { id: "e16", source: "retry_sow", target: "build_doc_list" },
+        { id: "e17", source: "retry_sow", target: "fail_emit", sourceHandle: "onError" },
+        // presentation build + success
+        { id: "e18", source: "build_doc_list", target: "progress_pres" },
+        { id: "e19", source: "progress_pres", target: "build_pres" },
+        { id: "e20", source: "build_pres", target: "success_emit" },
+        { id: "e21", source: "success_emit", target: "end_ok" },
+        // failure terminal
+        { id: "e22", source: "fail_emit", target: "end_fail" },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
@@ -1990,15 +2319,16 @@ export async function seedSystemWorkflows(): Promise<void> {
 
     for (const seed of SYSTEM_WORKFLOWS) {
       // 1. Upsert definition (idempotent by name)
+      const metadataJson = JSON.stringify({ system: true, allowManualTrigger: seed.allowManualTrigger ?? true });
       const defResult = await pool.query<{ id: number }>(
         `INSERT INTO wf_definitions (name, description, concurrency_limit, metadata)
-         VALUES ($1, $2, 1, '{"system":true}'::jsonb)
+         VALUES ($1, $2, 1, $3::jsonb)
          ON CONFLICT (name) DO UPDATE
            SET description = EXCLUDED.description,
-               metadata    = COALESCE(wf_definitions.metadata, '{}'::jsonb) || '{"system":true}'::jsonb,
+               metadata    = COALESCE(wf_definitions.metadata, '{}'::jsonb) || $3::jsonb,
                updated_at  = NOW()
          RETURNING id`,
-        [seed.name, seed.description],
+        [seed.name, seed.description, metadataJson],
       );
       const defId = defResult.rows[0]?.id;
       if (!defId) continue;

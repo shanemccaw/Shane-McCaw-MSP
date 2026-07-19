@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable } from "@workspace/db";
+import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable, type ServiceAssociatedDocument } from "@workspace/db";
 import { eq, inArray, sql, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
@@ -40,6 +40,26 @@ function parseStringArray(v: unknown): string[] | null {
   if (!result.success || result.data == null) return null;
   const trimmed = result.data.map((s) => s.trim()).filter((s) => s.length > 0);
   return trimmed.length > 0 ? trimmed : null;
+}
+
+// Associated documents — structured mapping that drives the Assessment document-
+// generation workflow (docType + category select the generator path; customerVisible
+// controls presentation inclusion). Distinct from the marketing `deliverables` array.
+const associatedDocumentsSchema = z
+  .array(
+    z.object({
+      docType: z.string().trim().min(1).max(120),
+      category: z.enum(["report", "consulting"]),
+      title: z.string().trim().min(1).max(300),
+      customerVisible: z.boolean(),
+    }),
+  )
+  .nullish();
+
+function parseAssociatedDocuments(v: unknown): ServiceAssociatedDocument[] | null {
+  const result = associatedDocumentsSchema.safeParse(v);
+  if (!result.success || result.data == null) return null;
+  return result.data.length > 0 ? result.data : null;
 }
 
 const router: IRouter = Router();
@@ -92,7 +112,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       categoryPath, tags, customerAgreementTemplate, isFreeOffering,
       fulfillmentTypeKey, triggeringSignalKeys,
       serviceClass, deliveryType, fulfillmentType,
-      typeAttributes,
+      typeAttributes, associatedDocuments,
       priceCents, internalCostCents, annualPriceCents,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
@@ -157,6 +177,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         deliveryType: resolvedDeliveryType,
         ...(resolvedFulfillmentType !== undefined ? { fulfillmentType: resolvedFulfillmentType } : {}),
         typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
+        associatedDocuments: parseAssociatedDocuments(associatedDocuments),
         priceCents: priceCents != null ? Number(priceCents) : null,
         internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
         annualPriceCents: annualPriceCents != null ? Number(annualPriceCents) : null,
