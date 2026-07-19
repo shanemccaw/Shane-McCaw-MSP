@@ -22,7 +22,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable } from "./index";
+import { wfRunsTable, usersTable } from "./index";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -116,7 +116,7 @@ export type MspRole = typeof MSP_ROLES[number];
 
 export const mspUsersTable = pgTable("msp_users", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().unique(),
+  userId: integer("user_id").notNull().unique().references(() => usersTable.id, { onDelete: "restrict" }),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "restrict" }),
   mspRole: text("msp_role", { enum: MSP_ROLES }).notNull().default("Free"),
