@@ -74,6 +74,7 @@ import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
+import AssessmentShellPage from "@/pages/assessment-shell";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
 import ComingSoonPage from "@/pages/coming-soon";
@@ -200,8 +201,13 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function SlugInnerSwitch() {
   const { user, isLoading } = useAuth();
 
-  const defaultLanding =
-    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
+  const defaultLanding = isLoading
+    ? "/dashboard"
+    : user?.mspRole === "Assessment"
+      ? "/assessment"
+      : user?.mspRole === "CustomerUser"
+        ? "/customer-dashboard"
+        : "/dashboard";
 
   return (
     <Switch>
@@ -331,6 +337,11 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/customer-dashboard">
         <ProtectedRoute component={CustomerDashboardPage} />
+      </Route>
+      {/* Assessment-role landing shell (RBAC-foundation placeholder — real
+          assessment surfaces are later tasks). */}
+      <Route path="/assessment">
+        <ProtectedRoute component={AssessmentShellPage} />
       </Route>
       <Route path="/command-center">
         <ProtectedRoute component={CommandCenterPage} />
@@ -537,7 +548,12 @@ function FlatLoggedInRedirect() {
     if (resolvedSlug) {
       // Persist slug so next visit resolves instantly without needing the JWT.
       if (!storedSlug) storeSlug(resolvedSlug);
-      const landing = user?.mspRole === "CustomerUser" ? "customer-dashboard" : "dashboard";
+      const landing =
+        user?.mspRole === "Assessment"
+          ? "assessment"
+          : user?.mspRole === "CustomerUser"
+            ? "customer-dashboard"
+            : "dashboard";
       navigate(`/${resolvedSlug}/${landing}`, { replace: true });
       return;
     }

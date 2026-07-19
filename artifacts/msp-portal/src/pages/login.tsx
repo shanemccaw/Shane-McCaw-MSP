@@ -221,8 +221,13 @@ export default function LoginPage() {
   // If already authenticated, redirect to landing page.
   // In slug-scoped context navigate("/dashboard") auto-resolves to /portal/{slug}/dashboard.
   // In flat context it resolves to /portal/dashboard — acceptable fallback.
-  const defaultLanding =
-    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
+  const defaultLanding = isLoading
+    ? "/dashboard"
+    : user?.mspRole === "Assessment"
+      ? "/assessment"
+      : user?.mspRole === "CustomerUser"
+        ? "/customer-dashboard"
+        : "/dashboard";
 
   useEffect(() => {
     if (!isLoading && user) {
@@ -242,7 +247,11 @@ export default function LoginPage() {
       // Compute landing from the freshly-resolved user so CustomerUser
       // always goes to customer-dashboard, not dashboard (pre-login user is null).
       const resolvedLanding =
-        result.user?.mspRole === "CustomerUser" ? "/customer-dashboard" : "/dashboard";
+        result.user?.mspRole === "Assessment"
+          ? "/assessment"
+          : result.user?.mspRole === "CustomerUser"
+            ? "/customer-dashboard"
+            : "/dashboard";
 
       if (ctxSlug) {
         // Inside slug-scoped router — navigate() auto-prefixes the slug.

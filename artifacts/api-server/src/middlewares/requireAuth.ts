@@ -32,7 +32,12 @@ declare global {
 
 // ── MSP role hierarchy ─────────────────────────────────────────────────────────
 // Higher index = higher privilege. Used by requireRole() range checks.
+// "Assessment" and "Free" share the bottom tier (both below CustomerUser): every
+// requireRole() floor in the codebase is CustomerUser or higher, so both are
+// rejected identically. Assessment is placed at the absolute bottom so it can
+// never resolve to a higher privilege than Free under index comparison.
 const ROLE_ORDER: MspRole[] = [
+  "Assessment",
   "Free",
   "CustomerUser",
   "ServiceAccount",
@@ -197,7 +202,7 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
  *
  * - PlatformAdmin (`role === "admin"`)      → always.
  * - MSPAdmin / MSPOperator                  → iff the customer belongs to their MSP (DB IDOR check).
- * - CustomerUser / Free                     → iff it is their own customer (token claim).
+ * - CustomerUser / Free / Assessment        → iff it is their own customer (token claim).
  * - anything else                           → denied.
  *
  * The single source of truth for this rule. `requireCustomerScope` (which reads the
@@ -224,7 +229,7 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
     return Boolean(customer);
   }
 
-  if (effectiveRole === "CustomerUser" || effectiveRole === "Free") {
+  if (effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment") {
     return user.customerId === customerId;
   }
 

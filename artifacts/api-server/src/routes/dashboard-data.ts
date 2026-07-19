@@ -98,7 +98,7 @@ router.post(
 
     // ── Resolve scope ──
     const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-    const isCustomerUser = effectiveRole === "CustomerUser" || effectiveRole === "Free";
+    const isCustomerUser = effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment";
     const mspId = user.mspId;
 
     if (mspId == null) {

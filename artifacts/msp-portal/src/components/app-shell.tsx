@@ -692,6 +692,7 @@ const ROLE_COLORS: Record<MspRole, string> = {
   CustomerUser: "bg-muted text-muted-foreground",
   ServiceAccount: "bg-muted text-muted-foreground",
   Free: "bg-muted text-muted-foreground",
+  Assessment: "bg-muted text-muted-foreground",
 };
 
 // ── Sidebar nav item ──────────────────────────────────────────────────────────

@@ -106,8 +106,14 @@ export type InsertTenantEngineOverride = typeof tenantEngineOverridesTable.$infe
 // CustomerUser   — access to their own customer portal
 // ServiceAccount — API key / machine identity
 // Free           — gates to free-assessment results only; upgrade flips to CustomerUser
+// Assessment     — assessment-experience customer (free OR paid tier). Same
+//                  privilege floor as Free (below CustomerUser): may view their
+//                  own assessment results/SOW, but never tenant-wide dashboards,
+//                  engines, signals, workflows, or monitoring. New assessment
+//                  signups use this role; existing Free rows are left as-is and
+//                  treated identically everywhere Free is checked.
 
-export const MSP_ROLES = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free"] as const;
+export const MSP_ROLES = ["PlatformAdmin", "MSPAdmin", "MSPOperator", "CustomerUser", "ServiceAccount", "Free", "Assessment"] as const;
 export type MspRole = typeof MSP_ROLES[number];
 
 // ── MSP Users (extended profile rows — one per user who has an MSP role) ───────

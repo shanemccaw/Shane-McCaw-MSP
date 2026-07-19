@@ -101,7 +101,7 @@ async function resolveCallerScope(req: Request): Promise<ResolvedScope | { error
   const user = req.user!;
   const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
 
-  if (effectiveRole === "CustomerUser" || effectiveRole === "Free") {
+  if (effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment") {
     if (user.customerId == null) return { error: "No customer association on this session" };
     return { templateType: "customer_default", scopeType: "customer", scopeId: user.customerId };
   }

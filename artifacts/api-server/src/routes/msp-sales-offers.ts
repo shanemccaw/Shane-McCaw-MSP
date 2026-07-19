@@ -121,7 +121,7 @@ router.get("/msp/sales-offers/sse", (req: Request, res: Response): void => {
   }
 
   const effectiveMspRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
-  const ROLE_ORDER = ["Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+  const ROLE_ORDER = ["Assessment", "Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
   if (ROLE_ORDER.indexOf(effectiveMspRole ?? "") < ROLE_ORDER.indexOf("MSPOperator")) {
     res.status(403).json({ error: "Insufficient privileges" });
     return;

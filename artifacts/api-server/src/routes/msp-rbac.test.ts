@@ -84,6 +84,13 @@ before(async () => {
     res.json({ ok: true });
   });
 
+  // CustomerUser-or-above route — the floor that fences the Assessment/Free
+  // bottom tier out of customer-and-above functionality (dashboards, engines,
+  // signals, monitoring, mission control all sit behind requireRole("CustomerUser")).
+  app.get("/test/customer-floor", requireRole("CustomerUser"), (_req, res) => {
+    res.json({ ok: true });
+  });
+
   // Tenant-scoped MSP routes — represent the shared-engine surfaces:
   // Sales Offer, SLA, Scope Creep, Monitoring Package Engine, Live Monitor Engine
   const engineSurfaces = ["sales-offer", "sla", "scope-creep", "monitoring-package", "live-monitor"];
@@ -166,6 +173,44 @@ describe("requireRole() HTTP fence", () => {
   it("MSPAdmin can access MSPAdmin-required route", async () => {
     const token = makeToken({ id: 5, email: "msp@x.com", role: "client", mspRole: "MSPAdmin", mspId: 1 });
     assert.equal((await get("/test/msp-admin", token)).status, 200);
+  });
+});
+
+// ── 1b. Assessment role fence (RBAC-foundation acceptance) ────────────────────
+// Assessment shares the bottom tier with Free (both below CustomerUser). Every
+// requireRole() floor in the codebase is CustomerUser or higher, so an Assessment
+// session must be rejected from all of them, exactly as Free is — while remaining
+// self-scoped-equivalent to Free at assertCustomerAccess (its own customer only).
+
+describe("Assessment role fence", () => {
+  it("Assessment is blocked from CustomerUser-floored route (403)", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    assert.equal((await get("/test/customer-floor", token)).status, 403);
+  });
+
+  it("CustomerUser passes the CustomerUser-floored route (200) — control", async () => {
+    const token = makeToken({ id: 7, email: "cu@x.com", role: "client", mspRole: "CustomerUser", customerId: 20 });
+    assert.equal((await get("/test/customer-floor", token)).status, 200);
+  });
+
+  it("Assessment is blocked from MSPAdmin-required route (403)", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    assert.equal((await get("/test/msp-admin", token)).status, 403);
+  });
+
+  it("Assessment cannot access any MSP data (403)", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    assert.equal((await get("/test/msps/1/data", token)).status, 403);
+  });
+
+  it("Assessment (customerId=20) can access its OWN customer route (200) — Free-parity via assertCustomerAccess", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    assert.equal((await get("/test/customers/20/data", token)).status, 200);
+  });
+
+  it("Assessment (customerId=20) is blocked from a different customer (403)", async () => {
+    const token = makeToken({ id: 6, email: "assess@x.com", role: "client", mspRole: "Assessment", customerId: 20 });
+    assert.equal((await get("/test/customers/21/data", token)).status, 403);
   });
 });
 
