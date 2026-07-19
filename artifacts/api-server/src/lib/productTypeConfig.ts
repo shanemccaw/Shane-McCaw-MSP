@@ -209,7 +209,13 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     customerAgreementTemplate: null,
     workflowTemplateId: null,
     hoursPerMonth: null,
-    typeAttributes: {},
+    // packageKey names the monitoring_packages.key whose checks the fresh deep
+    // scan runs when a customer consents while ordering this assessment. It is
+    // read verbatim by consent.ts (services.type_attributes->>'packageKey') and
+    // by the seeded "Run Assessment" consent.granted workflow. Leave unset to
+    // fall back to the canonical baseline scan ("core:security-baseline");
+    // set it to run an assessment-specific package instead.
+    typeAttributes: { packageKey: "core:security-baseline" },
   },
   project: {
     serviceClass: "project",

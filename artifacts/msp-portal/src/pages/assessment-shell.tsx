@@ -1,11 +1,11 @@
 /**
  * assessment-shell.tsx
  *
- * Minimal landing shell for the Assessment role — the RBAC-foundation scaffold
- * (task 1 of 5). This is deliberately a placeholder: the real assessment
- * wizard / results / SOW / payment surfaces are later tasks and are NOT built
- * here. Its only job is to prove the Assessment-role landing route resolves and
- * to give an Assessment session a coherent, branded page to land on.
+ * Landing shell for the Assessment role. The self-contained "no left nav" chrome
+ * (top bar + account/profile menu + footer) was the task-1 RBAC-foundation
+ * scaffold; task 2 mounts the real Assessment wizard inside its body
+ * (<AssessmentWizard />) — the locked, sequential flow that carries a customer
+ * from "assessment ordered" through "reports finished generating".
  *
  * Layout mirrors the established "no left nav" pattern used for CustomerUser
  * (all wayfinding lives in a top bar with an account/profile menu), but is kept
@@ -25,7 +25,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Award, LogOut, Moon, ShieldCheck, Sparkles, Sun } from "lucide-react";
+import { Award, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
+import { AssessmentWizard } from "@/components/assessment/AssessmentWizard";
 
 function initials(name?: string | null, email?: string): string {
   if (name && name.trim()) {
@@ -134,19 +135,10 @@ export default function AssessmentShellPage() {
         </div>
       </header>
 
-      {/* Placeholder body — the real assessment experience is built in later tasks. */}
+      {/* The Assessment wizard — locked sequential flow (scan progress, report
+          generation wait state, then locked placeholders for later tasks). */}
       <main className="flex-1 overflow-y-auto min-h-0">
-        <div className="mx-auto flex max-w-2xl flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-          <div className="size-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Sparkles className="size-7 text-primary" />
-          </div>
-          <h1 className="text-2xl font-semibold text-foreground">Assessment Dashboard</h1>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Your assessment experience is being prepared. This is where your scan
-            progress, findings, reports, and statement of work will appear.
-          </p>
-          <Badge className="bg-primary/10 text-primary border-none">Coming Soon</Badge>
-        </div>
+        <AssessmentWizard />
       </main>
 
       {/* Credibility footer — matches the rest of the portal. */}

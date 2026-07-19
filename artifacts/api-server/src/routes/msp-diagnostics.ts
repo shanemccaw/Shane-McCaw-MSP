@@ -370,9 +370,12 @@ router.get(
       const isAdmin = decoded.role === "admin";
 
       if (!isAdmin) {
-        if (userRole === "CustomerUser") {
-          // A customer may stream progress only for runs on their own tenant
-          // (used by the dashboard Mission Control scan-progress strip).
+        if (userRole === "CustomerUser" || userRole === "Assessment") {
+          // A customer (full portal user or Assessment-role prospect) may stream
+          // progress only for runs on their own tenant. CustomerUser uses this
+          // for the Mission Control scan-progress strip; Assessment uses the same
+          // stream for the live deep-scan step in the assessment wizard. Both are
+          // scoped to their own customerId claim — no cross-tenant access.
           const tokenCustomerId = decoded.customerId as number | undefined;
           if (tokenCustomerId !== customerId) {
             res.status(403).json({ error: "Insufficient role" }); return;

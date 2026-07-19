@@ -388,15 +388,30 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
   // Uses dynamic import to avoid circular-dependency issues at module load time.
+  //
+  // packageKey: when the ordered product declares a monitoring package
+  // (services.type_attributes->>'packageKey'), run that. Otherwise fall through
+  // to runDiagnostics' own canonical default ("core:security-baseline") by
+  // passing undefined — do NOT pass a literal "default", which is not a real
+  // monitoring_packages.key and makes executeMonitoringPackage return
+  // runStatus:"no_checks" (an empty scan). This is the path that guarantees an
+  // Assessment order — whose product type carries no packageKey unless an admin
+  // sets one — still fires a real fresh deep scan. Every assessment order
+  // triggers a fresh scan; there is no skip-if-recent guard anywhere in this
+  // path, so prior scan data is never reused (idempotency is keyed per-run via
+  // a unique triggerId, so it only dedupes retries of the SAME run).
   void (async () => {
     try {
       const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
       await runDiagnostics({
         tenantId: tenant,
-        packageKey: resolvedPackageKey ?? "default",
+        packageKey: resolvedPackageKey ?? undefined,
         triggeredByUserId: undefined,
       });
-      log.info({ tenant }, "consent.granted: diagnostics run started");
+      log.info(
+        { tenant, packageKey: resolvedPackageKey ?? "core:security-baseline" },
+        "consent.granted: diagnostics run started",
+      );
     } catch (diagErr) {
       log.warn({ err: diagErr, tenant }, "consent.granted: diagnostics run failed (non-fatal)");
     }
