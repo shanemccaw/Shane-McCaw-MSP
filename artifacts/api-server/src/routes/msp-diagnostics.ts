@@ -16,6 +16,8 @@
  *   GET  /api/msp/customers/:customerId/diagnostics/runs/:runId/sse
  *     — SSE stream: per-check progress → complete/error events.
  *       Uses Bearer JWT in ?jwt= query param (EventSource can't send headers).
+ *       Also accepts a CustomerUser JWT when its customerId claim matches
+ *       :customerId (dashboard Mission Control live scan progress).
  *
  * Customer portal routes (require CustomerUser role):
  *   GET  /api/portal/diagnostics/latest
@@ -322,12 +324,21 @@ router.get(
       const isAdmin = decoded.role === "admin";
 
       if (!isAdmin) {
-        const allowedRoles = ["MSPOperator", "MSPAdmin", "PlatformAdmin"];
-        if (!userRole || !allowedRoles.includes(userRole)) {
-          res.status(403).json({ error: "Insufficient role" }); return;
-        }
-        if (userMspId) {
-          await assertCustomerBelongsToMsp(customerId, userMspId);
+        if (userRole === "CustomerUser") {
+          // A customer may stream progress only for runs on their own tenant
+          // (used by the dashboard Mission Control scan-progress strip).
+          const tokenCustomerId = decoded.customerId as number | undefined;
+          if (tokenCustomerId !== customerId) {
+            res.status(403).json({ error: "Insufficient role" }); return;
+          }
+        } else {
+          const allowedRoles = ["MSPOperator", "MSPAdmin", "PlatformAdmin"];
+          if (!userRole || !allowedRoles.includes(userRole)) {
+            res.status(403).json({ error: "Insufficient role" }); return;
+          }
+          if (userMspId) {
+            await assertCustomerBelongsToMsp(customerId, userMspId);
+          }
         }
       }
 

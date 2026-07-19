@@ -15,13 +15,18 @@
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { DashboardTabs } from "@/components/dashboard-view/DashboardView";
+import { MissionControl } from "@/components/mission-control/MissionControl";
 
 export default function CustomerDashboardPage() {
   const { user } = useAuth();
 
   return (
     <AppShell title="Dashboard">
-      <div className="p-6">
+      <div className="p-6 space-y-6">
+        {/* Page-level Mission Control content (hero / engine strip / findings
+            feed) — sits above the resolved dashboard(s); only customers with a
+            customer identity get it (MSP staff visiting this route don't). */}
+        {user?.customerId != null && <MissionControl />}
         <DashboardTabs scope={{ type: "customer", id: user?.customerId ?? 0 }} title="Dashboard" />
       </div>
     </AppShell>
