@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | Assessment Document Generation Workflow — Service-Mapped, Sequenced SOW |  |
 | 2026-07-19 | ✅ DONE | analytics event type taxonomy extension | a2fb86b0 |
 | 2026-07-19 | ✅ DONE | lead-offer-pricing-config schema table | 96e1b3d3 |
 | 2026-07-19 | ✅ DONE | Wire Real Dashboard Modules — Sharing, Device Health, Power Platform, Copilot — wired real customer_default widgets (Sharing/Data Exposure, Device Health, Copilot overshare) plus email security/threat trends via idempotent manual SQL (canvas_layout append, no DB access here). Power Platform wired as placeholder-quality only (appCount/flowCount) — real "Shadow IT" needs a new ownership/risk engine signal, flagged as follow-up, not fabricated. Workflow activity/automation logs confirmed a real gap (workflow.* metrics are msp-scope platform-operational, not customer-facing) — not wired. Also built AI Executive Summary tile (new dashboard_executive_summaries table + manual SQL, dashboard-executive-summary.ts reusing OMG-card AI conventions, 24h cache + manual refresh, GET /api/dashboard/executive-summary, ExecutiveSummaryCard on customer-dashboard.tsx). Needs manual SQL: 2026-07-19-dashboard-modules-widgets.sql, 2026-07-19-dashboard-executive-summaries.sql. | 336ae813 |
