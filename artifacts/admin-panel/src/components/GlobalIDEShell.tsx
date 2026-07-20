@@ -40,6 +40,7 @@ import { closeTab as engineCloseTab, openTab as engineOpenTab, type TabState } f
 import { PropertyPanelContext, type PropertySelection } from "@/components/shell/PropertyPanelContext";
 import PropertyPanel from "@/components/shell/PropertyPanel";
 import StatusBar, { type CampaignBadge } from "@/components/shell/StatusBar";
+import ViewAsSwitcher from "@/components/shell/ViewAsSwitcher";
 import ConsolePanel from "@/components/shell/ConsolePanel";
 import CmdKDialog from "@/components/shell/CmdKDialog";
 
@@ -1062,6 +1063,7 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
             onToggleMute={toggleMute}
             consoleOpen={consoleOpen}
             onToggleConsole={toggleConsole}
+            rightExtra={<ViewAsSwitcher />}
           />
         </div>
 

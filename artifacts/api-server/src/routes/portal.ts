@@ -7239,6 +7239,44 @@ router.post("/admin/msps/:mspId/impersonate", requireAdmin, async (req: Request,
   });
 });
 
+// PlatformAdmin: list real accounts usable as "view as" targets for the
+// testing switcher, grouped by tier. Read-only — issues no tokens itself.
+// Reuses the existing /admin/impersonate/:userId (Assessment/CustomerUser,
+// both usersTable.role="client") and /admin/msps/:mspId/impersonate
+// (MSPAdmin) endpoints unchanged to actually generate a token.
+router.get("/admin/view-as/accounts", requireAdmin, async (req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      userId: usersTable.id,
+      email: usersTable.email,
+      name: usersTable.name,
+      mspRole: mspUsersTable.mspRole,
+      mspId: mspUsersTable.mspId,
+      mspName: mspsTable.name,
+      mspSlug: mspsTable.slug,
+    })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .leftJoin(mspsTable, eq(mspUsersTable.mspId, mspsTable.id))
+    .where(and(
+      inArray(mspUsersTable.mspRole, ["Assessment", "CustomerUser", "MSPAdmin"]),
+      eq(mspUsersTable.isActive, true),
+    ))
+    .orderBy(asc(mspUsersTable.mspRole), asc(usersTable.email));
+
+  res.json({
+    accounts: rows.map(r => ({
+      userId: r.userId,
+      email: r.email,
+      name: r.name,
+      tier: r.mspRole,
+      mspId: r.mspId,
+      mspName: r.mspName,
+      mspSlug: r.mspSlug,
+    })),
+  });
+});
+
 // ─── MSP: Impersonation ──────────────────────────────────────────────────────
 // MSPAdmin and MSPOperator can impersonate a customer within their own MSP.
 // PlatformAdmin can impersonate any customer across any MSP.

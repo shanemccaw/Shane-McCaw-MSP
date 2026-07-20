@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { Bell, Volume2, VolumeX, SquareTerminal, Mail } from "lucide-react";
 import { Link } from "wouter";
 
@@ -23,6 +24,7 @@ interface StatusBarProps {
   onToggleMute: () => void;
   consoleOpen: boolean;
   onToggleConsole: () => void;
+  rightExtra?: ReactNode;
 }
 
 /** LED dot: cyan = live-now, amber = campaign, idle = muted. */
@@ -51,6 +53,7 @@ export default function StatusBar({
   onToggleMute,
   consoleOpen,
   onToggleConsole,
+  rightExtra,
 }: StatusBarProps) {
   return (
     <footer className="h-6 shrink-0 flex items-center bg-card border-t border-border px-2 gap-0 font-mono text-[11px] text-muted-foreground select-none overflow-x-auto whitespace-nowrap">
@@ -142,6 +145,8 @@ export default function StatusBar({
           </span>
         )}
       </button>
+
+      {rightExtra}
 
       {/* Console toggle */}
       <button
