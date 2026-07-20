@@ -19,9 +19,22 @@ import ArticlePage from "./pages/ArticlePage";
 import OnboardingLink from "./pages/OnboardingLink";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
+import MspPartnerTerms from "./pages/legal/MspPartnerTerms";
+import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
-import StubPage from "./pages/StubPage";
 import { initTracker, trackPageview } from "./lib/analytics";
+
+// Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
+import Solutions from "./pages/Solutions";
+import SolutionTopicPage from "./pages/solutions/SolutionTopicPage";
+import Products from "./pages/Products";
+import TrustSecurity from "./pages/TrustSecurity";
+import QuizHub from "./pages/QuizHub";
+import Login from "./pages/Login";
+import RetainersOverview from "./pages/retainers/RetainersOverview";
+import ArchitectEssentials from "./pages/retainers/ArchitectEssentials";
+import ArchitectGrowth from "./pages/retainers/ArchitectGrowth";
+import ArchitectEnterprise from "./pages/retainers/ArchitectEnterprise";
 
 // Legacy Quiz Pages
 import CopilotQuiz from "./pages/CopilotQuiz";
@@ -46,19 +59,6 @@ function RedirectToAssessments() {
   }, [setLocation]);
   return null;
 }
-
-// Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
-// Stage 1: routes resolve to placeholders; real per-topic personalization content is Stage 2/4.
-const SOLUTIONS_TOPICS: { slug: string; title: string }[] = [
-  { slug: "copilot", title: "Copilot & AI" },
-  { slug: "security-compliance", title: "Security & Compliance" },
-  { slug: "governance", title: "Governance" },
-  { slug: "sharepoint", title: "SharePoint" },
-  { slug: "power-platform", title: "Power Platform" },
-  { slug: "teams", title: "Teams" },
-  { slug: "migration", title: "Migration" },
-  { slug: "m365-health", title: "M365 Health" },
-];
 
 // Fires once on mount (durable cookie session + global capture listeners) and on every
 // route change (pageview + dwell/scroll flush of the previous page) — shared layout
@@ -106,20 +106,24 @@ export default function App() {
       <Route path="/resources/:slug" component={ArticlePage} />
       <Route path="/onboarding" component={OnboardingLink} />
 
-      {/* New sitemap pages — Stage 1 routing skeleton, placeholder content (website-rebuild-reference-v2.md §5/§7) */}
-      {SOLUTIONS_TOPICS.map((t) => (
-        <Route key={t.slug} path={`/solutions/${t.slug}`} component={() => <StubPage title={t.title} />} />
-      ))}
-      <Route path="/solutions" component={() => <StubPage title="Solutions" />} />
-      <Route path="/products" component={() => <StubPage title="Quick-Start Packs" />} />
-      <Route path="/retainer" component={() => <StubPage title="Fractional Consulting" />} />
-      <Route path="/trust-security" component={() => <StubPage title="Trust & Security" />} />
-      <Route path="/quiz" component={() => <StubPage title="Free Assessment Quiz" />} />
-      <Route path="/login" component={() => <StubPage title="Client Login" />} />
+      {/* Stage 2 sitemap pages — real content, replacing Stage 1's StubPage skeleton (website-rebuild-reference-v2.md §5/§7) */}
+      <Route path="/solutions/:slug" component={SolutionTopicPage} />
+      <Route path="/solutions" component={Solutions} />
+      <Route path="/products" component={Products} />
+      <Route path="/retainer" component={RetainersOverview} />
+      <Route path="/retainers" component={RetainersOverview} />
+      <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
+      <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
+      <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
+      <Route path="/trust-security" component={TrustSecurity} />
+      <Route path="/quiz" component={QuizHub} />
+      <Route path="/login" component={Login} />
 
       {/* Legal Routes */}
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
+      <Route path="/msp-terms" component={MspPartnerTerms} />
+      <Route path="/dpa" component={Dpa} />
 
       {/* Decommissioned Routes -> Redirects to /assessments */}
       <Route path="/micro-offers" component={RedirectToAssessments} />
