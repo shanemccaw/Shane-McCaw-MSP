@@ -51,6 +51,9 @@ export const mspsTable = pgTable("msps", {
   isTestbed: boolean("is_testbed").notNull().default(false),
   testbedMetadata: jsonb("testbed_metadata").notNull().default({}),
   customCustomerAgreement: text("custom_customer_agreement"),
+  // Gates any platform-initiated email to a customer_user. Functionally inert
+  // (no send occurs) unless the MSP also has an active mspMailboxConnectorsTable row.
+  automatedCustomerEmailsEnabled: boolean("automated_customer_emails_enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

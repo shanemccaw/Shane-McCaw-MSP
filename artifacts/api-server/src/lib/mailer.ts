@@ -1,4 +1,4 @@
-import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, failedNotificationsTable } from "@workspace/db";
+import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, mspUsersTable, failedNotificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "comms.email" });
@@ -299,6 +299,57 @@ export async function getMspMailboxConnector(mspId: number): Promise<{
   } catch (err) {
     log.warn({ err, mspId }, "getMspMailboxConnector: DB lookup failed");
     return null;
+  }
+}
+
+/**
+ * Gate for any platform-initiated email to a customer_user recipient.
+ * True only when the MSP has both:
+ *   1. msps.automated_customer_emails_enabled = true
+ *   2. an active mailbox connector (per getMspMailboxConnector — the same
+ *      "usable connector" check sendEmailForMspOrThrow relies on)
+ * Callers sending to customer_user recipients must check this before sending;
+ * it does not change routing for MSP-staff-facing email.
+ */
+export async function canSendAutomatedCustomerEmail(mspId: number): Promise<boolean> {
+  try {
+    const [msp] = await db
+      .select({ automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspId))
+      .limit(1);
+    if (!msp?.automatedCustomerEmailsEnabled) return false;
+
+    const connector = await getMspMailboxConnector(mspId);
+    return !!connector;
+  } catch (err) {
+    log.warn({ err, mspId }, "canSendAutomatedCustomerEmail: check failed");
+    return false;
+  }
+}
+
+/**
+ * Convenience wrapper for canSendAutomatedCustomerEmail when the caller only
+ * has a usersTable id (the customer_user recipient) and needs their mspId
+ * resolved via mspUsersTable first.
+ *
+ * Mirrors ensureClientMspUser's own mspId default (portal.ts) for the case
+ * where no mspUsersTable row exists yet — e.g. a brand-new buyer's purchase
+ * confirmation fires before that row is provisioned. Defaulting to mspId=1
+ * (Shane's own direct business) rather than failing closed avoids silently
+ * dropping the confirmation email for every first-time direct purchase.
+ */
+export async function canSendAutomatedCustomerEmailForUser(userId: number): Promise<boolean> {
+  try {
+    const [row] = await db
+      .select({ mspId: mspUsersTable.mspId })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+    return canSendAutomatedCustomerEmail(row?.mspId ?? 1);
+  } catch (err) {
+    log.warn({ err, userId }, "canSendAutomatedCustomerEmailForUser: check failed");
+    return false;
   }
 }
 

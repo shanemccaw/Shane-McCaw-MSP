@@ -7,7 +7,7 @@ import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomer
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
-import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, passwordResetEmail, PORTAL_URL, canSendAutomatedCustomerEmail, canSendAutomatedCustomerEmailForUser } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
@@ -4514,13 +4514,15 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
     `Retainer resumed: ${req.user!.name ?? req.user!.email} has un-cancelled their ${serviceName} retainer. Next billing: ${nextBillingDate}.`
   );
 
-  void sendEmailFromTemplate(
-    "retainer-resumed",
-    req.user!.email,
-    { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL, tenantHealthBlockHtml: await getTenantHealthBlockHtml(req.user!.id) },
-    `Your ${serviceName} retainer is back on`,
-    retainerResumedEmail({ clientName: req.user!.name ?? "", serviceName, nextBillingDate }),
-  );
+  if (req.user!.mspId != null && await canSendAutomatedCustomerEmail(req.user!.mspId)) {
+    void sendEmailFromTemplate(
+      "retainer-resumed",
+      req.user!.email,
+      { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL, tenantHealthBlockHtml: await getTenantHealthBlockHtml(req.user!.id) },
+      `Your ${serviceName} retainer is back on`,
+      retainerResumedEmail({ clientName: req.user!.name ?? "", serviceName, nextBillingDate }),
+    );
+  }
 
   res.json({
     ok: true,
@@ -5370,7 +5372,7 @@ async function provisionOnboardingProject(
 
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
   const primaryServiceName = serviceNames.join(", ");
-  if (buyer.email) {
+  if (buyer.email && await canSendAutomatedCustomerEmailForUser(buyer.id)) {
     const couponCode = session.metadata?.couponCode || undefined;
     const hasDiscount = !!(couponCode && originalAmountDollars !== finalAmountDollars);
     const discountAmountDollars = hasDiscount
@@ -5826,7 +5828,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, uid));
 
       // Send branded confirmation email to buyer (fire-and-forget)
-      if (buyer?.email) {
+      if (buyer?.email && await canSendAutomatedCustomerEmailForUser(buyer.id)) {
         const couponCode = session.metadata?.couponCode || undefined;
         const finalAmountDollars = session.amount_total != null
           ? (session.amount_total / 100).toFixed(2)
@@ -6281,7 +6283,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
                 `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
               ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "account-setup" }, "processStripeEvent: account-setup email failed (non-fatal)"));
             }
-          } else {
+          } else if (await canSendAutomatedCustomerEmailForUser(buyer.id)) {
             // Returning client — send "project is ready" email.
             // The success-page provision endpoint guards against sending this a second time
             // (it checks whether the invoice existed before its own provisioning call).
@@ -6647,7 +6649,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
     // Email the client
     const [clientUser] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1);
-    if (clientUser) {
+    if (clientUser && await canSendAutomatedCustomerEmailForUser(clientUserId)) {
       void sendEmailFromTemplate(
         "client-message-notification",
         clientUser.email,
@@ -8715,7 +8717,7 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable)
       .where(eq(usersTable.id, report.clientUserId));
-    if (client?.email) {
+    if (client?.email && await canSendAutomatedCustomerEmailForUser(report.clientUserId)) {
       await sendEmailFromTemplate(
         "status-report-reply",
         client.email,
@@ -8787,7 +8789,7 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
     const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable)
       .where(eq(usersTable.id, report.clientUserId));
-    if (client?.email) {
+    if (client?.email && await canSendAutomatedCustomerEmailForUser(report.clientUserId)) {
       void sendEmailFromTemplate(
         "admin-thread-reply",
         client.email,
@@ -10026,7 +10028,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
           `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
         ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "account-setup" }, "provision: account-setup email failed (non-fatal)"));
       }
-    } else if (hasPassword && provUser?.email && !webhookAlreadyRan) {
+    } else if (hasPassword && provUser?.email && !webhookAlreadyRan && await canSendAutomatedCustomerEmailForUser(provUser.id)) {
       // Returning client — send a "project is ready" email with portal login link.
       // Skip if webhook already ran (it will have sent the email in its own path).
       const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";

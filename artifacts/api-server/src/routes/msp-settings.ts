@@ -1125,10 +1125,17 @@ router.get("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (re
     .where(eq(mspMailboxConnectorsTable.mspId, mspId))
     .limit(1);
 
+  const [msp] = await db
+    .select({ automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, mspId))
+    .limit(1);
+
   res.json({
     connected: !!(row?.isActive),
     mtAppConfigured: mtAppCredentialsPresent(),
     connector: row ?? null,
+    automatedCustomerEmailsEnabled: msp?.automatedCustomerEmailsEnabled ?? true,
   });
 });
 
@@ -1296,6 +1303,44 @@ router.delete("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async 
   });
 
   res.json({ ok: true });
+});
+
+// ── PATCH /api/msp/settings/connector/mailbox/automated-emails ─────────────────
+// Toggles automated customer-facing email (marketing/notification, not auth-critical
+// transactional email). Functionally inert without an active mailbox connector — see
+// canSendAutomatedCustomerEmail() in lib/mailer.ts, which every customer-facing send
+// must check before sending.
+
+const automatedEmailsSchema = z.object({ enabled: z.boolean() });
+
+router.patch("/msp/settings/connector/mailbox/automated-emails", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspIdStrict(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const parsed = automatedEmailsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  const [updated] = await db
+    .update(mspsTable)
+    .set({ automatedCustomerEmailsEnabled: parsed.data.enabled, updatedAt: new Date() })
+    .where(eq(mspsTable.id, mspId))
+    .returning({ automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled });
+
+  if (!updated) { apiError(res, 404, "MSP not found"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "msp.automated_customer_emails.update",
+    entityType: "msp",
+    entityId: String(mspId),
+    mspId,
+    metadata: { enabled: parsed.data.enabled },
+  });
+
+  res.json({ automatedCustomerEmailsEnabled: updated.automatedCustomerEmailsEnabled });
 });
 
 // ── Sessions ──────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -53,6 +54,7 @@ interface MailboxConnectorStatus {
   connected: boolean;
   mtAppConfigured: boolean;
   connector: MailboxConnector | null;
+  automatedCustomerEmailsEnabled: boolean;
 }
 
 const CONNECTOR_MODES = [
@@ -89,6 +91,7 @@ export default function SettingsConnectorPage() {
   const [mailboxFormVisible, setMailboxFormVisible] = useState(false);
   const [connectingMailbox, setConnectingMailbox] = useState(false);
   const [disconnectingMailbox, setDisconnectingMailbox] = useState(false);
+  const [savingAutomatedEmails, setSavingAutomatedEmails] = useState(false);
 
   // Show toast for OAuth callback result in URL params
   useEffect(() => {
@@ -228,6 +231,27 @@ export default function SettingsConnectorPage() {
       }
     } finally {
       setDisconnectingMailbox(false);
+    }
+  }
+
+  async function handleToggleAutomatedEmails(enabled: boolean) {
+    setSavingAutomatedEmails(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/settings/connector/mailbox/automated-emails", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { automatedCustomerEmailsEnabled: boolean };
+        toast.success(data.automatedCustomerEmailsEnabled ? "Automated customer emails enabled" : "Automated customer emails disabled");
+        setMailboxStatus((s) => s ? { ...s, automatedCustomerEmailsEnabled: data.automatedCustomerEmailsEnabled } : s);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Update failed");
+      }
+    } finally {
+      setSavingAutomatedEmails(false);
     }
   }
 
@@ -457,6 +481,48 @@ export default function SettingsConnectorPage() {
                   </Button>
                 </div>
               </form>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Automated Customer Emails */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Automated customer emails & upsells</CardTitle>
+            <CardDescription className="text-xs">
+              Allow the platform to send automated notification and upsell emails to your customers
+              (e.g. purchase confirmations, offer notifications) through your connected mailbox.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {mailboxStatus?.connected ? (
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">
+                    {mailboxStatus.automatedCustomerEmailsEnabled ? "Enabled" : "Disabled"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Sent from your connected mailbox ({mailboxStatus.connector?.mailboxUpn}).
+                  </p>
+                </div>
+                <Switch
+                  checked={mailboxStatus.automatedCustomerEmailsEnabled}
+                  disabled={savingAutomatedEmails}
+                  onCheckedChange={(checked) => void handleToggleAutomatedEmails(checked)}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-sm text-muted-foreground">
+                    Connect an Exchange Online mailbox above to enable automated customer emails.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    No customer-facing automated email can be sent until a mailbox is connected.
+                  </p>
+                </div>
+                <Switch checked={false} disabled />
+              </div>
             )}
           </CardContent>
         </Card>
