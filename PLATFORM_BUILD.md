@@ -107,3 +107,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | quizLeadsTable lead offer result column | bf242f27 |
 | 2026-07-19 | ⏳ IN FLIGHT | Dashboard Export + Share Link | |
 | 2026-07-19 | ⏳ IN FLIGHT | Public Website Rebuild: Stage 2 Pages | |
+| 2026-07-19 | ⏳ IN FLIGHT | Fix Broken Team Invite Endpoint | |
