@@ -128,6 +128,7 @@ import portalRetainerBillingRouter from "./portal-retainer-billing";
 import clientEventsRouter from "./client-events";
 import portal404EventsRouter from "./portal-404-events";
 import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay";
+import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
 
 import pccRouter from "./pcc.js";
 
@@ -270,6 +271,7 @@ router.use(portalCheckoutRouter);
 router.use(portalRetainerBillingRouter);
 router.use(clientEventsRouter);
 router.use(portal404EventsRouter);
+router.use(adminAnalyticsHeatmapRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
