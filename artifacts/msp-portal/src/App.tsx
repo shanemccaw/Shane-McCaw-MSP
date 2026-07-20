@@ -10,6 +10,8 @@ import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
+import DocumentsPage from "@/pages/documents";
+import DocumentDetailPage from "@/pages/document-detail";
 import MspsPage from "@/pages/msps";
 import MspDetailPage from "@/pages/msp-detail";
 import SettingsPage from "@/pages/settings";
@@ -246,6 +248,12 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/customers">
         <ProtectedRoute component={CustomersPage} />
+      </Route>
+      <Route path="/documents/:id">
+        <ProtectedRoute component={DocumentDetailPage} />
+      </Route>
+      <Route path="/documents">
+        <ProtectedRoute component={DocumentsPage} />
       </Route>
       <Route path="/msps/:id">
         <ProtectedRoute component={MspDetailPage} />

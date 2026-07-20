@@ -46,6 +46,7 @@ import {
   ArrowLeft,
   Award,
   Bell,
+  BookOpen,
   Bot,
   Building2,
   Check,
@@ -577,6 +578,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Users,
         label: "Customers",
         href: "/customers",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: BookOpen,
+        label: "Document Library",
+        href: "/documents",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
