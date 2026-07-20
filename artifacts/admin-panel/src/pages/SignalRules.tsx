@@ -24,6 +24,7 @@ import BundleImportExport from "@/components/signal-rules/BundleImportExport";
 import EvaluatePreviewTester from "@/components/signal-rules/EvaluatePreviewTester";
 import RuleGroupsAndSignalsManager from "@/components/signal-rules/RuleGroupsAndSignalsManager";
 import ConflictsHealthPanel from "@/components/signal-rules/ConflictsHealthPanel";
+import SimulationProfilesManager from "@/components/signal-rules/SimulationProfilesManager";
 
 // ─── API shapes (match artifacts/api-server/src/routes/admin-signal-rules.ts) ──
 // NOTE: licensingImpact exists in the DB but the admin API neither returns nor
@@ -250,8 +251,8 @@ export default function SignalRulesPage() {
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
 
-  // Rules | Version History | Audit Log | Bundle Import/Export | Evaluate/Preview | Groups & Signals | Conflicts & Health tabs (mirrors TenantSignals.tsx's tab-row pattern).
-  const [activeTab, setActiveTab] = useState<"rules" | "versions" | "audit" | "bundle" | "evaluate" | "groups" | "health">("rules");
+  // Rules | Version History | Audit Log | Bundle Import/Export | Evaluate/Preview | Groups & Signals | Conflicts & Health | Simulation Profiles tabs (mirrors TenantSignals.tsx's tab-row pattern).
+  const [activeTab, setActiveTab] = useState<"rules" | "versions" | "audit" | "bundle" | "evaluate" | "groups" | "health" | "simulation">("rules");
 
   // Version History (whole-ruleset snapshots).
   const [versions, setVersions] = useState<RuleVersion[]>([]);
@@ -618,7 +619,7 @@ export default function SignalRulesPage() {
       </div>
 
       <div className="flex gap-0 border-b border-border">
-        {(["rules", "versions", "audit", "bundle", "evaluate", "groups", "health"] as const).map(tab => (
+        {(["rules", "versions", "audit", "bundle", "evaluate", "groups", "health", "simulation"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -628,7 +629,7 @@ export default function SignalRulesPage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "versions" ? "Version History" : tab === "audit" ? "Audit Log" : tab === "bundle" ? "Bundle Import/Export" : tab === "evaluate" ? "Evaluate / Preview" : tab === "groups" ? "Groups & Signals" : tab === "health" ? "Conflicts & Health" : "Rules"}
+            {tab === "versions" ? "Version History" : tab === "audit" ? "Audit Log" : tab === "bundle" ? "Bundle Import/Export" : tab === "evaluate" ? "Evaluate / Preview" : tab === "groups" ? "Groups & Signals" : tab === "health" ? "Conflicts & Health" : tab === "simulation" ? "Simulation Profiles" : "Rules"}
           </button>
         ))}
       </div>
@@ -640,6 +641,8 @@ export default function SignalRulesPage() {
       {activeTab === "groups" && <RuleGroupsAndSignalsManager />}
 
       {activeTab === "health" && <ConflictsHealthPanel />}
+
+      {activeTab === "simulation" && <SimulationProfilesManager />}
 
       {activeTab === "rules" && (loading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
