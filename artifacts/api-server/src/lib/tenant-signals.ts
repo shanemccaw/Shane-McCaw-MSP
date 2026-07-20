@@ -5,19 +5,67 @@ import {
   mspCustomersTable,
   mspUsersTable,
   tenantMonitorProfilesTable,
+  signalDerivationRulesTable,
+  monitorChecksTable,
+  type MonitorCheckFrequency,
 } from "@workspace/db";
-import { sql, eq, and, desc } from "drizzle-orm";
+import { sql, eq, and, desc, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.signals" });
 import { startSlaTimer } from "./sla-engine";
 
 /**
- * Flat default stabilization window, applied uniformly to all signals.
- * NOT time-normalized per signal check frequency — that requires a
- * signal-to-monitor-check frequency mapping that doesn't exist yet
- * (tracked separately). This is a deliberate, accepted approximation.
+ * Flat fallback stabilization window — used for legacy signals that predate
+ * the rule engine and have no `signal_derivation_rules` rows (e.g.
+ * `hasLicensingWaste`, `copilotLicenseCount`), and as the per-frequency
+ * window for "live" sources. See getSignalStabilizationWindowHours for the
+ * per-signal, check-frequency-aware window.
  */
 const STABILIZATION_WINDOW_HOURS = 4;
+
+/**
+ * How long a signal must stay continuously fired before it's trusted, per
+ * the frequency of the monitor check(s) it derives from. Longer for slower
+ * checks — a signal that only refreshes daily needs ~2 confirmations before
+ * a single day's reading can be ruled out as a one-off blip; an hourly
+ * signal needs several; a live/near-real-time source is fine with the same
+ * flat default used everywhere else.
+ */
+const STABILIZATION_WINDOW_HOURS_BY_FREQUENCY: Record<MonitorCheckFrequency, number> = {
+  live: STABILIZATION_WINDOW_HOURS,
+  hourly: 6,
+  daily: 48,
+};
+
+/** Slowest (most conservative) window among a signal's derivation-rule check frequencies. */
+function slowestStabilizationWindowHours(frequencies: MonitorCheckFrequency[]): number {
+  if (frequencies.length === 0) return STABILIZATION_WINDOW_HOURS;
+  return frequencies.reduce(
+    (slowest, frequency) => Math.max(slowest, STABILIZATION_WINDOW_HOURS_BY_FREQUENCY[frequency] ?? STABILIZATION_WINDOW_HOURS),
+    STABILIZATION_WINDOW_HOURS_BY_FREQUENCY.live,
+  );
+}
+
+/**
+ * Resolves the stabilization window for a single signal key by joining its
+ * `signal_derivation_rules` rows to the `monitor_checks` they derive from
+ * (via `sourceKey` → `monitor_checks.key`) and picking the slowest frequency
+ * among them. Signals with no rule rows (legacy, pre-rule-engine signals)
+ * fall back to the flat STABILIZATION_WINDOW_HOURS default unchanged.
+ */
+export async function getSignalStabilizationWindowHours(signalKey: string): Promise<number> {
+  try {
+    const rows = await db
+      .select({ frequency: monitorChecksTable.frequency })
+      .from(signalDerivationRulesTable)
+      .innerJoin(monitorChecksTable, eq(signalDerivationRulesTable.sourceKey, monitorChecksTable.key))
+      .where(eq(signalDerivationRulesTable.signalKey, signalKey));
+    return slowestStabilizationWindowHours(rows.map(r => r.frequency));
+  } catch (err) {
+    log.warn({ err, signalKey }, "getSignalStabilizationWindowHours: failed to resolve per-signal window — using flat default");
+    return STABILIZATION_WINDOW_HOURS;
+  }
+}
 
 // ─── Signal enabled/disabled state ────────────────────────────────────────────
 //
@@ -748,21 +796,50 @@ async function recordSignalTransitions(
 
 /**
  * Returns the subset of a customer's currently-fired signals that have
- * been continuously fired for at least STABILIZATION_WINDOW_HOURS —
- * i.e., excludes signals that only just fired and could still be
- * flapping/noise. A signal is "currently fired" if it has an open row
- * (resolved_at IS NULL) in tenant_signal_history; it's "stabilized" if
- * that row's fired_at is old enough.
+ * been continuously fired for at least their per-signal stabilization
+ * window (see getSignalStabilizationWindowHours) — i.e., excludes signals
+ * that only just fired and could still be flapping/noise. A signal is
+ * "currently fired" if it has an open row (resolved_at IS NULL) in
+ * tenant_signal_history; it's "stabilized" if that row's fired_at is old
+ * enough for its own window.
+ *
+ * Windows are resolved in one batched query keyed off the customer's open
+ * signal keys (not one query per signal) — this runs per customer inside
+ * the Signal Policy Engine's 15-minute sweep (policy-engine.ts), not a
+ * per-request hot path, but there's no reason to pay N+1 for it anyway.
  */
 export async function getStabilizedSignals(customerId: number): Promise<Set<string>> {
   try {
-    const rows = await db.execute(sql`
-      SELECT signal_key AS "signalKey" FROM tenant_signal_history
-      WHERE customer_id = ${customerId}
-        AND resolved_at IS NULL
-        AND fired_at <= NOW() - INTERVAL '1 hour' * ${STABILIZATION_WINDOW_HOURS}
+    const openRows = await db.execute(sql`
+      SELECT signal_key AS "signalKey", fired_at AS "firedAt" FROM tenant_signal_history
+      WHERE customer_id = ${customerId} AND resolved_at IS NULL
     `);
-    return new Set((rows.rows as { signalKey: string }[]).map(r => r.signalKey));
+    const openSignals = openRows.rows as { signalKey: string; firedAt: string }[];
+    if (openSignals.length === 0) return new Set();
+
+    const signalKeys = [...new Set(openSignals.map(r => r.signalKey))];
+    const ruleRows = await db
+      .select({ signalKey: signalDerivationRulesTable.signalKey, frequency: monitorChecksTable.frequency })
+      .from(signalDerivationRulesTable)
+      .innerJoin(monitorChecksTable, eq(signalDerivationRulesTable.sourceKey, monitorChecksTable.key))
+      .where(inArray(signalDerivationRulesTable.signalKey, signalKeys));
+
+    const frequenciesBySignalKey = new Map<string, MonitorCheckFrequency[]>();
+    for (const { signalKey, frequency } of ruleRows) {
+      const frequencies = frequenciesBySignalKey.get(signalKey) ?? [];
+      frequencies.push(frequency);
+      frequenciesBySignalKey.set(signalKey, frequencies);
+    }
+
+    const now = Date.now();
+    const stabilized = new Set<string>();
+    for (const { signalKey, firedAt } of openSignals) {
+      const windowHours = slowestStabilizationWindowHours(frequenciesBySignalKey.get(signalKey) ?? []);
+      if (now - new Date(firedAt).getTime() >= windowHours * 60 * 60 * 1000) {
+        stabilized.add(signalKey);
+      }
+    }
+    return stabilized;
   } catch (err) {
     log.warn({ err, customerId }, "getStabilizedSignals: failed to query stabilized signals");
     return new Set();
