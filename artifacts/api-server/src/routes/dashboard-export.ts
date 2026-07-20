@@ -9,6 +9,10 @@
  * re-render):
  *   - PDF: rendered on-demand through the existing insight-pdf.ts Chromium
  *     pipeline (buildHtmlDoc + htmlToPdf), same as /portal/insights-documents/:id/pdf.
+ *   - PPT: rendered on-demand via dashboard-ppt.ts (pptxgenjs), an independent
+ *     consumer of the same resolveCallerScope/findDefaultTemplate/resolveTemplate/
+ *     resolveMetric data path — real slide objects (native charts, not a
+ *     screenshot), not an extension of the PDF pipeline.
  *   - Share link: the snapshot HTML is persisted as an insights_generated_documents
  *     row (docType "dashboard_snapshot", status "approved") and shared via the
  *     EXISTING quick_win_result_shares token/expiration/view-tracking pattern —
@@ -22,6 +26,7 @@ import { eq, and, gte, desc } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { renderDashboardSnapshotHtml, DashboardSnapshotError } from "../lib/dashboard-snapshot.ts";
+import { renderDashboardPpt } from "../lib/dashboard-ppt.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
 
@@ -48,6 +53,27 @@ router.get("/portal/dashboard/pdf", requireRole("CustomerUser"), async (req: Req
     }
     log.error({ err }, "portal/dashboard/pdf failed");
     res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+// ── CLIENT: Dashboard → branded PPT download ──────────────────────────────────
+
+router.get("/portal/dashboard/ppt", requireRole("CustomerUser"), async (req: Request, res: Response) => {
+  try {
+    const { title, buffer } = await renderDashboardPpt(req);
+
+    const safeTitle = title.replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").slice(0, 80);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.pptx"`);
+    res.setHeader("Content-Length", String(buffer.length));
+    res.end(buffer);
+  } catch (err) {
+    if (err instanceof DashboardSnapshotError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    log.error({ err }, "portal/dashboard/ppt failed");
+    res.status(500).json({ error: "Failed to generate PPT" });
   }
 });
 

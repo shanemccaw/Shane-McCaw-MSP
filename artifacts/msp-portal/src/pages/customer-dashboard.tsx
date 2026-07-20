@@ -12,11 +12,12 @@
  * pages (customer-home.tsx, command-center.tsx) rather than replacing either
  * — full customer-facing navigation changes are out of scope for this task.
  *
- * "Export as PDF" / "Share link" toolbar mirrors the DownloadButton/
- * ShareDialog patterns already used for insights documents in
+ * "Export as PDF" / "Export as PPT" / "Share link" toolbar mirrors the
+ * DownloadButton/ShareDialog patterns already used for insights documents in
  * customer-documents.tsx, pointed at the dashboard-specific endpoints
- * (/api/portal/dashboard/pdf, /api/portal/dashboard/share). Both render a
- * frozen point-in-time snapshot of the resolved dashboard, not a live view.
+ * (/api/portal/dashboard/pdf, /api/portal/dashboard/ppt, /api/portal/dashboard/share).
+ * All three render a frozen point-in-time snapshot of the resolved dashboard,
+ * not a live view.
  */
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
@@ -70,6 +71,42 @@ function ExportPdfButton() {
     <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handleDownload()} disabled={loading}>
       {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
       Export as PDF
+    </Button>
+  );
+}
+
+function ExportPptButton() {
+  const { fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/portal/dashboard/ppt");
+      if (!res.ok) {
+        toast.error("Export failed. Please try again.");
+        return;
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "dashboard-snapshot.pptx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error("Export failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void handleDownload()} disabled={loading}>
+      {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+      Export as PPT
     </Button>
   );
 }
@@ -168,6 +205,7 @@ export default function CustomerDashboardPage() {
         {user?.customerId != null && (
           <div className="flex justify-end gap-2">
             <ExportPdfButton />
+            <ExportPptButton />
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShareOpen(true)}>
               <Share2 className="size-3.5" />
               Share
