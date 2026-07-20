@@ -14874,53 +14874,75 @@ async function getSlaThresholds(): Promise<Record<string, number>> {
 router.get("/admin/fulfillment-queue", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { status, sourceType, overdue, q } = req.query as Record<string, string | undefined>;
+    const page = Math.max(1, parseInt(String(req.query.page ?? ""), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query.pageSize ?? ""), 10) || 25));
 
-    const conditions: ReturnType<typeof eq>[] = [];
+    // Filtered at the SQL level (status/sourceType/overdue/q) so total/byStatus
+    // reflect the post-filter set and LIMIT/OFFSET pages correctly — mirrors
+    // the same-table /msp/:mspId/fulfillment-queue route below.
+    const conditions: SQL[] = [];
     if (status && (FULFILLMENT_DELIVERY_STATUSES as readonly string[]).includes(status)) {
       conditions.push(eq(fulfillmentQueueTable.deliveryStatus, status as FulfillmentDeliveryStatus));
     }
     if (sourceType && (FULFILLMENT_SOURCE_TYPES as readonly string[]).includes(sourceType)) {
       conditions.push(eq(fulfillmentQueueTable.sourceType, sourceType as typeof FULFILLMENT_SOURCE_TYPES[number]));
     }
+    const ql = q?.trim();
+    if (ql) {
+      conditions.push(
+        or(
+          ilike(fulfillmentQueueTable.clientName, `%${ql}%`),
+          ilike(fulfillmentQueueTable.clientEmail, `%${ql}%`),
+          ilike(fulfillmentQueueTable.customerName, `%${ql}%`),
+          ilike(fulfillmentQueueTable.mspName, `%${ql}%`),
+          ilike(fulfillmentQueueTable.itemTitle, `%${ql}%`),
+        ) as SQL,
+      );
+    }
 
     const now = new Date();
+    const overdueConditions: SQL[] = [
+      isNotNull(fulfillmentQueueTable.slaDueAt),
+      lt(fulfillmentQueueTable.slaDueAt, now),
+      ne(fulfillmentQueueTable.deliveryStatus, "delivered"),
+    ];
+    const listConditions = overdue === "1" ? [...conditions, ...overdueConditions] : conditions;
+    const whereClause = listConditions.length > 0 ? and(...listConditions) : undefined;
 
-    let rows = await db
-      .select()
-      .from(fulfillmentQueueTable)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(fulfillmentQueueTable.createdAt));
-
-    // Apply overdue filter and text search in memory (small table)
-    const ql = q?.toLowerCase().trim();
-    rows = rows.filter(r => {
-      if (ql) {
-        const haystack = [r.clientName, r.clientEmail, r.customerName, r.mspName, r.itemTitle]
-          .join(" ").toLowerCase();
-        if (!haystack.includes(ql)) return false;
-      }
-      if (overdue === "1") {
-        const isOverdue = r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered";
-        if (!isOverdue) return false;
-      }
-      return true;
-    });
+    const [rows, [totalRow], [overdueRow], byStatusRows] = await Promise.all([
+      db.select()
+        .from(fulfillmentQueueTable)
+        .where(whereClause)
+        .orderBy(desc(fulfillmentQueueTable.createdAt))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
+      db.select({ n: count() }).from(fulfillmentQueueTable).where(whereClause),
+      db.select({ n: count() }).from(fulfillmentQueueTable)
+        .where(and(...conditions, ...overdueConditions)),
+      db.select({ status: fulfillmentQueueTable.deliveryStatus, n: count() })
+        .from(fulfillmentQueueTable)
+        .where(whereClause)
+        .groupBy(fulfillmentQueueTable.deliveryStatus),
+    ]);
 
     const byStatus = { not_started: 0, in_progress: 0, delivered: 0, blocked: 0 } as Record<FulfillmentDeliveryStatus, number>;
-    let overdueCount = 0;
-    const enriched = rows.map(r => {
-      byStatus[r.deliveryStatus as FulfillmentDeliveryStatus] = (byStatus[r.deliveryStatus as FulfillmentDeliveryStatus] ?? 0) + 1;
-      const isOverdue = r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered";
-      if (isOverdue) overdueCount++;
-      return { ...r, isOverdue };
-    });
+    for (const r of byStatusRows) {
+      byStatus[r.status as FulfillmentDeliveryStatus] = r.n;
+    }
+
+    const enriched = rows.map(r => ({
+      ...r,
+      isOverdue: r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered",
+    }));
 
     res.json({
       items: enriched,
       meta: {
-        total: enriched.length,
-        overdue: overdueCount,
+        total: totalRow?.n ?? 0,
+        overdue: overdueRow?.n ?? 0,
         byStatus,
+        page,
+        pageSize,
       },
     });
   } catch (err) {

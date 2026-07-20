@@ -48,6 +48,8 @@ interface QueueMeta {
   total: number;
   overdue: number;
   byStatus: Record<DeliveryStatus, number>;
+  page: number;
+  pageSize: number;
 }
 
 const STATUS_CONFIG: Record<DeliveryStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -121,6 +123,7 @@ export default function FulfillmentQueuePage() {
   const [filterSource, setFilterSource] = useState<SourceType | "">("");
   const [filterOverdue, setFilterOverdue] = useState(false);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [statusModalItem, setStatusModalItem] = useState<FulfillmentItem | null>(null);
@@ -133,7 +136,7 @@ export default function FulfillmentQueuePage() {
   const loadQueue = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ page: String(page) });
       if (filterStatus) params.set("status", filterStatus);
       if (filterSource) params.set("sourceType", filterSource);
       if (filterOverdue) params.set("overdue", "1");
@@ -152,9 +155,14 @@ export default function FulfillmentQueuePage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth, filterStatus, filterSource, filterOverdue, search, toast]);
+  }, [fetchWithAuth, filterStatus, filterSource, filterOverdue, search, page, toast]);
 
   useEffect(() => { loadQueue(); }, [loadQueue]);
+
+  useEffect(() => {
+    setPage(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, filterSource, filterOverdue, search]);
 
   async function syncQueue() {
     setSyncing(true);
@@ -496,6 +504,34 @@ export default function FulfillmentQueuePage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {meta && meta.total > meta.pageSize && (
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-t border-border bg-accent/40">
+              <p className="text-xs text-muted-foreground">
+                {((page - 1) * meta.pageSize) + 1}–{Math.min(page * meta.pageSize, meta.total)} of {meta.total}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-card hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Page {page} of {Math.max(1, Math.ceil(meta.total / meta.pageSize))}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(Math.ceil(meta.total / meta.pageSize), p + 1))}
+                  disabled={page >= Math.ceil(meta.total / meta.pageSize)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-card hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
