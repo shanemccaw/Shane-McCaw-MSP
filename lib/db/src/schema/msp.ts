@@ -137,6 +137,10 @@ export const mspUsersTable = pgTable("msp_users", {
   // re-toggle after logging in on a new device or a cache clear. Null means
   // "no preference set yet" — the client falls back to OS prefers-color-scheme.
   themePreference: text("theme_preference", { enum: ["light", "dark"] }),
+  // Free-text organizational metadata for customer-side team members (set at
+  // invite time). Nullable — MSP-side roles (MSPAdmin, etc.) leave these unset.
+  department: text("department"),
+  jobTitle: text("job_title"),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

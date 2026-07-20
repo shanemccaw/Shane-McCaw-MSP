@@ -600,6 +600,85 @@ router.delete("/portal/team/:userId/sessions", requireAuth, async (req: Request,
   res.json({ ok: true, revokedCount });
 });
 
+// ─── CLIENT: Team member invite ───────────────────────────────────────────────
+// Lets a customer team member invite a colleague into their OWN customer's
+// portal scope. Reuses the same users + msp_users + account-setup-token +
+// account-setup email convention as /admin/clients (the platform-admin
+// client-creation route) rather than inventing a second invite mechanism.
+// New user is always created as mspRole "CustomerUser", customerId pinned to
+// the inviter's own customerId — never caller-supplied, so this can't be used
+// to plant a user in a different tenant.
+router.post("/portal/team/invite", requireAuth, async (req: Request, res: Response) => {
+  const inviterCustomerId = req.user!.customerId;
+  const inviterMspId = req.user!.mspId;
+  if (!inviterCustomerId || !inviterMspId) {
+    res.status(403).json({ error: "Only customer team members can invite teammates" });
+    return;
+  }
+
+  const { email, name, department, jobTitle } = req.body as {
+    email?: string;
+    name?: string;
+    department?: string;
+    jobTitle?: string;
+  };
+  if (!email || !email.trim()) {
+    res.status(400).json({ error: "email is required" });
+    return;
+  }
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing) {
+    res.status(409).json({ error: "An account with this email already exists" });
+    return;
+  }
+
+  const [newUser] = await db.insert(usersTable).values({
+    email: normalizedEmail,
+    passwordHash: null,
+    role: "client",
+    name: name?.trim() || null,
+  }).returning();
+
+  await db.insert(mspUsersTable).values({
+    userId: newUser.id,
+    mspId: inviterMspId,
+    customerId: inviterCustomerId,
+    mspRole: "CustomerUser",
+    isActive: true,
+    department: department?.trim() || null,
+    jobTitle: jobTitle?.trim() || null,
+  });
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_invited",
+    entityType: "user",
+    entityId: newUser.id,
+    entityLabel: newUser.name ?? newUser.email,
+  });
+
+  try {
+    const { token: setupToken } = await ensureClientSetupToken(newUser.id);
+    const setupUrl = buildAccountSetupUrl(setupToken);
+    void sendEmailFromTemplate(
+      "account-setup",
+      newUser.email,
+      { setupLink: setupUrl, clientName: newUser.name ?? newUser.email },
+      "You've been invited to join your company's Shane McCaw Consulting portal",
+      `<p>Hi ${newUser.name ?? ""},</p><p>${req.user!.name ?? req.user!.email} has invited you to join their team's client portal. Click the link below to create your password and access your workspace:</p><p style="margin:24px 0;"><a href="${setupUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p><p style="color:#888;font-size:13px;">This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+    ).catch((e) => log.warn({ err: e, userId: newUser.id, template: "account-setup" }, "portal/team/invite: invite email failed (non-fatal)"));
+  } catch (err) {
+    log.warn({ err, userId: newUser.id }, "portal/team/invite: failed to generate setup token/send invite email");
+  }
+
+  res.status(201).json({ ok: true });
+});
+
 // ─── CLIENT: M365 Profile (self-service) ─────────────────────────────────────
 router.get("/portal/m365-profile", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
