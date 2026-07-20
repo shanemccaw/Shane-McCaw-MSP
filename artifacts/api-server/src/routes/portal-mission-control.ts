@@ -264,6 +264,108 @@ const INSTANT_PACK_BY_SERVICE_SLUG: Record<string, string> = {
   "entra-id-quickstart-v1": "quickstart-v1",
 };
 
+// ── Remediable-offer lookup (shared source of truth) ─────────────────────────
+//
+// A "remediable offer" is one the POST /remediate endpoint would actually
+// accept and run: the customer is a testbed tenant, the offer is theirs and in
+// the "sent" state, and its catalog service maps to an instant config pack.
+// The overview route computes the same `instant` flag inline for card display;
+// this exported helper lets other server-side callers (e.g. the AI support
+// chat, which needs to know what it may propose) share the identical
+// eligibility rule instead of re-deriving — and re-deriving it wrongly. It
+// returns ONLY offers that would pass the endpoint's gate, so a caller can
+// trust every returned offerId is genuinely actionable. The endpoint still
+// re-validates everything on execute; this never becomes the sole gate.
+
+export interface RemediableOffer {
+  offerId: number;
+  offerTitle: string;
+  offerRationale: string | null;
+  packKey: string;
+  /** Titles of the latest-scan findings this offer was fired against, if any. */
+  relatedFindingTitles: string[];
+}
+
+export async function listRemediableOffers(customerId: number): Promise<RemediableOffer[]> {
+  // Testbed gate first — mirrors the remediate endpoint. A non-testbed tenant
+  // has zero remediable offers by definition, so nothing is ever proposable.
+  const [customer] = await db
+    .select({ isTestbed: mspCustomersTable.isTestbed })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+  if (customer?.isTestbed !== true) return [];
+
+  const offerRows = await db
+    .select()
+    .from(salesOffersTable)
+    .where(and(eq(salesOffersTable.customerId, customerId), eq(salesOffersTable.state, "sent")))
+    .orderBy(desc(salesOffersTable.score));
+  if (offerRows.length === 0) return [];
+
+  const serviceIds = [...new Set(offerRows.map((o) => o.serviceId).filter((id): id is number => id != null))];
+  const serviceRows = serviceIds.length
+    ? await db
+        .select({ id: servicesTable.id, slug: servicesTable.slug })
+        .from(servicesTable)
+        .where(inArray(servicesTable.id, serviceIds))
+    : [];
+
+  const packByServiceId = new Map<number, string>();
+  for (const s of serviceRows) {
+    const packKey = s.slug != null ? INSTANT_PACK_BY_SERVICE_SLUG[s.slug] : undefined;
+    if (packKey) packByServiceId.set(s.id, packKey);
+  }
+
+  const eligible = offerRows.filter((o) => o.serviceId != null && packByServiceId.has(o.serviceId));
+  if (eligible.length === 0) return [];
+
+  // Link each eligible offer to the latest-scan finding titles it fired against
+  // (same signal-key linkage as the overview route), purely to give a
+  // human-readable reference — signal keys themselves never leave the server.
+  const [lastCompleted] = await db
+    .select({ runId: mspDiagnosticRunsTable.runId })
+    .from(mspDiagnosticRunsTable)
+    .where(
+      and(
+        eq(mspDiagnosticRunsTable.customerId, customerId),
+        inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]),
+      ),
+    )
+    .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+    .limit(1);
+
+  const findingRows = lastCompleted
+    ? await db
+        .select({
+          title: mspDiagnosticFindingsTable.title,
+          recommendation: mspDiagnosticFindingsTable.recommendation,
+        })
+        .from(mspDiagnosticFindingsTable)
+        .where(eq(mspDiagnosticFindingsTable.runId, lastCompleted.runId))
+    : [];
+
+  return eligible.map((offer) => {
+    const firedKeys = new Set(offer.firedSignalKeys ?? []);
+    const relatedFindingTitles = firedKeys.size
+      ? [
+          ...new Set(
+            findingRows
+              .filter((f) => f.recommendation?.signalKey != null && firedKeys.has(f.recommendation.signalKey))
+              .map((f) => f.title),
+          ),
+        ]
+      : [];
+    return {
+      offerId: offer.id,
+      offerTitle: offer.title,
+      offerRationale: offer.rationale,
+      packKey: packByServiceId.get(offer.serviceId as number) as string,
+      relatedFindingTitles,
+    };
+  });
+}
+
 router.get(
   "/portal/mission-control/overview",
   requireRole("CustomerUser"),

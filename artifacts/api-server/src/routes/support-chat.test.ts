@@ -52,7 +52,14 @@ vi.mock("../lib/audit.ts", () => ({
 }));
 
 vi.mock("../lib/logger.ts", () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), child: vi.fn(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() })) },
+}));
+
+// listRemediableOffers is the only thing support-chat imports from the
+// mission-control route; mock the module so its heavy transitive imports
+// (engine registry, config-pack orchestrator) never load in this unit test.
+vi.mock("./portal-mission-control.ts", () => ({
+  listRemediableOffers: vi.fn().mockResolvedValue([]),
 }));
 
 // ── Import router after mocks ──────────────────────────────────────────────────
@@ -61,6 +68,7 @@ import supportChatRouter from "./support-chat.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db } from "@workspace/db";
 import { broadcastNotification } from "../lib/sse-channels.ts";
+import { listRemediableOffers } from "./portal-mission-control.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -86,7 +94,11 @@ function makeApp() {
 
 describe("POST /api/msp/support/chat", () => {
   const mockCreate = anthropic.messages.create as ReturnType<typeof vi.fn>;
+  const mockRemediable = listRemediableOffers as ReturnType<typeof vi.fn>;
   const mockDbAny = db as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+  const customerToken = () =>
+    makeToken({ id: 10, email: "customer@co.com", role: "client", mspRole: "CustomerUser", mspId: 1, customerId: 42 });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -99,6 +111,7 @@ describe("POST /api/msp/support/chat", () => {
     mockDbAny["insert"].mockReturnThis();
     mockDbAny["values"].mockReturnThis();
     mockDbAny["returning"].mockResolvedValue([{ id: 99, createdAt: new Date() }]);
+    mockRemediable.mockResolvedValue([]);
   });
 
   it("returns 400 when messages array is missing", async () => {
@@ -197,6 +210,64 @@ describe("POST /api/msp/support/chat", () => {
     expect(res.status).toBe(200);
     expect(res.body.escalated).toBe(true);
     expect(res.body.reply).not.toMatch(/\[ESCALATE_TO_HUMAN\]/i);
+  });
+
+  it("surfaces proposedRemediation when the AI emits a valid, eligible marker", async () => {
+    mockRemediable.mockResolvedValue([
+      { offerId: 7, offerTitle: "Entra ID Quick-Start", offerRationale: null, packKey: "quickstart-v1", relatedFindingTitles: ["MFA not enforced"] },
+    ]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "I can run the Entra ID Quick-Start to fix that. Confirm below.\n[PROPOSE_REMEDIATION:7]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "Can you fix the MFA finding?" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedRemediation).toEqual({ offerId: 7, offerTitle: "Entra ID Quick-Start", packKey: "quickstart-v1" });
+    // Marker must be stripped from what the user sees.
+    expect(res.body.reply).not.toMatch(/PROPOSE_REMEDIATION/i);
+    expect(res.body.reply).toContain("Confirm");
+  });
+
+  it("drops the proposal when the AI emits an offerId that is not eligible", async () => {
+    mockRemediable.mockResolvedValue([
+      { offerId: 7, offerTitle: "Entra ID Quick-Start", offerRationale: null, packKey: "quickstart-v1", relatedFindingTitles: [] },
+    ]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Sure.\n[PROPOSE_REMEDIATION:999]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "fix something" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedRemediation).toBeNull();
+    expect(res.body.reply).not.toMatch(/PROPOSE_REMEDIATION/i);
+  });
+
+  it("never surfaces a proposal for an ineligible tenant, even if the AI emits a marker", async () => {
+    // listRemediableOffers returns [] for a non-testbed / ineligible tenant.
+    mockRemediable.mockResolvedValue([]);
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: "text", text: "Running it now.\n[PROPOSE_REMEDIATION:7]" }],
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .post("/api/msp/support/chat")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ messages: [{ role: "user", content: "fix the MFA finding" }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.proposedRemediation).toBeNull();
+    expect(res.body.reply).not.toMatch(/PROPOSE_REMEDIATION/i);
   });
 
   it("trims conversation to last 20 messages before sending to AI", async () => {

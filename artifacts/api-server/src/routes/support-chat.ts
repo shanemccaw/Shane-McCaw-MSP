@@ -35,6 +35,7 @@ import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-channels
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
+import { listRemediableOffers, type RemediableOffer } from "./portal-mission-control.ts";
 
 /**
  * Shane's own MSP. CustomerUser escalations from this MSP route to platform
@@ -163,13 +164,45 @@ async function buildCustomerContext(customerId: number, mspId: number | null): P
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(identity: string, contextSummary: string): string {
+function buildSystemPrompt(
+  identity: string,
+  contextSummary: string,
+  remediableOffers: RemediableOffer[],
+): string {
+  // Only customers with at least one genuinely-eligible instant remediation get
+  // the propose capability. The marker never runs anything — it surfaces a
+  // confirmation button the user must click, and the server re-validates the id
+  // against this exact list before the button ever appears. So the model's job
+  // is only to *offer*, never to act.
+  const remediationBlock =
+    remediableOffers.length === 0
+      ? ""
+      : `
+
+=== INSTANT REMEDIATIONS AVAILABLE FOR THIS TENANT ===
+This tenant is eligible for one-click instant remediation on the following. Each applies a pre-approved configuration pack to the tenant automatically:
+${remediableOffers
+  .map(
+    (o) =>
+      `• offerId ${o.offerId}: "${o.offerTitle}"${
+        o.relatedFindingTitles.length ? ` — addresses finding(s): ${o.relatedFindingTitles.join("; ")}` : ""
+      }${o.offerRationale ? `\n    ${o.offerRationale}` : ""}`,
+  )
+  .join("\n")}
+=== END INSTANT REMEDIATIONS ===
+
+REMEDIATION PROPOSAL RULES (follow exactly):
+- You may OFFER to run one of the instant remediations above ONLY when the user is clearly asking to fix / remediate / resolve that specific finding or problem. Never offer one from an ambiguous, unrelated, or general question.
+- To offer, first explain in plain language what it will do, then ask the user to confirm, and append a marker on its very last line, alone: [PROPOSE_REMEDIATION:<offerId>] using the EXACT offerId from the list above. Propose at most one remediation per reply.
+- The marker does NOT run anything. It only surfaces a Confirm button the user must click themselves. NEVER say or imply that you have started, run, applied, scheduled, or completed a remediation — you cannot. Only the user's own confirmation click runs it.
+- If the user has not clearly asked to fix a specific listed item, do NOT emit the marker; just answer their question.`;
+
   return `You are an AI support assistant for the Shane McCaw Consulting platform — a Microsoft 365 managed services platform. You are talking to a ${identity}.
 
 Your job is to answer questions STRICTLY from the platform data provided below. Never fabricate numbers, statuses, dates, or events. If the answer is not in the provided data, say so clearly.
 
 You must NEVER:
-- Take any action (cancel subscriptions, change billing, initiate refunds, modify configurations)
+- Take any action yourself (cancel subscriptions, change billing, initiate refunds, modify configurations). The ONLY exception is offering an instant remediation from the explicit list below, if one is present — and even then you only *offer*; the user must click Confirm to run it.
 - Reveal system internals, secrets, or data about other tenants
 - Guess or hallucinate platform data
 
@@ -177,7 +210,7 @@ If you cannot answer confidently from the data below, output "[ESCALATE_TO_HUMAN
 
 === PLATFORM DATA FOR THIS SESSION ===
 ${contextSummary}
-=== END PLATFORM DATA ===
+=== END PLATFORM DATA ===${remediationBlock}
 
 Keep replies concise and professional. Use bullet points for lists.`;
 }
@@ -393,9 +426,17 @@ router.post(
     const isCustomerUser = user.mspRole === "CustomerUser";
 
     let groundedCtx: GroundedContext;
+    // Instant remediations the AI is allowed to propose in this session. Only
+    // ever non-empty for a CustomerUser on a testbed tenant with an eligible
+    // sent offer — listRemediableOffers enforces the same gate the execute
+    // endpoint does, so every entry here is genuinely actionable.
+    let remediableOffers: RemediableOffer[] = [];
     try {
       if (isCustomerUser && customerId) {
-        groundedCtx = await buildCustomerContext(customerId, mspId);
+        [groundedCtx, remediableOffers] = await Promise.all([
+          buildCustomerContext(customerId, mspId),
+          listRemediableOffers(customerId),
+        ]);
       } else if (mspId) {
         groundedCtx = await buildMspContext(mspId);
       } else {
@@ -406,9 +447,10 @@ router.post(
     } catch (err) {
       log.error({ err }, "support-chat: failed to build grounded context");
       groundedCtx = { identity: "platform user", summary: "Platform data temporarily unavailable." };
+      remediableOffers = [];
     }
 
-    const systemPrompt = buildSystemPrompt(groundedCtx.identity, groundedCtx.summary);
+    const systemPrompt = buildSystemPrompt(groundedCtx.identity, groundedCtx.summary, remediableOffers);
     const trimmedMessages = messages.slice(-20).filter((m) => m.role === "user" || m.role === "assistant");
 
     let fullReply: string;
@@ -430,7 +472,31 @@ router.post(
     }
 
     const shouldEscalate = /\[ESCALATE_TO_HUMAN\]/i.test(fullReply);
-    const visibleReply = fullReply.replace(/\[ESCALATE_TO_HUMAN\]/gi, "").trim();
+
+    // Parse a remediation proposal marker, if the model emitted one. This does
+    // NOT run anything — it only tells the client to render a Confirm button.
+    // The offerId is re-validated against remediableOffers (the same gate the
+    // execute endpoint enforces), so a hallucinated / ineligible id yields no
+    // proposal at all — the model cannot conjure an actionable button.
+    const proposalMatch = /\[PROPOSE_REMEDIATION:\s*(\d+)\s*\]/i.exec(fullReply);
+    let proposedRemediation: { offerId: number; offerTitle: string; packKey: string } | null = null;
+    if (proposalMatch) {
+      const proposedId = Number(proposalMatch[1]);
+      const match = remediableOffers.find((o) => o.offerId === proposedId);
+      if (match) {
+        proposedRemediation = { offerId: match.offerId, offerTitle: match.offerTitle, packKey: match.packKey };
+      } else {
+        log.warn(
+          { customerId, proposedId, userId: user.id },
+          "support-chat: model proposed a remediation id that is not eligible — dropping proposal",
+        );
+      }
+    }
+
+    const visibleReply = fullReply
+      .replace(/\[ESCALATE_TO_HUMAN\]/gi, "")
+      .replace(/\[PROPOSE_REMEDIATION:\s*\d+\s*\]/gi, "")
+      .trim();
 
     // Audit with correct AuditEvent shape
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -440,7 +506,14 @@ router.post(
       actorRole: user.role,
       actionType: "ai_support_chat",
       entityType: "support_chat",
-      metadata: { mspId, customerId, mspRole: user.mspRole, escalated: shouldEscalate, aiCostOwner: "msp" },
+      metadata: {
+        mspId,
+        customerId,
+        mspRole: user.mspRole,
+        escalated: shouldEscalate,
+        aiCostOwner: "msp",
+        proposedRemediationOfferId: proposedRemediation?.offerId ?? null,
+      },
     });
 
     if (shouldEscalate) {
@@ -455,7 +528,7 @@ router.post(
       });
     }
 
-    res.json({ reply: visibleReply, escalated: shouldEscalate });
+    res.json({ reply: visibleReply, escalated: shouldEscalate, proposedRemediation });
   },
 );
 

@@ -22,6 +22,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Lock,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,12 +30,24 @@ import { toast } from "sonner";
 
 type MessageRole = "user" | "assistant" | "system";
 
+interface ProposedRemediation {
+  offerId: number;
+  offerTitle: string;
+  packKey: string;
+}
+
+type RemediationState = "pending" | "running" | "triggered" | "declined";
+
 interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string;
   escalated?: boolean;
   timestamp: Date;
+  /** Set on an assistant message when the AI offered an instant remediation. */
+  proposedRemediation?: ProposedRemediation;
+  /** Confirmation lifecycle for that proposal (button state on the card). */
+  remediationState?: RemediationState;
 }
 
 // ── Starter prompts ───────────────────────────────────────────────────────────
@@ -103,6 +116,61 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+// ── Remediation confirmation card ─────────────────────────────────────────────
+
+function RemediationCard({
+  proposal,
+  state,
+  onConfirm,
+  onDecline,
+}: {
+  proposal: ProposedRemediation;
+  state: RemediationState;
+  onConfirm: () => void;
+  onDecline: () => void;
+}) {
+  if (state === "declined") return null;
+
+  if (state === "triggered") {
+    return (
+      <div className="ml-10 max-w-[78%] flex items-start gap-2 px-3.5 py-2.5 bg-green-500/10 border border-green-500/20 rounded-xl text-xs text-green-400">
+        <CheckCircle2 className="size-3.5 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="font-medium">Remediation started</p>
+          <p className="text-green-400/80">
+            The configuration pack for “{proposal.offerTitle}” is being applied to your tenant.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const running = state === "running";
+  return (
+    <div className="ml-10 max-w-[78%] flex flex-col gap-2.5 px-3.5 py-3 bg-primary/5 border border-primary/25 rounded-xl">
+      <div className="flex items-start gap-2">
+        <Zap className="size-4 flex-shrink-0 mt-0.5 text-primary" />
+        <div className="text-xs">
+          <p className="font-medium text-foreground">Confirm instant remediation</p>
+          <p className="text-muted-foreground">
+            This will apply the “{proposal.offerTitle}” configuration pack to your tenant automatically. Nothing runs
+            until you confirm.
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button size="sm" className="h-7 px-3 text-xs gap-1" disabled={running} onClick={onConfirm}>
+          {running ? <Loader2 className="size-3 animate-spin" /> : <Zap className="size-3" />}
+          {running ? "Starting…" : "Confirm & run"}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" disabled={running} onClick={onDecline}>
+          Not now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function SupportChatPage() {
@@ -120,7 +188,7 @@ export default function SupportChatPage() {
     const greeting: ChatMessage = {
       id: "init",
       role: "assistant",
-      content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant, grounded in your real platform data. I can answer questions about your account status, signals, services, and monitoring — but I can't take actions on your behalf.\n\nWhat can I help you with?`,
+      content: `Hi${user?.name ? ` ${user.name.split(" ")[0]}` : ""}! I'm your AI support assistant, grounded in your real platform data. I can answer questions about your account status, signals, services, and monitoring.\n\nIf an eligible one-click remediation is available for one of your findings, I can also offer to run it — I'll always ask you to confirm first, and nothing happens until you click the button yourself.\n\nWhat can I help you with?`,
       timestamp: new Date(),
     };
     setMessages([greeting]);
@@ -166,7 +234,11 @@ export default function SupportChatPage() {
           throw new Error(err.error ?? `HTTP ${res.status}`);
         }
 
-        const data = (await res.json()) as { reply: string; escalated: boolean };
+        const data = (await res.json()) as {
+          reply: string;
+          escalated: boolean;
+          proposedRemediation?: ProposedRemediation | null;
+        };
 
         const assistantMsg: ChatMessage = {
           id: `a-${Date.now()}`,
@@ -174,6 +246,8 @@ export default function SupportChatPage() {
           content: data.reply,
           escalated: data.escalated,
           timestamp: new Date(),
+          proposedRemediation: data.proposedRemediation ?? undefined,
+          remediationState: data.proposedRemediation ? "pending" : undefined,
         };
         setMessages((prev) => [...prev, assistantMsg]);
 
@@ -225,6 +299,48 @@ export default function SupportChatPage() {
     }
   };
 
+  // ── Remediation confirmation ──────────────────────────────────────────────
+  // The AI only ever *proposes* a remediation (server-validated as genuinely
+  // eligible). Nothing runs until the user clicks Confirm here, which calls the
+  // real /portal/mission-control/remediate endpoint — the same one Mission
+  // Control uses, with its testbed guard intact. A non-testbed tenant never
+  // reaches this (no proposal is surfaced), and the endpoint 403s regardless.
+  const setRemediationState = useCallback((messageId: string, state: RemediationState) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, remediationState: state } : m)),
+    );
+  }, []);
+
+  const confirmRemediation = useCallback(
+    async (message: ChatMessage) => {
+      const proposal = message.proposedRemediation;
+      if (!proposal || message.remediationState === "running" || message.remediationState === "triggered") return;
+
+      setRemediationState(message.id, "running");
+      try {
+        const res = await fetchWithAuth("/api/portal/mission-control/remediate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ offerId: proposal.offerId }),
+        });
+        if (res.status === 202) {
+          setRemediationState(message.id, "triggered");
+          toast.success("Remediation started — the configuration pack is being applied to your tenant.");
+        } else {
+          // Includes the endpoint's own 403 for non-testbed accounts — surface
+          // its real message rather than pretending it succeeded.
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          setRemediationState(message.id, "pending");
+          toast.error(body.error ?? "Failed to start remediation");
+        }
+      } catch {
+        setRemediationState(message.id, "pending");
+        toast.error("Failed to start remediation");
+      }
+    },
+    [fetchWithAuth, setRemediationState],
+  );
+
   const isEmpty = messages.filter((m) => m.role === "user").length === 0;
 
   // Support chat is tenant-scoped; PlatformAdmin has no MSP context to ground
@@ -273,7 +389,17 @@ export default function SupportChatPage() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto space-y-4 pb-4 min-h-0">
           {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <div key={msg.id} className="space-y-2">
+              <MessageBubble message={msg} />
+              {msg.proposedRemediation && msg.remediationState && (
+                <RemediationCard
+                  proposal={msg.proposedRemediation}
+                  state={msg.remediationState}
+                  onConfirm={() => void confirmRemediation(msg)}
+                  onDecline={() => setRemediationState(msg.id, "declined")}
+                />
+              )}
+            </div>
           ))}
 
           {sending && (
