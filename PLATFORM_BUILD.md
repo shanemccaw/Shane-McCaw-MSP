@@ -176,3 +176,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-20 | ⏳ IN FLIGHT | Signal Rules UI: Version History & Audit Log | |
 | 2026-07-20 | ⏳ IN FLIGHT | Signal Rules UI: Simulation Profiles | |
 | 2026-07-20 | ⏳ IN FLIGHT | Signal Rules UI: Bundle Import/Export | |
+| 2026-07-20 | ⏳ IN FLIGHT | Signal Rules UI: Evaluate/Preview Tester & Rule Groups CRUD | |
