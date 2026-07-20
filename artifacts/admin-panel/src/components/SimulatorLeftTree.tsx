@@ -23,6 +23,7 @@ import {
   Loader2,
   Cpu,
   Zap,
+  FileDiff,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -56,7 +57,8 @@ type TestSuiteStep =
   | { type: "sql"; scriptId: number }
   | { type: "scenario"; eventId: string }
   | { type: "exception_trigger"; marker?: string }
-  | { type: "orchestrated_pipeline"; testbedCustomerId?: number; engineKeys?: string[] };
+  | { type: "orchestrated_pipeline"; testbedCustomerId?: number; engineKeys?: string[] }
+  | { type: "migration_file"; filename: string };
 
 interface TestSuite {
   id: number;
@@ -92,6 +94,7 @@ export function SimulatorLeftTree() {
 
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
+  const [migrationFiles, setMigrationFiles] = useState<string[]>([]);
   const [suites, setSuites] = useState<TestSuite[]>([]);
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [busEventTypes, setBusEventTypes] = useState<BusEventType[]>([]);
@@ -107,6 +110,7 @@ export function SimulatorLeftTree() {
   // Tree toggle states
   const [scenariosOpen, setScenariosOpen] = useState(true);
   const [scriptsOpen, setScriptsOpen] = useState(true);
+  const [migrationsOpen, setMigrationsOpen] = useState(true);
   const [exceptionsOpen, setExceptionsOpen] = useState(true);
   const [suitesOpen, setSuitesOpen] = useState(true);
   const [enginesOpen, setEnginesOpen] = useState(true);
@@ -185,6 +189,13 @@ export function SimulatorLeftTree() {
       if (scriptsRes.ok) {
         const scriptsData = await scriptsRes.json();
         setScripts(scriptsData.scripts || []);
+      }
+
+      // 2b. Fetch manual migration files (lib/db/migrations/manual/, server filesystem)
+      const migrationsRes = await fetchWithAuth("/api/simulator/migrations/files");
+      if (migrationsRes.ok) {
+        const migrationsData = await migrationsRes.json();
+        setMigrationFiles(migrationsData.files || []);
       }
 
       // 3. Fetch test suites
@@ -429,6 +440,11 @@ export function SimulatorLeftTree() {
     }
   };
 
+  const handleMigrationRun = (filename: string) => {
+    // One-click execute, no confirmation — internal tool, Shane's the only user.
+    window.dispatchEvent(new CustomEvent("simulator-run-migration", { detail: { filename } }));
+  };
+
   const handleSuiteDelete = async (suite: TestSuite) => {
     if (!confirm(`Delete test suite "${suite.name}"? This cannot be undone.`)) return;
     try {
@@ -638,6 +654,51 @@ export function SimulatorLeftTree() {
                       </div>
                     )}
                   </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 2b: Migrations (lib/db/migrations/manual/, server filesystem) */}
+        <div>
+          <div
+            onClick={() => setMigrationsOpen(!migrationsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {migrationsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span className="truncate">Migrations</span>
+          </div>
+
+          {migrationsOpen && (
+            <div className="ml-[22px] border-l border-accent">
+              {migrationFiles.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No manual migration files</div>
+              ) : (
+                migrationFiles.map((filename) => (
+                  <ContextMenu key={filename}>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        onClick={() => handleMigrationRun(filename)}
+                        className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 text-foreground/85 transition-colors hover:bg-accent hover:text-foreground"
+                      >
+                        <FileDiff className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                        <span className="flex-1 truncate font-mono text-[11px]" title={filename}>
+                          {filename}
+                        </span>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-44">
+                      <ContextMenuItem onSelect={() => handleMigrationRun(filename)} className="gap-2 text-xs">
+                        <Play className="h-3.5 w-3.5" />
+                        Execute
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 ))
               )}
             </div>

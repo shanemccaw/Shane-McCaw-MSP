@@ -1,6 +1,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
@@ -9,6 +11,7 @@ import { executeMonitorCheck } from "../lib/monitor-executor";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.signals" });
 const policyLog = logger.child({ channel: "engine.policy" });
+const systemLog = logger.child({ channel: "system.core" });
 import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
   ENGINE_DEFS,
@@ -1470,6 +1473,21 @@ router.get("/simulator/db-schema", requireAdmin, async (_req: Request, res: Resp
   }
 });
 
+// Shared by /simulator/sql/execute and /simulator/migrations/execute — runs
+// raw SQL text and shapes the result identically for both callers.
+async function executeRawSql(query: string) {
+  const startTime = Date.now();
+  const result = await db.execute(sql.raw(query));
+  const executionMs = Date.now() - startTime;
+
+  return {
+    rows: result.rows || [],
+    rowCount: result.rowCount || (result.rows ? result.rows.length : 0),
+    fields: result.fields?.map((f: any) => f.name) ?? (result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []),
+    executionMs,
+  };
+}
+
 /**
  * @route POST /api/admin/engines/simulator/sql/execute
  * @desc Executes SQL queries/CRUD scripts with performance timing & safety checks
@@ -1482,19 +1500,67 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
       return res.status(400).json({ error: "A valid SQL query string is required." });
     }
 
-    const startTime = Date.now();
-    const result = await db.execute(sql.raw(query));
-    const executionMs = Date.now() - startTime;
-
-    return res.json({
-      rows: result.rows || [],
-      rowCount: result.rowCount || (result.rows ? result.rows.length : 0),
-      fields: result.fields?.map((f: any) => f.name) ?? (result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []),
-      executionMs
-    });
+    return res.json(await executeRawSql(query));
   } catch (err: any) {
     log.error({ err, query: req.body?.query }, "SQL console execute failed");
     return res.status(500).json({ error: err.message || "Failed to execute query" });
+  }
+});
+
+// lib/db/migrations/manual/ — real .sql files committed to the repo, read
+// straight off the server filesystem (not a database table).
+const MANUAL_MIGRATIONS_DIR = path.resolve(process.cwd(), "../../lib/db/migrations/manual");
+
+async function listManualMigrationFiles(): Promise<string[]> {
+  const entries = await fs.readdir(MANUAL_MIGRATIONS_DIR, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isFile() && e.name.endsWith(".sql"))
+    .map((e) => e.name)
+    .sort();
+}
+
+/**
+ * @route GET /api/simulator/migrations/files
+ * @desc Lists every .sql file in lib/db/migrations/manual/, sorted alphabetically
+ *       (filenames are dated YYYY-MM-DD-description.sql, so alphabetical order
+ *       is chronological/dependency order).
+ */
+router.get("/simulator/migrations/files", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const files = await listManualMigrationFiles();
+    return res.json({ files });
+  } catch (err: any) {
+    systemLog.error({ err }, "Simulator migrations: failed to list manual migration files");
+    return res.status(500).json({ error: err.message || "Failed to list migration files" });
+  }
+});
+
+/**
+ * @route POST /api/simulator/migrations/execute
+ * @desc Reads one manual migration file's full contents off disk and runs it
+ *       through the same execution path as the SQL console.
+ */
+router.post("/simulator/migrations/execute", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.body;
+    if (!filename || typeof filename !== "string") {
+      return res.status(400).json({ error: "A valid migration filename is required." });
+    }
+
+    // Exact allowlist check against the real directory listing — not just
+    // string sanitization — so a path-traversal filename can never reach fs.readFile.
+    const realFiles = await listManualMigrationFiles();
+    if (!realFiles.includes(filename)) {
+      return res.status(400).json({ error: "Not a recognized manual migration file." });
+    }
+
+    const filePath = path.join(MANUAL_MIGRATIONS_DIR, filename);
+    const query = await fs.readFile(filePath, "utf8");
+
+    return res.json(await executeRawSql(query));
+  } catch (err: any) {
+    systemLog.error({ err, filename: req.body?.filename }, "Simulator migrations: execute failed");
+    return res.status(500).json({ error: err.message || "Failed to execute migration file" });
   }
 });
 

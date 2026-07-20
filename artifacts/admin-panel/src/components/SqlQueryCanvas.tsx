@@ -72,6 +72,26 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
   const executeSqlRef = useRef(executeSql);
   executeSqlRef.current = executeSql;
 
+  // Migration files run their own full file contents server-side (not the
+  // editor's text) — same output shape/rendering as executeSql, different endpoint.
+  const executeMigration = async (filename: string) => {
+    onOutputChange({ isExecuting: true, results: null, error: null });
+    try {
+      const res = await fetchWithAuth("/api/simulator/migrations/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Migration execution failed");
+      onOutputChange({ isExecuting: false, results: data, error: null });
+    } catch (err: any) {
+      onOutputChange({ isExecuting: false, results: null, error: err.message });
+    }
+  };
+  const executeMigrationRef = useRef(executeMigration);
+  executeMigrationRef.current = executeMigration;
+
   // Runs the selected text if there is a selection, otherwise the full editor
   // contents — the per-statement gutter buttons cover the finer-grained case.
   const handleRunClick = () => {
@@ -112,6 +132,21 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
     window.addEventListener("simulator-run-script", handleRunScript as EventListener);
     return () => {
       window.removeEventListener("simulator-run-script", handleRunScript as EventListener);
+    };
+  }, []);
+
+  // Migration files clicked in the Explorer tree run immediately, server-side,
+  // off the real file contents — the editor just mirrors what ran for visibility.
+  useEffect(() => {
+    const handleRunMigration = (e: CustomEvent) => {
+      const { filename } = e.detail as { filename: string };
+      setQuery(`-- Migration file: ${filename}\n-- (full contents executed server-side from lib/db/migrations/manual/)`);
+      toast.info(`Running migration: ${filename}`);
+      void executeMigrationRef.current(filename);
+    };
+    window.addEventListener("simulator-run-migration", handleRunMigration as EventListener);
+    return () => {
+      window.removeEventListener("simulator-run-migration", handleRunMigration as EventListener);
     };
   }, []);
 

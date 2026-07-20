@@ -73,9 +73,11 @@ export function SimulatorCenterCanvas({
     const handleLoadScript = () => setActiveTab("sql");
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
+    window.addEventListener("simulator-run-migration", handleLoadScript);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
+      window.removeEventListener("simulator-run-migration", handleLoadScript);
     };
   }, []);
 
