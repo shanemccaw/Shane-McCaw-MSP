@@ -10,6 +10,7 @@ import { Layout } from "@/components/Layout";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { AuthorBio } from "@/components/AuthorBio";
 import { ArticleAssessmentCTA } from "@/components/ArticleAssessmentCTA";
+import { ArticlePersonalizedNudge } from "@/components/ArticlePersonalizedNudge";
 import { articles } from "@/data/articles";
 import NotFound from "@/pages/not-found";
 
@@ -196,6 +197,7 @@ export default function ArticlePage() {
           </div>
 
           <ArticleAssessmentCTA category={article.category} title={article.title} />
+          <ArticlePersonalizedNudge category={article.category} title={article.title} />
 
           <AuthorBio />
 

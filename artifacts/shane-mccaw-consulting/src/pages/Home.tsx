@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "wouter";
 import {
   ShieldCheck,
@@ -21,6 +21,10 @@ import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
 import { useServices, type PublicService } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
+import { usePersonalizationState } from "@/hooks/usePersonalizationState";
+import { useHealthPillars } from "@/hooks/usePersonalizationData";
+import { HEALTH_PILLAR_LABELS, PILLAR_TO_TOPIC_SLUG } from "@/data/solutionsTopics";
+import { trackEvent } from "@/lib/analytics";
 
 interface MonitoringTypeAttributes {
   seatMin?: number;
@@ -88,6 +92,91 @@ const ENGINES = [
     icon: Zap,
   },
 ];
+
+/**
+ * Assessment-tier real pillar overview (website-rebuild-reference-v2.md §3): a logged-in,
+ * Assessment-verified visitor sees their actual Architecture Health Engine score front and
+ * center, directing them to whichever topic page needs attention most. Cold and quiz-tier
+ * visitors never see this section — it's added on top of Stage 3's hero, not a replacement
+ * (Stage 4b task scope). Renders nothing while resolving or outside the "assessment" tier.
+ */
+function AssessmentHealthOverview() {
+  const { tier, loading: tierLoading } = usePersonalizationState();
+  const { loading: pillarsLoading, score, pillars } = useHealthPillars();
+
+  const worst = useMemo(
+    () => (pillars.length ? [...pillars].sort((a, b) => a.score - b.score)[0] : null),
+    [pillars],
+  );
+
+  useEffect(() => {
+    if (tier === "assessment" && !pillarsLoading && pillars.length > 0) {
+      trackEvent("personalization_shown", { tier: "assessment", surface: "home_health_overview" });
+    }
+  }, [tier, pillarsLoading, pillars.length]);
+
+  if (tierLoading || tier !== "assessment") return null;
+  if (pillarsLoading || pillars.length === 0) return null;
+
+  const worstSlug = worst ? PILLAR_TO_TOPIC_SLUG[worst.pillar] : null;
+  const worstLabel = worst ? (HEALTH_PILLAR_LABELS[worst.pillar] ?? worst.pillar) : null;
+
+  return (
+    <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto">
+        <GlassPanel className="p-8 sm:p-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-2">
+                Your real tenant health, right now
+              </p>
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+                {score !== null ? (
+                  <>
+                    Composite score:{" "}
+                    <span className="font-numeric text-accent-blue">{Math.round(score)}</span>
+                  </>
+                ) : (
+                  "Composite score not yet available"
+                )}
+              </h2>
+            </div>
+            {worst && worstSlug && (
+              <Link
+                href={`/solutions/${worstSlug}`}
+                className="shrink-0 px-6 py-3 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                data-track="cta"
+                onClick={() =>
+                  trackEvent("personalization_nudge_click", {
+                    tier: "assessment",
+                    surface: "home_health_overview",
+                    pillar: worst.pillar,
+                    destination: worstSlug,
+                  })
+                }
+              >
+                <span>{worstLabel} needs attention</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+            {pillars.map((p) => (
+              <StatPanel
+                key={p.pillar}
+                label={HEALTH_PILLAR_LABELS[p.pillar] ?? p.pillar}
+                value={Math.round(p.score)}
+                className={worst && p.pillar === worst.pillar ? "border-accent-violet/50" : undefined}
+              />
+            ))}
+          </div>
+        </GlassPanel>
+      </div>
+    </section>
+  );
+}
 
 export default function Home() {
   // {{db.services.all}}
@@ -397,6 +486,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <AssessmentHealthOverview />
 
       {/* CREDIBILITY */}
       <section className="py-10 px-4 sm:px-6 lg:px-8">

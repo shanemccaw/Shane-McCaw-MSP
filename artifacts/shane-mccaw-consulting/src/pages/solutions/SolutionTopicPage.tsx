@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Layout } from "@/components/Layout";
@@ -5,22 +6,71 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
-import { getSolutionTopic } from "@/data/solutionsTopics";
+import { getSolutionTopic, HEALTH_PILLAR_LABELS, topicMatchesKeywordText } from "@/data/solutionsTopics";
+import { PersonalizedContent } from "@/components/PersonalizedContent";
+import { usePersonalizationState } from "@/hooks/usePersonalizationState";
+import { useHealthPillars, useLatestPresentation, usePortalUrl, useQuizOfferData } from "@/hooks/usePersonalizationData";
+import { trackEvent } from "@/lib/analytics";
 import NotFound from "@/pages/not-found";
 
 /**
- * Cold-visitor structure for a Solutions/Topic page (website-rebuild-reference-v2.md §3/§5).
- * One route per topic slug, all sharing this template. Personalization (real score display for
- * a recognized visitor) is Stage 4 — this stays generic-marketing content, structured so the
- * personalization layer can slot in later without a rebuild.
+ * Solutions/Topic page (website-rebuild-reference-v2.md §3/§5). One route per topic slug,
+ * all sharing this template. Cold-visitor structure is Stage 2; Stage 4b wires the
+ * personalization layer (real per-pillar score for Assessment-verified visitors, an
+ * inferred-signal nudge for quiz-tier visitors) on top of it.
  */
 export default function SolutionTopicPage() {
   const [, params] = useRoute("/solutions/:slug");
   const topic = params?.slug ? getSolutionTopic(params.slug) : undefined;
 
+  const { tier } = usePersonalizationState();
+  const { leadOffer } = useQuizOfferData();
+  const { score: overallHealthScore, pillars } = useHealthPillars();
+  const { presentation } = useLatestPresentation();
+  const { portalUrl } = usePortalUrl();
+
+  // Composite topic (m365-health) shows the full 7-pillar breakdown; every other topic
+  // shows its worst (lowest) matched pillar — real per-domain score, no fabricated single
+  // number (health-engine.ts HEALTH_PILLARS; useHealthPillars, Stage 4b).
+  const isCompositeTopic = topic?.slug === "m365-health";
+  const relevantPillars = useMemo(
+    () => (topic ? pillars.filter((p) => topic.healthPillarKeys.includes(p.pillar)) : []),
+    [topic, pillars],
+  );
+  const worstRelevantPillar = useMemo(
+    () => (relevantPillars.length ? [...relevantPillars].sort((a, b) => a.score - b.score)[0] : null),
+    [relevantPillars],
+  );
+  const domainScore = isCompositeTopic ? overallHealthScore : (worstRelevantPillar?.score ?? null);
+
+  // Cross-topic quiz nudge: only fires when the Lead Offer Engine actually inferred a
+  // signal relevant to THIS topic — falls back to cold content otherwise, per §3 ("do not
+  // force an irrelevant nudge onto every page for every quiz taker").
+  const relevantQuizSignal = useMemo(
+    () =>
+      topic ? (leadOffer?.inferredSignals ?? []).find((s) => topicMatchesKeywordText(topic.slug, s.signalKey)) : undefined,
+    [topic, leadOffer],
+  );
+
+  useEffect(() => {
+    if (!topic) return;
+    if (tier === "assessment" && relevantPillars.length > 0) {
+      trackEvent("personalization_shown", { tier: "assessment", surface: "topic_page", topic: topic.slug });
+    } else if (tier === "quiz" && relevantQuizSignal) {
+      trackEvent("personalization_shown", { tier: "quiz", surface: "topic_page", topic: topic.slug });
+    }
+  }, [topic, tier, relevantPillars.length, relevantQuizSignal]);
+
   if (!topic) return <NotFound />;
 
   const Icon = topic.icon;
+
+  const coldHeadline = (
+    <>
+      {topic.headlinePrefix}
+      <GradientText>{topic.headlineSuffix}</GradientText>
+    </>
+  );
 
   return (
     <Layout>
@@ -38,8 +88,27 @@ export default function SolutionTopicPage() {
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-6">
-            {topic.headlinePrefix}
-            <GradientText>{topic.headlineSuffix}</GradientText>
+            <PersonalizedContent
+              cold={coldHeadline}
+              quiz={
+                relevantQuizSignal ? (
+                  <>
+                    Your {topic.shortLabel} Readiness — <GradientText>tailored to what you told us</GradientText>
+                  </>
+                ) : (
+                  coldHeadline
+                )
+              }
+              assessment={
+                domainScore !== null ? (
+                  <>
+                    Your real {topic.shortLabel} score: <GradientText>{Math.round(domainScore)}</GradientText>
+                  </>
+                ) : (
+                  coldHeadline
+                )
+              }
+            />
           </h1>
 
           <p className="text-lg text-text-secondary max-w-2xl mx-auto leading-relaxed mb-10">
@@ -65,14 +134,78 @@ export default function SolutionTopicPage() {
             </Link>
           </div>
 
-          {/* Personalization slot — cold-visitor placeholder only. A recognized (Assessment-verified
-              or quiz-inferred) visitor's real pillar score renders here in Stage 4; until then this
-              is generic, not a fabricated number (website-rebuild-reference-v2.md §3 confidence tiers). */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-            {topic.stats.map((s) => (
-              <StatPanel key={s.label} label={s.label} value={s.value} />
-            ))}
-          </div>
+          {/* Personalization slot (website-rebuild-reference-v2.md §3, Stage 4b): cold visitors see
+              the generic Stage 2 stat panels; a quiz-tier visitor with a relevant inferred signal
+              sees a softened "based on what you told us" nudge; an Assessment-verified visitor sees
+              their real Architecture Health Engine pillar score(s) for this domain, stated as fact. */}
+          <PersonalizedContent
+            cold={
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                {topic.stats.map((s) => (
+                  <StatPanel key={s.label} label={s.label} value={s.value} />
+                ))}
+              </div>
+            }
+            quiz={
+              relevantQuizSignal ? (
+                <div className="max-w-2xl mx-auto">
+                  <GlassPanel className="p-6 text-left">
+                    <p className="text-text-secondary leading-relaxed">
+                      Your quiz answers point to a real gap in {topic.title.toLowerCase()}. A free
+                      Assessment scans your actual tenant against the real Graph API to confirm it.
+                    </p>
+                  </GlassPanel>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                  {topic.stats.map((s) => (
+                    <StatPanel key={s.label} label={s.label} value={s.value} />
+                  ))}
+                </div>
+              )
+            }
+            assessment={
+              domainScore !== null ? (
+                <div className="max-w-2xl mx-auto">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {(isCompositeTopic ? pillars : relevantPillars).map((p) => (
+                      <StatPanel
+                        key={p.pillar}
+                        label={HEALTH_PILLAR_LABELS[p.pillar] ?? p.pillar}
+                        value={Math.round(p.score)}
+                      />
+                    ))}
+                  </div>
+                  {presentation && portalUrl && (
+                    <a
+                      href={`${portalUrl}/customer-sow/${presentation.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
+                      style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                      data-track="cta"
+                      onClick={() =>
+                        trackEvent("personalization_nudge_click", {
+                          tier: "assessment",
+                          surface: "topic_page",
+                          topic: topic.slug,
+                          destination: "presentation",
+                        })
+                      }
+                    >
+                      View your priced project plan <ArrowRight className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+                  {topic.stats.map((s) => (
+                    <StatPanel key={s.label} label={s.label} value={s.value} />
+                  ))}
+                </div>
+              )
+            }
+          />
         </div>
       </section>
 

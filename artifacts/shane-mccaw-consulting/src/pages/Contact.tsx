@@ -3,8 +3,10 @@ import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
-import { Mail, MapPin, Clock, Send } from "lucide-react";
-import { identifyLead } from "@/lib/analytics";
+import { Mail, MapPin, Clock, Send, MessageSquare, ArrowRight } from "lucide-react";
+import { identifyLead, trackEvent } from "@/lib/analytics";
+import { usePersonalizationState } from "@/hooks/usePersonalizationState";
+import { usePortalUrl } from "@/hooks/usePersonalizationData";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -64,6 +66,54 @@ function ChatBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+/**
+ * Assessment-tier Portal handoff (website-rebuild-reference-v2.md §3, Stage 4b): a
+ * recognized, logged-in visitor with a real Portal account gets routed straight into
+ * msp-portal's real AI support chat (support-chat.tsx, route /support, requireAuth-gated
+ * POST /api/msp/support/chat) instead of the generic contact-chat form here — that AI
+ * already has real tenant context and can propose real remediations, this one can't.
+ * Cross-app link reuses the EXISTING POST /api/public/checkout/gate email→portalUrl
+ * mechanism (usePortalUrl) — the same one Login.tsx/CheckoutGate.tsx already use for
+ * this exact handoff. Only rendered when portalUrl actually resolved; the caller falls
+ * back to the standard contact-chat form otherwise (see usePortalUrl's own doc comment
+ * for why resolution can fail — confirmed via code read, not guessed).
+ */
+function PortalSupportHandoff({ portalUrl }: { portalUrl: string }) {
+  return (
+    <div
+      className="bg-white rounded-xl border border-border flex flex-col items-center justify-center text-center px-8 py-12"
+      style={{ minHeight: "520px" }}
+    >
+      <div className="w-14 h-14 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-5">
+        <MessageSquare className="w-6 h-6 text-[#0078D4]" />
+      </div>
+      <h3 className="text-lg font-bold text-[#0A2540] mb-2">Skip the form — go straight to your Portal</h3>
+      <p className="text-muted-foreground text-sm max-w-sm mb-6">
+        You already have an account. Your Portal's AI assistant knows your real tenant data and can
+        propose actual fixes — not just gather details for a follow-up.
+      </p>
+      <a
+        href={`${portalUrl}/support`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-semibold bg-[#0078D4] hover:bg-[#006BBE] transition-colors"
+        data-track="cta"
+        data-testid="contact-portal-support-link"
+        onClick={() => trackEvent("personalization_nudge_click", { tier: "assessment", surface: "contact_portal_handoff" })}
+      >
+        Open Portal Support Chat <ArrowRight className="w-4 h-4" />
+      </a>
+      <p className="text-xs text-muted-foreground mt-4">
+        Prefer this form instead?{" "}
+        <a href="mailto:info@shanemccaw.com" className="text-[#0078D4] hover:underline">
+          Email Shane directly
+        </a>
+        .
+      </p>
+    </div>
+  );
+}
+
 export default function Contact() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -72,6 +122,8 @@ export default function Contact() {
   const [initError, setInitError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { tier } = usePersonalizationState();
+  const { portalUrl } = usePortalUrl();
 
   const scrollToBottom = () => {
     if (containerRef.current) {
@@ -201,6 +253,12 @@ export default function Contact() {
     }
   };
 
+  useEffect(() => {
+    if (tier === "assessment" && portalUrl) {
+      trackEvent("personalization_shown", { tier: "assessment", surface: "contact_portal_handoff" });
+    }
+  }, [tier, portalUrl]);
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -283,6 +341,9 @@ export default function Contact() {
                 You'll speak directly with me — no account managers, no junior staff, no outsourcing.
               </p>
 
+              {tier === "assessment" && portalUrl ? (
+                <PortalSupportHandoff portalUrl={portalUrl} />
+              ) : (
               <div className="bg-white rounded-xl border border-border flex flex-col" style={{ minHeight: "520px" }}>
                 <div className="border-b border-border px-6 py-4 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold">AI</div>
@@ -352,6 +413,7 @@ export default function Contact() {
                   </p>
                 </div>
               </div>
+              )}
 
               {/* What Happens Next */}
               <div className="bg-white rounded-xl border border-border p-6 mt-6">

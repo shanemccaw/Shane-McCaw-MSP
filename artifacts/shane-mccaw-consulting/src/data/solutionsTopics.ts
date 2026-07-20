@@ -21,6 +21,15 @@ export interface SolutionTopic {
   coverage: string[];
   risks: string[];
   relatedEngine: { name: string; description: string };
+  /**
+   * Architecture Health Engine pillar key(s) this topic maps to (health-engine.ts
+   * HEALTH_PILLARS + "security"), for Stage 4b real-score personalization
+   * (website-rebuild-reference-v2.md §3). Most topics own exactly one pillar;
+   * "architecture" and "governance" are each shared by more than one topic (a real
+   * many-to-one relationship in the underlying scoring model, not an omission) —
+   * m365-health is the only topic scored as the full 7-pillar composite.
+   */
+  healthPillarKeys: string[];
 }
 
 export const SOLUTIONS_TOPICS: SolutionTopic[] = [
@@ -56,6 +65,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Hunts anonymous share links, stale guest access, and over-privileged access — the exact surface area Copilot inherits.",
     },
+    healthPillarKeys: ["copilot"],
   },
   {
     slug: "security-compliance",
@@ -89,6 +99,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Continuously hunts anonymous share links, stale guest access, over-privileged OAuth apps, and MFA gaps.",
     },
+    healthPillarKeys: ["security", "compliance"],
   },
   {
     slug: "governance",
@@ -122,6 +133,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Fingerprints every admin change against your approved baseline the moment it happens.",
     },
+    healthPillarKeys: ["governance"],
   },
   {
     slug: "sharepoint",
@@ -155,6 +167,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Tracks configuration baseline deltas across SharePoint site collections as they drift from the approved architecture.",
     },
+    healthPillarKeys: ["architecture"],
   },
   {
     slug: "power-platform",
@@ -188,6 +201,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Scores tenant risk in real time across licensing utilization and operational exposure, including citizen-developer sprawl.",
     },
+    healthPillarKeys: ["architecture"],
   },
   {
     slug: "teams",
@@ -221,6 +235,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Correlates service health and adoption signals into a composite score, surfacing structural issues dashboards alone miss.",
     },
+    healthPillarKeys: ["governance"],
   },
   {
     slug: "migration",
@@ -254,6 +269,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Checks live engineering work against the signed SOW continuously, catching scope drift before it becomes a budget conversation.",
     },
+    healthPillarKeys: ["architecture"],
   },
   {
     slug: "m365-health",
@@ -287,9 +303,71 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       description:
         "Calculates a composite real-time tenant health score and fires automated remediation runbooks when it degrades below threshold.",
     },
+    healthPillarKeys: ["governance", "compliance", "adoption", "copilot", "architecture", "licensing", "security"],
   },
 ];
 
 export function getSolutionTopic(slug: string): SolutionTopic | undefined {
   return SOLUTIONS_TOPICS.find((t) => t.slug === slug);
+}
+
+/** Display labels for the 7 real Architecture Health Engine pillar keys. */
+export const HEALTH_PILLAR_LABELS: Record<string, string> = {
+  governance: "Governance",
+  compliance: "Compliance",
+  adoption: "Adoption",
+  copilot: "Copilot Readiness",
+  architecture: "Architecture",
+  licensing: "Licensing",
+  security: "Security",
+};
+
+/**
+ * Which Solutions/Topic page a Home-page visitor's weakest pillar should route to
+ * (website-rebuild-reference-v2.md §3: "directing the visitor to whichever topic
+ * page needs attention most"). "architecture" and "governance" are each real-owned
+ * by more than one topic (see SolutionTopic.healthPillarKeys above) — this is Stage
+ * 4b's explicit, documented single-destination choice for those pillars, not a data
+ * lookup. "adoption" and "licensing" have no single-owner topic at all, so both route
+ * to the composite m365-health page, which explicitly covers all 7 pillars.
+ */
+export const PILLAR_TO_TOPIC_SLUG: Record<string, string> = {
+  governance: "governance",
+  compliance: "security-compliance",
+  adoption: "m365-health",
+  copilot: "copilot",
+  architecture: "sharepoint",
+  licensing: "m365-health",
+  security: "security-compliance",
+};
+
+/**
+ * Best-effort keyword match from free text to a topic, used two ways in Stage 4b:
+ * (1) matching an article's category/title to a domain for a personalized nudge, and
+ * (2) matching a quiz-tier visitor's Lead Offer Engine inferredSignals[].signalKey to
+ * the topic page they're currently viewing. inferredSignalKey is admin-configured
+ * (leadOfferInferenceRulesTable, confirmed empty/unseeded as of this task — see Stage
+ * 4b completion notes) with no fixed vocabulary, so this is deliberately a heuristic,
+ * not a lookup against a real enum — it degrades to "no match" safely, which is the
+ * correct behavior per website-rebuild-reference-v2.md §3 (no relevant signal → cold
+ * fallback, never a forced/irrelevant nudge).
+ */
+export const TOPIC_KEYWORDS: Record<string, string[]> = {
+  copilot: ["copilot"],
+  "security-compliance": ["security", "compliance", "mfa", "guest access", "breach"],
+  governance: ["governance", "lifecycle", "baseline drift", "admin role"],
+  sharepoint: ["sharepoint", "intranet", "site sprawl"],
+  "power-platform": ["power platform", "power apps", "power automate", "shadow it", "dlp", "citizen"],
+  teams: ["teams", "channel sprawl"],
+  migration: ["migration", "cutover", "cloud migration", "tenant-to-tenant"],
+  "m365-health": ["m365 health", "tenant health", "composite"],
+};
+
+export function topicMatchesKeywordText(slug: string, text: string): boolean {
+  const hay = text.toLowerCase();
+  return (TOPIC_KEYWORDS[slug] ?? []).some((kw) => hay.includes(kw));
+}
+
+export function findTopicByText(text: string): SolutionTopic | undefined {
+  return SOLUTIONS_TOPICS.find((t) => topicMatchesKeywordText(t.slug, text));
 }
