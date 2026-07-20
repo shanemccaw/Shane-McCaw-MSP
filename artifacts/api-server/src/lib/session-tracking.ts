@@ -17,7 +17,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "auth" });
 
 export type SessionType = "standard" | "impersonation";
-export type LoginMethod = "password" | "totp" | "sms" | "passkey" | "impersonation";
+export type LoginMethod = "password" | "totp" | "sms" | "passkey" | "impersonation" | "bypass";
 
 /** History rows past this age are pruned (see pruneOldSessions). */
 const LOGIN_HISTORY_RETENTION_DAYS = 90;

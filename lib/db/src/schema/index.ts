@@ -1300,6 +1300,32 @@ export const mfaChallengesTable = pgTable("mfa_challenges", {
 export type InsertMfaChallenge = typeof mfaChallengesTable.$inferInsert;
 export type MfaChallenge = typeof mfaChallengesTable.$inferSelect;
 
+// Emergency MFA bypass codes — a transient, single-use credential an MSP admin
+// issues from customer-team.tsx when a user is locked out of MFA (lost device,
+// no authenticator). Deliberately its OWN table, not a column on mspUsersTable:
+// this is a short-lived, consumable secret (hashed, expiring, single-use), not a
+// persistent account attribute. At most one active row per user is enforced at
+// generation time (delete-then-insert), matching the "one at a time" emergency
+// escape-hatch nature of the feature. The plaintext code is shown to the admin
+// exactly once; only the bcrypt hash is stored.
+export const mfaBypassCodesTable = pgTable("mfa_bypass_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  // The admin (client-side team manager) who generated the code.
+  createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // Tenant scope captured at generation, for audit/reporting alongside the audit log.
+  customerId: integer("customer_id"),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  usedIp: text("used_ip"),
+  usedUserAgent: text("used_user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertMfaBypassCode = typeof mfaBypassCodesTable.$inferInsert;
+export type MfaBypassCode = typeof mfaBypassCodesTable.$inferSelect;
+
 export const webauthnCredentialsTable = pgTable("webauthn_credentials", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),

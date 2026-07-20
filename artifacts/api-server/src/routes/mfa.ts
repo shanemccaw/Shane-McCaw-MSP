@@ -3,10 +3,11 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
-import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, mspUsersTable, mspRefreshTokensTable } from "@workspace/db";
-import { eq, and, gt } from "drizzle-orm";
+import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, mspUsersTable, mspRefreshTokensTable } from "@workspace/db";
+import { eq, and, gt, isNull } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { createAuditLog } from "../lib/audit";
 const log = logger.child({ channel: "auth" });
 import { createSession, type LoginMethod } from "../lib/session-tracking";
 import { generateSecret, generateURI, verifySync } from "otplib";
@@ -799,6 +800,98 @@ router.post("/auth/mfa/verify", mfaLimiter, async (req: Request, res: Response) 
   }
 
   res.status(400).json({ error: `Unsupported method: ${method}` });
+});
+
+// ── Emergency MFA bypass ──────────────────────────────────────────────────────
+// POST /api/auth/mfa/bypass — consume a real, single-use emergency bypass code
+// (issued by an MSP admin via POST /portal/team/:userId/emergency-bypass) in
+// place of a normal MFA challenge. Reaches this endpoint only AFTER the password
+// step succeeded: the caller must present a valid mfaToken (signed by /auth/login
+// once the password verified), so this is the "check before issuing tokens"
+// pattern already proven for TOTP/SMS/passkey verification — never a way to skip
+// the password. A valid, unexpired, unused code grants exactly ONE sign-in and is
+// immediately invalidated (usedAt is set atomically, so a concurrent or repeat
+// attempt with the same code fails). Normal MFA-enrolled logins are unaffected —
+// this endpoint is only hit when the user explicitly chooses the bypass path.
+router.post("/auth/mfa/bypass", mfaLimiter, async (req: Request, res: Response) => {
+  const { mfaToken, code } = req.body as { mfaToken?: string; code?: string };
+
+  if (!mfaToken || !code) {
+    res.status(400).json({ error: "mfaToken and code are required" });
+    return;
+  }
+
+  let userId: number;
+  try {
+    ({ userId } = verifyMfaToken(mfaToken));
+  } catch {
+    res.status(401).json({ error: "Invalid or expired MFA session" });
+    return;
+  }
+
+  // Normalize to match how the code was stored (uppercased at generation).
+  const normalized = code.trim().toUpperCase();
+
+  const [bypass] = await db
+    .select()
+    .from(mfaBypassCodesTable)
+    .where(
+      and(
+        eq(mfaBypassCodesTable.userId, userId),
+        isNull(mfaBypassCodesTable.usedAt),
+        gt(mfaBypassCodesTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!bypass) {
+    res.status(401).json({ error: "Invalid or expired bypass code" });
+    return;
+  }
+
+  const valid = await bcrypt.compare(normalized, bypass.codeHash);
+  if (!valid) {
+    res.status(401).json({ error: "Invalid or expired bypass code" });
+    return;
+  }
+
+  const ipAddress = (req.ip ?? req.socket?.remoteAddress) ?? null;
+  const userAgent = (req.headers["user-agent"] as string | undefined) ?? null;
+
+  // Single-use: flip usedAt to now ONLY if it is still null. The conditional
+  // update makes consumption atomic, so two concurrent requests presenting the
+  // same code can never both succeed — exactly one wins the transition.
+  const consumed = await db
+    .update(mfaBypassCodesTable)
+    .set({ usedAt: new Date(), usedIp: ipAddress, usedUserAgent: userAgent })
+    .where(and(eq(mfaBypassCodesTable.id, bypass.id), isNull(mfaBypassCodesTable.usedAt)))
+    .returning({ id: mfaBypassCodesTable.id });
+
+  if (consumed.length === 0) {
+    res.status(401).json({ error: "Invalid or expired bypass code" });
+    return;
+  }
+
+  // Audit the use as a security-sensitive event so an MSPAdmin can see when a
+  // bypass code was consumed and from where.
+  const [target] = await db
+    .select({ email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: target?.name ?? target?.email ?? `user:${userId}`,
+    actorRole: "client",
+    actionType: "team_member_emergency_bypass_used",
+    entityType: "user",
+    entityId: userId,
+    entityLabel: target?.name ?? target?.email ?? null,
+    metadata: { ip: ipAddress, generatedBy: bypass.createdByUserId ?? null },
+  });
+
+  return issueFullSession(userId, res, req, "bypass");
 });
 
 // POST /api/auth/mfa/sms/send — send SMS code during login MFA flow

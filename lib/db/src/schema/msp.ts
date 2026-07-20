@@ -244,7 +244,7 @@ export const userSessionsTable = pgTable("user_sessions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   sessionType: text("session_type", { enum: ["standard", "impersonation"] }).notNull().default("standard"),
-  loginMethod: text("login_method", { enum: ["password", "totp", "sms", "passkey", "impersonation"] }).notNull(),
+  loginMethod: text("login_method", { enum: ["password", "totp", "sms", "passkey", "impersonation", "bypass"] }).notNull(),
   currentTokenHash: text("current_token_hash"),
   impersonatedByUserId: integer("impersonated_by_user_id"),
   userAgent: text("user_agent"),

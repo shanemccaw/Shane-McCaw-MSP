@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
@@ -1100,6 +1100,75 @@ router.post("/portal/team/:userId/reset-mfa", requireAuth, async (req: Request, 
   });
 
   res.json({ ok: true, clearedMethods });
+});
+
+// ─── CLIENT: Team member Emergency MFA Bypass code ──────────────────────────
+// Generates a REAL, cryptographically-random, single-use emergency bypass code
+// for a locked-out team member (lost/unavailable MFA device). The plaintext is
+// returned ONCE (shown in customer-team.tsx's credential modal); only its bcrypt
+// hash is persisted, with a real 24-hour expiry matching the UI copy's promise.
+// Scoped via assertCustomerAccess against the target's own customerId — the same
+// ownership pattern as reset-mfa / temp-password, not requireAdmin.
+//
+// One active code per user: any prior code for this user is deleted before the
+// new one is inserted, so there is never more than one live emergency bypass at
+// a time (matching the single-use escape-hatch nature of the feature). The code
+// is consumed at login by POST /auth/mfa/bypass (mfa.ts).
+router.post("/portal/team/:userId/emergency-bypass", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, target.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  // Cryptographically random 64-bit code, grouped for legibility. Uppercased so
+  // the login-side comparison can normalize case without changing entropy.
+  const { randomBytes } = await import("crypto");
+  const raw = randomBytes(8).toString("hex").toUpperCase(); // 16 hex chars
+  const bypassCode = `EMERGENCY-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}`;
+  const codeHash = await bcrypt.hash(bypassCode, 12);
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  // Enforce "one active code per user" — clear any prior (used or unused) code
+  // before issuing the new one.
+  await db.delete(mfaBypassCodesTable).where(eq(mfaBypassCodesTable.userId, targetUserId));
+  await db.insert(mfaBypassCodesTable).values({
+    userId: targetUserId,
+    codeHash,
+    createdByUserId: req.user!.id,
+    customerId: target.customerId,
+    expiresAt,
+  });
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_emergency_bypass_generated",
+    entityType: "user",
+    entityId: targetUserId,
+    entityLabel: target.name ?? target.email,
+    metadata: { expiresAt: expiresAt.toISOString() },
+  });
+
+  res.json({ ok: true, bypassCode, expiresAt: expiresAt.toISOString() });
 });
 
 // ─── CLIENT: M365 Profile (self-service) ─────────────────────────────────────

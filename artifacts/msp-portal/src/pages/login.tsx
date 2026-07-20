@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -86,7 +86,100 @@ function MfaChallenge({
   const { completeMfaLogin } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
+  // Emergency-bypass path — for a user locked out of their MFA device who was
+  // issued a single-use code by their team admin (customer-team.tsx). Reachable
+  // from either MFA-challenge branch; consumes the code at /api/auth/mfa/bypass.
+  const [showBypass, setShowBypass] = useState(false);
+  const [bypassCode, setBypassCode] = useState("");
+  const [bypassError, setBypassError] = useState<string | null>(null);
+  const [bypassSubmitting, setBypassSubmitting] = useState(false);
+
+  async function onSubmitBypass(e: FormEvent) {
+    e.preventDefault();
+    setBypassError(null);
+    setBypassSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/mfa/bypass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mfaToken, code: bypassCode.trim() }),
+      });
+      const json = (await res.json()) as {
+        accessToken?: string;
+        refreshToken?: string;
+        refreshExpiresAt?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setBypassError(json.error ?? "Invalid or expired bypass code.");
+        return;
+      }
+      if (json.accessToken) {
+        completeMfaLogin(json.accessToken, json.refreshToken, json.refreshExpiresAt);
+      }
+      onSuccess();
+    } catch {
+      setBypassError("A network error occurred. Please try again.");
+    } finally {
+      setBypassSubmitting(false);
+    }
+  }
+
   const hasTotp = methods.includes("totp");
+
+  if (showBypass) {
+    return (
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="space-y-1 pb-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" />
+            <CardTitle className="text-lg">Emergency bypass code</CardTitle>
+          </div>
+          <CardDescription>
+            Enter the single-use emergency bypass code your administrator gave you. It allows one
+            sign-in without MFA and cannot be reused.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmitBypass} className="space-y-4">
+            {bypassError && (
+              <Alert variant="destructive">
+                <AlertDescription>{bypassError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="bypass-code">Bypass code</Label>
+              <Input
+                id="bypass-code"
+                type="text"
+                autoComplete="off"
+                placeholder="EMERGENCY-XXXX-XXXX-XXXX-XXXX"
+                className="text-center font-mono tracking-wide"
+                value={bypassCode}
+                onChange={(e) => setBypassCode(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={bypassSubmitting || !bypassCode.trim()}>
+              {bypassSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {bypassSubmitting ? "Verifying…" : "Use bypass code"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground text-sm"
+              onClick={() => {
+                setShowBypass(false);
+                setBypassError(null);
+              }}
+            >
+              Back to two-factor verification
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const {
     register,
@@ -169,6 +262,13 @@ function MfaChallenge({
             >
               Back to sign in
             </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
+              onClick={() => setShowBypass(true)}
+            >
+              Lost your device? Use an emergency bypass code
+            </button>
           </form>
         </CardContent>
       </Card>
@@ -195,6 +295,13 @@ function MfaChallenge({
         <Button variant="outline" className="w-full" onClick={onCancel}>
           Back to sign in
         </Button>
+        <button
+          type="button"
+          className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
+          onClick={() => setShowBypass(true)}
+        >
+          Lost your device? Use an emergency bypass code
+        </button>
       </CardContent>
     </Card>
   );

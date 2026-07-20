@@ -44,6 +44,8 @@ const LOGIN_METHOD_LABEL: Record<string, string> = {
   totp: "Authenticator App",
   sms: "SMS Code",
   passkey: "Passkey",
+  impersonation: "Impersonation",
+  bypass: "Emergency Bypass Code",
 };
 
 type AlertState = { type: "success" | "error"; message: string } | null;

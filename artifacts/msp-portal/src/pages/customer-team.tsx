@@ -480,16 +480,33 @@ export default function CustomerTeamPage() {
     toast.success(`MFA enforcement ${nextVal ? "enabled" : "disabled"}`);
   };
 
-  const handleGenerateEmergencyBypass = (member: TeamMember) => {
-    const bypassCode = `EMERGENCY-${Math.floor(100000 + Math.random() * 900000)}-${Math.floor(
-      100000 + Math.random() * 900000
-    )}`;
-    setActiveCredentialModal({
-      title: `Emergency MFA Bypass (${member.name || member.email})`,
-      description: "This 1-time emergency bypass code allows single sign-in without MFA. Valid for 24 hours.",
-      codeOrPass: bypassCode,
-      type: "bypassCode",
-    });
+  const handleGenerateEmergencyBypass = async (member: TeamMember) => {
+    // Real, server-issued single-use code — NOT a client-side placeholder. We do
+    // not fabricate a fallback code on failure: a code that login would not honor
+    // is worse than none, so on error we surface the failure and open no modal.
+    try {
+      const res = await fetchWithAuth(`/api/portal/team/${member.userId}/emergency-bypass`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        toast.error("Could not generate an emergency bypass code. Please try again.");
+        return;
+      }
+      const data = (await res.json()) as { bypassCode?: string };
+      if (!data.bypassCode) {
+        toast.error("Could not generate an emergency bypass code. Please try again.");
+        return;
+      }
+      setActiveCredentialModal({
+        title: `Emergency MFA Bypass (${member.name || member.email})`,
+        description:
+          "This 1-time emergency bypass code allows a single sign-in without MFA. Valid for 24 hours. It cannot be shown again.",
+        codeOrPass: data.bypassCode,
+        type: "bypassCode",
+      });
+    } catch {
+      toast.error("Could not generate an emergency bypass code. Please try again.");
+    }
   };
 
   const handleRevokeSessions = async (userId: number) => {
@@ -1166,7 +1183,7 @@ export default function CustomerTeamPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleGenerateEmergencyBypass(selectedMember)}
+                          onClick={() => void handleGenerateEmergencyBypass(selectedMember)}
                           className="w-full justify-start gap-2 text-xs"
                         >
                           <AlertCircle className="size-3.5 text-rose-500" />
