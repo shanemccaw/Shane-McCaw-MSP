@@ -166,6 +166,65 @@ const ENGINE_LABELS: Record<(typeof ENGINE_KEYS)[number], string> = {
 
 export const WORKSPACES: WorkspaceDef[] = [
   {
+    id: "system",
+    label: "System",
+    description: "Inbox, security & settings",
+    icon: Settings,
+    prefix: "/system",
+    extraPrefixes: ["/msp", "/labs"],
+    defaultPath: "/system/simulator",
+    badgeKey: "unreadEmail",
+    sections: [
+      {
+        id: "communications", label: "Communications", defaultOpen: true,
+        items: [
+          { id: "sys-inbox", label: "Inbox", path: "/system/inbox", icon: InboxIcon, badgeKey: "unreadEmail" },
+        ],
+      },
+      {
+        id: "observability", label: "Observability", defaultOpen: true,
+        items: [
+          { id: "sys-observability", label: "Observability", path: "/system/observability", icon: MonitorDot },
+          { id: "sys-alert-rules", label: "Alert Rules", path: "/system/alert-rules", icon: AlertTriangle },
+          { id: "sys-exceptions", label: "Exceptions", path: "/system/exceptions", icon: Bug },
+          { id: "sys-incidents", label: "Incidents", path: "/system/incidents", icon: AlertOctagon },
+          { id: "sys-pcc", label: "Command Center (PCC)", path: "/system/pcc", icon: Server },
+        ],
+      },
+      {
+        id: "platform", label: "Platform", defaultOpen: true,
+        items: [
+          { id: "sys-platform-revenue", label: "Platform Revenue", path: "/system/platform-revenue", icon: DollarSign },
+          { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
+          { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
+        ],
+      },
+      {
+        id: "security-config", label: "Security & Config", defaultOpen: true,
+        items: [
+          { id: "sys-security", label: "Security", path: "/system/security", icon: ShieldCheck },
+          { id: "sys-signal-mappings", label: "Signal Mappings", path: "/system/signal-mappings", icon: SlidersHorizontal },
+          { id: "sys-sow-debug", label: "SOW Debug", path: "/system/sow-debug", icon: FileSearch },
+        ],
+      },
+      {
+        id: "msp-platform", label: "MSP Platform", defaultOpen: false,
+        items: [
+          { id: "msp-admin", label: "MSP Admin", path: "/msp", icon: Server },
+          { id: "msp-plans", label: "Plan Management", path: "/msp/plans", icon: ClipboardList },
+          { id: "msp-overrides", label: "Overrides", path: "/msp/overrides", icon: SlidersHorizontal },
+          { id: "msp-reports", label: "Reports", path: "/msp/reports", icon: PieChart },
+        ],
+      },
+      {
+        id: "labs", label: "Labs", defaultOpen: false,
+        items: [
+          { id: "sys-factory-floor", label: "Factory Floor", path: "/labs/factory-floor", icon: Rocket },
+        ],
+      },
+    ],
+  },
+  {
     id: "command",
     label: "Command",
     description: "Overview, analytics & AI tools",
@@ -391,65 +450,6 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "con-artifact-sets", label: "Artifact Sets", path: "/asset-library/artifact-sets", icon: Boxes },
           { id: "con-deliverable-sets", label: "Deliverable Sets", path: "/asset-library/deliverable-sets", icon: Package },
           { id: "con-categories", label: "Categories", path: "/asset-library/categories", icon: Tags },
-        ],
-      },
-    ],
-  },
-  {
-    id: "system",
-    label: "System",
-    description: "Inbox, security & settings",
-    icon: Settings,
-    prefix: "/system",
-    extraPrefixes: ["/msp", "/labs"],
-    defaultPath: "/system/inbox",
-    badgeKey: "unreadEmail",
-    sections: [
-      {
-        id: "communications", label: "Communications", defaultOpen: true,
-        items: [
-          { id: "sys-inbox", label: "Inbox", path: "/system/inbox", icon: InboxIcon, badgeKey: "unreadEmail" },
-        ],
-      },
-      {
-        id: "observability", label: "Observability", defaultOpen: true,
-        items: [
-          { id: "sys-observability", label: "Observability", path: "/system/observability", icon: MonitorDot },
-          { id: "sys-alert-rules", label: "Alert Rules", path: "/system/alert-rules", icon: AlertTriangle },
-          { id: "sys-exceptions", label: "Exceptions", path: "/system/exceptions", icon: Bug },
-          { id: "sys-incidents", label: "Incidents", path: "/system/incidents", icon: AlertOctagon },
-          { id: "sys-pcc", label: "Command Center (PCC)", path: "/system/pcc", icon: Server },
-        ],
-      },
-      {
-        id: "platform", label: "Platform", defaultOpen: true,
-        items: [
-          { id: "sys-platform-revenue", label: "Platform Revenue", path: "/system/platform-revenue", icon: DollarSign },
-          { id: "sys-platform-agreements", label: "Platform Agreements", path: "/system/platform-agreements", icon: Handshake },
-          { id: "sys-simulator", label: "Simulator Studio", path: "/system/simulator", icon: FlaskConical },
-        ],
-      },
-      {
-        id: "security-config", label: "Security & Config", defaultOpen: true,
-        items: [
-          { id: "sys-security", label: "Security", path: "/system/security", icon: ShieldCheck },
-          { id: "sys-signal-mappings", label: "Signal Mappings", path: "/system/signal-mappings", icon: SlidersHorizontal },
-          { id: "sys-sow-debug", label: "SOW Debug", path: "/system/sow-debug", icon: FileSearch },
-        ],
-      },
-      {
-        id: "msp-platform", label: "MSP Platform", defaultOpen: false,
-        items: [
-          { id: "msp-admin", label: "MSP Admin", path: "/msp", icon: Server },
-          { id: "msp-plans", label: "Plan Management", path: "/msp/plans", icon: ClipboardList },
-          { id: "msp-overrides", label: "Overrides", path: "/msp/overrides", icon: SlidersHorizontal },
-          { id: "msp-reports", label: "Reports", path: "/msp/reports", icon: PieChart },
-        ],
-      },
-      {
-        id: "labs", label: "Labs", defaultOpen: false,
-        items: [
-          { id: "sys-factory-floor", label: "Factory Floor", path: "/labs/factory-floor", icon: Rocket },
         ],
       },
     ],

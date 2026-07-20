@@ -74,7 +74,7 @@ function PostLoginRedirect() {
   useEffect(() => {
     const returnTo = sessionStorage.getItem("adminReturnTo") ?? "";
     sessionStorage.removeItem("adminReturnTo");
-    navigate(returnTo && !returnTo.startsWith("/login") ? returnTo : "/command/overview", { replace: true });
+    navigate(returnTo && !returnTo.startsWith("/login") ? returnTo : "/system/simulator", { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
@@ -103,7 +103,7 @@ function Router() {
         {user && user.role === "admin" ? <PostLoginRedirect /> : <LoginPage />}
       </Route>
       <Route path="/">
-        {user && user.role === "admin" ? <Redirect to="/command/overview" /> : <Redirect to="/login" />}
+        {user && user.role === "admin" ? <Redirect to="/system/simulator" /> : <Redirect to="/login" />}
       </Route>
 
       {/* ── COMMAND workspace ── */}

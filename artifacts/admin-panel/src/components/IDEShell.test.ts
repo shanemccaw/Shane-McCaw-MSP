@@ -30,7 +30,7 @@ import { resolveShownSelection, type PropertySelection } from "@/components/shel
 describe("Workspace config integrity", () => {
   it("has exactly 7 workspaces in tree order", () => {
     expect(WORKSPACES.map(w => w.id)).toEqual([
-      "command", "pipeline", "delivery", "finance", "content", "system", "workflows",
+      "system", "command", "pipeline", "delivery", "finance", "content", "workflows",
     ]);
   });
 
