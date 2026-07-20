@@ -29,6 +29,7 @@ import SettingsCustomDomainPage from "@/pages/settings-custom-domain";
 import SecurityPage from "@/pages/security";
 import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
+import DataRightsPage from "@/pages/data-rights";
 import OffboardingPage from "@/pages/offboarding";
 import WebhooksPage from "@/pages/webhooks";
 import InitiateOnboardingPage from "@/pages/initiate-onboarding";
@@ -271,6 +272,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/audit">
         <ProtectedRoute component={AuditPage} />
+      </Route>
+      <Route path="/data-rights">
+        <ProtectedRoute component={DataRightsPage} />
       </Route>
       <Route path="/settings/profile">
         <ProtectedRoute component={SettingsOrgProfilePage} />

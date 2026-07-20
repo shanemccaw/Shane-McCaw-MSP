@@ -12,6 +12,7 @@ import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { createAuditLog } from "../lib/audit.ts";
+import { submitSelfServiceDeletionRequest } from "../lib/data-rights.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import {
   handleRetainerScheduleUpdated,
@@ -15660,86 +15661,9 @@ router.post("/portal/deletion-request", requireAuth, async (req: Request, res: R
     // Without this, an admin processing the request via CRM → Delete Client would
     // never see (and today's delete would never touch) the customer's diagnostics,
     // engine-score history, SOWs, MSP documents, consent, or monitoring history.
-    const customerId = req.user!.customerId;
-    let currentSchemaSummary: {
-      customerId: number;
-      mspId: number | null;
-      customerName: string | null;
-      diagnosticRuns: number;
-      diagnosticFindings: number;
-      sows: number;
-      mspDocuments: number;
-      engineSnapshots: number;
-    } | null = null;
-    if (typeof customerId === "number") {
-      const [mspCustomer] = await db.select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId, name: mspCustomersTable.name })
-        .from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1);
-      if (mspCustomer) {
-        const [[runs], [findings], [sowCount], [docCount], [snapCount]] = await Promise.all([
-          db.select({ n: count() }).from(mspDiagnosticRunsTable).where(eq(mspDiagnosticRunsTable.customerId, customerId)),
-          db.select({ n: count() }).from(mspDiagnosticFindingsTable).where(eq(mspDiagnosticFindingsTable.customerId, customerId)),
-          db.select({ n: count() }).from(mspSowsTable).where(eq(mspSowsTable.customerId, customerId)),
-          db.select({ n: count() }).from(mspDocumentsTable).where(eq(mspDocumentsTable.customerId, customerId)),
-          db.select({ n: count() }).from(tenantEngineSnapshotsTable).where(eq(tenantEngineSnapshotsTable.customerId, customerId)),
-        ]);
-        currentSchemaSummary = {
-          customerId,
-          mspId: mspCustomer.mspId ?? null,
-          customerName: mspCustomer.name ?? null,
-          diagnosticRuns: runs?.n ?? 0,
-          diagnosticFindings: findings?.n ?? 0,
-          sows: sowCount?.n ?? 0,
-          mspDocuments: docCount?.n ?? 0,
-          engineSnapshots: snapCount?.n ?? 0,
-        };
-      }
-    }
-
-    void createAuditLog({
-      actorUserId: userId,
-      actorName: user.name ?? user.email,
-      actorRole: "client",
-      actionType: "deletion_request_submitted",
-      entityType: "user",
-      entityId: userId,
-      clientId: userId,
-      metadata: { requestedAt: new Date().toISOString(), currentSchema: currentSchemaSummary },
-    });
-
-    const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
-    if (adminEmailAddr) {
-      const currentSchemaBlock = currentSchemaSummary
-        ? `
-        <p style="margin-top:16px;"><strong>Current-schema (MSP tenant) data — NOT reached by CRM → Delete Client today:</strong></p>
-        <table style="border-collapse:collapse;width:100%;font-size:14px;">
-          <tr><td style="padding:6px 0;color:#64748b;">Customer ID (msp_customers.id)</td><td style="padding:6px 0;">${currentSchemaSummary.customerId}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">MSP ID</td><td style="padding:6px 0;">${currentSchemaSummary.mspId ?? "—"}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Customer name</td><td style="padding:6px 0;">${currentSchemaSummary.customerName ?? "—"}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Diagnostic runs</td><td style="padding:6px 0;">${currentSchemaSummary.diagnosticRuns}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Diagnostic findings</td><td style="padding:6px 0;">${currentSchemaSummary.diagnosticFindings}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">SOWs (retain if signed)</td><td style="padding:6px 0;">${currentSchemaSummary.sows}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">MSP documents</td><td style="padding:6px 0;">${currentSchemaSummary.mspDocuments}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Engine snapshots</td><td style="padding:6px 0;">${currentSchemaSummary.engineSnapshots}</td></tr>
-        </table>
-        <p style="color:#b45309;"><strong>Manual step required:</strong> this current-schema data must be erased separately (by customer_id above), preserving signed SOWs per legal retention — CRM → Delete Client only clears the legacy portal records.</p>`
-        : `<p style="margin-top:16px;color:#64748b;">No current-schema (MSP tenant) record is linked to this account — legacy portal records only.</p>`;
-      const html = `
-        <p>A client has submitted a <strong>data deletion request</strong>.</p>
-        <table style="border-collapse:collapse;width:100%;font-size:14px;">
-          <tr><td style="padding:6px 0;color:#64748b;">Name</td><td style="padding:6px 0;">${user.name ?? "—"}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Email</td><td style="padding:6px 0;">${user.email}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Company</td><td style="padding:6px 0;">${user.company ?? "—"}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">User ID</td><td style="padding:6px 0;">${user.id}</td></tr>
-          <tr><td style="padding:6px 0;color:#64748b;">Requested at</td><td style="padding:6px 0;">${new Date().toUTCString()}</td></tr>
-        </table>
-        ${currentSchemaBlock}
-        <p style="margin-top:16px;">
-          <strong>Action required within 30 days:</strong> process this deletion via the Admin Panel (CRM → Clients → Delete Client), erase the current-schema data listed above by customer_id, retain signed contracts, invoices, and signed SOWs per legal requirements, then send the client the standard retention notice.
-        </p>
-        <p>See the <a href="https://shanemccaw.com/admin-panel">Admin Panel</a> and the <code>data-subject-rights.md</code> runbook for the full procedure.</p>
-      `;
-      void sendEmail(adminEmailAddr, `Data Deletion Request — ${user.name ?? user.email}`, html);
-    }
+    // Shared with the MSP-admin-initiated path in msp-data-rights.ts — see
+    // lib/data-rights.ts for the single source of truth both call into.
+    await submitSelfServiceDeletionRequest(user, req.user!.customerId);
 
     res.json({
       ok: true,

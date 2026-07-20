@@ -607,6 +607,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["PlatformAdmin", "MSPAdmin"],
       },
       {
+        icon: Trash2,
+        label: "Data Rights",
+        href: "/data-rights",
+        roles: ["PlatformAdmin", "MSPAdmin"],
+      },
+      {
         icon: AlertTriangle,
         label: "Alerts",
         href: "/alerts",
