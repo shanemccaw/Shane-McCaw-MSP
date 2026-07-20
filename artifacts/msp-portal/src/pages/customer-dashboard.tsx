@@ -25,7 +25,7 @@ import { AppShell } from "@/components/app-shell";
 import { DashboardTabs } from "@/components/dashboard-view/DashboardView";
 import { ExecutiveSummaryCard } from "@/components/dashboard-view/ExecutiveSummaryCard";
 import { MissionControl } from "@/components/mission-control/MissionControl";
-import { CustomerDashboardExtras, NeedHelpCard, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
+import { CustomerDashboardExtras, M365UptimeCard, NeedHelpCard, WelcomeHeader } from "@/components/mission-control/CustomerDashboardExtras";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -199,6 +199,7 @@ export default function CustomerDashboardPage() {
             <WelcomeHeader />
             <MissionControl />
             <CustomerDashboardExtras />
+            <M365UptimeCard />
             <ExecutiveSummaryCard />
           </>
         )}

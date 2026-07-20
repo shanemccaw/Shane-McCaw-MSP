@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, FileText, Zap } from "lucide-react";
+import { ArrowRight, AlertTriangle, CheckCircle2, Clock, CloudCog, FileText, Zap } from "lucide-react";
 
 // ── Types (server payload shapes — /api/portal/dashboard) ───────────────────
 
@@ -168,6 +168,84 @@ export function CustomerDashboardExtras() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── M365 Uptime card ─────────────────────────────────────────────────────────
+// Compact summary of GET /api/portal/m365-sla/summary — the worst-performing
+// service per window and an overall breach flag against Microsoft's own
+// 99.9% Monthly Uptime Percentage SLA commitment. The full per-service
+// breakdown is an MSP-facing view only (m365-sla.tsx); customers just need
+// to know whether their tenant is meeting the SLA.
+
+interface M365SlaWindowSummary {
+  uptimePercent: number | null;
+  breached: boolean;
+  worstService: string | null;
+}
+
+interface M365SlaSummaryResponse {
+  available: boolean;
+  target: number;
+  window: Partial<Record<"30" | "90", M365SlaWindowSummary>>;
+}
+
+/** "Your M365 uptime" card — mounted on customer-dashboard.tsx below <CustomerDashboardExtras>. */
+export function M365UptimeCard() {
+  const { fetchWithAuth } = useAuth();
+  const [summary, setSummary] = useState<M365SlaSummaryResponse | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchWithAuth("/api/portal/m365-sla/summary")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = (await res.json()) as M365SlaSummaryResponse;
+        if (mounted) setSummary(json);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!summary?.available) return null;
+
+  const w30 = summary.window["30"];
+  if (!w30) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <CloudCog className="size-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Your M365 Uptime</CardTitle>
+        </div>
+        <CardDescription className="text-xs">
+          Against Microsoft&apos;s {summary.target}% Monthly Uptime Percentage SLA commitment, trailing 30 days.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {w30.breached ? (
+            <Badge className="bg-red-500/15 text-red-400 border-red-500/30 gap-1">
+              <AlertTriangle className="size-3" /> Below SLA
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 gap-1">
+              <CheckCircle2 className="size-3" /> Meeting SLA
+            </Badge>
+          )}
+          {w30.uptimePercent !== null && (
+            <span className="text-sm font-medium">{w30.uptimePercent.toFixed(3)}%</span>
+          )}
+        </div>
+        {w30.worstService && (
+          <span className="text-xs text-muted-foreground">Lowest: {w30.worstService}</span>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -94,6 +94,7 @@ import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueued
 import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
+import { handleM365HealthSample } from "./m365-health-sample.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
@@ -6170,6 +6171,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "msp_score_snapshot": {
         // Promoted node type: calculates and snapshots MSP portfolio risk daily.
         output = await handleMspScoreSnapshot(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "m365_health_sample": {
+        // Promoted node type: hourly M365 Third-Party SLA sampling — persists
+        // per-service health-overview rows so sla-uptime.ts has real history.
+        output = await handleM365HealthSample(node.data as Record<string, unknown>);
         break;
       }
 

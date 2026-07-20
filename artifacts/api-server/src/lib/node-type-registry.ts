@@ -664,6 +664,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Daily snapshot of all MSP portfolio risk scores — no AI",
   },
   {
+    nodeType: "m365_health_sample",
+    isAIDependent: false,
+    description: "Hourly M365 service health sample for SLA uptime tracking — no AI",
+  },
+  {
     nodeType: "platform_log_stream_prune",
     isAIDependent: false,
     description: "Deletes platform_log_stream rows older than the retention window — no AI",

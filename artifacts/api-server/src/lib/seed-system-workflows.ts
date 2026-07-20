@@ -1948,6 +1948,33 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── M365 Service Health Sampling ────────────────────────────────────────────
+  {
+    name: "__system__: M365 Service Health Sampling",
+    description: "Runs hourly (matching the m365:service-health check's declared frequency). Fetches /admin/serviceAnnouncement/healthOverviews for every consented tenant and persists one row per service into m365_service_health_samples, so M365 Third-Party SLA Uptime Percentage can be computed over real history instead of a live-fetch-only snapshot.",
+    triggerType: "schedule",
+    cron: "0 * * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Hourly" } },
+        {
+          id: "sample",
+          type: "m365_health_sample",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "m365_health_sample",
+            label: "Sample M365 Service Health (all tenants)",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "sample" },
+        { id: "e2", source: "sample", target: "end" },
+      ],
+    },
+  },
   {
     name: "__system__: Signal Policy Evaluation",
     description: "Runs every 15 minutes. Evaluates all active Signal Policy Engine rules (policy_rules) against every customer with a currently-fired signal, firing configured workflow events for anything that qualifies — this is the final step connecting a fired/stabilized signal to a real dispatched alert.",

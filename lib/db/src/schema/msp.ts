@@ -1525,6 +1525,33 @@ export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
 export type MspMessageCenterItem = typeof mspMessageCenterItemsTable.$inferSelect;
 export type InsertMspMessageCenterItem = typeof mspMessageCenterItemsTable.$inferInsert;
 
+// ── M365 Service Health Samples ──────────────────────────────────────────────────
+// Hourly per-tenant, per-service Graph healthOverviews snapshots. The
+// m365:service-health monitor check itself is live-fetch-only (see its
+// migration's own comment — no per-tenant items persisted, built only to
+// answer "what's the status right now" for the public status page), so this
+// is the first table that actually accumulates history for it. Populated by
+// the "__system__: M365 Service Health Sampling" seeded workflow; read by
+// sla-uptime.ts to compute time-weighted Uptime Percentage against
+// Microsoft's 99.9% Monthly Uptime Percentage SLA commitment.
+
+export const m365ServiceHealthSamplesTable = pgTable("m365_service_health_samples", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  service: text("service").notNull(),
+  status: text("status").notNull(),
+  sampledAt: timestamp("sampled_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("m365_service_health_samples_service_sampled_idx").on(t.service, t.sampledAt),
+  index("m365_service_health_samples_tenant_service_sampled_idx").on(t.tenantId, t.service, t.sampledAt),
+]);
+
+export type M365ServiceHealthSample = typeof m365ServiceHealthSamplesTable.$inferSelect;
+export type InsertM365ServiceHealthSample = typeof m365ServiceHealthSamplesTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).

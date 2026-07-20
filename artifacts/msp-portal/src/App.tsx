@@ -62,6 +62,7 @@ import AlertsPage from "@/pages/alerts";
 import MspExecutivePage from "@/pages/msp-executive";
 import MspTimelinePage from "@/pages/msp-timeline";
 import MessageCenterPage from "@/pages/message-center";
+import M365SlaPage from "@/pages/m365-sla";
 import DocumentsHubPage from "@/pages/documents-hub";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
@@ -440,6 +441,11 @@ function SlugInnerSwitch() {
       {/* M365 Message Center */}
       <Route path="/message-center">
         <ProtectedRoute component={MessageCenterPage} />
+      </Route>
+
+      {/* M365 Third-Party SLA Tracking */}
+      <Route path="/m365-sla">
+        <ProtectedRoute component={M365SlaPage} />
       </Route>
 
       {/* MSP-Wide Customer Documents Hub */}

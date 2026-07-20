@@ -2319,6 +2319,8 @@ export interface WfNode {
     | "sales_offer_escalate" | "sales_offer_resolve"
     // MSP Score Snapshot
     | "msp_score_snapshot"
+    // M365 Third-Party SLA Tracking
+    | "m365_health_sample"
     // Telemetry Retention
     | "platform_log_stream_prune"
     // MSP Baseline Actions

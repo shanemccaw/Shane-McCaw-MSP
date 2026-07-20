@@ -21,6 +21,7 @@ import {
 } from "@workspace/db";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError } from "../lib/graph";
+import { HEALTHY_STATUSES } from "../lib/m365-health-status";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -47,17 +48,11 @@ export type M365HealthSection =
   | { available: false; reason: string };
 
 // serviceHealthStatus enum (Graph v1.0 serviceHealth resource docs) mapped
-// down to the sanitized 3-value public enum. Unknown/future values default
-// to "degraded" rather than silently reporting healthy.
-const HEALTHY_STATUSES = new Set([
-  "serviceOperational",
-  "serviceRestored",
-  "postIncidentReviewPublished",
-  "resolved",
-  "resolvedExternal",
-  "falsePositive",
-  "investigationSuspended",
-]);
+// down to the sanitized 3-value public enum. HEALTHY_STATUSES lives in
+// m365-health-status.ts (shared with sla-uptime.ts's Uptime Percentage
+// calculation, so the same status never reads as up in one place and down
+// in the other). Unknown/future values default to "degraded" rather than
+// silently reporting healthy.
 const INTERRUPTION_STATUSES = new Set(["serviceInterruption"]);
 
 function toSanitizedStatus(rawStatus: string): M365ServiceStatus {

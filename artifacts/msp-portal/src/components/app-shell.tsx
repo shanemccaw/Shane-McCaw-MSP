@@ -54,6 +54,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CloudCog,
   Cog,
   CreditCard,
   Download,
@@ -628,6 +629,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Megaphone,
         label: "Message Center",
         href: "/message-center",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: CloudCog,
+        label: "M365 SLA",
+        href: "/m365-sla",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
