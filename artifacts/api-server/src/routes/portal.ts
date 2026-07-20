@@ -1,12 +1,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
+import bcrypt from "bcryptjs";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
 import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
 import { getRequestContext } from "../lib/request-context.ts";
 import jwt from "jsonwebtoken";
-import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
@@ -677,6 +678,337 @@ router.post("/portal/team/invite", requireAuth, async (req: Request, res: Respon
   }
 
   res.status(201).json({ ok: true });
+});
+
+// ─── CLIENT: Team roster ──────────────────────────────────────────────────────
+// Real team member list for customer-team.tsx, scoped to the REQUESTER's own
+// customerId (never a client-supplied one). MFA status mirrors the same
+// mfaEnrollmentsTable + webauthnCredentialsTable read used by the platform-admin
+// /admin/clients/:id/mfa-status route. Session counts/last-login are derived
+// from user_sessions (mspUsersTable.lastLoginAt is never written anywhere in
+// this codebase, so it can't be trusted as a data source).
+function reduceMfaStatus(methods: string[]): "TOTP" | "FIDO2" | "SMS" | "Disabled" {
+  if (methods.includes("passkey")) return "FIDO2";
+  if (methods.includes("totp")) return "TOTP";
+  if (methods.includes("sms")) return "SMS";
+  return "Disabled";
+}
+
+router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
+  const customerId = req.user!.customerId;
+  if (!customerId) {
+    res.status(403).json({ error: "Only customer team members can view the team roster" });
+    return;
+  }
+
+  const members = await db
+    .select({
+      userId: mspUsersTable.userId,
+      email: usersTable.email,
+      name: usersTable.name,
+      phone: usersTable.phone,
+      isActive: mspUsersTable.isActive,
+      department: mspUsersTable.department,
+      jobTitle: mspUsersTable.jobTitle,
+      createdAt: mspUsersTable.createdAt,
+    })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .where(eq(mspUsersTable.customerId, customerId));
+
+  if (members.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const userIds = members.map((m) => m.userId);
+
+  const [mfaRows, passkeyRows, activeSessionRows, lastLoginRows] = await Promise.all([
+    db.select({ userId: mfaEnrollmentsTable.userId, method: mfaEnrollmentsTable.method })
+      .from(mfaEnrollmentsTable)
+      .where(and(inArray(mfaEnrollmentsTable.userId, userIds), eq(mfaEnrollmentsTable.enabled, true))),
+    db.select({ userId: webauthnCredentialsTable.userId })
+      .from(webauthnCredentialsTable)
+      .where(inArray(webauthnCredentialsTable.userId, userIds)),
+    db.select({ userId: userSessionsTable.userId, activeCount: count() })
+      .from(userSessionsTable)
+      .where(and(
+        inArray(userSessionsTable.userId, userIds),
+        eq(userSessionsTable.sessionType, "standard"),
+        isNull(userSessionsTable.revokedAt),
+        gte(userSessionsTable.expiresAt, new Date()),
+      ))
+      .groupBy(userSessionsTable.userId),
+    db.select({ userId: userSessionsTable.userId, lastLogin: sql<string>`max(${userSessionsTable.createdAt})` })
+      .from(userSessionsTable)
+      .where(and(inArray(userSessionsTable.userId, userIds), eq(userSessionsTable.sessionType, "standard")))
+      .groupBy(userSessionsTable.userId),
+  ]);
+
+  const methodsByUser = new Map<number, string[]>();
+  for (const row of mfaRows) {
+    const list = methodsByUser.get(row.userId) ?? [];
+    list.push(row.method);
+    methodsByUser.set(row.userId, list);
+  }
+  for (const row of passkeyRows) {
+    const list = methodsByUser.get(row.userId) ?? [];
+    list.push("passkey");
+    methodsByUser.set(row.userId, list);
+  }
+  const activeCountByUser = new Map(activeSessionRows.map((r) => [r.userId, r.activeCount]));
+  const lastLoginByUser = new Map(lastLoginRows.map((r) => [r.userId, r.lastLogin]));
+
+  const result = members.map((m) => ({
+    id: m.userId,
+    userId: m.userId,
+    email: m.email,
+    name: m.name,
+    phone: m.phone,
+    isActive: m.isActive,
+    isLockedOut: false,
+    mfaStatus: reduceMfaStatus(methodsByUser.get(m.userId) ?? []),
+    mfaEnforced: false,
+    department: m.department ?? "",
+    jobTitle: m.jobTitle ?? "",
+    lastLoginAt: lastLoginByUser.get(m.userId) ?? null,
+    createdAt: m.createdAt,
+    activeSessionsCount: activeCountByUser.get(m.userId) ?? 0,
+  }));
+
+  res.json(result);
+});
+
+// ─── CLIENT: Team member status (activate/suspend) ───────────────────────────
+router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const { isActive } = req.body as { isActive?: boolean };
+  if (typeof isActive !== "boolean") {
+    res.status(400).json({ error: "isActive must be a boolean" });
+    return;
+  }
+
+  const [targetMspUser] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!targetMspUser?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  if (targetUserId === req.user!.id && !isActive) {
+    res.status(400).json({ error: "You cannot suspend your own account" });
+    return;
+  }
+
+  await db.update(mspUsersTable).set({ isActive }).where(eq(mspUsersTable.userId, targetUserId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: isActive ? "team_member_activated" : "team_member_suspended",
+    entityType: "user",
+    entityId: targetUserId,
+  });
+
+  if (!isActive) {
+    void revokeAllOtherSessions(targetUserId, null).catch((e) =>
+      log.warn({ err: e, userId: targetUserId }, "portal/team/status: failed to revoke sessions after suspend"));
+  }
+
+  res.json({ ok: true, isActive });
+});
+
+// ─── CLIENT: Team member password reset (send email) ─────────────────────────
+// Real implementation of the SAME token/email flow as the self-service
+// POST /auth/forgot-password (passwordResetTokensTable + "password-reset"
+// template) — not the msp-settings.ts stub, which never generates a token.
+const TEAM_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, matches /auth/forgot-password
+
+router.post("/portal/team/:userId/reset-password", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, target.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  const { randomBytes } = await import("crypto");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + TEAM_RESET_TOKEN_TTL_MS);
+  await db.insert(passwordResetTokensTable).values({ userId: targetUserId, token, expiresAt });
+
+  const resetUrl = `${getPortalBaseUrl()}/reset-password?token=${token}`;
+  void sendEmailFromTemplate(
+    "password-reset",
+    target.email,
+    { resetLink: resetUrl },
+    "Reset your Shane McCaw Consulting portal password",
+    passwordResetEmail({ resetUrl }),
+  ).catch((e) => log.warn({ err: e, userId: targetUserId }, "portal/team/reset-password: email failed (non-fatal)"));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_password_reset_email_sent",
+    entityType: "user",
+    entityId: targetUserId,
+    entityLabel: target.name ?? target.email,
+  });
+
+  res.json({ ok: true });
+});
+
+// ─── CLIENT: Team member temporary password (generate + set now) ────────────
+// Unlike reset-password (email a link), this immediately overwrites the
+// target's passwordHash with a freshly generated password, bcrypt-hashed with
+// the same cost factor (12) used everywhere else in this codebase, and returns
+// the plaintext ONCE so the admin can hand it to the employee — matching the
+// "won't be shown again" credential modal already built in customer-team.tsx.
+router.post("/portal/team/:userId/temp-password", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, target.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  const { randomBytes } = await import("crypto");
+  const tempPassword = `Temp-${randomBytes(6).toString("hex").toUpperCase()}!9`;
+  const passwordHash = await bcrypt.hash(tempPassword, 12);
+  await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, targetUserId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_temp_password_set",
+    entityType: "user",
+    entityId: targetUserId,
+    entityLabel: target.name ?? target.email,
+  });
+
+  res.json({ ok: true, tempPassword });
+});
+
+// ─── CLIENT: Team member MFA reset ───────────────────────────────────────────
+// Real implementation mirroring /admin/clients/:id/mfa-reset — clears all
+// enrollment/credential/challenge rows for the target, not just an audit-log
+// stub. Scoped via assertCustomerAccess against the target's own customerId
+// (same pattern as .../sessions), not requireAdmin.
+router.post("/portal/team/:userId/reset-mfa", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [target] = await db
+    .select({ customerId: mspUsersTable.customerId, email: usersTable.email, name: usersTable.name })
+    .from(mspUsersTable)
+    .innerJoin(usersTable, eq(mspUsersTable.userId, usersTable.id))
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!target?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, target.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  const enrollments = await db
+    .select({ method: mfaEnrollmentsTable.method })
+    .from(mfaEnrollmentsTable)
+    .where(eq(mfaEnrollmentsTable.userId, targetUserId));
+  const passkeyRows = await db
+    .select({ id: webauthnCredentialsTable.id })
+    .from(webauthnCredentialsTable)
+    .where(eq(webauthnCredentialsTable.userId, targetUserId));
+
+  const clearedMethods: string[] = enrollments.map((e) => e.method);
+  if (passkeyRows.length > 0) clearedMethods.push("passkey");
+
+  await db.delete(mfaEnrollmentsTable).where(eq(mfaEnrollmentsTable.userId, targetUserId));
+  await db.delete(mfaChallengesTable).where(eq(mfaChallengesTable.userId, targetUserId));
+  await db.delete(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, targetUserId));
+  await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.userId, targetUserId));
+
+  void sendEmailFromTemplate(
+    "mfa-reset",
+    target.email,
+    {
+      clientName: target.name ?? target.email,
+      methodsList: clearedMethods.map((m) => (m === "totp" ? "Authenticator App (TOTP)" : m === "sms" ? "SMS" : m === "passkey" ? "Passkey / Security Key" : m)).join(", ") || "None",
+      loginLink: PORTAL_URL,
+      securityLink: `${PORTAL_URL}/security`,
+    },
+    "Your two-factor authentication has been reset",
+    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by a teammate. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+  ).catch((e) => log.warn({ err: e, userId: targetUserId }, "portal/team/reset-mfa: email failed (non-fatal)"));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_mfa_reset",
+    entityType: "user",
+    entityId: targetUserId,
+    entityLabel: target.name ?? target.email,
+    metadata: { clearedMethods },
+  });
+
+  res.json({ ok: true, clearedMethods });
 });
 
 // ─── CLIENT: M365 Profile (self-service) ─────────────────────────────────────
