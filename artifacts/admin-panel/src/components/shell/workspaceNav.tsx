@@ -362,6 +362,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "publishing", label: "Publishing", defaultOpen: true,
         items: [
           { id: "con-articles", label: "Articles", path: "/content/articles", icon: BookOpen },
+          { id: "con-hero-headlines", label: "Hero Headlines", path: "/content/hero-headlines", icon: Sparkles },
         ],
       },
       {

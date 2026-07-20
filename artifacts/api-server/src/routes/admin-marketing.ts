@@ -5,7 +5,7 @@ import {
   analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
   settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
   leadIntentEventsTable, followUpEventsTable, offersTable, landingPagesTable,
-  clientServicesTable,
+  clientServicesTable, heroHeadlinesTable,
 } from "@workspace/db";
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
 import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent";
@@ -898,6 +898,71 @@ router.delete("/admin/marketing/outreach-templates/:id", requireAdmin, async (re
   try {
     const id = parseId(req.params, "id");
     await db.delete(outreachTemplatesTable).where(eq(outreachTemplatesTable.id, id));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Hero Headlines ───────────────────────────────────────────────────────────
+
+router.get("/admin/marketing/hero-headlines", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(heroHeadlinesTable).orderBy(heroHeadlinesTable.sortOrder);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/admin/marketing/hero-headlines", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { leadText, gradientText, active, seasonalLabel, startDate, endDate, sortOrder } = req.body as {
+      leadText: string; gradientText: string; active?: boolean;
+      seasonalLabel?: string | null; startDate?: string | null; endDate?: string | null; sortOrder?: number;
+    };
+    const [row] = await db.insert(heroHeadlinesTable)
+      .values({
+        leadText, gradientText,
+        active: active ?? true,
+        seasonalLabel: seasonalLabel ?? null,
+        startDate: startDate ?? null,
+        endDate: endDate ?? null,
+        sortOrder: sortOrder ?? 0,
+      })
+      .returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/admin/marketing/hero-headlines/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const { leadText, gradientText, active, seasonalLabel, startDate, endDate, sortOrder } = req.body as {
+      leadText?: string; gradientText?: string; active?: boolean;
+      seasonalLabel?: string | null; startDate?: string | null; endDate?: string | null; sortOrder?: number;
+    };
+    const updateData: Partial<typeof heroHeadlinesTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
+    if (leadText !== undefined) updateData.leadText = leadText;
+    if (gradientText !== undefined) updateData.gradientText = gradientText;
+    if (active !== undefined) updateData.active = active;
+    if (seasonalLabel !== undefined) updateData.seasonalLabel = seasonalLabel;
+    if (startDate !== undefined) updateData.startDate = startDate;
+    if (endDate !== undefined) updateData.endDate = endDate;
+    if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
+    const [row] = await db.update(heroHeadlinesTable).set(updateData).where(eq(heroHeadlinesTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/admin/marketing/hero-headlines/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    await db.delete(heroHeadlinesTable).where(eq(heroHeadlinesTable.id, id));
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
