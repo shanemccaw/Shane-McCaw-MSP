@@ -386,7 +386,12 @@ export default function CustomerTeamPage() {
     }
   };
 
-  const handleUnlock = (userId: number) => {
+  const handleUnlock = async (userId: number) => {
+    try {
+      await fetchWithAuth(`/api/portal/team/${userId}/unlock`, { method: "POST" });
+    } catch {
+      // ignore
+    }
     setTeam((prev) =>
       prev.map((m) =>
         m.userId === userId

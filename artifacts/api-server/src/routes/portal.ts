@@ -709,6 +709,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
       phone: usersTable.phone,
       isActive: mspUsersTable.isActive,
       mfaEnforced: mspUsersTable.mfaEnforced,
+      lockedUntil: mspUsersTable.lockedUntil,
       department: mspUsersTable.department,
       jobTitle: mspUsersTable.jobTitle,
       createdAt: mspUsersTable.createdAt,
@@ -767,7 +768,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     name: m.name,
     phone: m.phone,
     isActive: m.isActive,
-    isLockedOut: false,
+    isLockedOut: Boolean(m.lockedUntil && m.lockedUntil > new Date()),
     mfaStatus: reduceMfaStatus(methodsByUser.get(m.userId) ?? []),
     mfaEnforced: m.mfaEnforced,
     department: m.department ?? "",
@@ -876,6 +877,51 @@ router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Re
   });
 
   res.json({ ok: true, mfaEnforced: enforced });
+});
+
+// ─── CLIENT: Team member account unlock ───────────────────────────────────────
+// Real backend for customer-team.tsx's "Unlock Account" button. Clears the
+// lockout /auth/login set after too many failed passwords (see
+// mspUsersTable.failedLoginAttempts/lockedUntil) so the member can log in
+// again immediately, without waiting out the lockout window.
+router.post("/portal/team/:userId/unlock", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const [targetMspUser] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!targetMspUser?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  await db
+    .update(mspUsersTable)
+    .set({ failedLoginAttempts: 0, lastFailedLoginAt: null, lockedUntil: null })
+    .where(eq(mspUsersTable.userId, targetUserId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "team_member_unlocked",
+    entityType: "user",
+    entityId: targetUserId,
+  });
+
+  res.json({ ok: true, isLockedOut: false });
 });
 
 // ─── CLIENT: Team member password reset (send email) ─────────────────────────

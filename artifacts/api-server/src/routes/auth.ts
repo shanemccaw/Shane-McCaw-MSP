@@ -41,6 +41,13 @@ const setupPasswordLimiter = rateLimit({
   message: { error: "Too many password setup attempts from this IP. Please try again in 15 minutes." },
 });
 
+// Per-account lockout (distinct from loginLimiter's per-IP throttle above).
+// Defaults: 5 bad passwords within a 15-minute window locks the account for
+// 15 minutes. Configurable via env for tuning without a code change.
+const LOCKOUT_THRESHOLD = parseInt(process.env.ACCOUNT_LOCKOUT_THRESHOLD ?? "5", 10);
+const LOCKOUT_WINDOW_MS = parseInt(process.env.ACCOUNT_LOCKOUT_WINDOW_MINUTES ?? "15", 10) * 60 * 1000;
+const LOCKOUT_DURATION_MS = parseInt(process.env.ACCOUNT_LOCKOUT_DURATION_MINUTES ?? "15", 10) * 60 * 1000;
+
 const router: IRouter = Router();
 
 // 15-minute access tokens, 7-day sliding refresh
@@ -228,10 +235,65 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
+  // Fetched once, up front, for both the lockout check below and the
+  // mfaEnforced check further down.
+  const [mspUserRow] = await db
+    .select({
+      mfaEnforced: mspUsersTable.mfaEnforced,
+      failedLoginAttempts: mspUsersTable.failedLoginAttempts,
+      lastFailedLoginAt: mspUsersTable.lastFailedLoginAt,
+      lockedUntil: mspUsersTable.lockedUntil,
+    })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, user.id))
+    .limit(1);
+
+  const now = new Date();
+  if (mspUserRow?.lockedUntil && mspUserRow.lockedUntil > now) {
+    res.status(423).json({
+      error: "This account is locked due to repeated failed login attempts. Contact your administrator to unlock it.",
+      accountLocked: true,
+      lockedUntil: mspUserRow.lockedUntil.toISOString(),
+    });
+    return;
+  }
+
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
+    if (mspUserRow) {
+      const withinWindow =
+        mspUserRow.lastFailedLoginAt !== null &&
+        now.getTime() - mspUserRow.lastFailedLoginAt.getTime() < LOCKOUT_WINDOW_MS;
+      const nextAttempts = (withinWindow ? mspUserRow.failedLoginAttempts : 0) + 1;
+      const willLock = nextAttempts >= LOCKOUT_THRESHOLD;
+      const newLockedUntil = willLock ? new Date(now.getTime() + LOCKOUT_DURATION_MS) : null;
+
+      await db
+        .update(mspUsersTable)
+        .set({ failedLoginAttempts: nextAttempts, lastFailedLoginAt: now, lockedUntil: newLockedUntil })
+        .where(eq(mspUsersTable.userId, user.id));
+
+      if (willLock) {
+        res.status(423).json({
+          error: "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.",
+          accountLocked: true,
+          lockedUntil: newLockedUntil!.toISOString(),
+        });
+        return;
+      }
+    }
+
     res.status(401).json({ error: "Invalid email or password" });
     return;
+  }
+
+  // Correct password — clear any failed-attempt count/lockout so a
+  // legitimate user who mistyped once or twice is never left half-tripped.
+  if (mspUserRow && (mspUserRow.failedLoginAttempts > 0 || mspUserRow.lockedUntil !== null)) {
+    await db
+      .update(mspUsersTable)
+      .set({ failedLoginAttempts: 0, lastFailedLoginAt: null, lockedUntil: null })
+      .where(eq(mspUsersTable.userId, user.id));
   }
 
   // Check for active MFA enrollments
@@ -260,12 +322,6 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   // on for this user (customer-team.tsx toggle), block login until they set
   // one up rather than letting them in unprotected — an enforced-but-unenrolled
   // user is distinct from mfaRequired (which implies enrollment already exists).
-  const [mspUserRow] = await db
-    .select({ mfaEnforced: mspUsersTable.mfaEnforced })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, user.id))
-    .limit(1);
-
   if (mspUserRow?.mfaEnforced) {
     const mfaToken = signMfaToken(user.id, []);
     res.json({ mfaSetupRequired: true, mfaToken });
