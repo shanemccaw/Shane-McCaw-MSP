@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | In-Portal Marketplace — Shared Across Roles | |
 | 2026-07-19 | ⏳ IN FLIGHT | Public Website Rebuild: Stage 1 Shell/Core | |
 | 2026-07-19 | ✅ DONE | engagement offer real-time trigger on qualifying events | 52f8f6b5 |
 | 2026-07-19 | ✅ DONE | quiz submit wires Lead Offer Engine synchronously | 4b1cdb6a |
