@@ -24,6 +24,7 @@
 --
 -- Step 3 — once there are zero orphaned rows, add the constraint:
 
+ALTER TABLE "msp_users" DROP CONSTRAINT IF EXISTS "msp_users_user_id_fkey";
 ALTER TABLE "msp_users"
   ADD CONSTRAINT "msp_users_user_id_fkey"
   FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT;

@@ -29,10 +29,12 @@ UPDATE "signal_rule_groups"
 
 -- 3. Guardrail: prevent this class of bug from recurring by constraining
 --    decay_rate to a valid fraction.
+ALTER TABLE "signal_derivation_rules" DROP CONSTRAINT IF EXISTS "signal_derivation_rules_decay_rate_check";
 ALTER TABLE "signal_derivation_rules"
   ADD CONSTRAINT "signal_derivation_rules_decay_rate_check"
   CHECK ("decay_rate" >= 0 AND "decay_rate" <= 1);
 
+ALTER TABLE "signal_rule_groups" DROP CONSTRAINT IF EXISTS "signal_rule_groups_decay_rate_check";
 ALTER TABLE "signal_rule_groups"
   ADD CONSTRAINT "signal_rule_groups_decay_rate_check"
   CHECK ("decay_rate" >= 0 AND "decay_rate" <= 1);

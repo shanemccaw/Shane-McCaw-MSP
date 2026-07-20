@@ -12,6 +12,7 @@
 ALTER TABLE "monitor_checks"
   ADD COLUMN IF NOT EXISTS "script_package_id" uuid;
 
+ALTER TABLE "monitor_checks" DROP CONSTRAINT IF EXISTS "monitor_checks_script_package_id_fkey";
 ALTER TABLE "monitor_checks"
   ADD CONSTRAINT "monitor_checks_script_package_id_fkey"
   FOREIGN KEY ("script_package_id") REFERENCES "script_packages"("id") ON DELETE SET NULL;

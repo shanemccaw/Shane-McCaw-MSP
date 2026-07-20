@@ -10,5 +10,6 @@
 
 ALTER TABLE "msp_users" ADD COLUMN IF NOT EXISTS "theme_preference" text;
 
+ALTER TABLE "msp_users" DROP CONSTRAINT IF EXISTS "msp_users_theme_preference_check";
 ALTER TABLE "msp_users" ADD CONSTRAINT "msp_users_theme_preference_check"
   CHECK ("theme_preference" IS NULL OR "theme_preference" IN ('light', 'dark'));
