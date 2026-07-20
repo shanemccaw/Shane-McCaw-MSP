@@ -3,10 +3,7 @@ import { Switch, Route, useLocation } from "wouter";
 import Home from "./pages/Home";
 import Assessments from "./pages/Assessments";
 import AssessmentDetail from "./pages/AssessmentDetail";
-import Services from "./pages/Services";
-import Projects from "./pages/Projects";
 import Monitoring from "./pages/Monitoring";
-import Pricing from "./pages/Pricing";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Book from "./pages/Book";
@@ -23,6 +20,7 @@ import MspPartnerTerms from "./pages/legal/MspPartnerTerms";
 import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
 import { initTracker, trackPageview } from "./lib/analytics";
+import { PersonalizationProvider } from "./hooks/usePersonalizationState";
 
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
 import Solutions from "./pages/Solutions";
@@ -79,7 +77,7 @@ function AnalyticsBoundary() {
 
 export default function App() {
   return (
-    <>
+    <PersonalizationProvider>
       <AnalyticsBoundary />
       <Switch>
       {/* Primary Routes */}
@@ -91,10 +89,7 @@ export default function App() {
       <Route path="/assessments/:slug" component={AssessmentDetail} />
       {/* Sitemap-canonical singular alias (website-rebuild-reference-v2.md §5) — same real page, no new content */}
       <Route path="/assessment" component={Assessments} />
-      <Route path="/services" component={Services} />
-      <Route path="/projects" component={Projects} />
       <Route path="/monitoring" component={Monitoring} />
-      <Route path="/pricing" component={Pricing} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
       <Route path="/book" component={Book} />
@@ -146,6 +141,6 @@ export default function App() {
       {/* 404 Fallback */}
       <Route component={NotFound} />
       </Switch>
-    </>
+    </PersonalizationProvider>
   );
 }

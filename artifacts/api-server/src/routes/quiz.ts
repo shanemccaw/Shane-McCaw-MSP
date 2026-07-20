@@ -15,7 +15,7 @@ import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sen
 
 const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-function makeResendToken(leadId: number): string {
+export function makeResendToken(leadId: number): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET must be set");
   const slot = Math.floor(Date.now() / RESEND_TOKEN_WINDOW_MS);

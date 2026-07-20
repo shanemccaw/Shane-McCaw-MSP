@@ -613,7 +613,7 @@ export default function Checkout() {
                 <strong>{slug ?? "the requested product"}</strong>. It may have been removed or
                 the link may be incorrect.
               </p>
-              <Link href="/pricing">
+              <Link href="/products">
                 <Button variant="outline">View all services</Button>
               </Link>
             </div>

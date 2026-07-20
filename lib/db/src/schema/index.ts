@@ -1493,6 +1493,22 @@ export const outreachTemplatesTable = pgTable("outreach_templates", {
 export type InsertOutreachTemplate = typeof outreachTemplatesTable.$inferInsert;
 export type OutreachTemplate = typeof outreachTemplatesTable.$inferSelect;
 
+export const heroHeadlinesTable = pgTable("hero_headlines", {
+  id: serial("id").primaryKey(),
+  leadText: text("lead_text").notNull(),
+  gradientText: text("gradient_text").notNull(),
+  active: boolean("active").notNull().default(true),
+  seasonalLabel: text("seasonal_label"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertHeroHeadline = typeof heroHeadlinesTable.$inferInsert;
+export type HeroHeadline = typeof heroHeadlinesTable.$inferSelect;
+
 export const marketingTasksTable = pgTable("marketing_tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),

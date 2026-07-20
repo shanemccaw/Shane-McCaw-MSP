@@ -32,6 +32,8 @@ import quizQuickWinRouter from "./quiz-quick-win";
 import quizSelectorRouter from "./quiz-selector";
 import adminServicePageTriggersRouter from "./admin-service-page-triggers";
 import publicServicePageTriggersRouter from "./public-service-page-triggers";
+import publicHeroRouter from "./public-hero";
+import publicPersonalizationRouter from "./public-personalization";
 import adminAzureCredentialsRouter from "./admin-azure-credentials";
 import adminScriptRunnerRouter from "./admin-script-runner";
 import scriptIngestionRouter from "./script-ingestion";
@@ -127,6 +129,8 @@ import portalCheckoutRouter from "./portal-checkout";
 import portalRetainerBillingRouter from "./portal-retainer-billing";
 import clientEventsRouter from "./client-events";
 import portal404EventsRouter from "./portal-404-events";
+import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay";
+import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
 
 import pccRouter from "./pcc.js";
 
@@ -159,6 +163,8 @@ router.use(downloadsRouter);
 router.use(publicServicesRouter);
 router.use(publicEngagementProjectsRouter);
 router.use(publicServicePageTriggersRouter);
+router.use(publicHeroRouter);
+router.use(publicPersonalizationRouter);
 router.use(adminClientsRouter);
 router.use(portalCustomerEnginesRouter);
 router.use(portalCustomerTimelineRouter);
@@ -260,6 +266,7 @@ router.use(portalDeliveryKanbanRouter);
 router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);
+router.use(adminAnalyticsSessionReplayRouter);
 router.use(adminExceptionsRouter);
 router.use(adminLiveStreamRouter);
 router.use(adminTestSuitesRouter);
@@ -268,6 +275,7 @@ router.use(portalCheckoutRouter);
 router.use(portalRetainerBillingRouter);
 router.use(clientEventsRouter);
 router.use(portal404EventsRouter);
+router.use(adminAnalyticsHeatmapRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

@@ -20,6 +20,7 @@ import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
 import { useServices, type PublicService } from "@/hooks/useServices";
+import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 
 interface MonitoringTypeAttributes {
   seatMin?: number;
@@ -94,6 +95,7 @@ export default function Home() {
 
   const [activeCatalogTab, setActiveCatalogTab] = useState<"monitoring" | "assessments" | "retainers">("monitoring");
   const [seatCount, setSeatCount] = useState<number>(25);
+  const { leadDisplayed, gradientDisplayed } = useTypewriterHeadline();
 
   const assessments = services.filter((s) => s.serviceType === "assessment");
   const retainers = services.filter((s) => s.serviceType === "retainer");
@@ -353,14 +355,18 @@ export default function Home() {
             Built by a Former NASA M365 Architect
           </div>
 
-          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6">
-            Your Microsoft 365 Tenant, <GradientText>Watched Every Hour of Every Day</GradientText>
+          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6 min-h-[1.2em] sm:min-h-[2.4em]">
+            {leadDisplayed}
+            <GradientText>{gradientDisplayed}</GradientText>
+            <span
+              className="inline-block w-[3px] h-[0.85em] bg-accent-blue ml-1 align-middle animate-pulse"
+              aria-hidden="true"
+            />
           </h1>
 
           <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
-            An assessment tells you what's wrong today. Monitoring tells you the second it happens
-            again. Automated engines track drift, security, health, SLA, and scope creep —
-            continuously, not once a year.
+            Real Graph-based scans. Real engines. Not a questionnaire pretending to know your
+            environment.
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto mb-14">
@@ -411,8 +417,9 @@ export default function Home() {
               </div>
             </div>
             <div className="text-sm text-text-secondary max-w-md md:text-right">
-              Risk, drift, and compliance are calculated continuously from live telemetry pulled
-              directly through Microsoft Graph — not estimated from a questionnaire.
+              Risk, drift, and compliance are checked against your real tenant on a real
+              schedule — not estimated from a questionnaire, and not left running in the
+              background pretending nothing changes.
             </div>
           </GlassPanel>
         </div>
@@ -423,11 +430,10 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              The Engines <GradientText>Watching Your Tenant</GradientText>
+              {ENGINES.length} Engines. <GradientText>Zero Guesswork.</GradientText>
             </h2>
             <p className="text-text-secondary">
-              Every check runs against your live tenant on a schedule — not when someone remembers
-              to look.
+              Real checks, on a real schedule, against your actual tenant.
             </p>
           </div>
 

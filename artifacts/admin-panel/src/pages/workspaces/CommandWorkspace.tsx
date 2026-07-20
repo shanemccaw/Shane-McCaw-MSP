@@ -2,11 +2,13 @@ import { type ReactNode, lazy, Suspense } from "react";
 import OverviewPage from "@/pages/Overview";
 import MessagesPage from "@/pages/crm/Messages";
 import AnalyticsPage from "@/pages/Analytics";
+import AnalyticsHeatmapPage from "@/pages/AnalyticsHeatmap";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
 import InsightsOutputsPage from "@/pages/InsightsOutputs";
 import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
+import SessionReplayPage from "@/pages/SessionReplay";
 
 const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCenter"));
 
@@ -14,6 +16,8 @@ function getContent(section: string): ReactNode {
   switch (section) {
     case "messages":         return <MessagesPage />;
     case "analytics":        return <AnalyticsPage />;
+    case "session-replay":   return <SessionReplayPage />;
+    case "heatmap":          return <AnalyticsHeatmapPage />;
     case "scripts":          return <ScriptGeneratorPage />;
     case "running-scripts":  return <RunningScriptsPage />;
     case "prompts":          return <PromptCenterPage />;

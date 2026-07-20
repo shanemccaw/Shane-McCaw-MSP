@@ -139,6 +139,15 @@ export const mspUsersTable = pgTable("msp_users", {
   // explicitly via the team-management toggle. Checked live at login, not
   // cached in the JWT.
   mfaEnforced: boolean("mfa_enforced").notNull().default(false),
+  // Real account-lockout tracking (customer-team.tsx's lockout UI/unlock button).
+  // failedLoginAttempts counts consecutive bad passwords within the lockout
+  // window (reset to 0 on any successful login or by an admin unlock);
+  // lockedUntil is set once the threshold is crossed and gates /auth/login
+  // until it passes or an admin unlocks early. Checked live at login, not
+  // cached in the JWT.
+  failedLoginAttempts: integer("failed_login_attempts").notNull().default(0),
+  lastFailedLoginAt: timestamp("last_failed_login_at", { withTimezone: true }),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   // Account-level theme preference (light/dark), so the customer never has to
   // re-toggle after logging in on a new device or a cache clear. Null means
   // "no preference set yet" — the client falls back to OS prefers-color-scheme.

@@ -82,7 +82,6 @@ import CustomerDashboardPage from "@/pages/customer-dashboard";
 import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
-import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
 import ComingSoonPage from "@/pages/coming-soon";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -359,9 +358,6 @@ function SlugInnerSwitch() {
           over the same archived-version storage the SOW Scope Selector produces. */}
       <Route path="/assessment/compare">
         <ProtectedRoute component={AssessmentSowComparePage} />
-      </Route>
-      <Route path="/command-center">
-        <ProtectedRoute component={CommandCenterPage} />
       </Route>
       <Route path="/customer-documents">
         <ProtectedRoute component={CustomerDocumentsPage} />

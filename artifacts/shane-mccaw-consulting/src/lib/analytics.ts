@@ -65,6 +65,16 @@ function getOrCreateSessionId(): string {
   return sid;
 }
 
+/**
+ * The same durable smc_sid cookie session id the tracker uses — exposed for the
+ * personalization layer (usePersonalizationState) to resolve a quiz-only, no-account
+ * visitor back to their quiz history (website-rebuild-reference-v2.md §3). Deliberately
+ * the same read-or-create logic as the tracker, not a second id scheme.
+ */
+export function getAnalyticsSessionId(): string {
+  return getOrCreateSessionId();
+}
+
 // ─── Device / browser / UTM ────────────────────────────────────────────────────
 function detectDevice(): string {
   const ua = navigator.userAgent;

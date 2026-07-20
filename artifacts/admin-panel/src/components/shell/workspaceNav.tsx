@@ -70,6 +70,8 @@ import {
   MessagesSquare,
   Star,
   Rocket,
+  Film,
+  Flame,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -175,6 +177,8 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
+          { id: "cmd-session-replay", label: "Session Replay", path: "/command/session-replay", icon: Film },
+          { id: "cmd-heatmap", label: "Heatmap", path: "/command/heatmap", icon: Flame },
           { id: "cmd-insights", label: "Insights", path: "/command/insights", icon: Lightbulb },
         ],
       },
@@ -358,6 +362,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "publishing", label: "Publishing", defaultOpen: true,
         items: [
           { id: "con-articles", label: "Articles", path: "/content/articles", icon: BookOpen },
+          { id: "con-hero-headlines", label: "Hero Headlines", path: "/content/hero-headlines", icon: Sparkles },
         ],
       },
       {
