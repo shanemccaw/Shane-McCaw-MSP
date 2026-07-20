@@ -94,6 +94,7 @@ import { getRecentEngineSnapshots } from "./tenant-engine-snapshots.ts";
 import { runSlaEngineForTenant } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
+import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -529,6 +530,27 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
   if (!props) return notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`);
 
   switch (def.key) {
+    // License waste, priced: real per-SKU seat counts (groupByCount transform on
+    // the cost:license-waste-estimate check) × real sku_price_reference list
+    // price, via cost-engine.ts. Counts with no price on file surface as
+    // meta.unknownSkus rather than a guessed dollar figure.
+    case "licensing.wasteEstimateBreakdown": {
+      const counts = extractGroupByCountCounts(props);
+      if (!counts) return notAvailable(def, "no_data", "no groupByCount seat data for license waste estimate");
+      const breakdown = await computeSkuCostBreakdown(counts);
+      const buckets = breakdown.lines.map((l) => ({
+        label: l.displayName,
+        value: l.priceKnown ? centsToDollars(l.totalMonthlyPriceCents as number) : 0,
+      }));
+      return ok(def, { buckets }, {
+        source: "cost-engine",
+        unit: "usd_monthly",
+        totalMonthlyDollars: centsToDollars(breakdown.totalMonthlyCents),
+        totalAnnualDollars: centsToDollars(breakdown.totalAnnualCents),
+        unknownSkus: breakdown.unknownSkus,
+      });
+    }
+
     // Secure score control breakdown, grouped by controlCategory.
     case "security.secureScoreControls":
       return aggregateGroupBy(def, props, "controlCategory");
@@ -589,6 +611,31 @@ function firstNumber(props: Record<string, unknown>, keys: string[]): number | n
   for (const k of keys) {
     const n = toNumber(props[k]);
     if (n != null) return n;
+  }
+  return null;
+}
+
+/**
+ * Extracts a pre-computed groupByCount map (a Record<string, number> under some
+ * targetField) from monitor check props, e.g. `{ skuPartNumber: { SPE_E3: 12 } }`.
+ * Returns null if no such object-valued field is present.
+ */
+function extractGroupByCountCounts(props: Record<string, unknown>): Record<string, number> | null {
+  for (const k of Object.keys(props)) {
+    if (k.startsWith("__") || k.startsWith("_")) continue;
+    const v = props[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const counts: Record<string, number> = {};
+      let found = false;
+      for (const [label, val] of Object.entries(v as Record<string, unknown>)) {
+        const n = toNumber(val);
+        if (n != null) {
+          counts[label] = n;
+          found = true;
+        }
+      }
+      if (found) return counts;
+    }
   }
   return null;
 }

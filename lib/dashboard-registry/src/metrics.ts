@@ -772,13 +772,13 @@ export const DASHBOARD_METRICS: MetricDef[] = [
   },
   {
     key: "licensing.wasteEstimateBreakdown",
-    label: "License Waste by SKU",
+    label: "License Waste by SKU ($/mo)",
     valueType: "categorical",
     shape: "distribution",
     sourceType: "monitor_profile",
     sourceKey: "cost:license-waste-estimate",
     scope: "customer",
-    status: "available",
+    status: "needs_aggregation",
     smartEligible: false,
   },
   {

@@ -64,6 +64,7 @@ vi.mock("@workspace/db", () => {
     mspJobQueueTable: tbl(["mspId", "status"]),
     industryBenchmarkReferenceTable: tbl(["pillar", "industryAvgPct"]),
     tenantEngineSnapshotsTable: tbl(["customerId", "engineKey", "score", "breakdown", "capturedAt"]),
+    skuPriceReferenceTable: tbl(["skuPartNumber", "displayName", "monthlyPriceCents"]),
   };
 });
 
@@ -183,5 +184,57 @@ describe("offers.remediationOffers resolver", () => {
     expect(events).toHaveLength(1);
     expect(events.every((e) => e.title !== "Assessment package")).toBe(true);
     expect(events[0].id).toBe(1);
+  });
+});
+
+describe("licensing.wasteEstimateBreakdown resolver (cost-engine wiring)", () => {
+  const wasteDef = getMetric("licensing.wasteEstimateBreakdown")!;
+
+  beforeEach(() => {
+    mockResultQueue = [];
+  });
+
+  it("is needs_aggregation, not a bare scalar (the pre-existing resolver-routing bug this fixes)", () => {
+    expect(wasteDef.status).toBe("needs_aggregation");
+    expect(wasteDef.shape).toBe("distribution");
+  });
+
+  it("prices real per-SKU seat counts into real dollar buckets via cost-engine", async () => {
+    // 1. resolveTenantId
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    // 2. latestCheckProps — the groupByCount output already produced by the monitor check.
+    mockResultQueue.push([
+      { extractedProperties: { skuPartNumber: { SPE_E3: 10, SPE_E5: 2 } }, rawResponse: null, collectedAt: new Date(), status: "ok" },
+    ]);
+    // 3. cost-engine price lookups, one per distinct SKU.
+    mockResultQueue.push([{ displayName: "Microsoft 365 E3", monthlyPriceCents: 3600 }]);
+    mockResultQueue.push([{ displayName: "Microsoft 365 E5", monthlyPriceCents: 5700 }]);
+
+    const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    const buckets = res.data.buckets as { label: string; value: number }[];
+    expect(buckets).toEqual(
+      expect.arrayContaining([
+        { label: "Microsoft 365 E3", value: 360 },
+        { label: "Microsoft 365 E5", value: 114 },
+      ]),
+    );
+    expect(res.meta?.totalMonthlyDollars).toBe(474);
+    expect(res.meta?.unknownSkus).toEqual([]);
+  });
+
+  it("surfaces unpriced SKUs via meta.unknownSkus instead of guessing a dollar figure", async () => {
+    mockResultQueue.push([{ tenantId: "tenant-guid-1" }]);
+    mockResultQueue.push([
+      { extractedProperties: { skuPartNumber: { NOT_A_REAL_SKU: 5 } }, rawResponse: null, collectedAt: new Date(), status: "ok" },
+    ]);
+    mockResultQueue.push([]); // no sku_price_reference row
+
+    const res = await resolveMetric(wasteDef, { customerId: 10, mspId: 1 });
+    expect(res.status).toBe("ok");
+    if (res.status !== "ok") return;
+    expect(res.meta?.unknownSkus).toEqual(["NOT_A_REAL_SKU"]);
+    expect((res.data.buckets as any[])[0].value).toBe(0);
   });
 });

@@ -2743,6 +2743,23 @@ export const industryBenchmarkReferenceTable = pgTable("industry_benchmark_refer
   asOfDate: date("as_of_date"),
 });
 
+// ── SKU Price Reference ─────────────────────────────────────────────────────────
+// One row per Microsoft SKU part number. List price only (no per-MSP/region
+// override yet — msp_id column can be added later without a redesign). Populated
+// once via migration seed; consumed by cost-engine.ts to turn real seat counts
+// (from monitor_checks groupByCount output) into real dollar figures.
+// null monthlyPriceCents means "no published price on file" — never guessed.
+
+export const skuPriceReferenceTable = pgTable("sku_price_reference", {
+  skuPartNumber: text("sku_part_number").primaryKey(),
+  displayName: text("display_name"),
+  monthlyPriceCents: integer("monthly_price_cents"),
+  source: text("source"),
+  asOfDate: date("as_of_date"),
+});
+
+export type SkuPriceReference = typeof skuPriceReferenceTable.$inferSelect;
+
 export const mspScoreHistoryTable = pgTable("msp_score_history", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
