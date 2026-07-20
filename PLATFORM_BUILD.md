@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | AI Chat — Trigger Real Remediation | |
 | 2026-07-19 | ⏳ IN FLIGHT | Dashboard PPT Export | |
 | 2026-07-19 | ⏳ IN FLIGHT | Executive Mode — Simplified Leadership View | |
 | 2026-07-19 | ✅ DONE | Assessment Comparison Mode — scope-vs-scope SOW version comparison built real (GET /api/portal/assessment/sow/versions returns every archived+active consolidated_sow version with structured sowPricingLines, scoped via req.user.id; new /assessment/compare page renders two versions side by side with a diff summary, reusing AssessmentSowSelector's existing pricing-line rendering). Free-tier-scan vs. paid-upgrade comparison investigated and NOT built — msp_diagnostic_findings and sowPricingLines share no common key/joinable field, so that comparison is a genuine data-model mismatch today, not fabricated. | dc34cdb2 |
