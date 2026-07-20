@@ -33,6 +33,7 @@ const CHANNEL_TAXONOMY = [
   "growth.booking",
   "growth.quiz",
   "integration.azure",
+  "integration.sharepoint",
   "notification",
   "system.core",
   "system.dlq",
