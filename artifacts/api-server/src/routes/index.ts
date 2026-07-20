@@ -127,6 +127,7 @@ import portalCheckoutRouter from "./portal-checkout";
 import portalRetainerBillingRouter from "./portal-retainer-billing";
 import clientEventsRouter from "./client-events";
 import portal404EventsRouter from "./portal-404-events";
+import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay";
 
 import pccRouter from "./pcc.js";
 
@@ -260,6 +261,7 @@ router.use(portalDeliveryKanbanRouter);
 router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);
+router.use(adminAnalyticsSessionReplayRouter);
 router.use(adminExceptionsRouter);
 router.use(adminLiveStreamRouter);
 router.use(adminTestSuitesRouter);

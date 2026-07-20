@@ -70,6 +70,7 @@ import {
   MessagesSquare,
   Star,
   Rocket,
+  Film,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -175,6 +176,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
+          { id: "cmd-session-replay", label: "Session Replay", path: "/command/session-replay", icon: Film },
           { id: "cmd-insights", label: "Insights", path: "/command/insights", icon: Lightbulb },
         ],
       },
