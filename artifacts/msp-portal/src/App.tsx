@@ -69,6 +69,7 @@ import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
 import BreakGlassVerifyPage from "@/pages/break-glass-verify";
 import BreakGlassStatusPage from "@/pages/break-glass-status";
 import AccountSetupPage from "@/pages/account-setup";
+import ResetPasswordPage from "@/pages/reset-password";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
@@ -680,6 +681,15 @@ function Router() {
           in automatically and redirected to their portal landing page. */}
       <Route path="/account-setup">
         <AccountSetupPage />
+      </Route>
+
+      {/* Password reset — public, no auth required.
+          Email links from the forgot-password flow land here. The token
+          query param is validated server-side; on success the user is
+          redirected to sign in with their new password (not auto-logged-in,
+          since /auth/reset-password issues no tokens). */}
+      <Route path="/reset-password">
+        <ResetPasswordPage />
       </Route>
 
       {/* Microsoft admin-consent declined — public, no auth required.

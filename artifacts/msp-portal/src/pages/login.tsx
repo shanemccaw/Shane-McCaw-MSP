@@ -31,6 +31,11 @@ const totpSchema = z.object({
 });
 type TotpForm = z.infer<typeof totpSchema>;
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Enter a valid email address"),
+});
+type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
+
 // ── Tenant branding ───────────────────────────────────────────────────────────
 
 interface TenantBranding {
@@ -195,6 +200,89 @@ function MfaChallenge({
   );
 }
 
+// ── Forgot password step ──────────────────────────────────────────────────────
+
+function ForgotPasswordCard({ onCancel }: { onCancel: () => void }) {
+  const [sent, setSent] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<ForgotPasswordForm>({ resolver: zodResolver(forgotPasswordSchema) });
+
+  async function onSubmit(data: ForgotPasswordForm) {
+    try {
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: data.email }),
+      });
+    } catch {
+      // Ignore network errors here — the endpoint never reveals whether the
+      // email exists, so there is nothing user-actionable to surface either way.
+    }
+    setSent(true);
+  }
+
+  if (sent) {
+    return (
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Check your email</CardTitle>
+          <CardDescription>
+            If an account exists for that email, we've sent a link to reset your password.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" className="w-full" onClick={onCancel}>
+            Back to sign in
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+      <CardHeader className="space-y-1 pb-4">
+        <CardTitle className="text-lg">Reset your password</CardTitle>
+        <CardDescription>Enter your email and we'll send you a reset link.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="forgot-email">Email</Label>
+            <Input
+              id="forgot-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              {...register("email")}
+            />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
+          </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {isSubmitting ? "Sending…" : "Send reset link"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-muted-foreground text-sm"
+            onClick={onCancel}
+          >
+            Back to sign in
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Main login page ───────────────────────────────────────────────────────────
 
 export default function LoginPage() {
@@ -203,6 +291,7 @@ export default function LoginPage() {
   const search = useSearch();
   const [serverError, setServerError] = useState<string | null>(null);
   const [mfaState, setMfaState] = useState<{ mfaToken: string; methods: string[] } | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // Slug from context (slug-scoped router) takes priority over ?t= query param
   // (which is kept for backwards compatibility with any direct links).
@@ -303,6 +392,20 @@ export default function LoginPage() {
     </div>
   );
 
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="w-full max-w-sm space-y-6">
+          {brandedHeader}
+          <ForgotPasswordCard onCancel={() => setShowForgotPassword(false)} />
+          <p className="text-center text-xs text-sidebar-foreground/40">
+            Access is provisioned by your administrator
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (mfaState) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
@@ -362,7 +465,16 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setShowForgotPassword(true)}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   id="password"
                   type="password"
