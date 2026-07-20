@@ -7,12 +7,18 @@
  * <DashboardCanvas> from @workspace/dashboard-canvas.
  *
  * Editing here is constrained, not freeform: a user can show/hide/resize/
- * reposition only among widgets already present in their assigned template.
- * There is no palette and no way to add a widget type that isn't already on
- * the canvas — <DashboardCanvas> itself has no palette/add-widget UI (see
- * Step 4a), so that constraint holds simply by never rendering one here. The
- * real enforcement (rejecting a request that names a widget id outside the
- * template) lives server-side in dashboard-overrides.ts's PUT handler.
+ * reposition, and change an existing widget's chart type (rendererType, e.g.
+ * Stat -> Gauge), only among widgets already present in their assigned
+ * template. There is no palette and no way to add a widget type that isn't
+ * already on the canvas, and a rendererType change can never repoint a widget
+ * at a different metric — <DashboardCanvas> itself has no palette/add-widget
+ * UI (see Step 4a), so that constraint holds simply by never rendering one
+ * here. The chart-type picker only offers renderers
+ * @workspace/dashboard-registry's getValidRenderersForMetric says are
+ * shape-compatible with that widget's metric. The real enforcement (rejecting
+ * a request that names a widget id outside the template, or a rendererType
+ * incompatible with its metric) lives server-side in dashboard-overrides.ts's
+ * PUT handler.
  *
  * Used by both the MSP-facing (`msp_overview`) and customer-facing
  * (`customer_default`) pages — same component, different `scope` prop.
@@ -37,6 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DashboardCanvas,
   createDashboardDataFetcher,
+  getValidRenderersForMetric,
   type WidgetInstance,
   type DashboardResolveScope,
 } from "@workspace/dashboard-canvas";
@@ -153,18 +160,24 @@ export function DashboardView({ scope, title = "Dashboard", targetKey }: Dashboa
     setHiddenIds((prev) => new Set(prev).add(id));
   }
 
+  function changeRendererType(id: string, rendererType: string) {
+    setDraftWidgets((prev) => prev.map((w) => (w.i === id ? { ...w, rendererType } : w)));
+  }
+
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
     try {
       const positions: Record<string, { x: number; y: number; w: number; h: number }> = {};
+      const rendererTypes: Record<string, string> = {};
       for (const w of draftWidgets) {
         positions[w.i] = { x: w.x, y: w.y, w: w.w, h: w.h };
+        rendererTypes[w.i] = w.rendererType;
       }
       const res = await fetchWithAuth("/api/dashboard/overrides", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hidden: [...hiddenIds], positions, targetKey: targetKey ?? null }),
+        body: JSON.stringify({ hidden: [...hiddenIds], positions, rendererTypes, targetKey: targetKey ?? null }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -297,6 +310,7 @@ export function DashboardView({ scope, title = "Dashboard", targetKey }: Dashboa
           fetcher={fetcher}
           onLayoutChange={setDraftWidgets}
           onHide={hideWidget}
+          onRendererTypeChange={changeRendererType}
         />
       ) : (
         <DashboardCanvas widgets={visibleWidgets} editable={false} scope={scope} fetcher={fetcher} refreshKey={refreshKey} />
@@ -413,13 +427,17 @@ export function DashboardTabs({ scope, title = "Dashboard" }: DashboardTabsProps
   );
 }
 
-// ── Constrained editor: drag/resize/hide only, never add ──────────────────
+// ── Constrained editor: drag/resize/hide/re-chart only, never add ─────────
 // No palette is rendered — <DashboardCanvas> has no add-widget affordance of
 // its own, so omitting a palette here is the entire enforcement of "can't add
 // new widget types" on the frontend. The per-widget "hide" control below only
 // removes a widget from THIS render's array (client-side), same technique the
 // admin designer uses for its own remove button — the actual widget stays in
 // the template and simply gets listed in the saved override's `hidden` array.
+// The chart-type <select> only ever mutates rendererType on an existing
+// widget entry — metricKey is never touched — and its options are filtered to
+// getValidRenderersForMetric(w.metricKey), so it cannot offer a shape-
+// incompatible renderer for that metric.
 
 function ConstrainedEditor({
   widgets,
@@ -427,12 +445,14 @@ function ConstrainedEditor({
   fetcher,
   onLayoutChange,
   onHide,
+  onRendererTypeChange,
 }: {
   widgets: WidgetInstance[];
   scope: DashboardResolveScope;
   fetcher: ReturnType<typeof createDashboardDataFetcher>;
   onLayoutChange: (widgets: WidgetInstance[]) => void;
   onHide: (id: string) => void;
+  onRendererTypeChange: (id: string, rendererType: string) => void;
 }) {
   if (widgets.length === 0) {
     return (
@@ -445,18 +465,41 @@ function ConstrainedEditor({
   return (
     <div className="relative">
       <div className="grid grid-cols-1 gap-1 mb-2">
-        {widgets.map((w) => (
-          <div key={w.i} className="flex items-center gap-2 text-[11px] text-muted-foreground bg-card border rounded px-2 py-1">
-            <span className="font-medium text-foreground truncate flex-1">{w.metricKey}</span>
-            <button
-              onClick={() => onHide(w.i)}
-              className="p-1 rounded hover:bg-destructive/10 hover:text-destructive"
-              title="Hide widget"
-            >
-              <EyeOff className="size-3" />
-            </button>
-          </div>
-        ))}
+        {widgets.map((w) => {
+          // Chart-type choice is deliberately scoped to swapping *how* this
+          // widget's already-assigned metric is displayed — never which metric
+          // it shows. Options are limited to renderers the metric's data shape
+          // actually supports (same compatibility rule the MSP Designer palette
+          // uses), so the picker can never offer a combination that would
+          // render nonsense.
+          const validRenderers = getValidRenderersForMetric(w.metricKey);
+          return (
+            <div key={w.i} className="flex items-center gap-2 text-[11px] text-muted-foreground bg-card border rounded px-2 py-1">
+              <span className="font-medium text-foreground truncate flex-1">{w.metricKey}</span>
+              {validRenderers.length > 1 && (
+                <select
+                  value={w.rendererType}
+                  onChange={(e) => onRendererTypeChange(w.i, e.target.value)}
+                  className="h-6 text-[11px] rounded border bg-background px-1"
+                  title="Chart type"
+                >
+                  {validRenderers.map((r) => (
+                    <option key={r.type} value={r.type}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => onHide(w.i)}
+                className="p-1 rounded hover:bg-destructive/10 hover:text-destructive"
+                title="Hide widget"
+              >
+                <EyeOff className="size-3" />
+              </button>
+            </div>
+          );
+        })}
       </div>
       <DashboardCanvas widgets={widgets} editable scope={scope} fetcher={fetcher} onLayoutChange={onLayoutChange} />
     </div>

@@ -14,3 +14,5 @@ export type {
 } from "./DashboardDesigner";
 export * from "./types";
 export * from "./renderers";
+export { getValidRenderersForMetric, getMetric } from "@workspace/dashboard-registry";
+export type { RendererDef } from "@workspace/dashboard-registry";

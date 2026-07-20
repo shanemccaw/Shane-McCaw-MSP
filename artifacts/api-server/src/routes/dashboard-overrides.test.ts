@@ -228,6 +228,44 @@ describe("dashboard-overrides API", () => {
     expect(res.body.invalidWidgetIds).toContain("injected-widget");
   });
 
+  it("rejects a save naming an unknown widget id in rendererTypes", async () => {
+    mockResultQueue = [
+      [sampleTemplate()],
+    ];
+    const res = await request(app)
+      .put("/api/dashboard/overrides")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ hidden: [], positions: {}, rendererTypes: { "injected-widget": "Bar" } });
+    expect(res.status).toBe(400);
+    expect(res.body.invalidWidgetIds).toContain("injected-widget");
+  });
+
+  it("saves a valid rendererType swap for an existing widget (Stat -> Gauge, both scalar)", async () => {
+    mockResultQueue = [
+      [sampleTemplate()], // findDefaultTemplate
+      [], // findOverride -> none
+      [{ id: 7, templateId: 100, scopeType: "customer", scopeId: 10, overrideLayout: { hidden: [], positions: {}, rendererTypes: { w1: "Gauge" } } }], // insert returning
+    ];
+    const res = await request(app)
+      .put("/api/dashboard/overrides")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ hidden: [], positions: {}, rendererTypes: { w1: "Gauge" } });
+    expect(res.status).toBe(201);
+    expect(res.body.override.overrideLayout.rendererTypes).toEqual({ w1: "Gauge" });
+  });
+
+  it("rejects a rendererType incompatible with the widget's metric shape (Heatmap on a scalar metric)", async () => {
+    mockResultQueue = [
+      [sampleTemplate()], // findDefaultTemplate
+    ];
+    const res = await request(app)
+      .put("/api/dashboard/overrides")
+      .set("Authorization", `Bearer ${customerToken()}`)
+      .send({ hidden: [], positions: {}, rendererTypes: { w1: "Heatmap" } });
+    expect(res.status).toBe(400);
+    expect(res.body.incompatibleRendererTypes).toEqual([{ widgetId: "w1", rendererType: "Heatmap" }]);
+  });
+
   it("404s a save when no template is configured", async () => {
     mockResultQueue = [[]];
     const res = await request(app)

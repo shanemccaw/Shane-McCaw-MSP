@@ -24,7 +24,16 @@
  *   {
  *     hidden: string[]                              // widget `i`s to hide
  *     positions: Record<string, {x,y,w,h}>           // widget `i` -> new placement
+ *     rendererTypes: Record<string, string>          // widget `i` -> new rendererType
  *   }
+ *
+ * rendererTypes only ever changes *how* an existing widget's metric is
+ * displayed (e.g. Stat -> Gauge) — it can never introduce a metricKey that
+ * wasn't already in the template, same constraint as hidden/positions. The
+ * PUT handler additionally rejects a rendererType that isn't shape-compatible
+ * with that widget's metric, per @workspace/dashboard-registry's
+ * getValidRenderersForMetric (the same compatibility rule the MSP-side
+ * Designer palette uses).
  *
  * Routes:
  *   GET    /api/dashboard/resolved       resolve the caller's single default template
@@ -49,6 +58,7 @@ import {
   monitoringPackagesTable,
   type DashboardTemplate,
 } from "@workspace/db";
+import { getValidRenderersForMetric } from "@workspace/dashboard-registry";
 import { and, eq, inArray } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -63,6 +73,7 @@ interface OverrideLayout {
   [key: string]: unknown;
   hidden: string[];
   positions: Record<string, { x: number; y: number; w: number; h: number }>;
+  rendererTypes: Record<string, string>;
 }
 
 type ResolvedScope =
@@ -70,7 +81,7 @@ type ResolvedScope =
   | { templateType: "msp_overview"; scopeType: "msp_user"; scopeId: number };
 
 function emptyOverrideLayout(): OverrideLayout {
-  return { hidden: [], positions: {} };
+  return { hidden: [], positions: {}, rendererTypes: {} };
 }
 
 function parseOverrideLayout(raw: unknown): OverrideLayout {
@@ -78,6 +89,8 @@ function parseOverrideLayout(raw: unknown): OverrideLayout {
   return {
     hidden: Array.isArray(obj.hidden) ? obj.hidden.filter((h): h is string => typeof h === "string") : [],
     positions: obj.positions && typeof obj.positions === "object" ? (obj.positions as OverrideLayout["positions"]) : {},
+    rendererTypes:
+      obj.rendererTypes && typeof obj.rendererTypes === "object" ? (obj.rendererTypes as OverrideLayout["rendererTypes"]) : {},
   };
 }
 
@@ -88,7 +101,12 @@ function mergeLayout(canvasLayout: DashboardTemplate["canvasLayout"], override: 
     .filter((w) => !hidden.has(w.i))
     .map((w) => {
       const pos = override.positions[w.i];
-      return pos ? { ...w, x: pos.x, y: pos.y, w: pos.w, h: pos.h } : w;
+      const rendererType = override.rendererTypes[w.i];
+      return {
+        ...w,
+        ...(pos ? { x: pos.x, y: pos.y, w: pos.w, h: pos.h } : {}),
+        ...(rendererType ? { rendererType } : {}),
+      };
     });
 }
 
@@ -368,6 +386,9 @@ const positionSchema = z.object({
 const saveOverrideBodySchema = z.object({
   hidden: z.array(z.string().min(1)).optional().default([]),
   positions: z.record(z.string(), positionSchema).optional().default({}),
+  // widget `i` -> new rendererType (e.g. "Bar" swapped in for "Trend"). Never
+  // changes which metric a widget shows, only how — see the header comment.
+  rendererTypes: z.record(z.string(), z.string().min(1)).optional().default({}),
   // Present only when saving an override for a monitoring_package tab; omitted
   // (or null) targets the caller's default template, same as before tabs existed.
   targetKey: z.string().min(1).nullable().optional(),
@@ -415,13 +436,36 @@ router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Requ
     // isn't actually present in the template's own canvasLayout. A hand-crafted
     // request naming a widget the template doesn't have is rejected outright,
     // not silently dropped — that's the real enforcement point, not the UI.
-    const validIds = new Set(template.canvasLayout.map((w) => w.i));
+    const widgetsById = new Map(template.canvasLayout.map((w) => [w.i, w]));
+    const validIds = new Set(widgetsById.keys());
     const invalidHidden = parsed.data.hidden.filter((id) => !validIds.has(id));
     const invalidPositions = Object.keys(parsed.data.positions).filter((id) => !validIds.has(id));
-    if (invalidHidden.length > 0 || invalidPositions.length > 0) {
+    const invalidRendererTypes = Object.keys(parsed.data.rendererTypes).filter((id) => !validIds.has(id));
+    if (invalidHidden.length > 0 || invalidPositions.length > 0 || invalidRendererTypes.length > 0) {
       res.status(400).json({
         error: "Override references widget ids not present in the template",
-        invalidWidgetIds: [...new Set([...invalidHidden, ...invalidPositions])],
+        invalidWidgetIds: [...new Set([...invalidHidden, ...invalidPositions, ...invalidRendererTypes])],
+      });
+      return;
+    }
+
+    // A rendererType change is still constrained to swap: the metric a widget
+    // shows can't change, and the new renderer must actually be able to render
+    // that metric's data shape (per the registry's shape/ScoreRing/Smart rules)
+    // — a hand-crafted request naming an incompatible renderer is rejected, not
+    // silently applied to render nonsense.
+    const incompatibleRendererTypes: Array<{ widgetId: string; rendererType: string }> = [];
+    for (const [widgetId, rendererType] of Object.entries(parsed.data.rendererTypes)) {
+      const widget = widgetsById.get(widgetId)!;
+      const validTypes = getValidRenderersForMetric(widget.metricKey).map((r) => r.type);
+      if (!validTypes.includes(rendererType)) {
+        incompatibleRendererTypes.push({ widgetId, rendererType });
+      }
+    }
+    if (incompatibleRendererTypes.length > 0) {
+      res.status(400).json({
+        error: "Override requests a renderer type incompatible with a widget's metric",
+        incompatibleRendererTypes,
       });
       return;
     }
@@ -429,6 +473,7 @@ router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Requ
     const overrideLayout: OverrideLayout = {
       hidden: parsed.data.hidden,
       positions: parsed.data.positions,
+      rendererTypes: parsed.data.rendererTypes,
     };
 
     const existing = await findOverride(template.id, scope.scopeType, scope.scopeId);
@@ -460,6 +505,7 @@ router.put("/dashboard/overrides", requireRole("CustomerUser"), async (req: Requ
         scopeId: scope.scopeId,
         hiddenCount: overrideLayout.hidden.length,
         positionCount: Object.keys(overrideLayout.positions).length,
+        rendererTypeCount: Object.keys(overrideLayout.rendererTypes).length,
         action: existing ? "update" : "create",
       },
       "dashboard-overrides: override saved",
