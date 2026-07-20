@@ -11,6 +11,9 @@ import {
   ChevronRight,
   Layers,
   ListFilter,
+  History,
+  RotateCcw,
+  Save,
 } from "lucide-react";
 import {
   Collapsible,
@@ -71,6 +74,27 @@ interface SignalGroup extends Partial<SignalIntelligenceFields> {
 interface RuleConflict {
   ruleIds: number[];
   description: string;
+}
+
+// Whole-ruleset snapshots (signal_rule_versions) — NOT per-rule history. A
+// version captures every platform-owned rule + group at save time; restoring
+// one replaces the ENTIRE current platform rule set (MSP overrides untouched).
+interface RuleVersion {
+  id: number;
+  name: string;
+  ruleCount: number;
+  createdByAdminId: number | null;
+  createdAt: string;
+}
+
+interface AuditLogEntry {
+  id: number;
+  action: string;
+  signalKey: string | null;
+  ruleId: number | null;
+  note: string | null;
+  adminUserId: number | null;
+  createdAt: string;
 }
 
 // ─── Rule-type metadata ───────────────────────────────────────────────────────
@@ -222,6 +246,27 @@ export default function SignalRulesPage() {
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
 
+  // Rules | Version History | Audit Log tabs (mirrors TenantSignals.tsx's tab-row pattern).
+  const [activeTab, setActiveTab] = useState<"rules" | "versions" | "audit">("rules");
+
+  // Version History (whole-ruleset snapshots).
+  const [versions, setVersions] = useState<RuleVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [snapshotModalOpen, setSnapshotModalOpen] = useState(false);
+  const [snapshotName, setSnapshotName] = useState("");
+  const [snapshotSaving, setSnapshotSaving] = useState(false);
+  const [restoringVersion, setRestoringVersion] = useState<RuleVersion | null>(null);
+  const [restoreConfirmText, setRestoreConfirmText] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  // Audit Log.
+  const [auditRows, setAuditRows] = useState<AuditLogEntry[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditSignalFilter, setAuditSignalFilter] = useState("");
+  const [auditOffset, setAuditOffset] = useState(0);
+  const AUDIT_PAGE_SIZE = 50;
+
   const loadData = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/api/admin/signal-rules");
@@ -242,6 +287,107 @@ export default function SignalRulesPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const loadVersions = useCallback(async () => {
+    setVersionsLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/signal-rules/versions");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load versions");
+      setVersions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast({
+        title: "Failed to load version history",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [fetchWithAuth, toast]);
+
+  const loadAuditLog = useCallback(async (signalKey: string, offset: number) => {
+    setAuditLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: String(AUDIT_PAGE_SIZE), offset: String(offset) });
+      if (signalKey) params.set("signalKey", signalKey);
+      const res = await fetchWithAuth(`/api/admin/signal-rules/audit-log?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load audit log");
+      setAuditRows(Array.isArray(data.rows) ? data.rows : []);
+      setAuditTotal(typeof data.total === "number" ? data.total : 0);
+    } catch (err) {
+      toast({
+        title: "Failed to load audit log",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [fetchWithAuth, toast]);
+
+  useEffect(() => {
+    if (activeTab === "versions") void loadVersions();
+  }, [activeTab, loadVersions]);
+
+  useEffect(() => {
+    if (activeTab === "audit") void loadAuditLog(auditSignalFilter, auditOffset);
+  }, [activeTab, auditSignalFilter, auditOffset, loadAuditLog]);
+
+  const handleSaveSnapshot = async () => {
+    if (!snapshotName.trim()) return;
+    setSnapshotSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/signal-rules/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: snapshotName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save snapshot");
+      toast({ title: "Snapshot saved" });
+      setSnapshotModalOpen(false);
+      setSnapshotName("");
+      void loadVersions();
+    } catch (err) {
+      toast({
+        title: "Failed to save snapshot",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSnapshotSaving(false);
+    }
+  };
+
+  const handleRestoreVersion = async () => {
+    if (!restoringVersion) return;
+    setRestoring(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rules/versions/${restoringVersion.id}/restore`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to restore version");
+      toast({
+        title: "Version restored",
+        description: `${data.restored} rule(s) restored. Prior state saved as snapshot #${data.backupSnapshotId}.`,
+      });
+      setRestoringVersion(null);
+      setRestoreConfirmText("");
+      void loadVersions();
+      void loadData();
+    } catch (err) {
+      toast({
+        title: "Failed to restore version",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRestoring(false);
+    }
+  };
 
   // Built-in/custom keys alphabetically, seeded example:* taxonomy keys last.
   const signalKeys = useMemo(() => {
@@ -467,7 +613,23 @@ export default function SignalRulesPage() {
         </div>
       </div>
 
-      {loading ? (
+      <div className="flex gap-0 border-b border-border">
+        {(["rules", "versions", "audit"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
+              activeTab === tab
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab === "versions" ? "Version History" : tab === "audit" ? "Audit Log" : "Rules"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "rules" && (loading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading signal rules…
         </div>
@@ -561,6 +723,205 @@ export default function SignalRulesPage() {
               </div>
             );
           })}
+        </div>
+      ))}
+
+      {/* ── Version History tab ── */}
+      {activeTab === "versions" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground max-w-xl">
+              Snapshots of the entire platform rule set (all signals). Restoring a version replaces every current
+              platform-owned rule and group with that snapshot's — MSP-owned overrides are never touched. A backup
+              snapshot is always taken automatically right before a restore.
+            </p>
+            <button
+              onClick={() => { setSnapshotName(""); setSnapshotModalOpen(true); }}
+              className={btnPrimaryCls}
+            >
+              <Save className="h-3.5 w-3.5" /> Save Snapshot
+            </button>
+          </div>
+
+          {versionsLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading version history…
+            </div>
+          ) : versions.length === 0 ? (
+            <div className="px-4 py-3 text-xs italic text-muted-foreground/70">
+              No snapshots yet. Import/restore operations auto-save a backup here; you can also save one manually.
+            </div>
+          ) : (
+            <div className="bg-card border border-border rounded-lg overflow-hidden divide-y divide-border/60">
+              {versions.map(v => (
+                <div key={v.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-accent/40">
+                  <History className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-foreground font-medium truncate">{v.name}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">
+                    {v.ruleCount} rule{v.ruleCount !== 1 ? "s" : ""}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/60 shrink-0">
+                    {v.createdByAdminId != null ? `admin #${v.createdByAdminId}` : "system"}
+                  </span>
+                  <span className="ml-auto text-[11px] text-muted-foreground/60 shrink-0">
+                    {new Date(v.createdAt).toLocaleString()}
+                  </span>
+                  <button
+                    onClick={() => { setRestoringVersion(v); setRestoreConfirmText(""); }}
+                    className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-amber-400 border border-amber-500/30 hover:bg-amber-500/10 transition-colors"
+                    title="Restore this version (overwrites current live rules)"
+                  >
+                    <RotateCcw className="h-3 w-3" /> Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Audit Log tab ── */}
+      {activeTab === "audit" && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <label className="text-[11px] font-medium text-muted-foreground">Signal</label>
+            <select
+              className={`${selectCls} max-w-xs`}
+              value={auditSignalFilter}
+              onChange={e => { setAuditSignalFilter(e.target.value); setAuditOffset(0); }}
+            >
+              <option value="">All signals</option>
+              {signalKeys.map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          </div>
+
+          {auditLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading audit log…
+            </div>
+          ) : auditRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No audit log entries yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {auditRows.map(entry => (
+                <div key={entry.id} className="flex items-start gap-3 p-3 bg-card rounded-lg border border-border">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
+                    entry.action === "create" ? "bg-green-900/30 text-green-400" :
+                    entry.action === "delete" ? "bg-red-900/30 text-red-400" :
+                    entry.action === "import" || entry.action === "import_bundle" ? "bg-blue-900/30 text-blue-400" :
+                    entry.action === "restore_version" ? "bg-purple-900/30 text-purple-400" :
+                    "bg-border text-muted-foreground"
+                  }`}>{entry.action}</span>
+                  <div className="flex-1 min-w-0">
+                    {entry.note && <p className="text-xs text-foreground/90">{entry.note}</p>}
+                    <p className="text-[11px] text-muted-foreground">
+                      {entry.signalKey && <span className="font-mono">{entry.signalKey}</span>}
+                      {entry.ruleId && <span>{entry.signalKey ? " · " : ""}Rule #{entry.ruleId}</span>}
+                      {entry.adminUserId != null && <span>{(entry.signalKey || entry.ruleId) ? " · " : ""}admin #{entry.adminUserId}</span>}
+                    </p>
+                  </div>
+                  <span className="text-xs text-muted-foreground/60 flex-shrink-0">{new Date(entry.createdAt).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>
+              {auditTotal > 0
+                ? `Showing ${auditOffset + 1}–${Math.min(auditOffset + AUDIT_PAGE_SIZE, auditTotal)} of ${auditTotal}`
+                : null}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAuditOffset(o => Math.max(0, o - AUDIT_PAGE_SIZE))}
+                disabled={auditOffset === 0 || auditLoading}
+                className={btnGhostCls}
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setAuditOffset(o => o + AUDIT_PAGE_SIZE)}
+                disabled={auditOffset + AUDIT_PAGE_SIZE >= auditTotal || auditLoading}
+                className={btnGhostCls}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Save Snapshot modal ── */}
+      {snapshotModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !snapshotSaving && setSnapshotModalOpen(false)}>
+          <div
+            className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-foreground mb-4">Save Snapshot</h2>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1">Name</label>
+            <input
+              className={inputCls}
+              value={snapshotName}
+              autoFocus
+              onChange={e => setSnapshotName(e.target.value)}
+              placeholder="e.g. Before Q3 pricing rework"
+            />
+            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+              <button onClick={() => setSnapshotModalOpen(false)} disabled={snapshotSaving} className={btnGhostCls}>
+                Cancel
+              </button>
+              <button onClick={() => void handleSaveSnapshot()} disabled={snapshotSaving || !snapshotName.trim()} className={btnPrimaryCls}>
+                {snapshotSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Save Snapshot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Restore version confirmation modal ── */}
+      {restoringVersion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !restoring && setRestoringVersion(null)}>
+          <div
+            className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400" /> Restore "{restoringVersion.name}"?
+            </h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              This overwrites every current platform-owned signal rule and group with the {restoringVersion.ruleCount}{" "}
+              rule{restoringVersion.ruleCount !== 1 ? "s" : ""} captured in this snapshot ({new Date(restoringVersion.createdAt).toLocaleString()}).
+              MSP-owned overrides are not affected. The current state is backed up automatically before this runs.
+            </p>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+              Type <span className="font-mono text-foreground">RESTORE</span> to confirm
+            </label>
+            <input
+              className={inputCls}
+              value={restoreConfirmText}
+              autoFocus
+              onChange={e => setRestoreConfirmText(e.target.value)}
+              placeholder="RESTORE"
+            />
+            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+              <button onClick={() => setRestoringVersion(null)} disabled={restoring} className={btnGhostCls}>
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleRestoreVersion()}
+                disabled={restoring || restoreConfirmText !== "RESTORE"}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors"
+              >
+                {restoring && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Restore
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
