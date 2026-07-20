@@ -11,6 +11,15 @@ import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, Fi
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot } from "recharts";
 import LiveMonitorPanel from "@/pages/LiveMonitorPanel";
 import EngineRuleEditor from "@/components/EngineRuleEditor";
+import EngineConfigViewer from "@/components/EngineConfigViewer";
+
+// Engines whose real configuration does NOT live in signal_derivation_rules:
+// the 4 non-signal-derived engines are configured through dedicated backing
+// tables, and `msp` is a pure aggregator with no config of its own. These use
+// the read-only EngineConfigViewer instead of the signal-rule editor, and the
+// signal-rule-only Export/Import/Template actions are hidden for them. Mirrors
+// the backend switch in routes/admin-engines.ts (GET .../configuration).
+const READONLY_CONFIG_ENGINES = new Set(["sla", "scope_creep", "monitoring", "sales_offer", "msp"]);
 
 export interface EngineDefLite {
   key: string;
@@ -546,27 +555,38 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
         </TabsContent>
 
         <TabsContent value="configuration" className="space-y-3 mt-4">
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={handleExport}>
-              <Download className="w-3.5 h-3.5 mr-1.5" />
-              Export JSON
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => { setImportJsonText(""); setShowImportDialog(true); }} disabled={importing}>
-              {importing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
-              Import JSON
-            </Button>
-            <Button size="sm" variant="ghost" onClick={handleDownloadTemplate}>
-              <FileJson className="w-3.5 h-3.5 mr-1.5" />
-              Download import template
-            </Button>
-          </div>
-          {def && (
-            <EngineRuleEditor
-              engineKey={engineKey}
-              categoryPrefix={def.categoryPrefix}
-              engineLabel={def.label}
-              importRevision={importRevision}
-            />
+          {READONLY_CONFIG_ENGINES.has(engineKey) ? (
+            // Non-signal-derived engines + msp aggregator: config lives in
+            // dedicated backing tables (or nowhere, for msp). Read-only viewer,
+            // and the signal-rule-only Export/Import/Template actions are hidden
+            // because they would operate on signal_derivation_rules this engine
+            // never reads.
+            <EngineConfigViewer engineKey={engineKey} />
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={handleExport}>
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Export JSON
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { setImportJsonText(""); setShowImportDialog(true); }} disabled={importing}>
+                  {importing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+                  Import JSON
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleDownloadTemplate}>
+                  <FileJson className="w-3.5 h-3.5 mr-1.5" />
+                  Download import template
+                </Button>
+              </div>
+              {def && (
+                <EngineRuleEditor
+                  engineKey={engineKey}
+                  categoryPrefix={def.categoryPrefix}
+                  engineLabel={def.label}
+                  importRevision={importRevision}
+                />
+              )}
+            </>
           )}
         </TabsContent>
 

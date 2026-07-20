@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { db, pool, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
+import { db, pool, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
 import { splitSqlStatements } from "../lib/sql-statement-splitter";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
@@ -865,9 +865,209 @@ router.get("/admin/engines/:key/history-customers", requireAdmin, async (req: Re
   }
 });
 
+// ── Engine Configuration data sources ────────────────────────────────────────
+// The Configuration tab must show the REAL configuration each engine actually
+// consumes. There are three kinds of engine:
+//
+//  1. Signal-derived (priority, pricing, health, security, drift, forecasting,
+//     crm): configured by signal_derivation_rules / signal_rule_groups. The
+//     right rows are the ones whose contribution field(s) THIS engine actually
+//     SUMS are non-zero — NOT a `{engine}:` category-prefix match. The real
+//     signal catalog is categorised by domain (identity/security/sharepoint/…),
+//     so the old category-prefix filter only ever matched leftover `example:*`
+//     placeholder rows and never the ~120 real signals, even though those
+//     signals carry real non-zero values in the scoring fields. drift and crm
+//     ADDITIONALLY gate on a `drift:` / `crm:` category prefix, because their
+//     own compute functions do (drift-engine.ts, crm-engine.ts).
+//
+//  2. Non-signal-derived (sla, scope_creep, monitoring, sales_offer): do not
+//     read signal_derivation_rules at all — their config lives in dedicated
+//     tables (sla_policies, scope_creep_policies, monitor_checks,
+//     sales_offer_rule_groups), so the Configuration tab queries those.
+//
+//  3. Aggregator (msp): has no configuration of its own — it aggregates the
+//     health/drift/priority scores. The Configuration tab shows an explainer.
+
+interface ConfigColumn { key: string; label: string; type?: "text" | "number" | "bool" | "array" | "date"; }
+
+/** True if this rule/group row is real configuration the given signal-derived engine sums. */
+function rowContributesToEngine(engineKey: string, row: Record<string, unknown>): boolean {
+  const nz = (f: string) => Number(row[f] ?? 0) !== 0;
+  const category = String(row.category ?? "");
+  switch (engineKey) {
+    case "priority":
+      return nz("priorityScoreContribution");
+    case "pricing":
+      return nz("pricingImpact") || nz("pricingValueContribution");
+    case "health":
+      // health-engine sums the six pillar impacts; only these five are exposed
+      // on signal rows via getAllRules()/the editor (licensingImpact is summed
+      // by the engine but is not selected/editable through this data source, so
+      // it can never be non-zero here). securityImpact belongs to the Security
+      // engine and is deliberately excluded from health.
+      return nz("governanceImpact") || nz("complianceImpact") || nz("adoptionImpact") || nz("copilotImpact") || nz("architectureImpact");
+    case "security":
+      return nz("securityImpact");
+    case "drift":
+      // drift-engine gates rows on a `drift:` category AND sums trendValue + governanceImpact.
+      return category.startsWith("drift:") && (nz("trendValue") || nz("governanceImpact"));
+    case "forecasting":
+      // forecasting-engine has NO category gate — any non-zero trendValue contributes (scaled by decayRate).
+      return nz("trendValue");
+    case "crm":
+      // crm-engine gates rows on a `crm:` category AND sums the five crm contribution fields.
+      return category.startsWith("crm:") && (nz("crmFitContribution") || nz("crmPainContribution") || nz("crmMaturityContribution") || nz("crmIntentContribution") || nz("crmUrgencyContribution"));
+    default:
+      return false;
+  }
+}
+
+async function loadSlaEngineConfig() {
+  const rows = await db.execute(sql`
+    SELECT id, name, priority,
+           response_time_minutes AS "responseTimeMinutes",
+           resolution_time_minutes AS "resolutionTimeMinutes",
+           warning_threshold_pct AS "warningThresholdPct",
+           is_active AS "isActive", msp_id AS "mspId",
+           updated_at AS "updatedAt"
+    FROM sla_policies
+    ORDER BY msp_id NULLS FIRST, priority, id DESC
+  `);
+  const items = (rows.rows as Record<string, unknown>[]).map(r => ({ ...r, scope: r.mspId == null ? "Global" : `MSP #${r.mspId}` }));
+  return {
+    mode: "backing-table" as const,
+    engine: "sla",
+    backingTable: "sla_policies",
+    title: "SLA Policies",
+    description: "The SLA Engine tracks response/resolution timers against these policies. Rows with no MSP are platform-global defaults; MSP-scoped rows override them. Edit these under SLA administration, not here.",
+    columns: [
+      { key: "name", label: "Name" },
+      { key: "priority", label: "Priority" },
+      { key: "responseTimeMinutes", label: "Response (min)", type: "number" },
+      { key: "resolutionTimeMinutes", label: "Resolution (min)", type: "number" },
+      { key: "warningThresholdPct", label: "Warn %", type: "number" },
+      { key: "isActive", label: "Active", type: "bool" },
+      { key: "scope", label: "Scope" },
+      { key: "updatedAt", label: "Updated", type: "date" },
+    ] as ConfigColumn[],
+    items,
+    count: items.length,
+    rules: [], groups: [],
+  };
+}
+
+async function loadScopeCreepEngineConfig() {
+  const rows = await db.execute(sql`
+    SELECT id, name,
+           violation_score_threshold AS "violationScoreThreshold",
+           drift_threshold_pct AS "driftThresholdPct",
+           expansion_threshold_pct AS "expansionThresholdPct",
+           timeline_slip_days AS "timelineSlipDays",
+           is_active AS "isActive", msp_id AS "mspId",
+           updated_at AS "updatedAt"
+    FROM scope_creep_policies
+    ORDER BY msp_id NULLS FIRST, id DESC
+  `);
+  const items = (rows.rows as Record<string, unknown>[]).map(r => ({ ...r, scope: r.mspId == null ? "Global" : `MSP #${r.mspId}` }));
+  return {
+    mode: "backing-table" as const,
+    engine: "scope_creep",
+    backingTable: "scope_creep_policies",
+    title: "Scope Creep Policies",
+    description: "The Scope Creep Engine scores deliverable/requirement/timeline drift and SOW expansion against these policies. Rows with no MSP are platform-global defaults. Edit these under Scope Creep administration, not here.",
+    columns: [
+      { key: "name", label: "Name" },
+      { key: "violationScoreThreshold", label: "Violation threshold", type: "number" },
+      { key: "driftThresholdPct", label: "Drift %", type: "number" },
+      { key: "expansionThresholdPct", label: "Expansion %", type: "number" },
+      { key: "timelineSlipDays", label: "Timeline slip (days)", type: "number" },
+      { key: "isActive", label: "Active", type: "bool" },
+      { key: "scope", label: "Scope" },
+      { key: "updatedAt", label: "Updated", type: "date" },
+    ] as ConfigColumn[],
+    items,
+    count: items.length,
+    rules: [], groups: [],
+  };
+}
+
+async function loadMonitoringEngineConfig() {
+  const rows = await db
+    .select({
+      key: monitorChecksTable.key,
+      label: monitorChecksTable.label,
+      frequency: monitorChecksTable.frequency,
+      status: monitorChecksTable.status,
+      engines: monitorChecksTable.engines,
+      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
+      schemaVersion: monitorChecksTable.schemaVersion,
+      updatedAt: monitorChecksTable.updatedAt,
+    })
+    .from(monitorChecksTable)
+    .orderBy(monitorChecksTable.status, monitorChecksTable.key);
+  return {
+    mode: "backing-table" as const,
+    engine: "monitoring",
+    backingTable: "monitor_checks",
+    title: "Monitor Checks",
+    description: "The Monitoring Engine executes these platform-authored Monitor Checks against customer tenants via Graph API. Checks are global (no per-MSP scope); only `active` checks run. Edit these under Monitor Checks administration, not here.",
+    columns: [
+      { key: "key", label: "Key" },
+      { key: "label", label: "Label" },
+      { key: "frequency", label: "Frequency" },
+      { key: "status", label: "Status" },
+      { key: "engines", label: "Feeds engines", type: "array" },
+      { key: "requiresCustomerScript", label: "Needs script", type: "bool" },
+      { key: "schemaVersion", label: "Schema v", type: "number" },
+      { key: "updatedAt", label: "Updated", type: "date" },
+    ] as ConfigColumn[],
+    items: rows,
+    count: rows.length,
+    rules: [], groups: [],
+  };
+}
+
+async function loadSalesOfferEngineConfig() {
+  const rows = await db
+    .select({
+      key: salesOfferRuleGroupsTable.key,
+      label: salesOfferRuleGroupsTable.label,
+      ruleType: salesOfferRuleGroupsTable.ruleType,
+      logic: salesOfferRuleGroupsTable.logic,
+      requiredSignalKeys: salesOfferRuleGroupsTable.requiredSignalKeys,
+      scoreContribution: salesOfferRuleGroupsTable.scoreContribution,
+      pricingAdjustmentPct: salesOfferRuleGroupsTable.pricingAdjustmentPct,
+      isActive: salesOfferRuleGroupsTable.isActive,
+      sortOrder: salesOfferRuleGroupsTable.sortOrder,
+    })
+    .from(salesOfferRuleGroupsTable)
+    .orderBy(salesOfferRuleGroupsTable.sortOrder, salesOfferRuleGroupsTable.key);
+  return {
+    mode: "backing-table" as const,
+    engine: "sales_offer",
+    backingTable: "sales_offer_rule_groups",
+    title: "Sales Offer Rule Groups",
+    description: "The Sales Offer Engine converts fired signals into priced, scored candidate offers using these rule groups. Groups are global (no per-MSP scope); only `active` groups fire. Per-MSP tuning lives separately in sales_offer_config. Edit these under Sales Offer administration, not here.",
+    columns: [
+      { key: "key", label: "Key" },
+      { key: "label", label: "Label" },
+      { key: "ruleType", label: "Type" },
+      { key: "logic", label: "Logic" },
+      { key: "requiredSignalKeys", label: "Required signals", type: "array" },
+      { key: "scoreContribution", label: "Score", type: "number" },
+      { key: "pricingAdjustmentPct", label: "Pricing adj %", type: "number" },
+      { key: "isActive", label: "Active", type: "bool" },
+      { key: "sortOrder", label: "Order", type: "number" },
+    ] as ConfigColumn[],
+    items: rows,
+    count: rows.length,
+    rules: [], groups: [],
+  };
+}
+
 // ── GET /api/admin/engines/:key/configuration ───────────────────────────────
-// Rule groups + rules scoped to this engine's category prefix, for the
-// Configuration tab (reuses the same rows the Tenant Signals page edits).
+// Real configuration for the Configuration tab. See the "Engine Configuration
+// data sources" note above for how the three kinds of engine are handled.
 
 router.get("/admin/engines/:key/configuration", requireAdmin, async (req: Request, res: Response) => {
   const { key } = req.params;
@@ -877,11 +1077,30 @@ router.get("/admin/engines/:key/configuration", requireAdmin, async (req: Reques
     return;
   }
   try {
+    switch (def.key) {
+      case "sla": res.json(await loadSlaEngineConfig()); return;
+      case "scope_creep": res.json(await loadScopeCreepEngineConfig()); return;
+      case "monitoring": res.json(await loadMonitoringEngineConfig()); return;
+      case "sales_offer": res.json(await loadSalesOfferEngineConfig()); return;
+      case "msp":
+        res.json({
+          mode: "aggregator",
+          engine: "msp",
+          title: def.label,
+          description: "The MSP Portfolio Engine has no configuration of its own — it aggregates the Health, Drift, and Priority engine scores per tenant into a portfolio-wide risk roll-up. Configure those engines to change what the MSP engine produces.",
+          dependsOn: def.dependsOn,
+          rules: [], groups: [],
+        });
+        return;
+    }
+
+    // Signal-derived engines: filter by whichever contribution field(s) this
+    // engine actually sums being non-zero (plus a category gate for drift/crm).
     const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
-    const prefix = `${def.categoryPrefix}:`;
     res.json({
-      rules: rules.filter(r => (r.category ?? "").startsWith(prefix)),
-      groups: groups.filter(g => (g.category ?? "").startsWith(prefix)),
+      mode: "signal-rules",
+      rules: rules.filter(r => rowContributesToEngine(def.key, r as unknown as Record<string, unknown>)),
+      groups: groups.filter(g => rowContributesToEngine(def.key, g as unknown as Record<string, unknown>)),
     });
   } catch (err) {
     log.error({ err, engineKey: key }, "admin-engines: configuration fetch failed");
