@@ -20,6 +20,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import BundleImportExport from "@/components/signal-rules/BundleImportExport";
 
 // ─── API shapes (match artifacts/api-server/src/routes/admin-signal-rules.ts) ──
 // NOTE: licensingImpact exists in the DB but the admin API neither returns nor
@@ -246,8 +247,8 @@ export default function SignalRulesPage() {
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
 
-  // Rules | Version History | Audit Log tabs (mirrors TenantSignals.tsx's tab-row pattern).
-  const [activeTab, setActiveTab] = useState<"rules" | "versions" | "audit">("rules");
+  // Rules | Version History | Audit Log | Bundle Import/Export tabs (mirrors TenantSignals.tsx's tab-row pattern).
+  const [activeTab, setActiveTab] = useState<"rules" | "versions" | "audit" | "bundle">("rules");
 
   // Version History (whole-ruleset snapshots).
   const [versions, setVersions] = useState<RuleVersion[]>([]);
@@ -614,7 +615,7 @@ export default function SignalRulesPage() {
       </div>
 
       <div className="flex gap-0 border-b border-border">
-        {(["rules", "versions", "audit"] as const).map(tab => (
+        {(["rules", "versions", "audit", "bundle"] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -624,10 +625,12 @@ export default function SignalRulesPage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "versions" ? "Version History" : tab === "audit" ? "Audit Log" : "Rules"}
+            {tab === "versions" ? "Version History" : tab === "audit" ? "Audit Log" : tab === "bundle" ? "Bundle Import/Export" : "Rules"}
           </button>
         ))}
       </div>
+
+      {activeTab === "bundle" && <BundleImportExport />}
 
       {activeTab === "rules" && (loading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
