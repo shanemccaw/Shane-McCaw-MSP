@@ -798,6 +798,12 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "evaluate_engagement_offers":
       return { dryRun: true, leadsChecked: 3, totalFired: 1 };
 
+    case "dispatch_engagement_followups":
+      return { dryRun: true, checked: 2, dispatched: 1 };
+
+    case "cancel_conflicting_engagement_followup":
+      return { dryRun: true, checked: true, matched: false, cancelledCount: 0, leadId: null, cancelledRunIds: [] };
+
     case "calculate_priority":
     case "calculate_pricing_engine":
     case "calculate_health":
@@ -3610,6 +3616,39 @@ async function executeNode(
           const errMsg = eoeErr instanceof Error ? eoeErr.message : String(eoeErr);
           output = { error: `evaluate_engagement_offers failed: ${errMsg.slice(0, 200)}` };
           log.warn({ runId, err: eoeErr }, "wf-executor: evaluate_engagement_offers node failed");
+        }
+        break;
+      }
+
+      case "dispatch_engagement_followups": {
+        try {
+          const { dispatchPendingEngagementFollowups } = await import("./engagement-followup-dispatcher.ts");
+          const result = await dispatchPendingEngagementFollowups();
+          output = { checked: result.checked, dispatched: result.dispatched };
+          log.info({ runId, ...result }, "wf-executor: dispatch_engagement_followups node executed");
+        } catch (defErr) {
+          nodeError = true;
+          const errMsg = defErr instanceof Error ? defErr.message : String(defErr);
+          output = { error: `dispatch_engagement_followups failed: ${errMsg.slice(0, 200)}` };
+          log.warn({ runId, err: defErr }, "wf-executor: dispatch_engagement_followups node failed");
+        }
+        break;
+      }
+
+      case "cancel_conflicting_engagement_followup": {
+        try {
+          const { cancelConflictingEngagementFollowup } = await import("./engagement-followup-cancellation-guard.ts");
+          const result = await cancelConflictingEngagementFollowup({
+            clientId: payload.clientId as number | string | undefined,
+            serviceIds: payload.serviceIds as string | undefined,
+          });
+          output = { ...result };
+          log.info({ runId, ...result }, "wf-executor: cancel_conflicting_engagement_followup node executed");
+        } catch (ccfErr) {
+          nodeError = true;
+          const errMsg = ccfErr instanceof Error ? ccfErr.message : String(ccfErr);
+          output = { error: `cancel_conflicting_engagement_followup failed: ${errMsg.slice(0, 200)}` };
+          log.warn({ runId, err: ccfErr }, "wf-executor: cancel_conflicting_engagement_followup node failed");
         }
         break;
       }

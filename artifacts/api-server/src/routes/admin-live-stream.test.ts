@@ -58,7 +58,7 @@ describe("GET /api/admin/live-stream/channels", () => {
       .set("Authorization", `Bearer ${adminToken()}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.channels).toHaveLength(32);
+    expect(res.body.channels).toHaveLength(33);
     expect(res.body.channels).not.toContain("inbox");
     expect(res.body.channels).toContain("engine.sla");
     expect(res.body.channels).toContain("growth.booking");

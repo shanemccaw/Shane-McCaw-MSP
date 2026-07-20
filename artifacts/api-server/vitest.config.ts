@@ -87,6 +87,8 @@ export default defineConfig({
       "src/routes/portal-client-delete-msp-users.test.ts",
       "src/routes/portal-customer-search.test.ts",
       "src/routes/msp-alerts.test.ts",
+      "src/lib/engagement-followup-dispatcher.test.ts",
+      "src/lib/engagement-followup-cancellation-guard.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -40,6 +40,7 @@ const CHANNEL_TAXONOMY = [
   "tenant.portal",
   "test-suite",
   "workflow.doc-pipeline",
+  "workflow.engagement-offer",
   "workflow.run",
   "workflow.script",
 ] as const;

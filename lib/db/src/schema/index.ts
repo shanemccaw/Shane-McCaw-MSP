@@ -2298,7 +2298,7 @@ export interface WfNode {
     // Signals
     | "get_tenant_signals" | "evaluate_signal_policies"
     // Engagement Offer Engine
-    | "evaluate_engagement_offers"
+    | "evaluate_engagement_offers" | "dispatch_engagement_followups" | "cancel_conflicting_engagement_followup"
     // Intelligence Engines
     | "calculate_priority" | "calculate_pricing_engine" | "calculate_health"
     | "calculate_drift" | "calculate_forecast" | "calculate_crm" | "calculate_msp"
@@ -2990,6 +2990,10 @@ export const engagementOfferFiringsTable = pgTable("engagement_offer_firings", {
   ruleId: integer("rule_id").notNull().references(() => engagementOfferRulesTable.id, { onDelete: "cascade" }),
   leadId: integer("lead_id"),
   firedAt: timestamp("fired_at").notNull().defaultNow(),
+  /** Set once the Delayed Follow-Up workflow run has been spawned for this firing — dispatch is idempotent on this being NULL. */
+  followUpDispatchedAt: timestamp("follow_up_dispatched_at"),
+  /** wf_runs.id of the spawned Delayed Follow-Up run, so the Purchase Cancellation Guard can cancel the exact run. */
+  followUpRunId: integer("follow_up_run_id").references(() => wfRunsTable.id, { onDelete: "set null" }),
 }, (table) => ({
   ruleLeadFiredIdx: index("engagement_offer_firings_rule_lead_fired_idx").on(table.ruleId, table.leadId, table.firedAt),
 }));

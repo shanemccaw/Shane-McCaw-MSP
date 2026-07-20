@@ -2325,6 +2325,142 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  {
+    name: "__system__: Engagement Offer Delayed Follow-Up Dispatch",
+    description:
+      "Runs every 15 minutes. Finds engagement_offer_firings rows with no Delayed " +
+      "Follow-Up run dispatched yet (fired in the last 24 hours) and spawns one per " +
+      "firing. The actual session-end lookup + 2-hour delay + bundle-offer email lives " +
+      "in the spawned '__system__: Engagement Offer Delayed Follow-Up' run, not here — " +
+      "this dispatcher only decides WHICH firings need a run and starts it. " +
+      "Design note: the Engagement Offer Engine emits rule.eventName on fire (a " +
+      "per-rule-configurable DB column), but engagement_offer_rules has never been " +
+      "seeded in this codebase (no code or manual SQL inserts a row), so no real " +
+      "eventName value could be confirmed. Polling engagement_offer_firings directly " +
+      "avoids depending on that unconfirmed value.",
+    triggerType: "schedule",
+    cron: "*/15 * * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Every 15 min" } },
+        {
+          id: "dispatch",
+          type: "dispatch_engagement_followups",
+          position: { x: 100, y: 230 },
+          data: { nodeType: "dispatch_engagement_followups", label: "Dispatch Pending Followups" },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",    target: "dispatch" },
+        { id: "e2", source: "dispatch", target: "end"      },
+      ],
+    },
+  },
+  {
+    name: "__system__: Engagement Offer Delayed Follow-Up",
+    description:
+      "Per-lead run, spawned by '__system__: Engagement Offer Delayed Follow-Up " +
+      "Dispatch' (never run directly — triggerType is 'manual' so no trigger row is " +
+      "created, matching the run_workflow child-run convention). Payload: leadId, " +
+      "firingId, ruleId, ruleName, eligibleServiceIds, discountPct, leadEmail, " +
+      "leadName, serviceNames. Looks up the lead's actual last-seen analytics session " +
+      "time (not this run's start time — the triggering firing can happen mid-session " +
+      "while the lead is still browsing), falls back to the firing time if no session " +
+      "is found, waits until 2 hours after that, then emails the bundle offer. Can be " +
+      "cancelled mid-flight by '__system__: Engagement Offer Purchase Cancellation " +
+      "Guard' if the lead buys an eligible service before the email goes out.",
+    triggerType: "manual",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 300, y: 60 }, data: { nodeType: "start", label: "Engagement Offer Fired" } },
+        {
+          id: "get_session_end",
+          type: "action",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Get Session End Time",
+            query:
+              "SELECT COALESCE(" +
+              "(SELECT s.last_seen_at FROM analytics_sessions s WHERE s.session_id = " +
+              "(SELECT metadata->>'sessionId' FROM lead_intent_events WHERE lead_id = {{leadId}} " +
+              "AND metadata->>'sessionId' IS NOT NULL ORDER BY occurred_at DESC LIMIT 1)), " +
+              "(SELECT fired_at FROM engagement_offer_firings WHERE id = {{firingId}})" +
+              ") + INTERVAL '2 hours' AS follow_up_at",
+          },
+        },
+        {
+          id: "wait",
+          type: "delay",
+          position: { x: 300, y: 340 },
+          data: { nodeType: "delay", label: "Wait Until Session End + 2h", mode: "until_timestamp", timestamp: "{{follow_up_at}}" },
+        },
+        {
+          id: "send_offer",
+          type: "action",
+          position: { x: 300, y: 480 },
+          data: {
+            nodeType: "action",
+            actionType: "send_email",
+            label: "Send Bundle Offer",
+            to: "{{leadEmail}}",
+            subject: "A bundle just for you, {{leadName}} — {{discountPct}}% off",
+            htmlBody:
+              "<p>Hi {{leadName}},</p>" +
+              "<p>Based on what you've been exploring, we put together a bundle: <strong>{{serviceNames}}</strong> " +
+              "at <strong>{{discountPct}}% off</strong>.</p>" +
+              "<p>This offer is time-limited — reply to this email or book a call to lock it in.</p>",
+          },
+        },
+        { id: "end", type: "end", position: { x: 300, y: 620 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",           target: "get_session_end" },
+        { id: "e2", source: "get_session_end", target: "wait"            },
+        { id: "e3", source: "wait",             target: "send_offer"     },
+        { id: "e4", source: "send_offer",       target: "end"            },
+      ],
+    },
+  },
+  {
+    name: "__system__: Engagement Offer Purchase Cancellation Guard",
+    description:
+      "Fires on purchase.completed (the real checkout-completion event — confirmed via " +
+      "the Stripe webhook handler in portal.ts's onboarding_purchase branch, emitted " +
+      "with clientId + serviceIds on the modern document-routing purchase shape). If the " +
+      "purchaser has a pending Delayed Follow-Up run whose rule eligibleServiceIds " +
+      "overlaps the purchased serviceIds, cancels that run so the lead never gets " +
+      "emailed a bundle discount for something they already bought at full price. " +
+      "KNOWN GAP: the OTHER purchase.completed emission (packageKey-only, monitoring-" +
+      "package purchases) carries no serviceIds, so this guard has nothing to compare " +
+      "and correctly no-ops for that purchase shape.",
+    triggerType: "event",
+    eventNames: ["purchase.completed"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 300, y: 60 }, data: { nodeType: "start", label: "Purchase Completed" } },
+        {
+          id: "guard",
+          type: "cancel_conflicting_engagement_followup",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "cancel_conflicting_engagement_followup",
+            label: "Cancel Conflicting Followup",
+            clientId: "{{clientId}}",
+            serviceIds: "{{serviceIds}}",
+          },
+        },
+        { id: "end", type: "end", position: { x: 300, y: 340 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "guard" },
+        { id: "e2", source: "guard", target: "end"   },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
