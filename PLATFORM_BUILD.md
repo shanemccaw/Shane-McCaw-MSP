@@ -105,4 +105,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ✅ DONE | lead-offer-engine schema tables | e0e05be8 |
 | 2026-07-19 | ✅ DONE | lead-scoring-engine schema tables | 6fe1273e |
 | 2026-07-19 | ✅ DONE | quizLeadsTable lead offer result column | bf242f27 |
+| 2026-07-19 | ⏳ IN FLIGHT | Dashboard Export + Share Link | |
 | 2026-07-19 | ⏳ IN FLIGHT | Public Website Rebuild: Stage 2 Pages | |
