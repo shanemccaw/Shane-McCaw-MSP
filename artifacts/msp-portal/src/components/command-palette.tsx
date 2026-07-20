@@ -4,7 +4,10 @@
  * Two distinct search targets share this one dialog shell (debounce, keyboard
  * nav, UI conventions), split by mspRole:
  *   - MSP staff (PlatformAdmin/MSPAdmin/MSPOperator): searches the MSP's own
- *     book of business via /api/msp/customers — UNCHANGED from before.
+ *     book of business — customer name/domain via /api/msp/customers
+ *     (UNCHANGED from before) plus cross-tenant alerts and documents via
+ *     the new /api/msp/staff-search endpoint, fetched in parallel and
+ *     grouped by source alongside customers.
  *   - Customer-facing (CustomerUser/Assessment): searches the customer's own
  *     data (findings, documents, offers, marketplace) via the new
  *     /api/portal/customer/search endpoint, grouped by source.
@@ -48,6 +51,26 @@ interface SearchCustomer {
   name: string;
   status: string;
   domain?: string;
+}
+
+interface StaffSearchAlert {
+  type: "alert";
+  id: string;
+  title: string;
+  description: string | null;
+  severity: string;
+  customerName: string | null;
+  deepLink: string;
+}
+
+interface StaffSearchDocument {
+  type: "document";
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  customerName: string | null;
+  deepLink: string;
 }
 
 type CustomerSearchResultType = "finding" | "document" | "offer" | "marketplace";
@@ -146,6 +169,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { fetchWithAuth, user } = useAuth();
   const [query, setQuery] = useState("");
   const [staffResults, setStaffResults] = useState<SearchCustomer[]>([]);
+  const [staffAlerts, setStaffAlerts] = useState<StaffSearchAlert[]>([]);
+  const [staffDocuments, setStaffDocuments] = useState<StaffSearchDocument[]>([]);
   const [customerResults, setCustomerResults] = useState<CustomerSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -167,6 +192,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     async (q: string) => {
       if (!q.trim()) {
         setStaffResults([]);
+        setStaffAlerts([]);
+        setStaffDocuments([]);
         setCustomerResults([]);
         return;
       }
@@ -179,12 +206,21 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             setCustomerResults(data.results ?? []);
           }
         } else {
-          const res = await fetchWithAuth(
-            `/api/msp/customers?search=${encodeURIComponent(q)}&limit=8`,
-          );
-          if (res.ok) {
-            const data = (await res.json()) as { customers: SearchCustomer[] };
+          const [customersRes, staffSearchRes] = await Promise.all([
+            fetchWithAuth(`/api/msp/customers?search=${encodeURIComponent(q)}&limit=8`),
+            fetchWithAuth(`/api/msp/staff-search?q=${encodeURIComponent(q)}`),
+          ]);
+          if (customersRes.ok) {
+            const data = (await customersRes.json()) as { customers: SearchCustomer[] };
             setStaffResults(data.customers ?? []);
+          }
+          if (staffSearchRes.ok) {
+            const data = (await staffSearchRes.json()) as {
+              alerts: StaffSearchAlert[];
+              documents: StaffSearchDocument[];
+            };
+            setStaffAlerts(data.alerts ?? []);
+            setStaffDocuments(data.documents ?? []);
           }
         }
       } catch {
@@ -200,6 +236,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     if (!open) {
       setQuery("");
       setStaffResults([]);
+      setStaffAlerts([]);
+      setStaffDocuments([]);
       setCustomerResults([]);
       return;
     }
@@ -221,6 +259,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   for (const r of customerResults) resultsByType[r.type].push(r);
 
   const hasCustomerResults = customerResults.length > 0;
+  const hasStaffSearchResults = staffResults.length > 0 || staffAlerts.length > 0 || staffDocuments.length > 0;
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
@@ -240,8 +279,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           </div>
         )}
 
-        {!loading && query.trim() && staffResults.length === 0 && canSearchCustomers && (
-          <CommandEmpty>No customers found.</CommandEmpty>
+        {!loading && query.trim() && !hasStaffSearchResults && canSearchCustomers && (
+          <CommandEmpty>No results found.</CommandEmpty>
         )}
 
         {!loading && query.trim() && isCustomerFacing && !hasCustomerResults && (
@@ -263,6 +302,40 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                 )}
                 <Badge variant="outline" className="text-[10px] capitalize">
                   {c.status}
+                </Badge>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {staffAlerts.length > 0 && (
+          <CommandGroup heading="Alerts">
+            {staffAlerts.map((a) => (
+              <CommandItem key={a.id} value={a.id} onSelect={() => go(a.deepLink)}>
+                <AlertTriangle className="mr-2 size-4 text-muted-foreground" />
+                <span className="flex-1 truncate">{a.title}</span>
+                {a.customerName && (
+                  <span className="text-xs text-muted-foreground mr-2">{a.customerName}</span>
+                )}
+                <Badge variant="outline" className="text-[10px] capitalize ml-2">
+                  {a.severity}
+                </Badge>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {staffDocuments.length > 0 && (
+          <CommandGroup heading="Documents">
+            {staffDocuments.map((d) => (
+              <CommandItem key={d.id} value={d.id} onSelect={() => go(d.deepLink)}>
+                <FileText className="mr-2 size-4 text-muted-foreground" />
+                <span className="flex-1 truncate">{d.title}</span>
+                {d.customerName && (
+                  <span className="text-xs text-muted-foreground mr-2">{d.customerName}</span>
+                )}
+                <Badge variant="outline" className="text-[10px] capitalize ml-2">
+                  {d.status}
                 </Badge>
               </CommandItem>
             ))}
@@ -291,7 +364,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             );
           })}
 
-        {(staffResults.length > 0 || hasCustomerResults) && <CommandSeparator />}
+        {(hasStaffSearchResults || hasCustomerResults) && <CommandSeparator />}
 
         {visibleNav.length > 0 && (
           <CommandGroup heading="Navigation">
