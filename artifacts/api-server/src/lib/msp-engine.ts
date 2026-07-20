@@ -17,7 +17,7 @@
  */
 
 import { db, usersTable, mspUsersTable, mspCustomersTable, mspsTable, mspScoreHistoryTable, mspEventStoreTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.msp-admin" });
@@ -182,7 +182,7 @@ function getSignalWeightsFromRulesAndGroups(
  * Fetches every active client/tenant record managed by a specific MSP.
  * The canonical path is: usersTable -> mspUsersTable -> mspCustomersTable
  */
-async function fetchActiveTenants(mspId: number): Promise<{ id: number; name: string | null }[]> {
+async function fetchActiveTenants(mspId: number, allowedCustomerIds?: number[] | null): Promise<{ id: number; name: string | null }[]> {
   return db
     .select({ id: mspCustomersTable.id, name: usersTable.name })
     .from(usersTable)
@@ -191,7 +191,8 @@ async function fetchActiveTenants(mspId: number): Promise<{ id: number; name: st
     .where(
       and(
         eq(usersTable.role, "client"),
-        eq(mspCustomersTable.mspId, mspId)
+        eq(mspCustomersTable.mspId, mspId),
+        ...(allowedCustomerIds ? [inArray(mspCustomersTable.id, allowedCustomerIds)] : [])
       )
     );
 }
@@ -221,10 +222,20 @@ async function fetchAllActiveTenantsPlatformWide(): Promise<{ id: number; name: 
  * own DB-fetching entry points delegate to — so this engine reuses a single
  * batched rules/groups/disabledSignalKeys fetch across the whole portfolio
  * instead of re-fetching per tenant, without duplicating any scoring logic.
+ *
+ * `allowedCustomerIds`, when provided, narrows tenant enumeration to that
+ * set (the caller's staff-scoped `msp_customers.id` list, from
+ * `resolveStaffScopedCustomerIds`). `undefined`/`null` means unrestricted —
+ * the full MSP book — matching the existing "no scope rows = unrestricted"
+ * convention. The risk-calculation logic itself is untouched either way.
  */
-export async function calculateMspPortfolioRisk(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<MspEngineOutput> {
+export async function calculateMspPortfolioRisk(
+  mspId: number,
+  ctx?: { evaluationTimestamp?: Date },
+  allowedCustomerIds?: number[] | null,
+): Promise<MspEngineOutput> {
   const [tenants, { rules, groups }, disabledSignalKeys] = await Promise.all([
-    fetchActiveTenants(mspId),
+    fetchActiveTenants(mspId, allowedCustomerIds),
     fetchSignalRulesAndGroups(),
     getDisabledSignalKeys(),
   ]);

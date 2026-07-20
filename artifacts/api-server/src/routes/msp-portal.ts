@@ -110,7 +110,10 @@ router.get(
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "No active MSP found");
         return;
       }
-      const output = await calculateMspPortfolioRisk(mspId);
+      // Per-staff customer scoping: a scoped MSPAdmin only sees portfolio-risk
+      // data for customers in their assigned set. null = unrestricted (historical default).
+      const scopedCustomerIds = await resolveStaffScopedCustomerIds(req.user!);
+      const output = await calculateMspPortfolioRisk(mspId, undefined, scopedCustomerIds);
       res.json(output);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

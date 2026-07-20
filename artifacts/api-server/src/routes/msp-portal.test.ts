@@ -76,6 +76,16 @@ vi.mock("../lib/msp-engine.ts", () => ({
   calculateMspPortfolioRisk: (...args: unknown[]) => calculateMspPortfolioRiskMock(...args),
 }));
 
+// Real requireAuth/requireRole/isCustomerBlockedByStaffScope stay wired for the
+// auth assertions in these tests; only resolveStaffScopedCustomerIds is stubbed
+// since it goes through @workspace/db, whose mock above doesn't model the
+// per-staff scope lookup's query shape. null = unrestricted (historical default).
+const resolveStaffScopedCustomerIdsMock = vi.fn().mockResolvedValue(null);
+vi.mock("../middlewares/requireAuth.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../middlewares/requireAuth.ts")>();
+  return { ...actual, resolveStaffScopedCustomerIds: (...args: unknown[]) => resolveStaffScopedCustomerIdsMock(...args) };
+});
+
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
 const JWT_SECRET = "test-secret";
@@ -260,7 +270,7 @@ describe("GET /api/msp/portfolio-risk", () => {
 
     expect(res.status).toBe(200);
     // Must be called with the session mspId (42), never the query override (999).
-    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42);
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42, undefined, null);
     expect(res.body.rankedTenants).toEqual(mspAOutput.rankedTenants);
     expect(res.body.rankedTenants).not.toEqual(mspBOutput.rankedTenants);
   });
@@ -283,7 +293,58 @@ describe("GET /api/msp/portfolio-risk", () => {
       .set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(200);
-    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42);
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42, undefined, null);
+  });
+
+  it("passes the caller's real staff-scoped customer set through to the engine when scoped", async () => {
+    calculateMspPortfolioRiskMock.mockResolvedValue({
+      mspId: 42,
+      portfolioRisk: 5,
+      rankedTenants: [{ customerId: 1001, combinedScore: 5 }],
+    });
+    resolveStaffScopedCustomerIdsMock.mockResolvedValueOnce([1001, 1002]);
+
+    const { default: router } = await import("./msp-portal.ts");
+    const app = express();
+    app.use(express.json());
+    app.use("/api", router);
+
+    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const res = await request(app)
+      .get("/api/msp/portfolio-risk")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // A scoped staff member's assigned customer set narrows the engine call —
+    // never the full MSP book.
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42, undefined, [1001, 1002]);
+  });
+
+  it("passes null (unrestricted) through to the engine for an unscoped staff member", async () => {
+    calculateMspPortfolioRiskMock.mockResolvedValue({
+      mspId: 42,
+      portfolioRisk: 99,
+      rankedTenants: [
+        { customerId: 1001, combinedScore: 50 },
+        { customerId: 2002, combinedScore: 49 },
+      ],
+    });
+    resolveStaffScopedCustomerIdsMock.mockResolvedValueOnce(null);
+
+    const { default: router } = await import("./msp-portal.ts");
+    const app = express();
+    app.use(express.json());
+    app.use("/api", router);
+
+    const token = makeToken({ mspId: 42, mspRole: "MSPAdmin" });
+    const res = await request(app)
+      .get("/api/msp/portfolio-risk")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // Unrestricted staff see the full MSP book — no narrowing applied.
+    expect(calculateMspPortfolioRiskMock).toHaveBeenCalledWith(42, undefined, null);
+    expect(res.body.rankedTenants).toHaveLength(2);
   });
 
   it("source-level guard: the route imports resolveMspIdStrict, never resolveMspId/resolveMspIdOrZero", () => {

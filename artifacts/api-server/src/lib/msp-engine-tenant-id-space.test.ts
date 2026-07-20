@@ -106,4 +106,21 @@ describe("msp-engine tenant id-space regression", () => {
     expect(buildTenantProfile).not.toHaveBeenCalledWith(PORTAL_USER_ID);
     expect(output.breakdown[0]?.customerId).toBe(MSP_CUSTOMER_ID);
   });
+
+  it("narrows the tenant-enumeration query to allowedCustomerIds when a staff scope is passed, vs. unrestricted when omitted", async () => {
+    const unrestrictedBuilder = makeSelectMock();
+    (db.select as ReturnType<typeof vi.fn>).mockImplementationOnce(() => unrestrictedBuilder);
+    await calculateMspPortfolioRisk(1);
+    const unrestrictedWhere = (unrestrictedBuilder["where"] as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+
+    const scopedBuilder = makeSelectMock();
+    (db.select as ReturnType<typeof vi.fn>).mockImplementationOnce(() => scopedBuilder);
+    await calculateMspPortfolioRisk(1, undefined, [MSP_CUSTOMER_ID]);
+    const scopedWhere = (scopedBuilder["where"] as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+
+    // The scoped call's WHERE clause carries an extra inArray condition
+    // naming the allowed customer id; the unrestricted call's does not.
+    expect(JSON.stringify(scopedWhere)).toContain(String(MSP_CUSTOMER_ID));
+    expect(JSON.stringify(scopedWhere).length).toBeGreaterThan(JSON.stringify(unrestrictedWhere).length);
+  });
 });
