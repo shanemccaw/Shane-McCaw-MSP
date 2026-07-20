@@ -91,7 +91,7 @@ export function Header() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "solutions" && "rotate-180")} />
               </button>
               {openDropdown === "solutions" && (
-                <div className="absolute top-full left-0 w-[420px] mt-1 glass-panel rounded-2xl p-2 z-50">
+                <div className="absolute top-full left-0 w-[420px] mt-1 menu-panel rounded-2xl p-2 z-50">
                   <div className="grid grid-cols-2 gap-0.5">
                     {SOLUTIONS.map((s) => {
                       const Icon = s.icon;
@@ -131,7 +131,7 @@ export function Header() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "platform" && "rotate-180")} />
               </button>
               {openDropdown === "platform" && (
-                <div className="absolute top-full left-0 w-80 mt-1 glass-panel rounded-2xl p-2 z-50">
+                <div className="absolute top-full left-0 w-80 mt-1 menu-panel rounded-2xl p-2 z-50">
                   {PLATFORM_LINKS.map((p) => {
                     const Icon = p.icon;
                     return (
@@ -170,7 +170,7 @@ export function Header() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", openDropdown === "company" && "rotate-180")} />
               </button>
               {openDropdown === "company" && (
-                <div className="absolute top-full right-0 w-52 mt-1 glass-panel rounded-2xl p-2 z-50">
+                <div className="absolute top-full right-0 w-52 mt-1 menu-panel rounded-2xl p-2 z-50">
                   <Link href="/about" onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
                   <Link href="/contact" onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</Link>
                 </div>

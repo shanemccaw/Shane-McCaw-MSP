@@ -305,6 +305,16 @@ html {
     -webkit-backdrop-filter: blur(24px);
   }
 
+  /* Near-opaque variant for functional floating UI (dropdown menus, popovers) that can sit over
+     arbitrary page content — .glass-panel's 6% fill is tuned for the hero stat-panel over a flat
+     charcoal background and lets bright/large text bleed through when floated over hero copy. */
+  .menu-panel {
+    background: rgba(35, 35, 38, 0.97); /* --charcoal-1 (#232326) at 97% opacity */
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
   /* Gradient headline emphasis / primary CTAs / live data numbers only — never a full-background wash. */
   .gradient-text {
     background-image: linear-gradient(90deg, var(--accent-blue), var(--accent-violet));
