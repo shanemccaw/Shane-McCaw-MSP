@@ -20,6 +20,7 @@ import MspPartnerTerms from "./pages/legal/MspPartnerTerms";
 import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
 import { initTracker, trackPageview } from "./lib/analytics";
+import { PersonalizationProvider } from "./hooks/usePersonalizationState";
 
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
 import Solutions from "./pages/Solutions";
@@ -76,7 +77,7 @@ function AnalyticsBoundary() {
 
 export default function App() {
   return (
-    <>
+    <PersonalizationProvider>
       <AnalyticsBoundary />
       <Switch>
       {/* Primary Routes */}
@@ -140,6 +141,6 @@ export default function App() {
       {/* 404 Fallback */}
       <Route component={NotFound} />
       </Switch>
-    </>
+    </PersonalizationProvider>
   );
 }
