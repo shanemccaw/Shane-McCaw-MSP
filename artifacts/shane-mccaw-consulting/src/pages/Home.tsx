@@ -13,6 +13,7 @@ import {
   Layers,
   Users,
   Sparkles,
+  ScanLine,
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -33,11 +34,58 @@ interface MonitoringTypeAttributes {
   pricePerUserMonth?: string;
   flatMonthlySurcharge?: string | null;
   tenantTierLabel?: string;
+  includedEngines?: string[] | null;
+  includedFeatures?: string[] | null;
 }
 
-const SEAT_PRESETS = [10, 50, 250, 750];
-
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+
+// Checklist copy for `typeAttributes.includedEngines` keys — confirmed against the real
+// Engine Registry (api-server/src/lib/engine-registry.ts, 12 keys total, same source the
+// admin Monitoring Tier editor's engine-picker reads from). Internal back-office engines
+// (priority, pricing, forecasting, crm, msp) are deliberately omitted — never named on the
+// public site (website-rebuild-reference-v2.md §6), so a tier row that happens to include
+// one of those keys simply drops it from the customer-facing checklist rather than leaking
+// the internal name.
+const ENGINE_CHECKLIST_LABELS: Record<string, string> = {
+  health: "Architecture Health scoring — governance, compliance, adoption, Copilot, and licensing",
+  security: "Security Engine — anonymous links, guest access, OAuth risk, and MFA gaps",
+  drift: "Drift Engine — every admin change fingerprinted against your baseline",
+  sla: "SLA Engine — support commitments tracked against the clock",
+  scope_creep: "Scope Creep Engine — live work checked against your signed SOW",
+  monitoring: "Scheduled tenant scans on a real schedule",
+  sales_offer: "Recommendation Engine — tells you what to fix next",
+};
+
+// Checklist copy for `typeAttributes.includedFeatures` keys — confirmed against the real
+// Plan Feature Registry (api-server/src/lib/msp-entitlement.ts PLAN_FEATURE_DEFS), the same
+// source the admin Monitoring Tier editor's feature-picker reads from. These keys are plain
+// snake_case identifiers, not pre-formatted customer copy, so unmapped keys fall back to a
+// humanized version of the raw key rather than being silently dropped.
+const FEATURE_CHECKLIST_LABELS: Record<string, string> = {
+  advanced_signals: "Advanced tenant signal rules and priority scoring",
+  custom_workflows: "Custom automation workflows",
+  sla_scope_creep_custom_rules: "MSP-authored SLA / Scope-Creep override rules",
+  sales_offers: "Sales Offer Engine recommendations",
+  custom_bundle_composition: "Custom multi-package monitoring bundles",
+};
+
+function humanizeFeatureKey(key: string): string {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function buildTierChecklist(attrs: MonitoringTypeAttributes): string[] {
+  const engineItems = (attrs.includedEngines ?? [])
+    .map((key) => ENGINE_CHECKLIST_LABELS[key])
+    .filter((label): label is string => Boolean(label));
+  const featureItems = (attrs.includedFeatures ?? []).map(
+    (key) => FEATURE_CHECKLIST_LABELS[key] ?? humanizeFeatureKey(key),
+  );
+  return [...engineItems, ...featureItems];
+}
 
 // Tenant-facing engines only — the platform's full engine registry (12) also runs internal
 // business-ops engines (Pricing, CRM, MSP Portfolio, etc.) that don't watch a customer tenant,
@@ -84,14 +132,71 @@ const ENGINES = [
     icon: AlertTriangle,
   },
   {
-    id: "sales-offer",
-    name: "Sales Offer Engine",
+    id: "monitoring",
+    name: "Monitoring Engine",
     description:
-      "Reads tenant telemetry gaps and surfaces the exact upgrade or monitoring expansion that closes them — no generic upsells.",
-    badge: "Upgrade Optimization",
+      "Runs platform-authored checks against your tenant on a real cadence — hourly to daily — and classifies what it finds by severity.",
+    badge: "Scheduled Tenant Scans",
+    icon: ScanLine,
+  },
+  {
+    id: "recommendation",
+    name: "Recommendation Engine",
+    description:
+      "Compares what your tenant actually needs against what you have today, and tells you exactly what to fix first — no generic upsells.",
+    badge: "Gap-Closing Guidance",
     icon: Zap,
   },
 ];
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    step: 1,
+    title: "Connect your tenant",
+    description:
+      "A quick, consent-gated connection to your Microsoft 365 tenant — no agents to install, no scripts to run.",
+  },
+  {
+    step: 2,
+    title: "We scan everything",
+    description:
+      "Real Graph API checks across governance, compliance, adoption, Copilot readiness, architecture, licensing, and security.",
+  },
+  {
+    step: 3,
+    title: "You get a real number",
+    description:
+      "A composite health score plus a pillar-by-pillar breakdown — not a generic questionnaire estimate.",
+  },
+  {
+    step: 4,
+    title: "We watch it change",
+    description:
+      "Monitoring re-checks your tenant on a real schedule, catching drift the moment it happens instead of six months later.",
+  },
+  {
+    step: 5,
+    title: "You always know where you stand",
+    description:
+      "Every score, every finding, every change — visible whenever you check, not buried in an annual audit.",
+  },
+];
+
+// Illustrative-only mockup data for the cold-visitor "Mission Control preview" panel — not a
+// live/real customer score. Reuses the same pillar taxonomy as the real Architecture Health
+// Engine (HEALTH_PILLAR_LABELS below) and the same gradient-means-healthy/flat-amber-means-
+// needs-attention color convention confirmed against the real thing in
+// msp-portal/src/components/mission-control/MissionControl.tsx (healthRingColor: goodness >=
+// 85 is the "healthy" tier there) — collapsed to two states here since this preview is a
+// simplified illustration, not a pixel-identical clone of the real 3-tier ring.
+const PREVIEW_PILLARS: { pillar: string; goodness: number }[] = [
+  { pillar: "governance", goodness: 92 },
+  { pillar: "security", goodness: 58 },
+  { pillar: "compliance", goodness: 88 },
+  { pillar: "adoption", goodness: 71 },
+  { pillar: "copilot", goodness: 95 },
+];
+const PREVIEW_OVERALL_GOODNESS = 81;
 
 /**
  * Assessment-tier real pillar overview (website-rebuild-reference-v2.md §3): a logged-in,
@@ -205,6 +310,32 @@ export default function Home() {
       .sort((a, b) => a[0].sortOrder - b[0].sortOrder);
   }, [monitoringRows]);
 
+  // Seat slider range + tier-boundary tick marks, derived entirely from the real
+  // seatMin/seatMax values on the fetched monitoring rows — never hardcoded, so this
+  // stays correct if pricing tiers change without a website deploy.
+  const seatSlider = useMemo(() => {
+    const mins: number[] = [];
+    const maxes: number[] = [];
+    monitoringRows.forEach((row) => {
+      const attrs = (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+      if (typeof attrs.seatMin === "number") mins.push(attrs.seatMin);
+      if (typeof attrs.seatMax === "number") maxes.push(attrs.seatMax);
+    });
+    const sliderMin = mins.length ? Math.min(...mins, 1) : 1;
+    const finiteCeiling = maxes.length ? Math.max(...maxes) : null;
+    const sliderMax = finiteCeiling ?? (mins.length ? Math.max(...mins) * 4 : 500);
+    const markers = Array.from(new Set(mins.filter((m) => m > sliderMin && m < sliderMax))).sort(
+      (a, b) => a - b,
+    );
+    const presets = Array.from(new Set(mins.length ? mins : [sliderMin])).sort((a, b) => a - b);
+    return { sliderMin, sliderMax, markers, presets };
+  }, [monitoringRows]);
+
+  useEffect(() => {
+    if (monitoringRows.length === 0) return;
+    setSeatCount((prev) => Math.min(Math.max(prev, seatSlider.sliderMin), seatSlider.sliderMax));
+  }, [monitoringRows.length, seatSlider.sliderMin, seatSlider.sliderMax]);
+
   const matchRowForSeats = (rows: PublicService[], seats: number): PublicService | null => {
     return (
       rows.find((r) => {
@@ -310,52 +441,82 @@ export default function Home() {
       );
     }
 
+    const clampedSeatCount = Math.min(Math.max(seatCount, seatSlider.sliderMin), seatSlider.sliderMax);
+    const sliderRange = seatSlider.sliderMax - seatSlider.sliderMin;
+    const sliderPct = sliderRange > 0 ? ((clampedSeatCount - seatSlider.sliderMin) / sliderRange) * 100 : 0;
+
     return (
       <div className="w-full">
-        <div className="flex flex-col items-center mb-10">
-          <label htmlFor="seat-count" className="flex items-center gap-2 text-sm font-semibold text-text-secondary mb-3">
+        <GlassPanel className="p-6 sm:p-8 mb-10 max-w-2xl mx-auto">
+          <label htmlFor="seat-count" className="flex items-center justify-center gap-2 text-sm font-semibold text-text-secondary mb-4">
             <Users className="w-4 h-4 text-accent-blue" />
             How many licensed users are in your tenant?
           </label>
-          <div className="flex items-center gap-3 flex-wrap justify-center">
+
+          <div className="text-center mb-6">
+            <span className="gradient-text font-numeric text-5xl sm:text-6xl font-medium tabular-nums">
+              {clampedSeatCount.toLocaleString()}
+            </span>
+            <div className="text-xs text-text-tertiary mt-1 uppercase tracking-wider">licensed users</div>
+          </div>
+
+          <div className="relative px-1 mb-2 pt-3">
+            {seatSlider.markers.map((m) => {
+              const markerPct = ((m - seatSlider.sliderMin) / sliderRange) * 100;
+              return (
+                <div
+                  key={m}
+                  className="absolute top-0 pointer-events-none w-[2px] h-3 bg-white/25 -translate-x-1/2"
+                  style={{ left: `${markerPct}%` }}
+                  title={`Tier boundary — ${m.toLocaleString()} seats`}
+                />
+              );
+            })}
             <input
               id="seat-count"
-              type="number"
-              min={1}
-              value={seatCount}
-              onChange={(e) => {
-                const v = parseInt(e.target.value, 10);
-                setSeatCount(isNaN(v) || v < 1 ? 1 : v);
+              type="range"
+              min={seatSlider.sliderMin}
+              max={seatSlider.sliderMax}
+              value={clampedSeatCount}
+              onChange={(e) => setSeatCount(parseInt(e.target.value, 10))}
+              className="seat-slider w-full"
+              style={{
+                background: `linear-gradient(90deg, var(--accent-blue), var(--accent-violet) ${sliderPct}%, rgba(255,255,255,0.1) ${sliderPct}%, rgba(255,255,255,0.1) 100%)`,
               }}
-              className="w-28 text-center font-numeric text-lg font-medium bg-charcoal-1 border border-white/[0.08] rounded-xl px-3 py-2.5 text-text-primary focus:outline-none focus:border-accent-blue/60"
             />
-            <div className="flex items-center gap-2">
-              {SEAT_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => setSeatCount(preset)}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                    seatCount === preset
-                      ? "text-white"
-                      : "bg-charcoal-1 text-text-secondary border border-white/[0.08] hover:text-text-primary hover:border-white/[0.16]"
-                  }`}
-                  style={seatCount === preset ? GRADIENT_BG : undefined}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
           </div>
-        </div>
+          <div className="flex justify-between text-[10px] text-text-tertiary font-numeric mb-6">
+            <span>{seatSlider.sliderMin.toLocaleString()}</span>
+            <span>{seatSlider.sliderMax.toLocaleString()}+</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            {seatSlider.presets.map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setSeatCount(preset)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                  clampedSeatCount === preset
+                    ? "text-white"
+                    : "bg-charcoal-1 text-text-secondary border border-white/[0.08] hover:text-text-primary hover:border-white/[0.16]"
+                }`}
+                style={clampedSeatCount === preset ? GRADIENT_BG : undefined}
+              >
+                {preset.toLocaleString()}
+              </button>
+            ))}
+          </div>
+        </GlassPanel>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {monitoringPackages.map((rows) => {
-            const matched = matchRowForSeats(rows, seatCount);
+            const matched = matchRowForSeats(rows, clampedSeatCount);
             if (!matched) return null;
 
             const attrs = (matched.typeAttributes ?? {}) as MonitoringTypeAttributes;
-            const price = computeMonthlyPrice(matched, seatCount);
+            const price = computeMonthlyPrice(matched, clampedSeatCount);
             const isHighlighted = matched.highlighted;
+            const checklist = buildTierChecklist(attrs);
 
             return (
               <div
@@ -396,12 +557,12 @@ export default function Home() {
                   ) : (
                     <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
                   )}
-                  <div className="text-xs text-text-tertiary mt-1">For {seatCount.toLocaleString()} licensed users</div>
+                  <div className="text-xs text-text-tertiary mt-1">For {clampedSeatCount.toLocaleString()} licensed users</div>
                 </div>
 
-                {matched.features && matched.features.length > 0 && (
+                {checklist.length > 0 && (
                   <ul className="space-y-2.5 mb-6 flex-grow">
-                    {matched.features.slice(0, 4).map((f, i) => (
+                    {checklist.map((f, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
                         <CheckCircle2 className="w-4 h-4 text-accent-blue mt-0.5 shrink-0" />
                         <span>{f}</span>
@@ -479,6 +640,9 @@ export default function Home() {
 
           {/* Signature stat panel — verified platform facts only, no fabricated live numbers
               on the cold-visitor hero (personalized real tenant scores are Stage 4, website-rebuild-reference-v2.md §3/§5) */}
+          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            Real infrastructure watching your tenant — not marketing numbers
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
             <StatPanel label="Platform engines" value="12" />
             <StatPanel label="Check cadence" value="Hourly–Daily" />
@@ -503,7 +667,11 @@ export default function Home() {
                 </h3>
                 <p className="text-sm text-text-secondary mt-1">
                   Shane McCaw wrote the M365 Copilot governance framework NASA distributed
-                  agency-wide. The same discipline shapes every engine on this platform.
+                  agency-wide, and works day-to-day inside NASA's BOD-25 secure-configuration
+                  push, CISA's SCuBA hardening baselines, and its Zero Trust architecture
+                  rollout. That same discipline shapes how every engine on this platform is
+                  built — this platform doesn't score your tenant against those specific
+                  federal frameworks today, but it's built by someone who lives in them.
                 </p>
               </div>
             </div>
@@ -513,6 +681,89 @@ export default function Home() {
               background pretending nothing changes.
             </div>
           </GlassPanel>
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              How <GradientText>Continuous Monitoring</GradientText> Actually Works
+            </h2>
+            <p className="text-text-secondary">Five real steps. No black box.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-7">
+              {HOW_IT_WORKS_STEPS.map((s) => (
+                <div key={s.step} className="flex gap-4">
+                  <div
+                    className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-numeric font-semibold text-sm text-white"
+                    style={GRADIENT_BG}
+                  >
+                    {s.step}
+                  </div>
+                  <div>
+                    <h3 className="font-display font-semibold text-text-primary mb-1">{s.title}</h3>
+                    <p className="text-sm text-text-secondary leading-relaxed">{s.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <GlassPanel className="p-6 sm:p-8 relative">
+              <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-tertiary border border-white/[0.12]">
+                Illustrative Example
+              </span>
+              <h3 className="text-xs uppercase tracking-widest text-text-tertiary mb-6">
+                Mission Control preview
+              </h3>
+
+              <div className="flex items-center gap-6 mb-7">
+                <div
+                  className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-full"
+                  style={{
+                    background: `conic-gradient(var(--accent-blue) 0deg, var(--accent-violet) ${PREVIEW_OVERALL_GOODNESS * 3.6}deg, rgba(255,255,255,0.08) ${PREVIEW_OVERALL_GOODNESS * 3.6}deg 360deg)`,
+                  }}
+                  aria-hidden="true"
+                >
+                  <div className="absolute inset-[7px] rounded-full bg-charcoal-1 flex items-center justify-center">
+                    <span className="gradient-text font-numeric text-2xl font-semibold">
+                      {PREVIEW_OVERALL_GOODNESS}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-text-primary">Composite tenant health</div>
+                  <div className="text-xs text-text-tertiary mt-1">Example data — not your real score</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {PREVIEW_PILLARS.map((p) => (
+                  <div key={p.pillar} className="flex items-center gap-3">
+                    <span className="text-xs text-text-secondary w-28 shrink-0">
+                      {HEALTH_PILLAR_LABELS[p.pillar] ?? p.pillar}
+                    </span>
+                    <div className="flex-1 h-2 rounded-full bg-white/[0.08] overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${p.goodness}%`,
+                          background:
+                            p.goodness >= 85
+                              ? "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))"
+                              : "#f59e0b",
+                        }}
+                      />
+                    </div>
+                    <span className="font-numeric text-xs text-text-tertiary w-7 text-right">{p.goodness}</span>
+                  </div>
+                ))}
+              </div>
+            </GlassPanel>
+          </div>
         </div>
       </section>
 
@@ -606,7 +857,7 @@ export default function Home() {
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Stop Finding Out About Problems Six Months Late
+              No Guessing. Just Your Real Number.
             </h2>
             <p className="text-text-secondary max-w-xl mx-auto mb-8 text-sm sm:text-base">
               Start with a free assessment to see where your tenant stands today, or go straight to

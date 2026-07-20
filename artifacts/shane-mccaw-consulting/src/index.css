@@ -335,4 +335,39 @@ input:-webkit-autofill {
     background-clip: text;
     color: transparent;
   }
+
+  /* Seat-count slider (Home.tsx monitoring calculator) — the gradient fill itself is set inline
+     per-render (depends on the current value), this just styles the track/thumb chrome. */
+  .seat-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 999px;
+    outline: none;
+  }
+  .seat-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--rebuild-text-primary);
+    border: 3px solid var(--accent-violet);
+    box-shadow: 0 0 0 4px rgba(155, 124, 255, 0.18);
+    cursor: pointer;
+  }
+  .seat-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--rebuild-text-primary);
+    border: 3px solid var(--accent-violet);
+    box-shadow: 0 0 0 4px rgba(155, 124, 255, 0.18);
+    cursor: pointer;
+  }
+  .seat-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: transparent;
+  }
 }
