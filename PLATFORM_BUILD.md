@@ -15,7 +15,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-19 | ⏳ IN FLIGHT | Customer Tenant Timeline | |
 | 2026-07-19 | ⏳ IN FLIGHT | Customer Notification Preferences UI | |
 | 2026-07-19 | ⏳ IN FLIGHT | In-Portal Marketplace — Shared Across Roles | |
-| 2026-07-19 | ⏳ IN FLIGHT | Public Website Rebuild: Stage 1 Shell/Core | |
+| 2026-07-19 | ✅ DONE | Public Website Rebuild: Stage 1 Shell/Core | a06f8185 |
 | 2026-07-19 | ✅ DONE | engagement offer real-time trigger on qualifying events | 52f8f6b5 |
 | 2026-07-19 | ✅ DONE | quiz submit wires Lead Offer Engine synchronously | 4b1cdb6a |
 | 2026-07-19 | ✅ DONE | engagement offer evaluation seeded workflow | 991fac42 |
