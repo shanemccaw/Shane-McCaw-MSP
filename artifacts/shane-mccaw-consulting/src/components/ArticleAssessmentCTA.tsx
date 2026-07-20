@@ -10,49 +10,49 @@ const ASSESSMENT_MAP: Array<{ keywords: string[]; assessment: Assessment }> = [
     keywords: ["copilot"],
     assessment: {
       label: "Take the Free Copilot Readiness Assessment",
-      href: "/services#copilot-assessment",
+      href: "/solutions/copilot",
     },
   },
   {
     keywords: ["governance", "compliance"],
     assessment: {
       label: "Take the Free Governance Maturity Assessment",
-      href: "/services#governance-assessment",
+      href: "/solutions/governance",
     },
   },
   {
     keywords: ["sharepoint"],
     assessment: {
       label: "Take the Free SharePoint Readiness Assessment",
-      href: "/services#sharepoint-assessment",
+      href: "/solutions/sharepoint",
     },
   },
   {
     keywords: ["teams"],
     assessment: {
       label: "Take the Free Teams Maturity Assessment",
-      href: "/services#teams-assessment",
+      href: "/solutions/teams",
     },
   },
   {
     keywords: ["security"],
     assessment: {
       label: "Take the Free Security & Compliance Assessment",
-      href: "/services#security-assessment",
+      href: "/solutions/security-compliance",
     },
   },
   {
     keywords: ["power platform"],
     assessment: {
       label: "Take the Free Power Platform Readiness Assessment",
-      href: "/services#power-platform-assessment",
+      href: "/solutions/power-platform",
     },
   },
   {
     keywords: ["migration", "cloud migration"],
     assessment: {
       label: "Take the Free Migration Readiness Assessment",
-      href: "/services#migration-assessment",
+      href: "/solutions/migration",
     },
   },
 ];

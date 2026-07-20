@@ -20,10 +20,10 @@ const ACTION_CARDS = [
   },
   {
     icon: <Layers className="w-6 h-6 text-[#0078D4]" />,
-    title: "Explore Services",
+    title: "Explore Products",
     desc: "Microsoft 365, Copilot AI, SharePoint, Power Platform, Governance, Cloud Migration — all fixed-scope, no surprises.",
-    href: "/services",
-    label: "See all services →",
+    href: "/products",
+    label: "See all products →",
   },
   {
     icon: <BookOpen className="w-6 h-6 text-[#0078D4]" />,
