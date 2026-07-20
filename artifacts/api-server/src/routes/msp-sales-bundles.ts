@@ -19,6 +19,7 @@
  *   GET    /api/msp/sales-bundles/:bundleId/assignments         — list assignments
  *   POST   /api/msp/sales-bundles/:bundleId/assignments         — assign bundle to customer
  *   DELETE /api/msp/sales-bundles/:bundleId/assignments/:assignmentId — revoke assignment
+ *   GET    /api/msp/customers/:customerId/bundle-assignments     — a customer's own bundle assignments
  */
 
 import { Router, type Request, type Response } from "express";
@@ -765,6 +766,62 @@ router.delete(
     } catch (err) {
       log.error({ err, mspId, bundleId, assignmentId }, "msp-sales-bundles: revoke assignment failed");
       res.status(500).json({ error: "Failed to revoke assignment" });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/bundle-assignments ─────────────────────
+// Customer-centric complement to GET /msp/sales-bundles/:bundleId/assignments
+// (which lists a bundle's customers) — this lists a single customer's own
+// bundle assignments, joined with bundle name/status, for display on the
+// customer record. Read-only; does not duplicate the assign/revoke routes above.
+
+router.get(
+  "/msp/customers/:customerId/bundle-assignments",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    const mspId = getMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+    const customerId = parseInt(p(req.params["customerId"]), 10);
+    if (isNaN(customerId)) { apiErr(res, 400, "Invalid customerId"); return; }
+    try {
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id })
+        .from(mspCustomersTable)
+        .where(and(
+          eq(mspCustomersTable.id, customerId),
+          eq(mspCustomersTable.mspId, mspId),
+        ));
+      if (!customer) { apiErr(res, 404, "Customer not found in this MSP"); return; }
+
+      const assignments = await db
+        .select({
+          id: mspSalesBundleAssignmentsTable.id,
+          assignmentId: mspSalesBundleAssignmentsTable.assignmentId,
+          bundleId: mspSalesBundleAssignmentsTable.bundleId,
+          status: mspSalesBundleAssignmentsTable.status,
+          activatedAt: mspSalesBundleAssignmentsTable.activatedAt,
+          trialExpiresAt: mspSalesBundleAssignmentsTable.trialExpiresAt,
+          assignedAt: mspSalesBundleAssignmentsTable.assignedAt,
+          revokedAt: mspSalesBundleAssignmentsTable.revokedAt,
+          bundleName: mspSalesBundlesTable.name,
+          bundleStatus: mspSalesBundlesTable.status,
+        })
+        .from(mspSalesBundleAssignmentsTable)
+        .innerJoin(
+          mspSalesBundlesTable,
+          eq(mspSalesBundlesTable.bundleId, mspSalesBundleAssignmentsTable.bundleId),
+        )
+        .where(and(
+          eq(mspSalesBundleAssignmentsTable.customerId, customerId),
+          eq(mspSalesBundleAssignmentsTable.mspId, mspId),
+        ))
+        .orderBy(sql`${mspSalesBundleAssignmentsTable.assignedAt} DESC`);
+
+      res.json({ assignments });
+    } catch (err) {
+      log.error({ err, mspId, customerId }, "msp-sales-bundles: list customer assignments failed");
+      res.status(500).json({ error: "Failed to list customer bundle assignments" });
     }
   },
 );

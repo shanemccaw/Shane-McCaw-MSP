@@ -99,6 +99,19 @@ interface Bundle {
   status: string;
 }
 
+interface CustomerBundleAssignment {
+  id: number;
+  assignmentId: string;
+  bundleId: string;
+  status: "active" | "suspended" | "revoked";
+  activatedAt: string | null;
+  trialExpiresAt: string | null;
+  assignedAt: string;
+  revokedAt: string | null;
+  bundleName: string;
+  bundleStatus: string;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-green-500/15 text-green-400 border-green-500/20",
   inactive: "bg-muted text-muted-foreground border-border",
@@ -170,6 +183,17 @@ export default function CustomersPage() {
   const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Assign Bundle dialog (bulk from the selection bar, or single from a row action)
+  const [bundleTargets, setBundleTargets] = useState<Customer[]>([]);
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [bundlesLoading, setBundlesLoading] = useState(false);
+  const [selectedBundleId, setSelectedBundleId] = useState<string>("");
+  const [bundleSubmitting, setBundleSubmitting] = useState(false);
+  const [bundleError, setBundleError] = useState<string | null>(null);
+  const [customerAssignments, setCustomerAssignments] = useState<CustomerBundleAssignment[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [revokingAssignmentId, setRevokingAssignmentId] = useState<string | null>(null);
 
   const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
 
@@ -383,6 +407,104 @@ export default function CustomersPage() {
     }
   }
 
+  // Assign Bundle dialog handlers
+  const mspIdParam = user?.mspId ? `mspId=${user.mspId}` : "";
+
+  async function openBundleDialog(targets: Customer[]) {
+    setBundleTargets(targets);
+    setSelectedBundleId("");
+    setBundleError(null);
+    setCustomerAssignments([]);
+    setBundleDialogOpen(true);
+
+    setBundlesLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/msp/sales-bundles?status=active${mspIdParam ? `&${mspIdParam}` : ""}`);
+      if (res.ok) {
+        const data = (await res.json()) as { bundles: Bundle[] };
+        setBundles(data.bundles ?? []);
+      }
+    } finally {
+      setBundlesLoading(false);
+    }
+
+    if (targets.length === 1) {
+      await refreshCustomerAssignments(targets[0].id);
+    }
+  }
+
+  async function refreshCustomerAssignments(customerId: number) {
+    setAssignmentsLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${customerId}/bundle-assignments${mspIdParam ? `?${mspIdParam}` : ""}`);
+      if (res.ok) {
+        const data = (await res.json()) as { assignments: CustomerBundleAssignment[] };
+        setCustomerAssignments(data.assignments ?? []);
+      }
+    } finally {
+      setAssignmentsLoading(false);
+    }
+  }
+
+  async function handleAssignBundle() {
+    if (!selectedBundleId || bundleTargets.length === 0) return;
+    setBundleSubmitting(true);
+    setBundleError(null);
+    try {
+      let failures = 0;
+      for (const target of bundleTargets) {
+        const res = await fetchWithAuth(`/api/msp/sales-bundles/${selectedBundleId}/assignments${mspIdParam ? `?${mspIdParam}` : ""}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerId: target.id }),
+        });
+        if (!res.ok) failures++;
+      }
+
+      const bundleName = bundles.find((b) => b.bundleId === selectedBundleId)?.name ?? "bundle";
+      if (failures === 0) {
+        toast.success(
+          bundleTargets.length === 1
+            ? `Assigned "${bundleName}" to ${bundleTargets[0].name}`
+            : `Assigned "${bundleName}" to ${bundleTargets.length} customers`,
+        );
+      } else {
+        toast.warning(`Assigned to ${bundleTargets.length - failures} of ${bundleTargets.length} customers — some failed`);
+      }
+
+      if (bundleTargets.length === 1) {
+        await refreshCustomerAssignments(bundleTargets[0].id);
+        setSelectedBundleId("");
+      } else {
+        setBundleDialogOpen(false);
+        setSelected(new Set());
+      }
+    } catch {
+      setBundleError("Failed to assign bundle — please try again.");
+    } finally {
+      setBundleSubmitting(false);
+    }
+  }
+
+  async function handleRevokeAssignment(assignment: CustomerBundleAssignment) {
+    if (bundleTargets.length !== 1) return;
+    setRevokingAssignmentId(assignment.assignmentId);
+    try {
+      const res = await fetchWithAuth(
+        `/api/msp/sales-bundles/${assignment.bundleId}/assignments/${assignment.assignmentId}${mspIdParam ? `?${mspIdParam}` : ""}`,
+        { method: "DELETE" },
+      );
+      if (res.ok) {
+        toast.success(`Revoked "${assignment.bundleName}"`);
+        await refreshCustomerAssignments(bundleTargets[0].id);
+      } else {
+        toast.error("Failed to revoke bundle assignment");
+      }
+    } finally {
+      setRevokingAssignmentId(null);
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const actions = (
@@ -495,7 +617,12 @@ export default function CustomersPage() {
         {selected.size > 0 && (
           <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 p-3 rounded-xl animate-in fade-in">
             <span className="text-xs font-semibold text-primary">{selected.size} selected</span>
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              onClick={() => void openBundleDialog(customers.filter((c) => selected.has(c.id)))}
+            >
               <Tag className="size-3" /> Assign Bundle
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
@@ -671,6 +798,10 @@ export default function CustomersPage() {
                           <DropdownMenuItem onClick={() => openEditModal(c)}>
                             <Edit className="size-4 mr-2 text-amber-400" />
                             Edit Customer
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void openBundleDialog([c])}>
+                            <Tag className="size-4 mr-2 text-blue-400" />
+                            Manage Bundles
                           </DropdownMenuItem>
                           {isPlatformAdmin && (
                             <DropdownMenuItem
@@ -997,6 +1128,102 @@ export default function CustomersPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Bundle Dialog */}
+      <Dialog open={bundleDialogOpen} onOpenChange={(o) => { if (!bundleSubmitting) setBundleDialogOpen(o); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {bundleTargets.length === 1
+                ? `Manage Bundles — ${bundleTargets[0].name}`
+                : `Assign Bundle to ${bundleTargets.length} Customers`}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {bundleTargets.length === 1 && (
+              <div className="space-y-2">
+                <Label>Currently Assigned</Label>
+                {assignmentsLoading ? (
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                ) : customerAssignments.filter((a) => a.status === "active").length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No active bundle assignments.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {customerAssignments
+                      .filter((a) => a.status === "active")
+                      .map((a) => (
+                        <div
+                          key={a.assignmentId}
+                          className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/60 bg-muted/20"
+                        >
+                          <div className="text-xs">
+                            <span className="font-medium">{a.bundleName}</span>
+                            {a.trialExpiresAt && (
+                              <span className="ml-1.5 text-muted-foreground">
+                                (trial ends {new Date(a.trialExpiresAt).toLocaleDateString()})
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-xs text-destructive hover:text-destructive"
+                            disabled={revokingAssignmentId === a.assignmentId}
+                            onClick={() => void handleRevokeAssignment(a)}
+                          >
+                            {revokingAssignmentId === a.assignmentId && (
+                              <Loader2 className="size-3 mr-1 animate-spin" />
+                            )}
+                            Revoke
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="assign-bundle-select">Assign New Bundle</Label>
+              {bundlesLoading ? (
+                <Skeleton className="h-9 w-full rounded-lg" />
+              ) : bundles.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No active bundles available. Create one first.</p>
+              ) : (
+                <Select value={selectedBundleId} onValueChange={setSelectedBundleId} disabled={bundleSubmitting}>
+                  <SelectTrigger id="assign-bundle-select">
+                    <SelectValue placeholder="Choose a bundle…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bundles.map((b) => (
+                      <SelectItem key={b.bundleId} value={b.bundleId}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {bundleError && <p className="text-sm text-destructive font-medium">{bundleError}</p>}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setBundleDialogOpen(false)} disabled={bundleSubmitting}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              disabled={bundleSubmitting || !selectedBundleId}
+              onClick={() => void handleAssignBundle()}
+            >
+              {bundleSubmitting && <Loader2 className="size-4 mr-2 animate-spin" />}
+              Assign Bundle
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppShell>
