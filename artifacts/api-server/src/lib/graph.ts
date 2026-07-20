@@ -33,6 +33,8 @@ export const REQUIRED_MT_SCOPES = [
   "IdentityRiskyUser.Read.All",
   "AccessReview.Read.All",
   "TeamSettings.Read.All",
+  "ServiceMessage.Read.All",
+  "ServiceHealth.Read.All",
 ] as const;
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];

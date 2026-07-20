@@ -263,6 +263,26 @@ app.listen(port, (err) => {
     logger.warn({ err }, "sow-expiry-sweep: failed to load sweep module (non-fatal)");
   });
 
+  // ── M365 Message Center: daily sync across all consented tenants ──────────
+  // Fetches Graph serviceAnnouncement messages, diffs against previously-seen
+  // items, and notifies each tenant's MSP admins about genuinely-new posts.
+  // Same "once shortly after startup, then every 24 hours" cadence as the
+  // other daily jobs above.
+  import("./lib/message-center-sync").then(({ syncMessageCenterForAllTenants }) => {
+    setTimeout(() => {
+      syncMessageCenterForAllTenants().catch((err: unknown) => {
+        logger.warn({ err }, "message-center-sync: initial sync failed (non-fatal)");
+      });
+    }, 25_000);
+    setInterval(() => {
+      syncMessageCenterForAllTenants().catch((err: unknown) => {
+        logger.warn({ err }, "message-center-sync: scheduled sync failed (non-fatal)");
+      });
+    }, 24 * 60 * 60 * 1000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "message-center-sync: failed to load sync module (non-fatal)");
+  });
+
   // ── Session Tracking: daily login-history retention prune ─────────────────
   // Removes dead (revoked/expired) user_sessions rows older than 90 days.
   // Active sessions are never touched regardless of age. Same cadence as the

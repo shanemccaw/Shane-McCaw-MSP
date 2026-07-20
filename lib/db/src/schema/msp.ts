@@ -1451,6 +1451,43 @@ export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
 
 export type MonitorCheckAuditLog = typeof monitorCheckAuditLogTable.$inferSelect;
 
+// ── M365 Message Center items ──────────────────────────────────────────────────
+// One row per Graph serviceAnnouncement message per tenant, populated by the
+// message-center-sync job. Distinct from tenant_monitor_profiles (which stores
+// per-run aggregates) — this is a per-item table so genuinely-new messages can
+// be diffed against previously-seen ones.
+
+export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  graphMessageId: text("graph_message_id").notNull(),
+  title: text("title").notNull(),
+  category: text("category"),
+  severity: text("severity"),
+  isMajorChange: boolean("is_major_change").notNull().default(false),
+  services: jsonb("services").$type<string[]>().notNull().default([]),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  bodyContentType: text("body_content_type"),
+  bodyContent: text("body_content"),
+  startDateTime: timestamp("start_date_time", { withTimezone: true }),
+  endDateTime: timestamp("end_date_time", { withTimezone: true }),
+  actionRequiredByDateTime: timestamp("action_required_by_date_time", { withTimezone: true }),
+  lastModifiedDateTime: timestamp("last_modified_date_time", { withTimezone: true }).notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_message_center_items_tenant_msg_idx").on(t.tenantId, t.graphMessageId),
+  index("msp_message_center_items_msp_id_idx").on(t.mspId),
+  index("msp_message_center_items_last_modified_idx").on(t.lastModifiedDateTime),
+]);
+
+export type MspMessageCenterItem = typeof mspMessageCenterItemsTable.$inferSelect;
+export type InsertMspMessageCenterItem = typeof mspMessageCenterItemsTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).

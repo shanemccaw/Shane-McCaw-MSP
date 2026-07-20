@@ -58,6 +58,7 @@ import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
 import AlertsPage from "@/pages/alerts";
+import MessageCenterPage from "@/pages/message-center";
 import DocumentsHubPage from "@/pages/documents-hub";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
@@ -416,6 +417,11 @@ function SlugInnerSwitch() {
       {/* Cross-Tenant Alerts */}
       <Route path="/alerts">
         <ProtectedRoute component={AlertsPage} />
+      </Route>
+
+      {/* M365 Message Center */}
+      <Route path="/message-center">
+        <ProtectedRoute component={MessageCenterPage} />
       </Route>
 
       {/* MSP-Wide Customer Documents Hub */}

@@ -71,6 +71,7 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Megaphone,
   Menu,
   MessageCircle,
   MessageSquare,
@@ -602,6 +603,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: AlertTriangle,
         label: "Alerts",
         href: "/alerts",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: Megaphone,
+        label: "Message Center",
+        href: "/message-center",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
