@@ -72,6 +72,7 @@ import {
   Rocket,
   Film,
   Flame,
+  Waypoints,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -178,6 +179,7 @@ export const WORKSPACES: WorkspaceDef[] = [
           { id: "cmd-overview", label: "Overview", path: "/command/overview", icon: LayoutDashboard },
           { id: "cmd-analytics", label: "Analytics", path: "/command/analytics", icon: BarChart3 },
           { id: "cmd-session-replay", label: "Session Replay", path: "/command/session-replay", icon: Film },
+          { id: "cmd-attribution", label: "Attribution", path: "/command/attribution", icon: Waypoints },
           { id: "cmd-heatmap", label: "Heatmap", path: "/command/heatmap", icon: Flame },
           { id: "cmd-insights", label: "Insights", path: "/command/insights", icon: Lightbulb },
         ],

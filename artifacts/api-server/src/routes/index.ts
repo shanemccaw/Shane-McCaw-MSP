@@ -131,6 +131,7 @@ import clientEventsRouter from "./client-events";
 import portal404EventsRouter from "./portal-404-events";
 import adminAnalyticsSessionReplayRouter from "./admin-analytics-session-replay";
 import adminAnalyticsHeatmapRouter from "./admin-analytics-heatmap";
+import adminAnalyticsAttributionRouter from "./admin-analytics-attribution";
 
 import pccRouter from "./pcc.js";
 
@@ -267,6 +268,7 @@ router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);
 router.use(adminAnalyticsSessionReplayRouter);
+router.use(adminAnalyticsAttributionRouter);
 router.use(adminExceptionsRouter);
 router.use(adminLiveStreamRouter);
 router.use(adminTestSuitesRouter);

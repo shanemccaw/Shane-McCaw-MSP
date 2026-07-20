@@ -9,6 +9,7 @@ import PromptCenterPage from "@/pages/PromptCenter";
 import InsightsOutputsPage from "@/pages/InsightsOutputs";
 import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
 import SessionReplayPage from "@/pages/SessionReplay";
+import AttributionPage from "@/pages/Attribution";
 
 const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCenter"));
 
@@ -17,6 +18,7 @@ function getContent(section: string): ReactNode {
     case "messages":         return <MessagesPage />;
     case "analytics":        return <AnalyticsPage />;
     case "session-replay":   return <SessionReplayPage />;
+    case "attribution":      return <AttributionPage />;
     case "heatmap":          return <AnalyticsHeatmapPage />;
     case "scripts":          return <ScriptGeneratorPage />;
     case "running-scripts":  return <RunningScriptsPage />;
