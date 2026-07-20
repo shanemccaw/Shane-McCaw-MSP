@@ -69,14 +69,14 @@ const router: IRouter = Router();
 
 // ── Shared types ────────────────────────────────────────────────────────────
 
-interface OverrideLayout {
+export interface OverrideLayout {
   [key: string]: unknown;
   hidden: string[];
   positions: Record<string, { x: number; y: number; w: number; h: number }>;
   rendererTypes: Record<string, string>;
 }
 
-type ResolvedScope =
+export type ResolvedScope =
   | { templateType: "customer_default"; scopeType: "customer"; scopeId: number }
   | { templateType: "msp_overview"; scopeType: "msp_user"; scopeId: number };
 
@@ -115,7 +115,7 @@ function mergeLayout(canvasLayout: DashboardTemplate["canvasLayout"], override: 
  * two supported template types. Returns null if the caller's role isn't one
  * of the two supported viewer roles, or scope info is missing from the JWT.
  */
-async function resolveCallerScope(req: Request): Promise<ResolvedScope | { error: string } | null> {
+export async function resolveCallerScope(req: Request): Promise<ResolvedScope | { error: string } | null> {
   const user = req.user!;
   const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
 
@@ -137,7 +137,7 @@ async function resolveCallerScope(req: Request): Promise<ResolvedScope | { error
   return null;
 }
 
-async function findDefaultTemplate(mspId: number, templateType: "customer_default" | "msp_overview") {
+export async function findDefaultTemplate(mspId: number, templateType: "customer_default" | "msp_overview") {
   const [template] = await db
     .select()
     .from(dashboardTemplatesTable)
@@ -168,7 +168,7 @@ async function findOverride(templateId: number, scopeType: "customer" | "msp_use
 }
 
 /** Merge a specific template against the caller's override for that scope -> the same shape GET /resolved returns. */
-async function resolveTemplate(template: DashboardTemplate, scopeType: "customer" | "msp_user", scopeId: number) {
+export async function resolveTemplate(template: DashboardTemplate, scopeType: "customer" | "msp_user", scopeId: number) {
   const override = await findOverride(template.id, scopeType, scopeId);
   const overrideLayout = override ? parseOverrideLayout(override.overrideLayout) : emptyOverrideLayout();
   const widgets = mergeLayout(template.canvasLayout, overrideLayout);
