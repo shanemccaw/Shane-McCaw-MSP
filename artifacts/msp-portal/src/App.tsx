@@ -79,6 +79,7 @@ import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
+import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CommandCenterPage from "@/pages/command-center";
@@ -343,6 +344,11 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/customer-dashboard">
         <ProtectedRoute component={CustomerDashboardPage} />
+      </Route>
+      {/* Executive Mode — Simplified Leadership View: 5-tile stripped-down
+          alternate to the full Mission Control dashboard, fenced off from it. */}
+      <Route path="/executive-mode">
+        <ProtectedRoute component={ExecutiveModePage} />
       </Route>
       {/* Assessment-role landing shell (RBAC-foundation placeholder — real
           assessment surfaces are later tasks). */}

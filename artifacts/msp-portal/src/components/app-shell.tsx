@@ -484,6 +484,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
+        icon: Sparkles,
+        label: "Executive Mode",
+        href: "/executive-mode",
+        roles: ["CustomerUser"],
+      },
+      {
         icon: BarChart3,
         label: "Command Center",
         href: "/command-center",
