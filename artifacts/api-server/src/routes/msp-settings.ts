@@ -60,6 +60,11 @@ import {
   mspMailboxConsentStatesTable,
   mspInvitesTable,
   usersTable,
+  passwordResetTokensTable,
+  mfaEnrollmentsTable,
+  mfaChallengesTable,
+  webauthnCredentialsTable,
+  webauthnChallengesTable,
   MSP_LOCKED_EMAIL_KEYS,
   MSP_EMAIL_TEMPLATE_KEYS,
   type MspEmailTemplateKey,
@@ -69,6 +74,7 @@ import { eq, and, desc, isNull, inArray, gte, lt } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
+import bcrypt from "bcryptjs";
 import { getRequestContext } from "../lib/request-context.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
@@ -78,7 +84,7 @@ import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
-import { sendEmailForMsp, emailButton, brandedEmail } from "../lib/mailer.ts";
+import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
 
 const router: IRouter = Router();
 
@@ -649,6 +655,11 @@ router.delete("/msp/settings/users/:userId", requireRole("MSPAdmin"), async (req
   res.json({ ok: true });
 });
 
+// Real implementation of the same token/email flow as the self-service
+// POST /auth/forgot-password (passwordResetTokensTable + "password-reset"
+// template) — matches the customer-side portal.ts /portal/team/:userId/reset-password fix.
+const MSP_RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, matches /auth/forgot-password
+
 router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
   const userId = parseInt(p(req.params["userId"]), 10);
@@ -656,11 +667,25 @@ router.post("/msp/settings/users/:userId/reset-password", requireRole("MSPAdmin"
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id })
+    .select({ id: mspUsersTable.id, email: usersTable.email, name: usersTable.name })
     .from(mspUsersTable)
+    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
     .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + MSP_RESET_TOKEN_TTL_MS);
+  await db.insert(passwordResetTokensTable).values({ userId, token, expiresAt });
+
+  const resetUrl = `${getPortalBaseUrl()}/reset-password?token=${token}`;
+  void sendEmailFromTemplate(
+    "password-reset",
+    target.email,
+    { resetLink: resetUrl },
+    "Reset your Shane McCaw Consulting portal password",
+    passwordResetEmail({ resetUrl }),
+  ).catch((e) => log.warn({ err: e, userId }, "msp-settings/reset-password: email failed (non-fatal)"));
 
   await writeAuditLog({
     req,
@@ -686,7 +711,9 @@ router.post("/msp/settings/users/:userId/temp-password", requireRole("MSPAdmin")
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
 
-  const tempPassword = `Temp-${randomBytes(6).toString("hex")}`;
+  const tempPassword = `Temp-${randomBytes(6).toString("hex").toUpperCase()}!9`;
+  const passwordHash = await bcrypt.hash(tempPassword, 12);
+  await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, userId));
 
   await writeAuditLog({
     req,
@@ -706,11 +733,42 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
 
   // Ownership check: the target user must belong to the caller's MSP.
   const [target] = await db
-    .select({ id: mspUsersTable.id })
+    .select({ id: mspUsersTable.id, email: usersTable.email, name: usersTable.name })
     .from(mspUsersTable)
+    .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
     .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
     .limit(1);
   if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  const enrollments = await db
+    .select({ method: mfaEnrollmentsTable.method })
+    .from(mfaEnrollmentsTable)
+    .where(eq(mfaEnrollmentsTable.userId, userId));
+  const passkeyRows = await db
+    .select({ id: webauthnCredentialsTable.id })
+    .from(webauthnCredentialsTable)
+    .where(eq(webauthnCredentialsTable.userId, userId));
+
+  const clearedMethods: string[] = enrollments.map((e) => e.method);
+  if (passkeyRows.length > 0) clearedMethods.push("passkey");
+
+  await db.delete(mfaEnrollmentsTable).where(eq(mfaEnrollmentsTable.userId, userId));
+  await db.delete(mfaChallengesTable).where(eq(mfaChallengesTable.userId, userId));
+  await db.delete(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, userId));
+  await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.userId, userId));
+
+  void sendEmailFromTemplate(
+    "mfa-reset",
+    target.email,
+    {
+      clientName: target.name ?? target.email,
+      methodsList: clearedMethods.map((m) => (m === "totp" ? "Authenticator App (TOTP)" : m === "sms" ? "SMS" : m === "passkey" ? "Passkey / Security Key" : m)).join(", ") || "None",
+      loginLink: PORTAL_URL,
+      securityLink: `${PORTAL_URL}/security`,
+    },
+    "Your two-factor authentication has been reset",
+    `<p>Hi ${target.name ?? target.email},</p><p>Your MFA has been reset by an MSP admin. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+  ).catch((e) => log.warn({ err: e, userId }, "msp-settings/reset-mfa: email failed (non-fatal)"));
 
   await writeAuditLog({
     req,
@@ -718,6 +776,7 @@ router.post("/msp/settings/users/:userId/reset-mfa", requireRole("MSPAdmin"), as
     entityType: "msp_user",
     entityId: String(userId),
     mspId,
+    metadata: { clearedMethods },
   });
 
   res.json({ ok: true, message: "MFA credentials cleared for re-enrollment" });
