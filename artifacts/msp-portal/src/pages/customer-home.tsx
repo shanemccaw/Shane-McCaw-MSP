@@ -21,6 +21,7 @@ import {
   FileText,
   FolderOpen,
   FolderSync,
+  History,
   MessageSquare,
   ShieldCheck,
   Zap,
@@ -291,6 +292,21 @@ export default function CustomerHomePage() {
                 <div>
                   <p className="text-sm font-medium">Diagnostics</p>
                   <p className="text-xs text-muted-foreground">Offers & findings</p>
+                </div>
+                <ArrowRight className="size-3.5 text-muted-foreground ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/customer-timeline">
+            <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
+              <CardContent className="flex items-center gap-3 py-5">
+                <div className="size-9 rounded-lg bg-amber-500/15 flex items-center justify-center group-hover:bg-amber-500/25 transition-colors">
+                  <History className="size-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Activity Timeline</p>
+                  <p className="text-xs text-muted-foreground">Scans, findings & offers</p>
                 </div>
                 <ArrowRight className="size-3.5 text-muted-foreground ml-auto" />
               </CardContent>
