@@ -15,9 +15,21 @@ interface PlatformIncident {
   resolvedAt: string | null;
 }
 
+type M365ServiceStatus = "healthy" | "degraded" | "interruption";
+
+interface M365ServiceHealthEntry {
+  service: string;
+  status: M365ServiceStatus;
+}
+
+type M365HealthSection =
+  | { available: true; services: M365ServiceHealthEntry[] }
+  | { available: false; reason: string };
+
 interface StatusResponse {
   status: "operational" | "degraded" | "outage";
   incidents: PlatformIncident[];
+  m365Health: M365HealthSection;
 }
 
 const STATUS_META: Record<StatusResponse["status"], { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -52,28 +64,7 @@ function StatusPill({ status }: { status: PlatformIncident["status"] }) {
   );
 }
 
-function PlatformStatusTab() {
-  const [data, setData] = useState<StatusResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/status")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load status");
-        return r.json() as Promise<StatusResponse>;
-      })
-      .then((json) => {
-        if (!cancelled) setData(json);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load current status");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+function PlatformStatusTab({ data, error }: { data: StatusResponse | null; error: string | null }) {
   const meta = data ? STATUS_META[data.status] : null;
   const Icon = meta?.icon ?? Clock;
 
@@ -120,10 +111,99 @@ function PlatformStatusTab() {
   );
 }
 
+const M365_STATUS_META: Record<M365ServiceStatus, { label: string; color: string }> = {
+  healthy: { label: "Healthy", color: "text-emerald-400" },
+  degraded: { label: "Degraded", color: "text-amber-400" },
+  interruption: { label: "Interruption", color: "text-red-400" },
+};
+
+function M365StatusPill({ status }: { status: M365ServiceStatus }) {
+  const meta = M365_STATUS_META[status];
+  const cls =
+    status === "healthy"
+      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+      : status === "degraded"
+        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+        : "bg-red-500/10 text-red-400 border-red-500/30";
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${cls}`}>
+      {meta.label}
+    </span>
+  );
+}
+
+function M365HealthTab({ data, error }: { data: StatusResponse | null; error: string | null }) {
+  const m365 = data?.m365Health;
+
+  if (error) {
+    return (
+      <GlassPanel className="px-6 py-5 flex items-center gap-3">
+        <XCircle className="w-6 h-6 shrink-0 text-red-400" />
+        <span className="text-lg font-semibold text-text-secondary">Status unavailable</span>
+      </GlassPanel>
+    );
+  }
+
+  if (!m365) {
+    return (
+      <GlassPanel className="px-6 py-5 flex items-center gap-3">
+        <Clock className="w-6 h-6 shrink-0 text-text-tertiary" />
+        <span className="text-lg font-semibold text-text-secondary">Checking status…</span>
+      </GlassPanel>
+    );
+  }
+
+  if (!m365.available) {
+    return (
+      <GlassPanel className="px-6 py-5 flex items-center gap-3">
+        <Clock className="w-6 h-6 shrink-0 text-text-tertiary" />
+        <span className="text-lg font-semibold text-text-secondary">M365 service health is temporarily unavailable</span>
+      </GlassPanel>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {m365.services.length === 0 && (
+        <p className="text-text-tertiary text-sm">No M365 service health data available.</p>
+      )}
+      {m365.services.map((entry) => (
+        <div
+          key={entry.service}
+          className="rounded-xl border border-white/[0.06] bg-charcoal-1 p-5 flex items-center justify-between gap-3"
+        >
+          <h3 className="text-text-primary text-sm font-semibold">{entry.service}</h3>
+          <M365StatusPill status={entry.status} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 type StatusTab = "platform" | "m365";
 
 export default function Status() {
   const [tab, setTab] = useState<StatusTab>("platform");
+  const [data, setData] = useState<StatusResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/status")
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load status");
+        return r.json() as Promise<StatusResponse>;
+      })
+      .then((json) => {
+        if (!cancelled) setData(json);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load current status");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Layout>
@@ -157,18 +237,19 @@ export default function Status() {
               Platform
             </button>
             <button
-              disabled
-              title="Coming soon"
-              className="px-4 py-3 text-sm font-medium border-b-2 border-transparent text-text-tertiary/50 cursor-not-allowed flex items-center gap-2"
+              onClick={() => setTab("m365")}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === "m365"
+                  ? "border-accent-blue text-text-primary"
+                  : "border-transparent text-text-tertiary hover:text-text-secondary"
+              }`}
             >
               M365 Service Health
-              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full glass-panel text-text-tertiary">
-                Coming soon
-              </span>
             </button>
           </div>
 
-          {tab === "platform" && <PlatformStatusTab />}
+          {tab === "platform" && <PlatformStatusTab data={data} error={error} />}
+          {tab === "m365" && <M365HealthTab data={data} error={error} />}
         </div>
       </section>
     </Layout>

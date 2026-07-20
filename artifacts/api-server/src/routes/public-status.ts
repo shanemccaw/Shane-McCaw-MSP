@@ -1,21 +1,148 @@
 /**
- * Public Status Page — platform's-own-uptime.
+ * Public Status Page — platform's-own-uptime + M365 Service Health.
  *
  * GET /api/status — unauthenticated. Derives a sanitized overall state from
  * the same underlying signals admin-observability.ts's heartbeats use (cron
  * loop health, API heartbeat), but returns ONLY the boolean/enum state —
  * never raw internals like queue depths, DB stats, or tenant-identifying
  * data. Also returns the last 90 days of platform_incidents, most recent
- * first.
+ * first, plus an m365Health section (see fetchM365Health below).
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, pool, platformIncidentsTable } from "@workspace/db";
-import { and, desc, gte } from "drizzle-orm";
+import {
+  db,
+  pool,
+  platformIncidentsTable,
+  monitorChecksTable,
+  tenantConsentTable,
+  mspCustomersTable,
+  mspsTable,
+} from "@workspace/db";
+import { and, desc, eq, gte } from "drizzle-orm";
+import { graphFetchForTenant, ConsentRevokedError } from "../lib/graph";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "system.core" });
+const m365Log = logger.child({ channel: "integration.azure" });
+
+const M365_CHECK_KEY = "m365:service-health";
+
+interface GraphServiceHealth {
+  id: string;
+  service: string;
+  status: string;
+}
+
+export type M365ServiceStatus = "healthy" | "degraded" | "interruption";
+
+export interface M365ServiceHealthEntry {
+  service: string;
+  status: M365ServiceStatus;
+}
+
+export type M365HealthSection =
+  | { available: true; services: M365ServiceHealthEntry[] }
+  | { available: false; reason: string };
+
+// serviceHealthStatus enum (Graph v1.0 serviceHealth resource docs) mapped
+// down to the sanitized 3-value public enum. Unknown/future values default
+// to "degraded" rather than silently reporting healthy.
+const HEALTHY_STATUSES = new Set([
+  "serviceOperational",
+  "serviceRestored",
+  "postIncidentReviewPublished",
+  "resolved",
+  "resolvedExternal",
+  "falsePositive",
+  "investigationSuspended",
+]);
+const INTERRUPTION_STATUSES = new Set(["serviceInterruption"]);
+
+function toSanitizedStatus(rawStatus: string): M365ServiceStatus {
+  if (HEALTHY_STATUSES.has(rawStatus)) return "healthy";
+  if (INTERRUPTION_STATUSES.has(rawStatus)) return "interruption";
+  return "degraded";
+}
+
+// Live Graph result cached briefly so an unauthenticated, publicly-linkable
+// page can't be used to hammer Graph on every request/bot crawl.
+const M365_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
+let m365HealthCache: { value: M365HealthSection; expiresAt: number } | null = null;
+
+/**
+ * Resolves Shane's own real M365 tenant: the single non-testbed msp_customers
+ * row under the isDirectBusiness MSP with granted Graph consent. This is a
+ * PUBLIC page, so we deliberately show only this one tenant's health — not a
+ * per-customer selector. If a real customer base exists later, this needs to
+ * become an authenticated per-customer view instead (flagged, not solved here).
+ */
+async function resolveOwnTenantId(): Promise<string | null> {
+  const [row] = await db
+    .select({ tenantId: tenantConsentTable.tenantId })
+    .from(tenantConsentTable)
+    .innerJoin(mspCustomersTable, eq(mspCustomersTable.id, tenantConsentTable.customerId))
+    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+    .where(and(
+      eq(mspsTable.isDirectBusiness, true),
+      eq(mspCustomersTable.isTestbed, false),
+      eq(tenantConsentTable.consentStatus, "granted"),
+    ))
+    .limit(1);
+
+  return row?.tenantId ?? null;
+}
+
+async function fetchM365Health(): Promise<M365HealthSection> {
+  const now = Date.now();
+  if (m365HealthCache && now < m365HealthCache.expiresAt) {
+    return m365HealthCache.value;
+  }
+
+  const result = await computeM365Health();
+  m365HealthCache = { value: result, expiresAt: now + M365_HEALTH_CACHE_TTL_MS };
+  return result;
+}
+
+async function computeM365Health(): Promise<M365HealthSection> {
+  try {
+    const [check] = await db
+      .select()
+      .from(monitorChecksTable)
+      .where(and(eq(monitorChecksTable.key, M365_CHECK_KEY), eq(monitorChecksTable.status, "active")))
+      .limit(1);
+
+    if (!check) {
+      return { available: false, reason: "not_configured" };
+    }
+
+    const tenantId = await resolveOwnTenantId();
+    if (!tenantId) {
+      return { available: false, reason: "no_tenant" };
+    }
+
+    const res = await graphFetchForTenant(tenantId, check.endpoint, { method: check.method ?? "GET" });
+    if (!res.ok) {
+      m365Log.warn({ status: res.status }, "public-status: m365 health-overview fetch failed");
+      return { available: false, reason: "fetch_failed" };
+    }
+
+    const data = await res.json() as { value?: GraphServiceHealth[] };
+    const services: M365ServiceHealthEntry[] = (data.value ?? [])
+      .filter((s) => s?.service)
+      .map((s) => ({ service: s.service, status: toSanitizedStatus(s.status) }));
+
+    return { available: true, services };
+  } catch (err) {
+    if (err instanceof ConsentRevokedError) {
+      m365Log.warn({ tenantId: err.tenantId }, "public-status: m365 health consent revoked");
+      return { available: false, reason: "consent_revoked" };
+    }
+    m365Log.error({ err }, "public-status: m365 health fetch error");
+    return { available: false, reason: "error" };
+  }
+}
 
 router.get("/status", async (_req: Request, res: Response) => {
   try {
@@ -63,9 +190,12 @@ router.get("/status", async (_req: Request, res: Response) => {
       overall = "degraded";
     }
 
+    const m365Health = await fetchM365Health();
+
     res.json({
       status: overall,
       incidents,
+      m365Health,
     });
   } catch (err) {
     log.error({ err }, "GET /status failed");
