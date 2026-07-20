@@ -16,7 +16,7 @@ import {
   Clock,
   Sparkles
 } from "lucide-react";
-import { trackMspSignupStarted } from "@/lib/analytics";
+import { trackMspSignupStarted, trackPricingInteraction } from "@/lib/analytics";
 import { useServices } from "@/hooks/useServices";
 
 interface MspTier {
@@ -146,6 +146,7 @@ export default function Msp() {
 
   function selectTier(tier: MspTier) {
     setSelectedTier(tier);
+    trackPricingInteraction("plan_select", { label: tier.name, metadata: { tierSlug: tier.slug } });
     trackMspSignupStarted({ tier_slug: tier.slug, tier_name: tier.name });
     setStep("onboarding");
     window.scrollTo({ top: 0, behavior: "smooth" });

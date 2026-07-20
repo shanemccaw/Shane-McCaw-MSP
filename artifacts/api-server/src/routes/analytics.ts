@@ -95,6 +95,8 @@ const eventSchema = z.object({
     "error_404", "error_js", "error_api", "broken_link_click", "slow_page_load", "form_submission_failed",
     // Lightweight behavioral tracking (not full heatmap/session-replay — just discrete signal events)
     "rage_click", "dead_click", "idle_timeout",
+    // CTA visibility/hover, pricing interaction granularity, funnel drop-off (website-rebuild-reference-v2.md §4)
+    "cta_visible", "cta_hover", "plan_compare_interaction", "funnel_stage",
   ]),
   elementLabel: z.string().max(500).optional(),
   elementHref: z.string().max(500).optional(),

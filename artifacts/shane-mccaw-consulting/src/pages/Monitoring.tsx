@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useServices, type PublicService } from "../hooks/useServices";
+import { trackPricingInteraction } from "../lib/analytics";
 import { Layout } from "../components/Layout";
 import { SEOMeta } from "../components/SEOMeta";
 import { GlassPanel } from "../components/design-system/GlassPanel";
@@ -369,13 +370,17 @@ export default function Monitoring() {
                       const v = parseInt(e.target.value, 10);
                       setSeatCount(isNaN(v) || v < 1 ? 1 : v);
                     }}
+                    onBlur={() => trackPricingInteraction("plan_compare", { label: `${seatCount} seats`, metadata: { seats: seatCount, method: "custom_input" } })}
                     className="w-28 text-center font-numeric text-lg font-medium bg-charcoal-1 border border-white/[0.08] rounded-xl px-3 py-2.5 text-text-primary focus:outline-none focus:border-accent-blue/60"
                   />
                   <div className="flex items-center gap-2">
                     {SEAT_PRESETS.map((preset) => (
                       <button
                         key={preset}
-                        onClick={() => setSeatCount(preset)}
+                        onClick={() => {
+                          setSeatCount(preset);
+                          trackPricingInteraction("plan_compare", { label: `${preset} seats`, metadata: { seats: preset, method: "preset" } });
+                        }}
                         className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
                           seatCount === preset
                             ? "text-white"

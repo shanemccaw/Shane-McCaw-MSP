@@ -102,6 +102,47 @@ function getUtmParams(): Record<string, string> {
   return out;
 }
 
+// ─── Funnel inference — Landing → Pricing → CTA → Form → Submit → Conversion ───
+// (website-rebuild-reference-v2.md §4). Funnel is derived from the route the visitor
+// is currently on; /checkout, /contact, etc. carry no funnel of their own, so the last
+// known funnel is remembered in sessionStorage and recalled once the visitor leaves the
+// originating page — same "durable enough for this session" tradeoff as the rest of the
+// tracker, no new persistence mechanism introduced.
+const FUNNEL_STORAGE_KEY = "smc_funnel";
+const FUNNEL_ROUTES: { prefix: string; funnel: string; stage: "landing" | "pricing" }[] = [
+  { prefix: "/monitoring", funnel: "monitoring", stage: "pricing" },
+  { prefix: "/products", funnel: "products", stage: "pricing" },
+  { prefix: "/retainers", funnel: "retainer", stage: "pricing" },
+  { prefix: "/msp", funnel: "msp", stage: "pricing" },
+  { prefix: "/assessments", funnel: "assessment", stage: "landing" },
+  { prefix: "/assessment", funnel: "assessment", stage: "landing" },
+  { prefix: "/quiz", funnel: "quiz", stage: "landing" },
+];
+
+function rememberFunnel(funnel: string): void {
+  try { sessionStorage.setItem(FUNNEL_STORAGE_KEY, funnel); } catch { /* unavailable */ }
+}
+
+function recallFunnel(): string | null {
+  try { return sessionStorage.getItem(FUNNEL_STORAGE_KEY); } catch { return null; }
+}
+
+function pathOf(page: string): string {
+  return page.split("?")[0] ?? page;
+}
+
+function inferFunnelFromPage(page: string): { funnel: string; stage: "landing" | "pricing" } | null {
+  const path = pathOf(page);
+  if (path === "/" || path === "") return { funnel: "home", stage: "landing" };
+  const match = FUNNEL_ROUTES.find((r) => path.startsWith(r.prefix));
+  return match ? { funnel: match.funnel, stage: match.stage } : null;
+}
+
+/** Current or last-known funnel — used for stages (cta/form/submit/conversion) reached off the originating page (e.g. the shared /checkout route). */
+function currentFunnel(): string | null {
+  return inferFunnelFromPage(_currentPage)?.funnel ?? recallFunnel();
+}
+
 function beacon(path: string, body: unknown): void {
   const payload = JSON.stringify(body);
   if (typeof navigator.sendBeacon === "function") {
@@ -113,7 +154,12 @@ function beacon(path: string, body: unknown): void {
 
 type SiteEventType =
   | "click" | "nav_click" | "cta_click" | "outbound_click" | "form_submit" | "scroll_milestone"
-  | "rage_click" | "dead_click" | "idle_timeout";
+  | "rage_click" | "dead_click" | "idle_timeout"
+  | "form_viewed" | "form_started" | "form_abandoned"
+  | "field_focus" | "field_blur" | "field_error" | "field_autofill_detected"
+  | "cta_visible" | "cta_hover"
+  | "plan_compare_interaction"
+  | "funnel_stage";
 
 function sendSiteEvent(eventType: SiteEventType, opts?: { elementLabel?: string; elementHref?: string; metadata?: Record<string, unknown> }): void {
   if (!isEnabled() || !_sessionId) return;
@@ -143,6 +189,20 @@ let _idleFired = false;
 let _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let _recentClicks: { x: number; y: number; t: number }[] = [];
 let _rageFiredAt = 0;
+
+// Form field-level + CTA visibility/hover tracking state (website-rebuild-reference-v2.md §4).
+// WeakSets/WeakMaps so per-element "already fired" state never needs manual reset — old
+// pages' DOM nodes are simply discarded on navigation and garbage-collected along with it.
+let _visIO: IntersectionObserver | null = null;
+const _visibleFired = new WeakSet<Element>();
+// _pendingForms is a real (non-Weak) Set — it must stay iterable so flushAbandonedForms
+// can fire form_abandoned even after SPA navigation has already detached the old page's
+// <form> elements from the document (a querySelectorAll("form") re-scan would miss them).
+const _formStartedEver = new WeakSet<HTMLFormElement>();
+const _pendingForms = new Set<HTMLFormElement>();
+let _hoverTarget: HTMLElement | null = null;
+let _hoverTimer: ReturnType<typeof setTimeout> | null = null;
+const HOVER_INTENT_MS = 400;
 
 const IDLE_TIMEOUT_MS = 30_000;
 const RAGE_CLICK_WINDOW_MS = 700;
@@ -194,6 +254,192 @@ function markInteraction(): void {
   }, IDLE_TIMEOUT_MS);
 }
 
+// ─── CTA classification — shared by click delegation, visibility, and hover ────
+// Single source of truth for "is this a CTA" so cta_click / cta_visible / cta_hover
+// always agree on the same element set (website-rebuild-reference-v2.md §4).
+function getTrackAttr(el: HTMLElement): string {
+  return el.dataset["track"] ?? el.closest("[data-track]")?.getAttribute("data-track") ?? "";
+}
+
+function isCtaLabel(label: string): boolean {
+  return /book|schedule|get started|contact|quiz|download|consultation|explore/i.test(label);
+}
+
+function isCtaElement(el: HTMLElement): boolean {
+  if (!el.matches('a, button, [role="button"]')) return false;
+  return getTrackAttr(el) === "cta" || isCtaLabel(el.textContent?.trim() ?? "");
+}
+
+// ─── Form / field helpers ───────────────────────────────────────────────────────
+function isFieldElement(el: EventTarget | null): el is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+}
+
+function fieldLabel(field: HTMLElement): string {
+  return (
+    field.getAttribute("aria-label") ||
+    field.getAttribute("name") ||
+    field.id ||
+    field.getAttribute("placeholder") ||
+    "(unnamed field)"
+  );
+}
+
+function formLabel(form: HTMLFormElement): string {
+  return form.getAttribute("aria-label") || form.getAttribute("name") || form.id || "(unnamed form)";
+}
+
+// ─── Visibility tracking — form_viewed + cta_visible (raw capture, feeds Stage 4 heatmaps) ──
+// One shared IntersectionObserver, recreated per pageview (trackPageview) so stale
+// entries from the previous page's DOM are released rather than held forever; a
+// persistent MutationObserver keeps registering elements that mount after the initial
+// scan (e.g. package cards rendered once a catalog fetch resolves).
+function onIntersect(entries: IntersectionObserverEntry[]): void {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const el = entry.target;
+    if (_visibleFired.has(el)) continue;
+    _visibleFired.add(el);
+    _visIO?.unobserve(el);
+    if (el instanceof HTMLFormElement) {
+      sendSiteEvent("form_viewed", { elementLabel: formLabel(el) });
+    } else if (el instanceof HTMLElement) {
+      const href = el instanceof HTMLAnchorElement ? el.href : "";
+      sendSiteEvent("cta_visible", {
+        elementLabel: el.textContent?.trim().slice(0, 200) || undefined,
+        elementHref: href.slice(0, 500) || undefined,
+      });
+    }
+  }
+}
+
+function scanAndObserve(root: Element): void {
+  if (!_visIO) return;
+  const check = (el: Element): void => {
+    if (el instanceof HTMLFormElement) _visIO?.observe(el);
+    else if (el instanceof HTMLElement && isCtaElement(el)) _visIO?.observe(el);
+  };
+  check(root);
+  root.querySelectorAll<HTMLElement>('form, a, button, [role="button"]').forEach(check);
+}
+
+let _domWatcherAttached = false;
+function attachDomWatcher(): void {
+  if (_domWatcherAttached) return;
+  _domWatcherAttached = true;
+  const mo = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      m.addedNodes.forEach((node) => {
+        if (node instanceof Element) scanAndObserve(node);
+      });
+    }
+  });
+  mo.observe(document.body, { childList: true, subtree: true });
+}
+
+// ─── CTA hover intent — pure delegation via mouseover/mouseout (both bubble, unlike
+// mouseenter/mouseleave), matching the rest of the tracker's document-level pattern ──
+function attachCtaHoverListener(): void {
+  document.addEventListener("mouseover", (e: MouseEvent) => {
+    const el = (e.target as HTMLElement)?.closest<HTMLElement>('a, button, [role="button"]');
+    if (!el || !isCtaElement(el) || el === _hoverTarget) return;
+    _hoverTarget = el;
+    if (_hoverTimer) clearTimeout(_hoverTimer);
+    _hoverTimer = setTimeout(() => {
+      if (_hoverTarget !== el) return;
+      const href = el instanceof HTMLAnchorElement ? el.href : "";
+      sendSiteEvent("cta_hover", {
+        elementLabel: el.textContent?.trim().slice(0, 200) || undefined,
+        elementHref: href.slice(0, 500) || undefined,
+      });
+    }, HOVER_INTENT_MS);
+  });
+  document.addEventListener("mouseout", (e: MouseEvent) => {
+    const related = e.relatedTarget as HTMLElement | null;
+    const el = (e.target as HTMLElement)?.closest<HTMLElement>('a, button, [role="button"]');
+    if (el && el === _hoverTarget && (!related || !el.contains(related))) {
+      _hoverTarget = null;
+      if (_hoverTimer) clearTimeout(_hoverTimer);
+    }
+  });
+}
+
+// ─── Form field-level delegation — viewed/started/abandoned/focus/blur/error/autofill ──
+// focusin/focusout (unlike focus/blur) bubble, so this stays document-level delegation
+// like the rest of the tracker rather than attaching per-field listeners.
+function attachFormFieldListeners(): void {
+  document.addEventListener("focusin", (e: FocusEvent) => {
+    const field = e.target;
+    if (!isFieldElement(field)) return;
+    sendSiteEvent("field_focus", { elementLabel: fieldLabel(field) });
+
+    const form = field.closest("form");
+    if (form && !_formStartedEver.has(form)) {
+      _formStartedEver.add(form);
+      _pendingForms.add(form);
+      sendSiteEvent("form_started", { elementLabel: formLabel(form) });
+      const funnel = currentFunnel();
+      if (funnel) sendSiteEvent("funnel_stage", { metadata: { funnel, stage: "form" } });
+    }
+  });
+
+  document.addEventListener("focusout", (e: FocusEvent) => {
+    const field = e.target;
+    if (!isFieldElement(field)) return;
+    sendSiteEvent("field_blur", { elementLabel: fieldLabel(field) });
+    if (field.getAttribute("aria-invalid") === "true") {
+      sendSiteEvent("field_error", { elementLabel: fieldLabel(field), metadata: { reason: "aria-invalid" } });
+    }
+  });
+
+  // Native HTML5 constraint-validation — the 'invalid' event does not bubble, so it
+  // must be caught in the capture phase to stay delegated at the document level.
+  document.addEventListener(
+    "invalid",
+    (e: Event) => {
+      const field = e.target;
+      if (!isFieldElement(field)) return;
+      sendSiteEvent("field_error", { elementLabel: fieldLabel(field), metadata: { reason: "html5_validation" } });
+    },
+    true,
+  );
+
+  // Autofill detection via the CSS-animation trick (index.css): browsers apply
+  // :-webkit-autofill synchronously on autofill, which we key off an animationstart
+  // event carrying our marker animation name.
+  document.addEventListener("animationstart", (e: AnimationEvent) => {
+    if (e.animationName !== "smcAutofillDetect") return;
+    const field = e.target;
+    if (!isFieldElement(field)) return;
+    sendSiteEvent("field_autofill_detected", { elementLabel: fieldLabel(field) });
+  });
+
+  document.addEventListener(
+    "submit",
+    (e: Event) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      _pendingForms.delete(form);
+      sendSiteEvent("form_submit", { elementLabel: formLabel(form) });
+      const funnel = currentFunnel();
+      if (funnel) sendSiteEvent("funnel_stage", { metadata: { funnel, stage: "submit" } });
+    },
+    true,
+  );
+}
+
+// Any form the visitor started filling out but never submitted, as of the moment the
+// page is left (pagehide / tab hidden / navigating to a new page) — form_abandoned.
+// Iterates _pendingForms directly rather than re-querying the DOM: on SPA navigation the
+// old page's <form> elements are already detached by the time this runs, so a
+// querySelectorAll("form") re-scan would silently miss them.
+function flushAbandonedForms(): void {
+  _pendingForms.forEach((form) => {
+    sendSiteEvent("form_abandoned", { elementLabel: formLabel(form) });
+    _pendingForms.delete(form);
+  });
+}
+
 // ─── Scroll tracking — max depth + 25/50/75/100% milestones (raw capture, feeds Stage 4 heatmaps) ──
 function attachScrollListener(): void {
   window.addEventListener("scroll", () => {
@@ -223,6 +469,7 @@ function startHeartbeat(): void {
 
 // ─── Exit / flush ─────────────────────────────────────────────────────────────
 function flushCurrentPageview(): void {
+  flushAbandonedForms();
   if (!_pageviewId || !_sessionId) return;
   const durationSeconds = Math.round((Date.now() - _pageEnterTime) / 1000);
   beacon("/api/analytics/batch", [
@@ -274,13 +521,13 @@ function attachClickListener(): void {
 
     const label = target.textContent?.trim().slice(0, 200) ?? "";
     const href = target instanceof HTMLAnchorElement ? target.href : "";
-    const trackAttr = target.dataset["track"] ?? target.closest("[data-track]")?.getAttribute("data-track") ?? "";
+    const trackAttr = getTrackAttr(target);
     const isExternal = Boolean(href) && !href.startsWith(window.location.origin) && !href.startsWith("/");
 
     let eventType: "click" | "nav_click" | "cta_click" | "outbound_click" = "click";
     if (isExternal) {
       eventType = "outbound_click";
-    } else if (trackAttr === "cta" || /book|schedule|get started|contact|quiz|download|consultation|explore/i.test(label)) {
+    } else if (trackAttr === "cta" || isCtaLabel(label)) {
       eventType = "cta_click";
     } else if (trackAttr === "nav") {
       eventType = "nav_click";
@@ -291,6 +538,11 @@ function attachClickListener(): void {
       elementHref: href.slice(0, 500) || undefined,
       metadata: { x: point.x, y: point.y },
     });
+
+    if (eventType === "cta_click") {
+      const funnel = currentFunnel();
+      if (funnel) sendSiteEvent("funnel_stage", { metadata: { funnel, stage: "cta" } });
+    }
   });
 
   document.addEventListener("keydown", markInteraction);
@@ -304,6 +556,9 @@ export function initTracker(): void {
   attachScrollListener();
   attachClickListener();
   attachPagehideListener();
+  attachFormFieldListeners();
+  attachCtaHoverListener();
+  attachDomWatcher();
   startHeartbeat();
   markInteraction();
 }
@@ -335,6 +590,23 @@ export async function trackPageview(page: string): Promise<void> {
   _firstInteractionAt = null;
   _lastInteractionAt = null;
 
+  // Funnel drop-off (website-rebuild-reference-v2.md §4): remember the funnel this page
+  // belongs to (for stages reached later on shared routes like /checkout) and, if this
+  // page IS a funnel's landing/pricing page, fire that stage immediately.
+  const inferred = inferFunnelFromPage(page);
+  if (inferred) {
+    rememberFunnel(inferred.funnel);
+    sendSiteEvent("funnel_stage", { metadata: { funnel: inferred.funnel, stage: inferred.stage } });
+  }
+
+  // Recreate the shared visibility observer per pageview so entries held for the
+  // previous page's (now-detached) elements are released, then scan the new page's
+  // DOM once it's had a frame to paint. attachDomWatcher's MutationObserver (attached
+  // once, in initTracker) picks up anything that mounts later (e.g. async catalog data).
+  _visIO?.disconnect();
+  _visIO = new IntersectionObserver(onIntersect, { threshold: 0.5 });
+  requestAnimationFrame(() => scanAndObserve(document.body));
+
   await ensureSession(page);
 
   try {
@@ -361,6 +633,14 @@ function sendNamedEvent(name: string, properties: Record<string, unknown> = {}):
   beacon("/api/quiz/analytics-event", { name, properties });
 }
 
+// Funnel drop-off's terminal stage — recallFunnel() covers checkout/onboarding
+// completions that happen on a shared route (e.g. /checkout) rather than the
+// funnel's own page (website-rebuild-reference-v2.md §4).
+function fireConversionFunnelStage(productType: string): void {
+  const funnel = currentFunnel();
+  if (funnel) sendSiteEvent("funnel_stage", { metadata: { funnel, stage: "conversion", productType } });
+}
+
 export function trackAssessmentStarted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
   sendNamedEvent("assessment_started", params ?? {});
@@ -369,6 +649,7 @@ export function trackAssessmentStarted(params?: Record<string, string | number |
 export function trackAssessmentCompleted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
   sendNamedEvent("assessment_completed", params ?? {});
+  fireConversionFunnelStage("assessment");
 }
 
 export function trackCheckoutStarted(productType: string, params?: Record<string, string | number | boolean>): void {
@@ -379,6 +660,7 @@ export function trackCheckoutStarted(productType: string, params?: Record<string
 export function trackCheckoutCompleted(productType: string, params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
   sendNamedEvent("checkout_completed", { product_type: productType, ...(params ?? {}) });
+  fireConversionFunnelStage(productType);
 }
 
 export function trackMspSignupStarted(params?: Record<string, string | number | boolean>): void {
@@ -389,9 +671,25 @@ export function trackMspSignupStarted(params?: Record<string, string | number | 
 export function trackMspSignupCompleted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
   sendNamedEvent("msp_signup_completed", params ?? {});
+  fireConversionFunnelStage("msp_signup");
 }
 
 /** Generic named event helper (quiz upsell clicks, resource downloads, etc). */
 export function trackEvent(name: string, properties: Record<string, string | number | boolean> = {}): void {
   sendNamedEvent(name, properties);
+}
+
+/**
+ * Pricing / purchase-intent granularity beyond a plain CTA click (website-rebuild-reference-v2.md
+ * §4) — e.g. selecting a tier to compare (Msp.tsx's selectTier) or changing the seat count that
+ * re-matches a different monitoring package (Monitoring.tsx). `kind` distinguishes selection from
+ * a lighter-weight comparison browse; both land on the same eventType so admin querying doesn't
+ * need to know the site's exact interaction taxonomy ahead of time.
+ */
+export function trackPricingInteraction(
+  kind: "plan_select" | "plan_compare",
+  details: { label?: string; metadata?: Record<string, unknown> } = {},
+): void {
+  if (!isEnabled()) return;
+  sendSiteEvent("plan_compare_interaction", { elementLabel: details.label, metadata: { kind, ...(details.metadata ?? {}) } });
 }

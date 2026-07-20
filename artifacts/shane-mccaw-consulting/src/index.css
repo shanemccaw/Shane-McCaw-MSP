@@ -9,6 +9,19 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Autofill detection for analytics (field_autofill_detected) — browsers apply a
+   vendor-prefixed :-webkit-autofill style change synchronously, which we key off
+   via a near-zero-duration animation so lib/analytics.ts can catch the animationstart
+   event. No visual effect (animation touches opacity to a no-op value only). */
+@keyframes smcAutofillDetect {
+  from { opacity: 1; }
+  to { opacity: 1; }
+}
+input:-webkit-autofill {
+  animation-name: smcAutofillDetect;
+  animation-duration: 0.01s;
+}
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
