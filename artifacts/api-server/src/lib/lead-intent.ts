@@ -7,6 +7,9 @@ import {
   leadScoringConfigTable,
 } from "@workspace/db";
 import { eq, and, gte, isNull } from "drizzle-orm";
+import { logger } from "./logger";
+
+const log = logger.child({ channel: "crm" });
 
 export async function isHighValuePage(page: string): Promise<boolean> {
   const [row] = await db
@@ -85,4 +88,41 @@ export async function findLeadByEmail(email: string): Promise<{ id: number } | n
     .where(eq(leadsTable.email, email.toLowerCase().trim()))
     .limit(1);
   return lead ?? null;
+}
+
+/**
+ * Bridges an identity known only outside the CRM (a quiz submission, a portal
+ * first-login) into a real leadsTable row, so downstream lookups keyed on
+ * findLeadByEmail — e.g. the Engagement Offer Engine — have something to find.
+ * Check-then-create by email, mirroring crm-pipeline.ts's ensureLeadForClient;
+ * non-fatal so a CRM bookkeeping failure never breaks the calling flow.
+ */
+export async function ensureLeadForEmail(
+  email: string,
+  opts: { name?: string; company?: string; source: "quiz" | "portal_login" },
+): Promise<number> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await findLeadByEmail(normalizedEmail);
+    if (existing) return existing.id;
+
+    const [newLead] = await db
+      .insert(leadsTable)
+      .values({
+        name: opts.name?.trim() || normalizedEmail,
+        email: normalizedEmail,
+        company: opts.company?.trim() || undefined,
+        source: opts.source,
+        status: "new",
+        stage: "Cold",
+      })
+      .returning({ id: leadsTable.id });
+
+    log.info({ leadId: newLead!.id, source: opts.source }, "lead-intent: created lead from identity bridge");
+    return newLead!.id;
+  } catch (err) {
+    log.warn({ err, email }, "lead-intent: ensureLeadForEmail failed (non-fatal)");
+    return 0;
+  }
 }

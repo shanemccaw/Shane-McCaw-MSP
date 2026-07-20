@@ -10,6 +10,7 @@ import { logger } from "../lib/logger";
 const log = logger.child({ channel: "growth.quiz" });
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { inferSignalsFromQuizScores, computeLeadOfferEngine } from "../lib/lead-offer-engine.ts";
+import { ensureLeadForEmail } from "../lib/lead-intent.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
@@ -587,6 +588,11 @@ Respond ONLY with valid JSON in this exact shape:
     log.error({ err }, "quiz/submit: DB insert failed");
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
   }
+
+  // Bridge into the CRM leads table (check-then-create by email) so the
+  // Engagement Offer Engine's findLeadByEmail lookup has a real row to find —
+  // quiz submission alone never created one before this.
+  void ensureLeadForEmail(email, { name, company: company ?? undefined, source: "quiz" });
 
   if (leadId !== null) {
     try {

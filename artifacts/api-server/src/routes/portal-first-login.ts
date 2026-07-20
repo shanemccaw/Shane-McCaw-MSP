@@ -15,6 +15,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAuth } from "../middlewares/requireAuth";
 import { runFirstLoginProvisioning } from "../lib/first-login-provisioning";
 import { emitWorkflowEvent } from "../lib/workflow-executor";
+import { ensureLeadForEmail } from "../lib/lead-intent";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.provisioning" });
@@ -55,6 +56,13 @@ router.post(
     // re-checks whether the scan has already completed before generating. No-op
     // for non-assessment customers. Fire-and-forget — never blocks the 202 below.
     void emitWorkflowEvent("portal.first_login", { userId: user.id });
+
+    // Bridge this session's identity into the CRM leads table (check-then-create
+    // by email) so the Engagement Offer Engine's findLeadByEmail lookup has a
+    // real row to find — a portal login alone never created one before this.
+    // Role-agnostic like the rest of this handler; today only the Assessment
+    // wizard calls this route, so in practice this covers Assessment-tier.
+    void ensureLeadForEmail(user.email, { name: user.name, source: "portal_login" });
 
     log.info({ userId: user.id }, "first-login provisioning requested");
 
