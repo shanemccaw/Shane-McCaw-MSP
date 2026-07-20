@@ -259,7 +259,7 @@ export default function RetainersOverview() {
       {/* Breadcrumb */}
       <div className="bg-white border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/pricing" className="hover:text-[#0078D4] transition-colors">
+          <Link href="/monitoring" className="hover:text-[#0078D4] transition-colors">
             Pricing
           </Link>
           <ChevronRight className="w-4 h-4" />
@@ -713,7 +713,7 @@ export default function RetainersOverview() {
             </div>
             <div className="bg-white rounded-xl border border-border p-6 shadow-sm">
               <h3 className="font-bold text-[#0A2540] mb-2">Do you work with regulated industries?</h3>
-              <p className="text-foreground/70 text-sm leading-relaxed">Yes. Shane regularly supports organizations operating under HIPAA, SOC 2, CMMC, ITAR, and federal government contractor requirements. Architecture decisions account for compliance boundaries from day one.</p>
+              <p className="text-foreground/70 text-sm leading-relaxed">Yes. Shane regularly supports organizations operating under HIPAA, SOC 2, and similar compliance frameworks. Architecture decisions account for compliance boundaries from day one.</p>
             </div>
           </div>
         </div>

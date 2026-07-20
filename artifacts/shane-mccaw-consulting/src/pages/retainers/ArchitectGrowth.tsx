@@ -41,7 +41,7 @@ const NOT_INCLUDED = [
 
 const WHO_ITS_FOR = [
   "Organisations mid-way through an M365 modernisation or Copilot rollout who need consistent senior direction every week",
-  "Regulated industries — finance, healthcare, federal contractors — that require rigorous governance and security architecture",
+  "Regulated industries — finance and healthcare — that require rigorous governance and security architecture",
   "Complex SharePoint, Teams, and Power Platform IT teams that generate frequent architecture questions and decisions",
   "Companies that have outgrown ad-hoc consulting and need predictable, senior-level access without hiring a full-time architect",
   "Organisations planning a governance overhaul, security hardening, or licence optimisation initiative",
@@ -84,7 +84,7 @@ const WHY_SHANE = [
   "30 years in the Microsoft ecosystem — from Active Directory to Azure AD, SharePoint on-prem to Copilot",
   "Senior-only delivery — Shane does the work personally; no junior staff, no outsourcing, no handoffs",
   "Architecture-first methodology — every engagement produces documented decisions, not just verbal recommendations",
-  "Federal-grade accountability — used to working in environments where governance, audit trails, and security are non-negotiable",
+  "The same accountability Shane holds himself to at NASA — governance, audit trails, and security treated as non-negotiable",
   "No salespeople — when you contact Shane, you speak to Shane",
 ];
 

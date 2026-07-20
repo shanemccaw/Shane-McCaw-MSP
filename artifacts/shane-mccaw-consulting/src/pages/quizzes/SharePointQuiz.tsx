@@ -301,8 +301,8 @@ export default function SharePointQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Organisations handling sensitive government data who need defensible SharePoint security postures, documented lifecycle controls, and audit-ready permission models.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organisations who need defensible SharePoint security postures, documented lifecycle controls, and audit-ready permission models.",
               },
               {
                 icon: RefreshCw,
@@ -623,7 +623,7 @@ export default function SharePointQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                body: "Deep experience in HIPAA, FedRAMP, CMMC, and SOC 2 environments where SharePoint governance and permission models must be defensible, documented, and audit-ready.",
+                body: "Deep experience in HIPAA and SOC 2 environments where SharePoint governance and permission models must be defensible, documented, and audit-ready.",
               },
               {
                 icon: Award,

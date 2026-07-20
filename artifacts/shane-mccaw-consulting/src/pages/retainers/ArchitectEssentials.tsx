@@ -6,7 +6,6 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPrice } from "@/hooks/useServices";
 
-const FALLBACK_PRICE = "1,500";
 const FALLBACK_HOURS = "10";
 
 const FALLBACK_DELIVERABLES = [
@@ -26,8 +25,8 @@ const WHO_ITS_FOR = [
   },
   {
     icon: ShieldCheck,
-    title: "Regulated industries and government contractors",
-    body: "Healthcare, finance, federal contractors, and state agencies that need ongoing expert oversight to maintain compliance posture and avoid configuration drift.",
+    title: "Regulated industries",
+    body: "Healthcare and finance organizations that need ongoing expert oversight to maintain compliance posture and avoid configuration drift.",
   },
   {
     icon: Users,
@@ -84,9 +83,7 @@ export default function ArchitectEssentials() {
     return isNaN(n) ? null : n;
   })();
 
-  const displayPrice = numericPrice != null
-    ? numericPrice.toLocaleString()
-    : FALLBACK_PRICE;
+  const displayPrice = numericPrice != null ? numericPrice.toLocaleString() : null;
 
   const displayHours = service?.hoursPerMonth
     ? service.hoursPerMonth.replace(/[^0-9]/g, "")
@@ -109,22 +106,24 @@ export default function ArchitectEssentials() {
       current: s.pageHref === "/retainers/architect-essentials",
     }));
 
-  const jsonLdPrice = numericPrice != null ? numericPrice.toFixed(2) : "1500.00";
-
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Offer",
     name: "Architect Essentials Retainer — Shane McCaw Consulting",
     description:
       "Fractional senior Microsoft 365 architecture for mid-market and regulated organizations. 10 hours/month of predictable expert access — strategy calls, async support, and a monthly written summary — from NASA's Lead M365 Architect.",
-    price: jsonLdPrice,
-    priceCurrency: "USD",
-    priceSpecification: {
-      "@type": "UnitPriceSpecification",
-      price: jsonLdPrice,
-      priceCurrency: "USD",
-      unitText: "MONTH",
-    },
+    ...(numericPrice != null
+      ? {
+          price: numericPrice.toFixed(2),
+          priceCurrency: "USD",
+          priceSpecification: {
+            "@type": "UnitPriceSpecification",
+            price: numericPrice.toFixed(2),
+            priceCurrency: "USD",
+            unitText: "MONTH",
+          },
+        }
+      : {}),
     seller: {
       "@type": "Person",
       name: "Shane McCaw",
@@ -175,8 +174,10 @@ export default function ArchitectEssentials() {
 
           {loading ? (
             <div className="flex justify-center mb-2"><SkeletonBlock className="w-36 h-14" /></div>
-          ) : (
+          ) : displayPrice ? (
             <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">${displayPrice}</p>
+          ) : (
+            <p className="text-[#00B4D8] text-2xl font-extrabold mb-2">Contact for pricing</p>
           )}
           <p className="text-white/50 mb-8 text-lg">/month · cancel with 30 days' notice</p>
 
@@ -444,7 +445,7 @@ export default function ArchitectEssentials() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <CTAButton href="/checkout?product=architect-essentials" className="px-8 py-4 text-base">
-              Get Started — ${displayPrice}/mo
+              {displayPrice ? `Get Started — $${displayPrice}/mo` : "Get Started"}
             </CTAButton>
             <Link
               href="/contact"

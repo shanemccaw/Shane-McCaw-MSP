@@ -300,8 +300,8 @@ export default function MigrationQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Federal and state contractors under CMMC, ITAR, or FedRAMP where migration must preserve data classification, access controls, and audit trails — and where go/no-go documentation is required.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organizations where migration must preserve data classification, access controls, and audit trails — and where go/no-go documentation is required.",
               },
               {
                 icon: Database,
@@ -628,7 +628,7 @@ export default function MigrationQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                body: "Shane has delivered migrations for organisations operating under HIPAA, CMMC, ITAR, FedRAMP, SOC 2, and FINRA — compliance requirements that demand architecture-first thinking and documented go/no-go criteria.",
+                body: "Shane has delivered migrations for organisations operating under HIPAA, SOC 2, and FINRA — compliance requirements that demand architecture-first thinking and documented go/no-go criteria.",
               },
               {
                 icon: Award,

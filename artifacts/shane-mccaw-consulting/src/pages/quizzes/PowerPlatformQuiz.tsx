@@ -302,8 +302,8 @@ export default function PowerPlatformQuiz() {
               },
               {
                 icon: Target,
-                title: "Government contractors",
-                body: "CMMC and FedRAMP environments where Power Platform governance is a contractual requirement — and where maker permissions and data residency controls must be documented and defensible.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services environments where Power Platform governance is a compliance requirement — and where maker permissions and data residency controls must be documented and defensible.",
               },
               {
                 icon: Zap,
@@ -606,7 +606,7 @@ export default function PowerPlatformQuiz() {
                 icon: Star,
                 colour: "bg-blue-500/10 text-blue-600",
                 title: "Lead M365 Architect at NASA",
-                body: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants — a 60,000-user environment operating under ITAR, CMMC, and FedRAMP requirements.",
+                body: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants — a 60,000-user environment operating under some of the federal government's strictest security requirements.",
               },
               {
                 icon: TrendingUp,
@@ -624,7 +624,7 @@ export default function PowerPlatformQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                body: "Deep experience in federal, healthcare, and financial services environments where Power Platform governance, compliance, and audit-readiness are non-negotiable requirements.",
+                body: "Deep experience in healthcare and financial services environments where Power Platform governance, compliance, and audit-readiness are non-negotiable requirements.",
               },
               {
                 icon: ClipboardList,

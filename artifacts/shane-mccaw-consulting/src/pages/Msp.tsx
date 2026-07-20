@@ -82,8 +82,8 @@ const ONBOARDING_OPTIONS = [
 const WHY_PARTNER = [
   {
     icon: <Building2 className="w-5 h-5 text-blue-400" />,
-    title: "NASA-Proven M365 Standards",
-    desc: "Offer your clients the exact Microsoft 365 security and Copilot governance architectures Shane McCaw designed for the federal government's most sensitive IT boundaries.",
+    title: "Governance Standards From 30 Years in the Field",
+    desc: "Offer your clients the same Microsoft 365 security and Copilot governance architecture Shane McCaw has spent three decades refining — including his current work as a Lead M365 Architect.",
   },
   {
     icon: <Shield className="w-5 h-5 text-blue-400" />,
@@ -171,7 +171,7 @@ export default function Msp() {
     <Layout>
       <SEOMeta
         title="MSP & Partner Programme | Shane McCaw Consulting"
-        description="White-label Microsoft 365 architecture and advisory services for MSPs and IT partners. Scalable tiers with tenant allowances, AI credits, and NASA-proven methodology."
+        description="White-label Microsoft 365 architecture and advisory services for MSPs and IT partners. Scalable tiers with tenant allowances, AI credits, and Shane McCaw's 30-year methodology."
         ogUrl="https://shanemccawconsulting.com/msp"
         jsonLd={{
           "@context": "https://schema.org",
@@ -197,7 +197,7 @@ export default function Msp() {
         <div className="max-w-[1200px] mx-auto px-6 relative">
           <p className="text-blue-400 text-sm font-semibold uppercase tracking-[0.12em] mb-4">MSP & Partner Programme</p>
           <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight max-w-4xl tracking-tight">
-            Deliver NASA-Grade M365 Governance Under Your Brand
+            Deliver Senior-Architect-Grade M365 Governance Under Your Brand
           </h1>
           <p className="text-slate-405 text-lg sm:text-xl mt-6 max-w-3xl leading-relaxed">
             Provide your clients with automated tenant intelligence, security baseline compliance audits, and Microsoft Copilot governance blueprints. Fully white-labeled to establish your team as the premier security authority.
@@ -297,7 +297,7 @@ export default function Msp() {
                 <p className="text-blue-400 text-sm font-semibold uppercase tracking-[0.12em] mb-3">Partnership Tiers</p>
                 <h2 className="text-3xl md:text-4xl font-extrabold text-white">Choose Your Partnership Plan</h2>
                 <p className="text-slate-400 mt-4 max-w-xl mx-auto leading-relaxed">
-                  All tiers grant white-label deliverable licenses, NASA-informed baseline profiles, and automated partner portal management access.
+                  All tiers grant white-label deliverable licenses, Shane's governance baseline profiles, and automated partner portal management access.
                 </p>
               </div>
 
@@ -635,7 +635,7 @@ export default function Msp() {
               Not Sure Which Tier Is Right? Talk to Shane First.
             </h2>
             <p className="text-slate-400 text-lg max-w-xl mx-auto mb-10 leading-relaxed">
-              A 30-minute call to understand your client mix, current M355 capability gaps, and the right entry point for your practice.
+              A 30-minute call to understand your client mix, current M365 capability gaps, and the right entry point for your practice.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <CTAButton href="/book">Book a Partner Discovery Call</CTAButton>

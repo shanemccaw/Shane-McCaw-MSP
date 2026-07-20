@@ -46,7 +46,7 @@ const WHO_ITS_FOR = [
   {
     icon: ShieldCheck,
     title: "Regulated industries and complex governance environments",
-    body: "Healthcare, finance, federal contractors, and defense primes where M365 misconfiguration is a compliance liability — and where governance documentation must withstand regulatory scrutiny.",
+    body: "Healthcare and finance organizations where M365 misconfiguration is a compliance liability — and where governance documentation must withstand regulatory scrutiny.",
   },
   {
     icon: Building2,
@@ -109,7 +109,7 @@ const WHY_SHANE = [
   "Lead Microsoft 365 Architect at NASA — responsible for the governance, security, and architecture of one of the most complex M365 deployments in the US federal space",
   "30 years of continuous Microsoft ecosystem experience — from on-premises roots through every generation of cloud transformation",
   "Senior-only engagement — every hour is Shane. No junior staff, no account managers, no delegated delivery",
-  "Federal-grade accountability — the governance standards and architectural discipline built for NASA applied to your environment",
+  "The same governance standards and architectural discipline Shane applies at NASA, brought directly to your environment",
   "Principal architect model — not a generalist consultant, not a managed service provider, but a dedicated senior architect with deep M365 specialization",
   "Direct access, every time — one dedicated channel to Shane. No ticketing, no gatekeeping, no support tiers",
 ];
@@ -166,7 +166,7 @@ export default function ArchitectEnterprise() {
       {/* Breadcrumb */}
       <div className="bg-white border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/pricing#retainers" className="hover:text-[#0078D4] transition-colors">Retainer Plans</Link>
+          <Link href="/retainers" className="hover:text-[#0078D4] transition-colors">Retainer Plans</Link>
           <ChevronRight className="w-4 h-4" />
           <span className="text-[#0A2540] font-medium">Architect Enterprise</span>
         </div>
@@ -386,7 +386,7 @@ export default function ArchitectEnterprise() {
           <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">The Architect</p>
           <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">Why Shane</h2>
           <p className="text-muted-foreground text-center mb-10 max-w-2xl mx-auto">
-            There's no shortage of M365 consultants. There is a shortage of principal architects with federal-grade accountability, 30 years of depth, and no delegation.
+            There's no shortage of M365 consultants. There is a shortage of principal architects who hold themselves to the same accountability Shane does at NASA every day, with 30 years of depth and no delegation.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {WHY_SHANE.map((item, i) => (
@@ -447,7 +447,7 @@ export default function ArchitectEnterprise() {
         <div className="max-w-[700px] mx-auto">
           <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Enterprise M365 architecture. Senior-only. Federal-grade accountability.
+            Enterprise M365 architecture. Senior-only. Shane's personal accountability.
           </h2>
           <p className="text-white/60 mb-2 text-lg leading-relaxed">
             Speak directly with Shane. No salespeople. No pressure.

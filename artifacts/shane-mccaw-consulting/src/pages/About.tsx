@@ -43,7 +43,7 @@ const nasaPoints = [
   },
   {
     title: "Compliance at the highest tier",
-    desc: "Operating in a FISMA High, FedRAMP-authorized M365 environment has given Shane familiarity with compliance standards that directly translates to regulated private-sector clients.",
+    desc: "Operating under one of the strictest security-compliance regimes in the federal government has given Shane instincts for compliance discipline that translate directly to regulated private-sector clients.",
   },
   {
     title: "Real Copilot deployment experience",
@@ -194,21 +194,21 @@ export default function About() {
               </blockquote>
             </div>
 
-            {/* Government Contractors & Regulated */}
+            {/* Regulated Industries */}
             <div className="bg-[#0A2540] rounded-xl border border-[#0078D4]/30 p-7 flex flex-col" data-testid="who-i-help-1">
               <div className="w-11 h-11 rounded-lg bg-white/10 flex items-center justify-center mb-5">
                 <Shield className="w-5 h-5 text-[#00B4D8]" />
               </div>
-              <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-wider mb-2">Government & Regulated</p>
-              <h3 className="text-xl font-extrabold text-white mb-4">Government Contractors &amp; Regulated Industries</h3>
+              <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-wider mb-2">Regulated Industries</p>
+              <h3 className="text-xl font-extrabold text-white mb-4">Healthcare, Finance &amp; Regulated Industries</h3>
               <div className="space-y-4 text-sm text-white/70 leading-relaxed flex-grow">
                 <div>
                   <p className="font-semibold text-white mb-1">Core challenge</p>
-                  <p>FISMA, FedRAMP, ITAR, CMMC, HIPAA, or SOC 2 compliance requirements intersecting with an M365 environment that wasn't designed to meet them. Most consultants have read the frameworks. Few have operated inside one.</p>
+                  <p>HIPAA, SOC 2, or industry-specific compliance requirements intersecting with an M365 environment that wasn't designed to meet them. Most consultants have read the frameworks. Few have operated inside one.</p>
                 </div>
                 <div>
                   <p className="font-semibold text-white mb-1">Shane's angle</p>
-                  <p>Shane manages a FISMA High, FedRAMP-authorized M365 environment at NASA every day. His compliance architecture experience is not theoretical — it's the exact context in which he makes daily production decisions.</p>
+                  <p>Shane operates inside one of the federal government's most demanding compliance environments every day. His compliance architecture experience is not theoretical — it's the exact context in which he makes daily production decisions.</p>
                 </div>
               </div>
               <blockquote className="mt-6 border-l-2 border-[#0078D4]/60 pl-4 italic text-sm text-white/60">
@@ -251,16 +251,16 @@ export default function About() {
             </h2>
             <div className="space-y-6 text-white/75 leading-relaxed text-[1.0625rem]">
               <p>
-                NASA operates its Microsoft 365 environment under FISMA High — the most demanding tier of the Federal Information Security Modernization Act. That means every architectural decision is made against a backdrop of mandatory security controls, continuous monitoring requirements, and zero-tolerance for misconfiguration. The M365 environment is also FedRAMP-authorized, meaning its security posture has been independently assessed and must be maintained continuously — not just at authorization time.
+                NASA operates its Microsoft 365 environment under one of the most demanding tiers of federal security compliance. That means every architectural decision is made against a backdrop of mandatory security controls, continuous monitoring requirements, and zero tolerance for misconfiguration — a security posture that's independently assessed and must be maintained continuously, not just certified once.
               </p>
               <p>
-                In practice, this means Shane works daily with the kind of governance and compliance architecture that most private-sector organizations encounter only when they're facing an audit or a regulatory inquiry. ITAR-controlled data, multi-agency collaboration requirements, sensitivity labeling at the highest classification tiers, Conditional Access policies designed for a workforce distributed across federal facilities — this is the environment Shane manages, not the environment he studied.
+                In practice, this means Shane works daily with the kind of governance and compliance architecture that most private-sector organizations encounter only when they're facing an audit or a regulatory inquiry. Multi-agency collaboration requirements, sensitivity labeling at the highest classification tiers, Conditional Access policies designed for a workforce distributed across federal facilities — this is the environment Shane manages, not the environment he studied.
               </p>
               <p>
                 For mid-market organizations, the practical benefit is a consultant who has been forced — under real-stakes accountability — to develop an instinct for where M365 governance breaks down. He has seen what happens when retention policies conflict with legal hold requirements, when oversharing surfaces in a Copilot response, when sensitivity labels are misconfigured in ways that expose controlled data. He has fixed those problems in production, under federal scrutiny.
               </p>
               <p>
-                For regulated private-sector clients — healthcare organizations managing PHI, financial services firms under SOC 2 or FINRA requirements, defense contractors navigating CMMC — the relevance is direct. The compliance rigor that FISMA High demands is structurally similar to what these frameworks require. Shane doesn't need to extrapolate from theory; he can apply tested judgment from the most demanding M365 compliance context in the federal government.
+                For regulated private-sector clients — healthcare organizations managing PHI, financial services firms under SOC 2 or FINRA requirements — the relevance is direct. The compliance rigor Shane's day job demands is structurally similar to what these frameworks require. He doesn't need to extrapolate from theory; he can apply tested judgment from one of the most demanding M365 compliance contexts in the federal government.
               </p>
               <div className="rounded-xl bg-white/5 border border-[#0078D4]/20 p-6 mt-2">
                 <p className="text-white font-semibold mb-2">The difference that matters</p>
@@ -402,7 +402,7 @@ export default function About() {
                 What Working at NASA Every Day Means for You
               </h2>
               <p className="text-foreground leading-relaxed mb-4">
-                NASA's Microsoft 365 environment operates under constraints that most enterprise IT teams will never encounter — FISMA High compliance requirements, sensitive research data, multi-agency collaboration needs, and zero tolerance for misconfiguration.
+                NASA's Microsoft 365 environment operates under constraints that most enterprise IT teams will never encounter — top-tier federal security compliance requirements, sensitive research data, multi-agency collaboration needs, and zero tolerance for misconfiguration.
               </p>
               <p className="text-foreground leading-relaxed mb-4">
                 Working inside that environment since 2018 has fundamentally shaped how Shane thinks about architecture, governance, and deployment risk. He is not applying theoretical best practices. He is applying what he learned yesterday, in production, under real stakes.
@@ -530,7 +530,6 @@ export default function About() {
               <div className="space-y-5">
                 {[
                   { label: "Mid-market organizations (100–5,000 seats)", desc: "Too large to wing their M365 setup, too lean to hire a full-time architect. Shane fills that gap." },
-                  { label: "Government contractors", desc: "Compliance obligations that require someone who understands what FISMA, NIST, and FedRAMP actually mean in an M365 context." },
                   { label: "Regulated industries", desc: "Healthcare, financial services, and legal organizations with data governance and compliance requirements that demand precision." },
                   { label: "Organizations evaluating Copilot", desc: "Companies that want to deploy Copilot AI but need someone who has actually done it in a demanding environment first." },
                 ].map((item, i) => (
@@ -634,32 +633,32 @@ export default function About() {
               {
                 name: "Tenant Health Audit",
                 desc: "A structured assessment of your M365 environment — governance gaps, permissions sprawl, security posture, and configuration risk — with a prioritized remediation roadmap. The right starting point for any serious engagement.",
-                href: "/quick-wins",
+                href: "/products",
               },
               {
                 name: "Governance Foundations",
                 desc: "A complete governance framework designed for your organization: data classification, access controls, retention policy, DLP, and Copilot guardrails. Built from the same principles Shane applies at NASA.",
-                href: "/quick-wins",
+                href: "/products",
               },
               {
                 name: "Copilot Readiness Assessment",
                 desc: "A six-dimension evaluation of your tenant's readiness for Microsoft 365 Copilot — licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk. Tells you exactly what to fix before Copilot goes live.",
-                href: "/quick-wins",
+                href: "/products",
               },
               {
                 name: "Migration Readiness",
                 desc: "A focused planning engagement to map your path from on-premises or legacy environments to M365 — sequencing, risk mitigation, and a clear migration architecture. Avoids the stalls and surprises that plague unplanned migrations.",
-                href: "/quick-wins",
+                href: "/products",
               },
               {
                 name: "Power Platform Quick-Start",
                 desc: "Structured guidance to deploy Power Automate or Power Apps in a governed, secure way — including environment strategy, DLP policy design, and a working proof-of-concept tailored to your use case.",
-                href: "/quick-wins",
+                href: "/products",
               },
               {
                 name: "Fractional Architect Retainer",
                 desc: "Ongoing senior M365 architecture support on a monthly basis — strategy calls, ad-hoc guidance, architecture reviews, and proactive tenant monitoring. The fractional architect model, without the enterprise overhead.",
-                href: "/services",
+                href: "/solutions",
               },
             ].map((offer, i) => (
               <div
@@ -685,18 +684,18 @@ export default function About() {
             <p className="text-muted-foreground text-sm mb-4">Explore all service areas and fixed-price packages</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
-                href="/services"
+                href="/solutions"
                 className="inline-flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-lg hover:bg-[#0066B8] transition-colors text-sm"
                 data-testid="about-services-link"
               >
-                View All Services <ArrowRight className="w-4 h-4" />
+                View All Solutions <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/quick-wins"
+                href="/products"
                 className="inline-flex items-center justify-center gap-2 border border-[#0078D4] text-[#0078D4] font-semibold px-6 py-3 rounded-lg hover:bg-[#0078D4] hover:text-white transition-colors text-sm"
                 data-testid="about-micro-offers-link"
               >
-                View Quick-Win Packages <ArrowRight className="w-4 h-4" />
+                View Quick-Start Packs <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           </div>

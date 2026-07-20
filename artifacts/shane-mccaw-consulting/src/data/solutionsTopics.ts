@@ -82,7 +82,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     ],
     risks: [
       "A single forgotten anonymous link turning into a data exposure headline",
-      "Compliance frameworks (SOC 2, HIPAA, ITAR) assuming controls that were never actually verified",
+      "Compliance frameworks (SOC 2, HIPAA) assuming controls that were never actually verified",
     ],
     relatedEngine: {
       name: "Security Engine",
@@ -270,7 +270,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     stats: [
       { label: "Composite health", value: "Live" },
       { label: "Pillars tracked", value: "7" },
-      { label: "Check cadence", value: "Hourly" },
+      { label: "Check cadence", value: "Configurable" },
     ],
     coverage: [
       "Composite tenant health score across all seven Architecture Health Engine pillars",

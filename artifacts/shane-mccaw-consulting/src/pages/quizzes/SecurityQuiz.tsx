@@ -136,7 +136,7 @@ export default function SecurityQuiz() {
           </p>
 
           <p className="text-white/50 text-sm font-medium mb-10 max-w-xl mx-auto">
-            Built for mid-market organisations, regulated industries, and government contractors where a security gap is never just a technical problem.
+            Built for mid-market organisations and regulated industries where a security gap is never just a technical problem.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
@@ -249,8 +249,8 @@ export default function SecurityQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Federal and state contractors subject to CMMC, ITAR, FedRAMP, or NIST requirements where M365 security posture is part of a contractual or audit obligation.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organizations subject to HIPAA, SOC 2, or similar requirements where M365 security posture is part of a contractual or audit obligation.",
               },
               {
                 icon: AlertTriangle,
@@ -616,7 +616,7 @@ export default function SecurityQuiz() {
               {
                 icon: Target,
                 title: "Regulated industry expertise",
-                body: "Deep experience securing M365 environments under HIPAA, CMMC, FedRAMP, SOX, and GDPR requirements — not just understanding the frameworks, but implementing the controls that pass audit.",
+                body: "Deep experience securing M365 environments under HIPAA, SOX, and GDPR requirements — not just understanding the frameworks, but implementing the controls that pass audit.",
               },
               {
                 icon: Lock,

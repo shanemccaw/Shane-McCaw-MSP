@@ -301,8 +301,8 @@ export default function TeamsQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Federal and state contractors under CMMC, ITAR, or FedRAMP where Teams governance is a contractual requirement and external collaboration controls must be documented and auditable.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organizations where Teams governance is a compliance requirement and external collaboration controls must be documented and auditable.",
               },
               {
                 icon: Layers,
@@ -629,7 +629,7 @@ export default function TeamsQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                body: "Shane has designed governance frameworks for organisations operating under HIPAA, CMMC, ITAR, FedRAMP, SOC 2, and FINRA — compliance requirements that demand architecture-first thinking, not configuration-only fixes.",
+                body: "Shane has designed governance frameworks for organisations operating under HIPAA, SOC 2, and FINRA — compliance requirements that demand architecture-first thinking, not configuration-only fixes.",
               },
               {
                 icon: Award,

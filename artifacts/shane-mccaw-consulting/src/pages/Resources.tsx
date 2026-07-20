@@ -101,7 +101,7 @@ export default function Resources() {
             Senior-level guidance on Copilot adoption, M365 governance, cloud migrations, and SharePoint architecture — written by a Lead M365 Architect with 30 years in the Microsoft ecosystem.
           </p>
           <p className="text-white/60 text-base max-w-2xl mb-6">
-            Built for IT Directors, M365 Admins, and technology leaders in mid-market, regulated, and government-contracting environments who need guidance they can trust — not content written for search engines.
+            Built for IT Directors, M365 Admins, and technology leaders in mid-market and regulated environments who need guidance they can trust — not content written for search engines.
           </p>
           <p className="text-[#00B4D8] text-sm font-semibold tracking-wide">
             Actionable. Real-world. No fluff.
@@ -141,7 +141,7 @@ export default function Resources() {
                 <CheckCircle2 className="w-5 h-5 text-[#0078D4]" />
               </div>
               <div>
-                <h3 className="font-bold text-[#0A2540] mb-1">Written for mid-market, regulated, and gov-contractor IT teams</h3>
+                <h3 className="font-bold text-[#0A2540] mb-1">Written for mid-market and regulated-industry IT teams</h3>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   Enterprise-scale advice rarely translates cleanly to organizations with 200–2,000 seats. These resources are deliberately scoped for teams that face real compliance requirements, limited resources, and high-stakes Microsoft 365 decisions.
                 </p>
@@ -258,7 +258,7 @@ export default function Resources() {
                 articleLabel: "M365 Migration Checklist: 30 Things to Do First",
                 articleHref: "/resources/m365-migration-checklist",
                 quizLabel: "Migration Readiness Assessment",
-                quizHref: "/migration-readiness-quiz",
+                quizHref: "/migration-quiz",
               },
               {
                 scenario: "We need to tighten our governance and compliance posture",
@@ -266,7 +266,7 @@ export default function Resources() {
                 articleLabel: "DLP and Sensitivity Labels: The Governance Stack",
                 articleHref: "/resources/dlp-sensitivity-labels",
                 quizLabel: "Governance Maturity Assessment",
-                quizHref: "/governance-maturity-quiz",
+                quizHref: "/governance-quiz",
               },
               {
                 scenario: "We want to modernize our SharePoint intranet",
@@ -274,7 +274,7 @@ export default function Resources() {
                 articleLabel: "SharePoint Intranet Architecture: The Blueprint",
                 articleHref: "/resources/sharepoint-intranet-architecture",
                 quizLabel: "SharePoint & Intranet Readiness Assessment",
-                quizHref: "/sharepoint-readiness-quiz",
+                quizHref: "/sharepoint-quiz",
               },
             ].map((item, i) => (
               <div key={i} className="flex flex-col md:flex-row md:items-center gap-4 p-6 bg-white hover:bg-[#F7F9FC] transition-colors">
@@ -498,7 +498,7 @@ export default function Resources() {
                 badge: null,
               },
               {
-                href: "/sharepoint-readiness-quiz",
+                href: "/sharepoint-quiz",
                 title: "SharePoint & Intranet Readiness",
                 description: "Assess your SharePoint architecture, permissions governance, search quality, content lifecycle, and adoption depth.",
                 badge: null,
@@ -510,25 +510,25 @@ export default function Resources() {
                 badge: null,
               },
               {
-                href: "/security-compliance-quiz",
+                href: "/security-quiz",
                 title: "Security & Compliance Maturity",
                 description: "Evaluate your identity & access controls, data protection, device management, threat detection, and compliance framework readiness.",
                 badge: null,
               },
               {
-                href: "/teams-maturity-quiz",
+                href: "/teams-quiz",
                 title: "Teams Collaboration Maturity",
                 description: "Score your Teams governance, meetings & calling setup, information architecture, adoption culture, and app governance.",
                 badge: null,
               },
               {
-                href: "/migration-readiness-quiz",
+                href: "/migration-quiz",
                 title: "Migration Readiness",
                 description: "Check your source inventory accuracy, identity readiness, data governance, stakeholder alignment, and risk planning completeness.",
                 badge: null,
               },
               {
-                href: "/governance-maturity-quiz",
+                href: "/governance-quiz",
                 title: "Governance Maturity",
                 description: "Assess your DLP & sensitivity labels, retention & records management, access governance, compliance framework, and policy documentation.",
                 badge: null,

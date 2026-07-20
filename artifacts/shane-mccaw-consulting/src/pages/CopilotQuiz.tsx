@@ -116,11 +116,11 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
     badge: "Start Here",
     name: "M365 Tenant Health Audit",
     description:
-      "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive NASA-methodology assessment identifies every configuration gap, licensing issue, and security risk — with a prioritised roadmap so you know exactly where to start.",
+      "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive audit — using the same methodology Shane applies at NASA — identifies every configuration gap, licensing issue, and security risk, with a prioritised roadmap so you know exactly where to start.",
     slug: "m365-tenant-health-audit",
     ctaText: "Book Your Audit",
-    servicePath: "/services/microsoft-365",
-    servicePageLabel: "Microsoft 365",
+    servicePath: "/solutions/m365-health",
+    servicePageLabel: "M365 Health",
   },
   Developing: {
     badge: "Recommended",
@@ -129,8 +129,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're building the right habits, but gaps remain before Copilot is safe to deploy. A targeted readiness assessment pinpoints exactly what to fix — and in what order — so your rollout doesn't stall or expose sensitive data.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Get Your Readiness Report",
-    servicePath: "/services/copilot-ai",
-    servicePageLabel: "Copilot AI",
+    servicePath: "/solutions/copilot",
+    servicePageLabel: "Copilot & AI",
   },
   Emerging: {
     badge: "Next Step",
@@ -139,8 +139,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're making solid progress. A formal Copilot readiness assessment will validate your environment, surface the remaining gaps, and give you a prioritised rollout roadmap so you can deploy with confidence — not guesswork.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Validate Your Readiness",
-    servicePath: "/services/copilot-ai",
-    servicePageLabel: "Copilot AI",
+    servicePath: "/solutions/copilot",
+    servicePageLabel: "Copilot & AI",
   },
   Advanced: {
     badge: "High Impact",
@@ -149,7 +149,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your M365 environment is mature and you're ready to start automating. A focused 30-day sprint to design, build, and deploy one production-ready Power App or Power Automate flow — turning your Copilot investment into measurable business impact.",
     slug: "power-platform-quickstart",
     ctaText: "Start Automating",
-    servicePath: "/services/power-platform",
+    servicePath: "/solutions/power-platform",
     servicePageLabel: "Power Platform",
   },
   Ready: {
@@ -159,7 +159,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your environment is Copilot-ready — now make sure it scales safely. A complete Microsoft 365 governance framework built to enterprise standards, ensuring your Copilot deployment remains secure, compliant, and audit-ready as adoption grows.",
     slug: "governance-foundations-package",
     ctaText: "Build Your Governance Framework",
-    servicePath: "/services/governance",
+    servicePath: "/solutions/governance",
     servicePageLabel: "Governance",
   },
 };
@@ -979,8 +979,8 @@ export default function CopilotQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Federal and state contractors operating under CMMC, ITAR, FedRAMP, or other frameworks where AI governance requirements are non-negotiable.",
+                title: "Multi-location organizations",
+                body: "Organizations with distributed teams and inconsistent tenant configuration across sites, where a Copilot rollout would surface every unresolved permissions inconsistency at once.",
               },
               {
                 icon: AlertTriangle,
@@ -1030,10 +1030,10 @@ export default function CopilotQuiz() {
             From first question to PDF in under five minutes.
           </h2>
           <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            Ten questions. Five readiness dimensions. A NASA-grade scoring
-            model. An instant readiness score, a personalized PDF report, and a
-            recommended next step — delivered to your inbox the moment you
-            finish.
+            Ten questions. Five readiness dimensions. A scoring model built
+            from Shane's own Copilot deployment experience. An instant
+            readiness score, a personalized PDF report, and a recommended next
+            step — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-3 gap-10">
             {[
@@ -1045,7 +1045,7 @@ export default function CopilotQuiz() {
               {
                 step: "02",
                 title: "Receive an instant readiness score",
-                desc: "Your answers are scored across all five dimensions using a 0–50 NASA-grade scoring model. You receive a total score, a maturity tier (Early / Developing / Ready / Advanced), and a per-dimension breakdown.",
+                desc: "Your answers are scored across all five dimensions using a 0–50 scoring model built from Shane's real Copilot deployment experience. You receive a total score, a maturity tier (Early / Developing / Ready / Advanced), and a per-dimension breakdown.",
               },
               {
                 step: "03",

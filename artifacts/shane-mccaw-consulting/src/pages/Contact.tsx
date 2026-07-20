@@ -235,8 +235,8 @@ export default function Contact() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { title: "Mid-Market Organizations", desc: "200–2,000 employees ready to modernize their Microsoft 365 environment at scale." },
-              { title: "Regulated Industries", desc: "Healthcare, finance, legal, and defense organizations with strict compliance requirements." },
-              { title: "Government Contractors", desc: "Teams preparing for CMMC, FedRAMP, ITAR, or other federal compliance frameworks." },
+              { title: "Regulated Industries", desc: "Healthcare, finance, and legal organizations with strict compliance requirements." },
+              { title: "Growing IT Teams", desc: "Internal teams that need a senior architect's judgment without a full-time hire." },
               { title: "Scaling Startups", desc: "Fast-growing organizations building a Microsoft 365 foundation that can handle compliance from day one." },
             ].map(({ title, desc }) => (
               <div key={title} className="flex items-start gap-3 p-5 border border-border rounded-xl bg-[#F7F9FC]">
@@ -267,7 +267,7 @@ export default function Contact() {
                     "Rolling out Copilot AI and need to get governance right before it becomes a liability",
                     "SharePoint has become a mess — sprawl, stale content, broken governance",
                     "Power Platform is growing ungoverned and nobody owns the strategy",
-                    "Preparing for CMMC, FedRAMP, HIPAA, SOC 2, or similar compliance",
+                    "Preparing for a HIPAA, SOC 2, or similar compliance audit",
                     "Current Microsoft partner or consultant isn't delivering senior-level architecture thinking",
                   ].map((reason) => (
                     <li key={reason} className="flex items-start gap-2 text-sm text-[#0A2540]/80">

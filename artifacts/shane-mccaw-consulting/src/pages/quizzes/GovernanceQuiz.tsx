@@ -300,8 +300,8 @@ export default function GovernanceQuiz() {
               },
               {
                 icon: Lock,
-                title: "Government contractors",
-                body: "Organisations pursuing or maintaining CMMC Level 2, ITAR compliance, or FedRAMP authorisation who need defensible, documented governance evidence — not just policy documents.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organisations who need defensible, documented governance evidence for HIPAA, SOC 2, or similar audits — not just policy documents.",
               },
               {
                 icon: AlertTriangle,
@@ -604,7 +604,7 @@ export default function GovernanceQuiz() {
                 icon: Star,
                 colour: "bg-blue-500/10 text-blue-600",
                 title: "Lead M365 Architect at NASA",
-                desc: "Shane designed and implemented the governance framework for one of the world's most security-sensitive Microsoft 365 tenants — a 60,000-user environment operating under ITAR, CMMC, and FedRAMP requirements.",
+                desc: "Shane designed and implemented the governance framework for one of the world's most security-sensitive Microsoft 365 tenants — a 60,000-user environment operating under some of the federal government's strictest security requirements.",
               },
               {
                 icon: TrendingUp,
@@ -622,7 +622,7 @@ export default function GovernanceQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                desc: "Shane has worked across federal government, defence contractors, financial services, and healthcare — industries where governance failures carry regulatory, legal, and reputational consequences.",
+                desc: "Shane brings governance discipline from one of the most demanding M365 environments in the federal government to financial services and healthcare clients — industries where governance failures carry regulatory, legal, and reputational consequences.",
               },
               {
                 icon: Award,

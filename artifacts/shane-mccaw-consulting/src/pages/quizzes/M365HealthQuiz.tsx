@@ -301,8 +301,8 @@ export default function M365HealthQuiz() {
               },
               {
                 icon: Globe,
-                title: "Government contractors",
-                body: "Federal and state contractors under CMMC, ITAR, or FedRAMP where M365 configuration is a contractual requirement and tenant health documentation must be defensible and current.",
+                title: "Regulated industries",
+                body: "Healthcare and financial services organizations where M365 configuration is a compliance requirement and tenant health documentation must be defensible and current.",
               },
               {
                 icon: Layers,
@@ -623,7 +623,7 @@ export default function M365HealthQuiz() {
                 icon: ShieldCheck,
                 colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                body: "Deep experience in HIPAA, FedRAMP, CMMC, ITAR, and SOC 2 environments where M365 configuration must be defensible, documented, and audit-ready — not just functional.",
+                body: "Deep experience in HIPAA and SOC 2 environments where M365 configuration must be defensible, documented, and audit-ready — not just functional.",
               },
               {
                 icon: Award,
