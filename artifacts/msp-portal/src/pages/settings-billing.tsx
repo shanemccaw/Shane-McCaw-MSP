@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { ArrowLeft, CreditCard, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, CreditCard, DollarSign, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 
 interface BillingInfo {
@@ -165,11 +165,17 @@ export default function SettingsBillingPage() {
                     </div>
                   )}
                 </dl>
-                <div className="mt-4">
+                <div className="mt-4 flex gap-2">
                   <Link href="/settings/plan">
                     <Button size="sm" variant="outline" className="gap-1.5">
                       <RefreshCw className="size-3.5" />
                       Change Plan or Billing Interval
+                    </Button>
+                  </Link>
+                  <Link href="/settings/revenue">
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      <DollarSign className="size-3.5" />
+                      Partner Revenue
                     </Button>
                   </Link>
                 </div>

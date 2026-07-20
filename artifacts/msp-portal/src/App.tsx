@@ -21,6 +21,7 @@ import SettingsServiceAccountsPage from "@/pages/settings-service-accounts";
 import SettingsTeamPage from "@/pages/settings-team";
 import UserManagementPage from "@/pages/user-management";
 import SettingsBillingPage from "@/pages/settings-billing";
+import RevenuePage from "@/pages/revenue";
 import PlanSettingsPage from "@/pages/plan-settings";
 import SettingsEmailTemplatesPage from "@/pages/settings-email-templates";
 import SettingsSessionsPage from "@/pages/settings-sessions";
@@ -288,6 +289,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/settings/billing">
         <ProtectedRoute component={SettingsBillingPage} />
+      </Route>
+      <Route path="/settings/revenue">
+        <ProtectedRoute component={RevenuePage} />
       </Route>
       <Route path="/settings/plan">
         <ProtectedRoute component={PlanSettingsPage} />
