@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-20 | ⏳ IN FLIGHT | MSP Cross-Tenant Alerts View | |
 | 2026-07-20 | ⏳ IN FLIGHT | Multi-Touch Attribution Reporting Query | |
 | 2026-07-20 | ⏳ IN FLIGHT | Engagement Offer: Delayed Follow-Up + Purchase Cancellation Guard | |
 | 2026-07-20 | ⏳ IN FLIGHT | Fix MSP Self-Serve Signup Provisioning | |
