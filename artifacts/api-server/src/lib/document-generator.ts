@@ -21,8 +21,11 @@ import {
   kanbanTasksTable,
   clientHealthHistoryTable,
   engagementProjectsTable,
+  mspUsersTable,
+  mspCustomersTable,
 } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
+import { buildTenantProfile } from "./tenant-signals";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -323,16 +326,36 @@ function formatScoresBlock(s: RealScores): string {
   ].join("\n");
 }
 
-function collectFindings(runs: { parsedFindings: string[]; recommendations: string[] }[]): {
-  findings: string[]; recommendations: string[];
-} {
-  const findings = new Set<string>();
+// ── users.id → msp_customers.id bridge ────────────────────────────────────────
+//
+// This module works entirely in the *portal user* id space (`clientUserId` is a
+// `usersTable.id`). The shared `buildTenantProfile()` is keyed by the *engine
+// customer* id (`mspCustomersTable.id`) — a DIFFERENT id space. Passing
+// `clientUserId` straight into `buildTenantProfile()` would look up a customer
+// row by the wrong id and silently return an empty profile (the exact failure
+// mode that produces generic, non-tenant-specific documents). We bridge the two
+// via `msp_users` (userId → customerId), mirroring consolidated-sow-generator.ts.
+async function resolveEngineCustomerId(clientUserId: number): Promise<number | null> {
+  const [row] = await db
+    .select({ customerId: mspCustomersTable.id })
+    .from(mspUsersTable)
+    .innerJoin(mspCustomersTable, eq(mspUsersTable.customerId, mspCustomersTable.id))
+    .where(eq(mspUsersTable.userId, clientUserId))
+    .limit(1);
+  return row?.customerId ?? null;
+}
+
+// Recommendations are deliberately NOT part of buildTenantProfile()'s contract
+// (it returns `findings` only). Read the `recommendations` column directly from
+// completed script runs (keyed by users.id) so the {{recommendations}} template
+// variable stays populated for script-based customers. Monitor-only customers
+// have no script runs and simply produce an empty list here.
+function collectRecommendations(runs: { recommendations: string[] | null }[]): string[] {
   const recommendations = new Set<string>();
   for (const run of runs) {
-    for (const f of run.parsedFindings ?? []) findings.add(f);
     for (const r of run.recommendations ?? []) recommendations.add(r);
   }
-  return { findings: [...findings].slice(0, 50), recommendations: [...recommendations].slice(0, 50) };
+  return [...recommendations].slice(0, 50);
 }
 
 // ── Fetch the project's own Kanban tasks (SOW work items) ─────────────────────
@@ -514,7 +537,7 @@ export async function generateAndDeliverDocument(
   const { category, docType, title } = config;
   const isSowDoc = docType === "sow" || docType === "consolidated_sow";
 
-  const [userRows, projectRows, runs, realScores, projectTasks] = await Promise.all([
+  const [userRows, projectRows, runs, realScores, projectTasks, mspCustomerId] = await Promise.all([
     db.select({ name: usersTable.name, company: usersTable.company })
       .from(usersTable)
       .where(eq(usersTable.id, clientUserId))
@@ -526,6 +549,7 @@ export async function generateAndDeliverDocument(
     fetchRunsForClient(clientUserId, 50),
     fetchRealScores(clientUserId),
     fetchProjectTasks(projectId),
+    resolveEngineCustomerId(clientUserId),
   ]);
 
   const clientName = userRows[0]?.company ?? userRows[0]?.name ?? "Client";
@@ -535,18 +559,68 @@ export async function generateAndDeliverDocument(
     ? `Project: ${projRow.title}${projRow.phase ? ` (${projRow.phase})` : ""}${projRow.description ? ` — ${projRow.description}` : ""}\n`
     : "";
 
-  const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
+  // ── Real tenant data via the shared buildTenantProfile() ──────────────────────
+  //
+  // buildTenantProfile() is the single source of truth every signal engine and
+  // the SOW generator use to assemble a tenant's merged M365 profile + findings.
+  // Crucially it merges THREE sources: the base client_m365_profiles row, every
+  // completed script run's profileUpdates, AND live Monitor Check results from
+  // tenant_monitor_profiles (keyed by the customer's tenantId, as
+  // `<checkKey>__itemCount` entries). That third source is the whole point of
+  // this rewiring: a direct-Monitoring customer who never ran a manual PowerShell
+  // script has zero script_run_results rows but DOES have tenant_monitor_profiles
+  // data — the legacy script-only path saw nothing for them and fell back to
+  // generic, non-tenant-specific content.
+  let mergedProfile: Record<string, unknown> = {};
+  let findings: string[] = [];
+  let profileSource: "tenant-profile" | "legacy-script-runs" | "none" = "none";
+
+  if (mspCustomerId != null) {
+    const tenantProfile = await buildTenantProfile(mspCustomerId);
+    mergedProfile = tenantProfile.mergedProfile;
+    findings = tenantProfile.findings;
+    profileSource = "tenant-profile";
+  }
+
+  // Fallback: a portal user not linked to any msp_customers row can't be bridged
+  // to an engine customer id, so buildTenantProfile() can't run for them. Rather
+  // than emit generic content, fall back to the legacy direct script-run read
+  // (keyed by users.id) so a script-only, non-MSP-linked customer never regresses
+  // to an empty profile. Also engages if the bridge resolved but the tenant
+  // profile came back completely empty while raw script runs are available.
+  if (
+    (profileSource !== "tenant-profile" ||
+      (findings.length === 0 && Object.keys(mergedProfile).length === 0)) &&
+    runs.length > 0
+  ) {
+    const legacyProfile: Record<string, unknown> = {};
+    for (const run of [...(runs as { profileUpdates: Record<string, unknown> | null }[])].reverse()) {
+      Object.assign(legacyProfile, run.profileUpdates ?? {});
+    }
+    const legacyFindings = [...new Set((runs as { parsedFindings: string[] | null }[]).flatMap(r => r.parsedFindings ?? []))];
+    if (legacyFindings.length > 0 || Object.keys(legacyProfile).length > 0) {
+      mergedProfile = legacyProfile;
+      findings = legacyFindings;
+      profileSource = "legacy-script-runs";
+    }
+  }
+
+  findings = findings.slice(0, 50);
+  const recommendations = collectRecommendations(runs as { recommendations: string[] | null }[]);
+
+  log.info(
+    {
+      clientUserId, projectId, mspCustomerId, profileSource,
+      findingsCount: findings.length,
+      profileKeyCount: Object.keys(mergedProfile).length,
+      recommendationsCount: recommendations.length,
+      runCount: runs.length,
+    },
+    "document-generator: assembled real tenant data for document generation",
+  );
 
   const scoresBlock = formatScoresBlock(realScores);
 
-  // Merge all profileUpdates across runs into one object — most-recent run wins
-  // for duplicate keys. We no longer cap at 5 entries per run because critical
-  // metrics like totalUserCount and sharepointSiteCount often appear later in
-  // the JSON object and were silently dropped, causing the AI to hallucinate.
-  const mergedProfile: Record<string, unknown> = {};
-  for (const run of [...(runs as { profileUpdates: Record<string, unknown> }[])].reverse()) {
-    Object.assign(mergedProfile, run.profileUpdates ?? {});
-  }
   const profileSample = Object.entries(mergedProfile).length > 0
     ? Object.entries(mergedProfile).map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
     : "  No telemetry captured yet.";
