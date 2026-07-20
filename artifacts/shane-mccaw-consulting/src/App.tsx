@@ -4,6 +4,7 @@ import Home from "./pages/Home";
 import Assessments from "./pages/Assessments";
 import AssessmentDetail from "./pages/AssessmentDetail";
 import Monitoring from "./pages/Monitoring";
+import Status from "./pages/Status";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Book from "./pages/Book";
@@ -90,6 +91,7 @@ export default function App() {
       {/* Sitemap-canonical singular alias (website-rebuild-reference-v2.md §5) — same real page, no new content */}
       <Route path="/assessment" component={Assessments} />
       <Route path="/monitoring" component={Monitoring} />
+      <Route path="/status" component={Status} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
       <Route path="/book" component={Book} />

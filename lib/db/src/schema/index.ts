@@ -3137,4 +3137,24 @@ export const exceptionOccurrencesTable = pgTable("exception_occurrences", {
 export type ExceptionGroup = typeof exceptionGroupsTable.$inferSelect;
 export type ExceptionOccurrence = typeof exceptionOccurrencesTable.$inferSelect;
 
+// ── Public Status Page — platform incident history (PlatformAdmin-authored) ──
+
+export const platformIncidentsTable = pgTable("platform_incidents", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  severity: text("severity", { enum: ["minor", "major", "critical"] }).notNull(),
+  status: text("status", { enum: ["investigating", "identified", "monitoring", "resolved"] }).notNull().default("investigating"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("platform_incidents_started_at_idx").on(t.startedAt),
+  index("platform_incidents_status_idx").on(t.status),
+]);
+
+export type InsertPlatformIncident = typeof platformIncidentsTable.$inferInsert;
+export type PlatformIncident = typeof platformIncidentsTable.$inferSelect;
+
 export * from "./msp";

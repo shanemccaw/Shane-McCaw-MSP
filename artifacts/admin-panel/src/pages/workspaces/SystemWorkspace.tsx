@@ -10,12 +10,14 @@ import ObservabilityDashboard from "@/pages/ObservabilityDashboard";
 import PlatformRevenueDashboard from "@/pages/PlatformRevenueDashboard";
 import AlertRulesPage from "@/pages/AlertRulesPage";
 import ExceptionTracking from "@/pages/ExceptionTracking";
+import IncidentsAdminPage from "@/pages/IncidentsAdminPage";
 
 function getContent(section: string): ReactNode {
   switch (section) {
     case "observability":         return <ObservabilityDashboard />;
     case "alert-rules":           return <AlertRulesPage />;
     case "exceptions":            return <ExceptionTracking />;
+    case "incidents":             return <IncidentsAdminPage />;
     case "platform-revenue":      return <PlatformRevenueDashboard />;
     case "security":              return <AdminSecurityPage />;
     case "signal-mappings":       return <QuizPainConfigPage />;
