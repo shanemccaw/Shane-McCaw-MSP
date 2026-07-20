@@ -18,6 +18,8 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import VisibilityBadge from "./VisibilityBadge";
+import { detectProductType, PRODUCT_TYPE_CONFIGS } from "@/lib/productTypeConfig";
+import { PRODUCT_TYPE_BADGE_COLORS } from "./productTypeBadgeColors";
 
 function priceLabel(s: ServiceRow): string {
   const fmt = (v: string | null | undefined) => {
@@ -30,16 +32,6 @@ function priceLabel(s: ServiceRow): string {
   if (base && max) return `${base}–${max}`;
   if (base) return base;
   return fmt(s.price) ?? "—";
-}
-
-function serviceTypeColor(type: string | null): string {
-  switch (type) {
-    case "micro_offer": return "bg-emerald-500/10 text-emerald-400";
-    case "retainer": return "bg-purple-500/10 text-purple-400";
-    case "optional": return "bg-amber-500/10 text-amber-400";
-    case "service_area": return "bg-primary/10 text-primary";
-    default: return "bg-accent text-muted-foreground";
-  }
 }
 
 interface SortableRowProps {
@@ -55,12 +47,15 @@ interface SortableRowProps {
 function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onDuplicate, onArchive }: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: s.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  const productType = detectProductType(s.serviceClass, s.deliveryType, s.billingType, s.fulfillmentType);
+  const typeLabel = PRODUCT_TYPE_CONFIGS[productType].label;
+  const typeColor = PRODUCT_TYPE_BADGE_COLORS[productType];
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-2.5 cursor-pointer border-b border-accent transition-colors ${isSelected ? "bg-primary/8" : isChecked ? "bg-primary/5" : "hover:bg-accent"}`}
+      className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer border-b border-accent transition-colors ${isSelected ? "bg-primary/8 border-l-2 border-l-primary" : isChecked ? "bg-primary/5" : "hover:bg-accent border-l-2 border-l-transparent"}`}
       onClick={() => onSelect(s.id)}
     >
       {/* Drag handle */}
@@ -85,23 +80,20 @@ function SortableRow({ service: s, isSelected, isChecked, onSelect, onCheck, onD
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <p className={`text-xs font-medium truncate ${isSelected ? "text-primary" : "text-foreground"}`}>{s.name}</p>
-          {s.serviceType && (
-            <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${serviceTypeColor(s.serviceType)}`}>
-              {s.serviceType.replace(/_/g, " ")}
-            </span>
-          )}
           {s.isFreeOffering && (
             <span className="flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider bg-emerald-500/10 text-emerald-400">
               Free
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] font-semibold text-primary">{priceLabel(s)}</span>
-          <span className="text-[10px] text-muted-foreground/60">·</span>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${typeColor}`}>
+            {typeLabel}
+          </span>
           <VisibilityBadge visibility={s.visibility} size="xs" />
+          <span className="text-[10px] font-semibold text-primary ml-0.5">{priceLabel(s)}</span>
           {(s.categoryPath ?? s.category) && (
             <>
               <span className="text-[10px] text-muted-foreground/60">·</span>
@@ -302,7 +294,7 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
   return (
     <div className="flex flex-col border-r border-accent bg-background overflow-hidden" style={{ width: 380, flexShrink: 0 }}>
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-accent flex-shrink-0">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-accent flex-shrink-0">
         <span className="text-xs font-bold text-foreground">
           {categoryPath === null ? "All Products" : categoryPath === "__uncategorized__" ? "Uncategorized" : categoryPath}
         </span>
@@ -323,15 +315,15 @@ export default function CatalogProductList({ services, isLoading, categoryPath, 
       </div>
 
       {/* Search bar */}
-      <div className="px-3 py-2 border-b border-accent flex-shrink-0">
+      <div className="px-3 py-1.5 border-b border-accent flex-shrink-0">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/60" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter…"
-            className="w-full bg-accent border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full bg-accent border border-border rounded-md pl-7 pr-3 py-1 text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       </div>

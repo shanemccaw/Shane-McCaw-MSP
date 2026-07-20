@@ -147,61 +147,75 @@ export default function ServicesPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b border-accent bg-background">
-        <div className="relative" ref={templateDropdownRef}>
+      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-1.5 border-b border-accent bg-card">
+        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-1">Product Catalog</span>
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setShowTemplateDropdown(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            onClick={() => setCmdKOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors"
+            title="Quick jump"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.35-5.65a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            Download Template
-            <svg className={`w-3 h-3 transition-transform ${showTemplateDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <kbd className="text-[10px] font-mono bg-accent border border-border rounded px-1 py-0.5">⌘K</kbd>
           </button>
-          {showTemplateDropdown && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[180px] py-1">
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">All types</div>
-              <button
-                onClick={() => void handleDownloadTemplate()}
-                className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-              >
-                All 5 types (combined)
-              </button>
-              <div className="border-t border-accent my-1" />
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">By type</div>
-              {PRODUCT_TYPE_LIST.map(cfg => (
+          <div className="w-px h-4 bg-border mx-0.5" />
+          <div className="relative" ref={templateDropdownRef}>
+            <button
+              onClick={() => setShowTemplateDropdown(v => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-accent border border-border text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download Template
+              <svg className={`w-3 h-3 transition-transform ${showTemplateDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showTemplateDropdown && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl min-w-[180px] py-1">
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">All types</div>
                 <button
-                  key={cfg.key}
-                  onClick={() => void handleDownloadTemplate(cfg.key)}
+                  onClick={() => void handleDownloadTemplate()}
                   className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                 >
-                  {cfg.label}
+                  All {PRODUCT_TYPE_LIST.length} types (combined)
                 </button>
-              ))}
-            </div>
-          )}
+                <div className="border-t border-accent my-1" />
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">By type</div>
+                {PRODUCT_TYPE_LIST.map(cfg => (
+                  <button
+                    key={cfg.key}
+                    onClick={() => void handleDownloadTemplate(cfg.key)}
+                    className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    {cfg.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-accent border border-border text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export JSON
+          </button>
+          <button
+            onClick={() => { setImportJson(""); setShowImportModal(true); }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-accent border border-border text-muted-foreground hover:text-foreground hover:bg-border transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+            </svg>
+            Import JSON
+          </button>
         </div>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Export JSON
-        </button>
-        <button
-          onClick={() => { setImportJson(""); setShowImportModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
-          </svg>
-          Import JSON
-        </button>
       </div>
 
       {/* Main 3-panel layout */}

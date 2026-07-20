@@ -1,4 +1,4 @@
-import ServiceEditor from "./ServiceEditor";
+import ServiceEditorShell from "./editor/ServiceEditorShell";
 import { Package } from "lucide-react";
 
 interface Props {
@@ -23,7 +23,7 @@ export default function CatalogDetailPanel({ serviceId, isCreating, onCreated, o
 
   return (
     <div className="flex-1 overflow-hidden border-l border-accent">
-      <ServiceEditor
+      <ServiceEditorShell
         id={isCreating ? null : serviceId}
         panelMode
         onClose={onDeselect}

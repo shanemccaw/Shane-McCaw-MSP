@@ -117,6 +117,9 @@ interface SortableRowProps {
   isDropTarget?: boolean;
 }
 
+const INDENT_STEP = 16;
+const GUIDE_BASE_LEFT = 14;
+
 function SortableRow({
   node, selected, expanded, onSelect, onToggle, onAddChild,
   isDragOverlay = false, isDropTarget = false,
@@ -124,34 +127,44 @@ function SortableRow({
   const isExpanded = expanded.has(node.path);
   const isSelected = selected === node.path;
   const hasChildren = node.children.length > 0;
-  const indent = node.depth * 14;
+  const indent = node.depth * INDENT_STEP;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.path });
 
   const mergedStyle = {
     ...(!isDragOverlay ? { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.3 : 1 } : {}),
     paddingLeft: `${indent + 6}px`,
-    paddingTop: "4px",
-    paddingBottom: "4px",
+    paddingTop: "3px",
+    paddingBottom: "3px",
   };
 
   return (
     <div
       ref={isDragOverlay ? undefined : setNodeRef}
       style={mergedStyle}
-      className={`group flex items-center gap-1 rounded-lg pr-1 transition-colors ${
+      className={`group relative flex items-center gap-1 pr-1 border-l-2 transition-colors ${
         isDropTarget
-          ? "ring-2 ring-primary ring-inset bg-primary/10"
+          ? "border-primary bg-primary/10"
           : isSelected
-            ? "bg-primary/15 text-primary"
-            : "text-foreground/90 hover:bg-accent"
-      } ${isDragOverlay ? "shadow-2xl opacity-90 cursor-grabbing pointer-events-none" : ""}`}
+            ? "border-primary bg-primary/15 text-primary"
+            : "border-transparent text-foreground/90 hover:bg-accent"
+      } ${isDragOverlay ? "rounded-lg shadow-2xl opacity-90 cursor-grabbing pointer-events-none" : ""}`}
     >
+      {/* Indent guides — one vertical line per ancestor depth level */}
+      {!isDragOverlay && Array.from({ length: node.depth }).map((_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className="absolute top-0 bottom-0 w-px bg-border/60"
+          style={{ left: `${GUIDE_BASE_LEFT + i * INDENT_STEP}px` }}
+        />
+      ))}
+
       {/* Drag handle */}
       <div
         {...(!isDragOverlay ? attributes : {})}
         {...(!isDragOverlay ? listeners : {})}
-        className="opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing text-muted-foreground/60 flex-shrink-0 p-0.5"
+        className="relative opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing text-muted-foreground/60 flex-shrink-0 p-0.5"
         title="Drag to reparent into another category"
         onClick={e => e.stopPropagation()}
       >
@@ -164,25 +177,27 @@ function SortableRow({
       <button
         type="button"
         onClick={() => { if (hasChildren) onToggle(node.path); onSelect(node.path); }}
-        className="flex items-center gap-1.5 flex-1 min-w-0"
+        className="relative flex items-center gap-1.5 flex-1 min-w-0 rounded-md py-0.5"
       >
         <span className="flex-shrink-0 text-muted-foreground">
           {hasChildren
             ? (isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />)
             : <span className="w-3 h-3 inline-block" />}
         </span>
-        <span className="flex-shrink-0 text-muted-foreground/60">
+        <span className={`flex-shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground/60"}`}>
           {isExpanded ? <FolderOpen className="w-3.5 h-3.5" /> : <Folder className="w-3.5 h-3.5" />}
         </span>
         <span className={`text-xs font-medium truncate flex-1 ${node.isVirtual ? "italic opacity-60" : ""}`}>{node.name}</span>
-        <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 ml-1">{node.totalCount}</span>
+        <span className={`text-[10px] flex-shrink-0 ml-1 rounded px-1 ${isSelected ? "bg-primary/15 text-primary" : "text-muted-foreground/60"}`}>
+          {node.totalCount}
+        </span>
       </button>
 
       <button
         type="button"
         title="Add child category"
         onClick={e => { e.stopPropagation(); onAddChild(node.path); }}
-        className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-opacity flex-shrink-0"
+        className="relative opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-opacity flex-shrink-0"
       >
         <Plus className="w-3 h-3" />
       </button>
@@ -330,7 +345,7 @@ export default function CatalogCategoryTree({
     !nodeId.startsWith(dragActiveId + "/");
 
   return (
-    <div className="flex flex-col border-r border-accent bg-background overflow-hidden" style={{ width: 200, flexShrink: 0 }}>
+    <div className="flex flex-col border-r border-accent bg-background overflow-hidden" style={{ width: 220, flexShrink: 0 }}>
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-accent flex-shrink-0">
         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Categories</span>
         <div className="flex items-center gap-1">
@@ -351,8 +366,7 @@ export default function CatalogCategoryTree({
         <button
           type="button"
           onClick={() => onSelect(null)}
-          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === null ? "bg-primary/15 text-primary" : "text-foreground/90 hover:bg-accent"}`}
-          style={{ width: "calc(100% - 8px)" }}
+          className={`w-full flex items-center gap-2 pl-[13px] pr-2 py-1.5 border-l-2 transition-colors text-xs font-medium ${selectedPath === null ? "border-primary bg-primary/15 text-primary" : "border-transparent text-foreground/90 hover:bg-accent"}`}
         >
           <LayoutGrid className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="flex-1 text-left">All Products</span>
@@ -364,8 +378,7 @@ export default function CatalogCategoryTree({
           <button
             type="button"
             onClick={() => onSelect("__uncategorized__")}
-            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-xs font-medium ${selectedPath === "__uncategorized__" ? "bg-primary/15 text-primary" : "text-foreground/90 hover:bg-accent"}`}
-            style={{ width: "calc(100% - 8px)" }}
+            className={`w-full flex items-center gap-2 pl-[13px] pr-2 py-1.5 border-l-2 transition-colors text-xs font-medium ${selectedPath === "__uncategorized__" ? "border-primary bg-primary/15 text-primary" : "border-transparent text-foreground/90 hover:bg-accent"}`}
           >
             <Folder className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground/60" />
             <span className="flex-1 text-left text-muted-foreground">Uncategorized</span>

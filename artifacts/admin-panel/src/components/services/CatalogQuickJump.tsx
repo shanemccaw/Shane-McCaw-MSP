@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 import type { ServiceRow } from "@/hooks/useServices";
 import VisibilityBadge from "./VisibilityBadge";
+import { detectProductType, PRODUCT_TYPE_CONFIGS } from "@/lib/productTypeConfig";
+import { PRODUCT_TYPE_BADGE_COLORS } from "./productTypeBadgeColors";
 
 interface Props {
   open: boolean;
@@ -101,40 +103,41 @@ export default function CatalogQuickJump({ open, onClose, services, onSelect }: 
           {filtered.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground/60">No services match "{query}"</div>
           ) : (
-            filtered.map((s, idx) => (
-              <button
-                key={s.id}
-                type="button"
-                data-idx={idx}
-                onClick={() => onSelect(s.id, s.categoryPath ?? null)}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${idx === highlightedIdx ? "bg-primary/10" : "hover:bg-accent"}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground truncate">{s.name}</p>
-                    {s.serviceType && (
-                      <span className="flex-shrink-0 text-[10px] font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase tracking-wider">
-                        {s.serviceType.replace(/_/g, " ")}
+            filtered.map((s, idx) => {
+              const productType = detectProductType(s.serviceClass, s.deliveryType, s.billingType, s.fulfillmentType);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  data-idx={idx}
+                  onClick={() => onSelect(s.id, s.categoryPath ?? null)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-l-2 transition-colors ${idx === highlightedIdx ? "border-primary bg-primary/10" : "border-transparent hover:bg-accent"}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-foreground truncate">{s.name}</p>
+                      <span className={`flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${PRODUCT_TYPE_BADGE_COLORS[productType]}`}>
+                        {PRODUCT_TYPE_CONFIGS[productType].label}
                       </span>
+                    </div>
+                    {(s.categoryPath ?? s.category) && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{s.categoryPath ?? s.category}</p>
+                    )}
+                    {(s.tags ?? []).length > 0 && (
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {(s.tags ?? []).slice(0, 4).map(t => (
+                          <span key={t} className="text-[10px] bg-accent border border-border text-muted-foreground px-1.5 py-0.5 rounded">{t}</span>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {(s.categoryPath ?? s.category) && (
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{s.categoryPath ?? s.category}</p>
-                  )}
-                  {(s.tags ?? []).length > 0 && (
-                    <div className="flex gap-1 mt-1 flex-wrap">
-                      {(s.tags ?? []).slice(0, 4).map(t => (
-                        <span key={t} className="text-[10px] bg-accent border border-border text-muted-foreground px-1.5 py-0.5 rounded">{t}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {priceLabel(s) && <span className="text-xs font-semibold text-primary">{priceLabel(s)}</span>}
-                  <VisibilityBadge visibility={s.visibility} size="xs" />
-                </div>
-              </button>
-            ))
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {priceLabel(s) && <span className="text-xs font-semibold text-primary">{priceLabel(s)}</span>}
+                    <VisibilityBadge visibility={s.visibility} size="xs" />
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
 
