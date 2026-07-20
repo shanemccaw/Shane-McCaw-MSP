@@ -605,6 +605,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
+        icon: FileText,
+        label: "Customer Documents",
+        href: "/documents-hub",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
         icon: Timer,
         label: "SLA Dashboard",
         href: "/sla",

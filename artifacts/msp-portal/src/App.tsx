@@ -57,6 +57,7 @@ import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
 import AlertsPage from "@/pages/alerts";
+import DocumentsHubPage from "@/pages/documents-hub";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
 import ChargebackPage from "@/pages/chargeback";
@@ -411,6 +412,11 @@ function SlugInnerSwitch() {
       {/* Cross-Tenant Alerts */}
       <Route path="/alerts">
         <ProtectedRoute component={AlertsPage} />
+      </Route>
+
+      {/* MSP-Wide Customer Documents Hub */}
+      <Route path="/documents-hub">
+        <ProtectedRoute component={DocumentsHubPage} />
       </Route>
 
       {/* Dashboard Web Part System — internal component preview, not linked
