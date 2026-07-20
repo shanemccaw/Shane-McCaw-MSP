@@ -1,27 +1,22 @@
 /**
- * First-party site analytics tracker.
+ * First-party site analytics tracker — rebuilt fresh against the current backend
+ * event schema (website-rebuild-reference-v2.md §4). The old implementation fired
+ * eventType strings ("assessment_started", "checkout_started", ...) that were never
+ * in the backend's validated enum and were silently dropped; this version only ever
+ * sends eventType values the backend actually accepts, and routes free-form named
+ * conversion events through the real /api/quiz/analytics-event endpoint instead.
  *
  * Active in production automatically. In development, opt in by setting
  * VITE_ANALYTICS_ENABLED=true in your .env.local file.
  *
- * Sessions are keyed by a UUID in sessionStorage (expires with the tab).
- * Page views are tracked on every Wouter route change.
- * All link/button/[role=button] clicks are tracked via delegation:
- *   - outbound_click — links leaving the domain
- *   - cta_click      — elements with data-track="cta" or matching CTA text
- *   - nav_click      — elements with data-track="nav"
- *   - click          — all other internal links/buttons
- * Exit events are flushed via sendBeacon on pagehide/visibilitychange.
+ * Pattern kept from the old tracker (by design, not by copy): session-scoped,
+ * sendBeacon()-based delivery, event delegation over per-element listeners.
+ * What changed: the session id now lives in a durable cookie (persists across
+ * return visits) instead of sessionStorage (expired on tab close) — this is what
+ * lets quiz-only, no-account visitors be recognized on a later visit.
  *
- * Named conversion events (fire to internal API + gtag when present):
- *   trackAssessmentStarted   — quiz first-question render
- *   trackAssessmentCompleted — results page load
- *   trackCheckoutStarted     — checkout page mount (with product_type)
- *   trackCheckoutCompleted   — provisioning confirmation
- *   trackMspSignupStarted    — MSP tier selection
- *   trackMspSignupCompleted  — MSP checkout confirmation
- *
- * `trackEvent` (quiz upsell helper) is preserved for backward compatibility.
+ * Every event lands in analytics_site_events / analytics_pageviews / analytics_sessions
+ * on the backend, logged through logger.child({ channel: "growth.website-analytics" }).
  */
 
 declare global {
@@ -44,13 +39,33 @@ function uuid(): string {
   });
 }
 
-function getOrCreateSession(): string {
-  const key = "__smc_sid";
-  let sid = sessionStorage.getItem(key);
-  if (!sid) { sid = uuid(); sessionStorage.setItem(key, sid); }
+// ─── Durable cookie session id ─────────────────────────────────────────────────
+// Persists across return visits (unlike the old sessionStorage id, which expired
+// on tab close) — the anonymous-recognition mechanism for Quiz-only, no-account
+// visitors (website-rebuild-reference-v2.md §3). Same imperfect-but-useful pattern
+// as ad retargeting: one id per browser, until the cookie is cleared.
+const SESSION_COOKIE = "smc_sid";
+const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 730; // ~2 years
+
+function readCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function writeCookie(name: string, value: string, maxAgeSeconds: number): void {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax${secure}`;
+}
+
+function getOrCreateSessionId(): string {
+  let sid = readCookie(SESSION_COOKIE);
+  if (!sid) sid = uuid();
+  // Refresh the expiry on every visit so an active visitor's cookie never lapses.
+  writeCookie(SESSION_COOKIE, sid, SESSION_COOKIE_MAX_AGE_SECONDS);
   return sid;
 }
 
+// ─── Device / browser / UTM ────────────────────────────────────────────────────
 function detectDevice(): string {
   const ua = navigator.userAgent;
   if (/Mobi|Android/i.test(ua)) return "mobile";
@@ -71,7 +86,8 @@ function getUtmParams(): Record<string, string> {
   const sp = new URLSearchParams(window.location.search);
   const out: Record<string, string> = {};
   for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
-    const v = sp.get(k); if (v) out[k] = v;
+    const v = sp.get(k);
+    if (v) out[k] = v;
   }
   return out;
 }
@@ -85,17 +101,46 @@ function beacon(path: string, body: unknown): void {
   }
 }
 
+type SiteEventType =
+  | "click" | "nav_click" | "cta_click" | "outbound_click" | "form_submit" | "scroll_milestone"
+  | "rage_click" | "dead_click" | "idle_timeout";
+
+function sendSiteEvent(eventType: SiteEventType, opts?: { elementLabel?: string; elementHref?: string; metadata?: Record<string, unknown> }): void {
+  if (!isEnabled() || !_sessionId) return;
+  beacon("/api/analytics/event", {
+    sessionId: _sessionId,
+    page: _currentPage,
+    eventType,
+    elementLabel: opts?.elementLabel,
+    elementHref: opts?.elementHref,
+    metadata: opts?.metadata,
+  });
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 let _sessionId = "";
 let _currentPage = "";
 let _pageviewId: number | null = null;
 let _pageEnterTime = 0;
 let _maxScroll = 0;
+let _scrollMilestonesFired = new Set<number>();
+let _firstInteractionAt: number | null = null;
+let _lastInteractionAt: number | null = null;
 let _sessionStarted = false;
-let _scrollListenerAttached = false;
-let _clickListenerAttached = false;
-let _pagehideListenerAttached = false;
+let _listenersAttached = false;
+let _idleTimer: ReturnType<typeof setTimeout> | null = null;
+let _idleFired = false;
 let _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let _recentClicks: { x: number; y: number; t: number }[] = [];
+let _rageFiredAt = 0;
+
+const IDLE_TIMEOUT_MS = 30_000;
+const RAGE_CLICK_WINDOW_MS = 700;
+const RAGE_CLICK_RADIUS_PX = 30;
+const RAGE_CLICK_THRESHOLD = 3;
+const RAGE_CLICK_COOLDOWN_MS = 2_000;
+
+const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, label, [role="button"], [tabindex], [contenteditable]';
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 async function ensureSession(page: string): Promise<void> {
@@ -120,22 +165,44 @@ async function ensureSession(page: string): Promise<void> {
   }).catch(() => {});
 }
 
-// ─── Scroll tracking ──────────────────────────────────────────────────────────
+// ─── Interaction tracking (feeds idle detection + first/last interaction state) ──
+function markInteraction(): void {
+  const now = Date.now();
+  if (_firstInteractionAt === null) _firstInteractionAt = now;
+  _lastInteractionAt = now;
+  _idleFired = false;
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => {
+    if (_idleFired || document.visibilityState !== "visible") return;
+    _idleFired = true;
+    sendSiteEvent("idle_timeout", {
+      metadata: {
+        idleMs: IDLE_TIMEOUT_MS,
+        msSinceFirstInteraction: _firstInteractionAt ? now - _firstInteractionAt : null,
+      },
+    });
+  }, IDLE_TIMEOUT_MS);
+}
+
+// ─── Scroll tracking — max depth + 25/50/75/100% milestones (raw capture, feeds Stage 4 heatmaps) ──
 function attachScrollListener(): void {
-  if (_scrollListenerAttached) return;
-  _scrollListenerAttached = true;
   window.addEventListener("scroll", () => {
     const el = document.documentElement;
     const scrollable = el.scrollHeight - el.clientHeight;
     if (scrollable <= 0) return;
     const pct = Math.round((el.scrollTop / scrollable) * 100);
     if (pct > _maxScroll) _maxScroll = pct;
+    for (const milestone of [25, 50, 75, 100]) {
+      if (pct >= milestone && !_scrollMilestonesFired.has(milestone)) {
+        _scrollMilestonesFired.add(milestone);
+        sendSiteEvent("scroll_milestone", { metadata: { pct: milestone, scrollY: Math.round(el.scrollTop) } });
+      }
+    }
+    markInteraction();
   }, { passive: true });
 }
 
-// ─── Heartbeat — keeps last_seen_at fresh for "live visitors" counter ─────────
-// Pings /api/analytics/session every 60 s while the tab is visible.
-// This ensures users who stay on one page >5 min still appear in "live now".
+// ─── Heartbeat — keeps last_seen_at fresh for the "live visitors" counter ──────
 function startHeartbeat(): void {
   if (_heartbeatInterval) return;
   _heartbeatInterval = setInterval(() => {
@@ -162,8 +229,6 @@ function flushCurrentPageview(): void {
 }
 
 function attachPagehideListener(): void {
-  if (_pagehideListenerAttached) return;
-  _pagehideListenerAttached = true;
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushCurrentPageview();
   });
@@ -171,17 +236,32 @@ function attachPagehideListener(): void {
 }
 
 // ─── Click delegation ─────────────────────────────────────────────────────────
-// Tracks all links, buttons, and role=button elements:
-//   outbound_click — leaving the domain
-//   cta_click      — data-track="cta" or matching common CTA text
-//   nav_click      — data-track="nav"
-//   click          — all other internal interactions
+// outbound_click / cta_click / nav_click / click for real navigation & CTA interactions,
+// plus rage_click / dead_click raw capture (mouse position included for Stage 4 heatmaps).
 function attachClickListener(): void {
-  if (_clickListenerAttached) return;
-  _clickListenerAttached = true;
   document.addEventListener("click", (e: MouseEvent) => {
+    if (!_sessionId) return;
+    markInteraction();
+
+    const point = { x: Math.round(e.pageX), y: Math.round(e.pageY), t: Date.now() };
+    _recentClicks = _recentClicks.filter((c) => point.t - c.t < RAGE_CLICK_WINDOW_MS);
+    _recentClicks.push(point);
+    const burst = _recentClicks.filter((c) => Math.hypot(c.x - point.x, c.y - point.y) <= RAGE_CLICK_RADIUS_PX);
+    if (burst.length >= RAGE_CLICK_THRESHOLD && point.t - _rageFiredAt > RAGE_CLICK_COOLDOWN_MS) {
+      _rageFiredAt = point.t;
+      sendSiteEvent("rage_click", { metadata: { x: point.x, y: point.y, clickCount: burst.length } });
+    }
+
     const target = (e.target as HTMLElement).closest<HTMLElement>('a, button, [role="button"]');
-    if (!target || !_sessionId) return;
+    if (!target) {
+      // No natural interactive ancestor within a, button, [role=button] — candidate dead click.
+      const interactiveAncestor = (e.target as HTMLElement).closest(INTERACTIVE_SELECTOR);
+      if (!interactiveAncestor) {
+        sendSiteEvent("dead_click", { metadata: { x: point.x, y: point.y, tag: (e.target as HTMLElement).tagName.toLowerCase() } });
+      }
+      return;
+    }
+
     const label = target.textContent?.trim().slice(0, 200) ?? "";
     const href = target instanceof HTMLAnchorElement ? target.href : "";
     const trackAttr = target.dataset["track"] ?? target.closest("[data-track]")?.getAttribute("data-track") ?? "";
@@ -196,30 +276,31 @@ function attachClickListener(): void {
       eventType = "nav_click";
     }
 
-    beacon("/api/analytics/event", {
-      sessionId: _sessionId, page: _currentPage,
-      eventType,
+    sendSiteEvent(eventType, {
       elementLabel: label || undefined,
       elementHref: href.slice(0, 500) || undefined,
+      metadata: { x: point.x, y: point.y },
     });
   });
+
+  document.addEventListener("keydown", markInteraction);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 export function initTracker(): void {
-  if (!isEnabled()) return;
-  _sessionId = getOrCreateSession();
+  if (!isEnabled() || _listenersAttached) return;
+  _listenersAttached = true;
+  _sessionId = getOrCreateSessionId();
   attachScrollListener();
   attachClickListener();
   attachPagehideListener();
   startHeartbeat();
+  markInteraction();
 }
 
 /**
  * Link the current analytics session to a known lead email.
  * Call this after the user submits a form with their email address.
- * Once linked, future high-value page visits will automatically score
- * the lead's intent and surface them in the hot leads list.
  */
 export async function identifyLead(email: string): Promise<void> {
   if (!isEnabled() || !_sessionId || !email) return;
@@ -233,12 +314,16 @@ export async function identifyLead(email: string): Promise<void> {
 }
 
 export async function trackPageview(page: string): Promise<void> {
-  if (!isEnabled() || !_sessionId) return;
+  if (!isEnabled()) return;
+  if (!_sessionId) _sessionId = getOrCreateSessionId();
 
   flushCurrentPageview();
   _currentPage = page;
   _pageEnterTime = Date.now();
   _maxScroll = 0;
+  _scrollMilestonesFired = new Set();
+  _firstInteractionAt = null;
+  _lastInteractionAt = null;
 
   await ensureSession(page);
 
@@ -256,84 +341,47 @@ export async function trackPageview(page: string): Promise<void> {
 }
 
 // ─── Named conversion events ──────────────────────────────────────────────────
-
-/** Fire when the user reaches the first question of any assessment quiz. */
-export function trackAssessmentStarted(
-  params?: Record<string, string | number | boolean>,
-): void {
-  if (!isEnabled()) return;
-  if (typeof window.gtag === "function") window.gtag("event", "assessment_started", params ?? {});
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "assessment_started", ...(params ?? {}) });
+// Routed through /api/quiz/analytics-event — a real, already-working, free-form
+// {name, properties} sink (quiz_analytics_events table), not the enum-locked
+// /api/analytics/event. This is the fix for the old tracker's confirmed bug:
+// it fired eventType strings ("assessment_started", etc.) that were never in the
+// backend's validated enum and were silently rejected every time.
+function sendNamedEvent(name: string, properties: Record<string, unknown> = {}): void {
+  if (typeof window.gtag === "function") window.gtag("event", name, properties);
+  beacon("/api/quiz/analytics-event", { name, properties });
 }
 
-/** Fire when the assessment results page loads after quiz completion. */
-export function trackAssessmentCompleted(
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackAssessmentStarted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
-  if (typeof window.gtag === "function") window.gtag("event", "assessment_completed", params ?? {});
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "assessment_completed", ...(params ?? {}) });
+  sendNamedEvent("assessment_started", params ?? {});
 }
 
-/**
- * Fire on checkout page mount.
- * @param productType e.g. "micro_offer" | "retainer" | "project" | "msp_tier"
- */
-export function trackCheckoutStarted(
-  productType: string,
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackAssessmentCompleted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
-  const props = { product_type: productType, ...(params ?? {}) };
-  if (typeof window.gtag === "function") window.gtag("event", "checkout_started", props);
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "checkout_started", ...props });
+  sendNamedEvent("assessment_completed", params ?? {});
 }
 
-/** Fire on provisioning confirmation page load. */
-export function trackCheckoutCompleted(
-  productType: string,
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackCheckoutStarted(productType: string, params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
-  const props = { product_type: productType, ...(params ?? {}) };
-  if (typeof window.gtag === "function") window.gtag("event", "checkout_completed", props);
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "checkout_completed", ...props });
+  sendNamedEvent("checkout_started", { product_type: productType, ...(params ?? {}) });
 }
 
-/** Fire when an MSP selects a platform tier on the MSP signup page. */
-export function trackMspSignupStarted(
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackCheckoutCompleted(productType: string, params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
-  if (typeof window.gtag === "function") window.gtag("event", "msp_signup_started", params ?? {});
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "msp_signup_started", ...(params ?? {}) });
+  sendNamedEvent("checkout_completed", { product_type: productType, ...(params ?? {}) });
 }
 
-/** Fire when an MSP completes the MSP checkout confirmation step. */
-export function trackMspSignupCompleted(
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackMspSignupStarted(params?: Record<string, string | number | boolean>): void {
   if (!isEnabled()) return;
-  if (typeof window.gtag === "function") window.gtag("event", "msp_signup_completed", params ?? {});
-  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "msp_signup_completed", ...(params ?? {}) });
+  sendNamedEvent("msp_signup_started", params ?? {});
 }
 
-// ─── Quiz upsell helper (backward compat) ─────────────────────────────────────
-export function trackEvent(
-  name: string,
-  properties: Record<string, string | number | boolean> = {},
-) {
-  if (typeof window.gtag === "function") {
-    window.gtag("event", name, properties);
-  }
-  const payload = JSON.stringify({ name, properties });
-  if (typeof navigator.sendBeacon === "function") {
-    navigator.sendBeacon("/api/quiz/analytics-event", new Blob([payload], { type: "application/json" }));
-  } else {
-    fetch("/api/quiz/analytics-event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: payload, keepalive: true,
-    }).catch(() => {});
-  }
+export function trackMspSignupCompleted(params?: Record<string, string | number | boolean>): void {
+  if (!isEnabled()) return;
+  sendNamedEvent("msp_signup_completed", params ?? {});
+}
+
+/** Generic named event helper (quiz upsell clicks, resource downloads, etc). */
+export function trackEvent(name: string, properties: Record<string, string | number | boolean> = {}): void {
+  sendNamedEvent(name, properties);
 }

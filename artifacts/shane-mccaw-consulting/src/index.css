@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@500&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -64,6 +64,19 @@ html {
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
+  --font-display: var(--app-font-display);
+  --font-numeric: var(--app-font-numeric);
+
+  /* Rebuild design system — charcoal + glass + restrained gradient (see website-rebuild-reference-v2.md §5) */
+  --color-charcoal-0: var(--charcoal-0);
+  --color-charcoal-1: var(--charcoal-1);
+  --color-glass-fill: var(--glass-fill);
+  --color-glass-border: var(--glass-border);
+  --color-text-primary: var(--rebuild-text-primary);
+  --color-text-secondary: var(--rebuild-text-secondary);
+  --color-text-tertiary: var(--rebuild-text-tertiary);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-violet: var(--accent-violet);
 
   --text-xs: 0.75rem;
   --text-xs--line-height: calc(1 / 0.75);
@@ -172,7 +185,22 @@ html {
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
+  --app-font-display: 'Space Grotesk', sans-serif;
+  --app-font-numeric: 'IBM Plex Mono', monospace;
   --radius: .5rem;
+
+  /* Rebuild design system tokens — charcoal + glass + restrained blue→violet gradient.
+     Additive only: the legacy hsl(--background)/(--primary)/etc. tokens above stay untouched
+     so pre-rebuild pages keep rendering as-is until they're migrated stage by stage. */
+  --charcoal-0: #1A1A1C;
+  --charcoal-1: #232326;
+  --glass-fill: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --rebuild-text-primary: #F5F5F7;
+  --rebuild-text-secondary: #9A9AA3;
+  --rebuild-text-tertiary: #6B6B72;
+  --accent-blue: #5B8DEF;
+  --accent-violet: #9B7CFF;
   
   --shadow-2xs: 0px 2px 0px 0px hsl(211 91% 10% / 0.08);
   --shadow-xs: 0px 2px 0px 0px hsl(211 91% 10% / 0.08);
@@ -266,5 +294,22 @@ html {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;
+  }
+
+  /* Rebuild design system — reusable glass surface (see GlassPanel.tsx). Reserved for
+     live-data/key-conversion moments per website-rebuild-reference-v2.md §5, not a default card style. */
+  .glass-panel {
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* Gradient headline emphasis / primary CTAs / live data numbers only — never a full-background wash. */
+  .gradient-text {
+    background-image: linear-gradient(90deg, var(--accent-blue), var(--accent-violet));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }

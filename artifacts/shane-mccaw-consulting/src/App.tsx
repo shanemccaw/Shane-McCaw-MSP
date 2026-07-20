@@ -20,6 +20,8 @@ import OnboardingLink from "./pages/OnboardingLink";
 import Terms from "./pages/legal/Terms";
 import Privacy from "./pages/legal/Privacy";
 import NotFound from "./pages/not-found";
+import StubPage from "./pages/StubPage";
+import { initTracker, trackPageview } from "./lib/analytics";
 
 // Legacy Quiz Pages
 import CopilotQuiz from "./pages/CopilotQuiz";
@@ -45,9 +47,41 @@ function RedirectToAssessments() {
   return null;
 }
 
+// Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
+// Stage 1: routes resolve to placeholders; real per-topic personalization content is Stage 2/4.
+const SOLUTIONS_TOPICS: { slug: string; title: string }[] = [
+  { slug: "copilot", title: "Copilot & AI" },
+  { slug: "security-compliance", title: "Security & Compliance" },
+  { slug: "governance", title: "Governance" },
+  { slug: "sharepoint", title: "SharePoint" },
+  { slug: "power-platform", title: "Power Platform" },
+  { slug: "teams", title: "Teams" },
+  { slug: "migration", title: "Migration" },
+  { slug: "m365-health", title: "M365 Health" },
+];
+
+// Fires once on mount (durable cookie session + global capture listeners) and on every
+// route change (pageview + dwell/scroll flush of the previous page) — shared layout
+// instrumentation per website-rebuild-reference-v2.md §4.
+function AnalyticsBoundary() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    initTracker();
+  }, []);
+
+  useEffect(() => {
+    void trackPageview(location);
+  }, [location]);
+
+  return null;
+}
+
 export default function App() {
   return (
-    <Switch>
+    <>
+      <AnalyticsBoundary />
+      <Switch>
       {/* Primary Routes */}
       <Route path="/" component={Home} />
       <Route path="/assessments" component={Assessments} />
@@ -55,6 +89,8 @@ export default function App() {
       <Route path="/assessments/start" component={Assessments} />
       <Route path="/assessments/premium" component={Assessments} />
       <Route path="/assessments/:slug" component={AssessmentDetail} />
+      {/* Sitemap-canonical singular alias (website-rebuild-reference-v2.md §5) — same real page, no new content */}
+      <Route path="/assessment" component={Assessments} />
       <Route path="/services" component={Services} />
       <Route path="/projects" component={Projects} />
       <Route path="/monitoring" component={Monitoring} />
@@ -70,13 +106,23 @@ export default function App() {
       <Route path="/resources/:slug" component={ArticlePage} />
       <Route path="/onboarding" component={OnboardingLink} />
 
+      {/* New sitemap pages — Stage 1 routing skeleton, placeholder content (website-rebuild-reference-v2.md §5/§7) */}
+      {SOLUTIONS_TOPICS.map((t) => (
+        <Route key={t.slug} path={`/solutions/${t.slug}`} component={() => <StubPage title={t.title} />} />
+      ))}
+      <Route path="/solutions" component={() => <StubPage title="Solutions" />} />
+      <Route path="/products" component={() => <StubPage title="Quick-Start Packs" />} />
+      <Route path="/retainer" component={() => <StubPage title="Fractional Consulting" />} />
+      <Route path="/trust-security" component={() => <StubPage title="Trust & Security" />} />
+      <Route path="/quiz" component={() => <StubPage title="Free Assessment Quiz" />} />
+      <Route path="/login" component={() => <StubPage title="Client Login" />} />
+
       {/* Legal Routes */}
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
 
       {/* Decommissioned Routes -> Redirects to /assessments */}
       <Route path="/micro-offers" component={RedirectToAssessments} />
-      <Route path="/assessment" component={RedirectToAssessments} />
 
       {/* Quizzes & Lead Capture */}
       <Route path="/copilot-quiz" component={CopilotQuiz} />
@@ -95,6 +141,7 @@ export default function App() {
 
       {/* 404 Fallback */}
       <Route component={NotFound} />
-    </Switch>
+      </Switch>
+    </>
   );
 }

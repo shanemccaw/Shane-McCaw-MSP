@@ -25,7 +25,7 @@ export function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-[100dvh] flex flex-col font-sans bg-background text-foreground">
+    <div className="min-h-[100dvh] flex flex-col font-sans bg-charcoal-0 text-text-primary">
       <Header />
       {/* Sticky coupon bar — fixed just below the nav (top-16 = 64 px), z-40 keeps it below nav dropdowns */}
       {bannerVisible && (
