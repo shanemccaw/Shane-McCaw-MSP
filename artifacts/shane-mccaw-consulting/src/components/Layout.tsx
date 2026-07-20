@@ -3,6 +3,7 @@ import { Header } from "./Header";
 import { Footer } from "./Footer";
 import { BackToTop } from "./BackToTop";
 import { TestimonialDiscountCallout } from "./TestimonialDiscountCallout";
+import { EngagementOfferPanel } from "./EngagementOfferPanel";
 
 const BANNER_KEY = "offer-banner-dismissed";
 
@@ -38,6 +39,7 @@ export function Layout({ children }: LayoutProps) {
       </main>
       <Footer />
       <BackToTop />
+      <EngagementOfferPanel />
     </div>
   );
 }

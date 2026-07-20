@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePersonalizationState } from "./usePersonalizationState";
+import { getAnalyticsSessionId } from "@/lib/analytics";
 
 /**
  * Typed data-fetching pattern for the two non-cold personalization tiers
@@ -372,4 +373,89 @@ export function usePortalUrl(): PortalUrlResult {
   }, [tier, assessment]);
 
   return { loading, portalUrl };
+}
+
+// ─── Quiz + Assessment tier — live Engagement Offer Engine eligibility ─────────
+
+export interface EngagementOfferService {
+  id: number;
+  name: string;
+  slug: string | null;
+  priceCents: number | null;
+}
+
+export interface EngagementOffer {
+  ruleName: string;
+  discountPct: number;
+  services: EngagementOfferService[];
+}
+
+interface EngagementOfferResult {
+  loading: boolean;
+  offer: EngagementOffer | null;
+}
+
+interface EngagementOfferResponse {
+  eligible: boolean;
+  ruleName?: string;
+  discountPct?: number;
+  services?: EngagementOfferService[];
+}
+
+/**
+ * Stage 4c live-query (website-rebuild-reference-v2.md §3): while a recognized quiz or
+ * assessment-tier visitor is still browsing, checks whether the Engagement Offer Engine
+ * (engagement-offer-engine.ts) has already fired a bundle for them via the new
+ * GET /api/public/personalization/engagement-offer route — a real-time alternative to
+ * waiting on the separate 1-2hr delayed-follow-up workflow (built elsewhere, not here).
+ * Cold-tier visitors have no lead identity to check against, so this no-ops for them —
+ * there is deliberately no cold-tier version of this feature. `offer: null` is a valid,
+ * common state (not eligible yet, or the engine's leads-table bridge doesn't reach this
+ * visitor — see the endpoint's own comment for that real, pre-existing gap).
+ */
+export function useEngagementOffer(): EngagementOfferResult {
+  const { tier, loading: tierLoading, assessment } = usePersonalizationState();
+  const [offer, setOffer] = useState<EngagementOffer | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (tierLoading || (tier !== "quiz" && tier !== "assessment")) {
+      setOffer(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    const params = new URLSearchParams({ sessionId: getAnalyticsSessionId() });
+    if (tier === "assessment" && assessment?.email) {
+      params.set("email", assessment.email);
+    }
+
+    fetch(`/api/public/personalization/engagement-offer?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Failed to load engagement offer (${res.status})`);
+        return (await res.json()) as EngagementOfferResponse;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setOffer(
+          data.eligible && data.services?.length
+            ? { ruleName: data.ruleName ?? "", discountPct: data.discountPct ?? 0, services: data.services }
+            : null,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOffer(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tier, tierLoading, assessment]);
+
+  return { loading, offer };
 }
