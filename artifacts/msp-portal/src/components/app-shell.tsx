@@ -45,7 +45,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Award,
-  BarChart3,
   Bell,
   Bot,
   Building2,
@@ -488,12 +487,6 @@ const NAV_SECTIONS: NavSection[] = [
         label: "Executive Mode",
         href: "/executive-mode",
         roles: ["CustomerUser"],
-      },
-      {
-        icon: BarChart3,
-        label: "Command Center",
-        href: "/command-center",
-        roles: ["CustomerUser", "PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
         icon: FileText,
