@@ -592,6 +592,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["PlatformAdmin", "MSPAdmin"],
       },
       {
+        icon: AlertTriangle,
+        label: "Alerts",
+        href: "/alerts",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
         icon: Timer,
         label: "SLA Dashboard",
         href: "/sla",

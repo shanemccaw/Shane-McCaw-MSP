@@ -54,6 +54,7 @@ import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
+import AlertsPage from "@/pages/alerts";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
 import ChargebackPage from "@/pages/chargeback";
@@ -397,6 +398,11 @@ function SlugInnerSwitch() {
       {/* Reports */}
       <Route path="/reports">
         <ProtectedRoute component={ReportsPage} />
+      </Route>
+
+      {/* Cross-Tenant Alerts */}
+      <Route path="/alerts">
+        <ProtectedRoute component={AlertsPage} />
       </Route>
 
       {/* Dashboard Web Part System — internal component preview, not linked

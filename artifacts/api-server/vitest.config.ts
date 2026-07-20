@@ -86,6 +86,7 @@ export default defineConfig({
       "src/routes/portal-mission-control.test.ts",
       "src/routes/portal-client-delete-msp-users.test.ts",
       "src/routes/portal-customer-search.test.ts",
+      "src/routes/msp-alerts.test.ts",
     ],
     coverage: {
       provider: "v8",
