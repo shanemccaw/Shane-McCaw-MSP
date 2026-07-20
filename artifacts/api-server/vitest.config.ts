@@ -90,6 +90,7 @@ export default defineConfig({
       "src/middlewares/msp-staff-customer-scopes.test.ts",
       "src/lib/engagement-followup-dispatcher.test.ts",
       "src/lib/engagement-followup-cancellation-guard.test.ts",
+      "src/lib/sql-statement-splitter.test.ts",
     ],
     coverage: {
       provider: "v8",

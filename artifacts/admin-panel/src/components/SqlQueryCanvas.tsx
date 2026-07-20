@@ -17,20 +17,30 @@ import { sqlStatementGutter } from "@/lib/sql-statement-gutter";
 // output state lives in SimulatorStudioPage and streams to the bottom panel's
 // Query Output tab (SqlQueryOutput).
 
-export interface SqlQueryResults {
+// One entry per statement in the submitted script — the backend splits on
+// top-level semicolons and runs each statement independently, so every
+// statement carries its own success/rows/error (SSMS-style per-statement
+// results) instead of the batch collapsing to just the last statement's result.
+export interface SqlStatementResult {
+  statementIndex: number;
+  statementText: string;
+  success: boolean;
   rows: any[];
   rowCount: number;
   fields: string[];
   executionMs: number;
+  error?: string;
 }
 
 export interface SqlOutput {
   isExecuting: boolean;
-  results: SqlQueryResults | null;
+  statements: SqlStatementResult[] | null;
+  // Transport-level failure (network/auth/malformed response) — NOT a
+  // per-statement SQL error, which lives on each SqlStatementResult.error.
   error: string | null;
 }
 
-export const EMPTY_SQL_OUTPUT: SqlOutput = { isExecuting: false, results: null, error: null };
+export const EMPTY_SQL_OUTPUT: SqlOutput = { isExecuting: false, statements: null, error: null };
 
 // One Dark's own #282c34 background clashes with the app's GitHub-dark canvas;
 // keep its syntax palette but repaint the editor surfaces with app tokens.
@@ -55,7 +65,7 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
 
   const executeSql = async (statementText: string) => {
     if (!statementText.trim()) return;
-    onOutputChange({ isExecuting: true, results: null, error: null });
+    onOutputChange({ isExecuting: true, statements: null, error: null });
     try {
       const res = await fetchWithAuth("/api/simulator/sql/execute", {
         method: "POST",
@@ -64,9 +74,9 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Execution failed");
-      onOutputChange({ isExecuting: false, results: data, error: null });
+      onOutputChange({ isExecuting: false, statements: data.statements ?? [], error: null });
     } catch (err: any) {
-      onOutputChange({ isExecuting: false, results: null, error: err.message });
+      onOutputChange({ isExecuting: false, statements: null, error: err.message });
     }
   };
   const executeSqlRef = useRef(executeSql);
@@ -75,7 +85,7 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
   // Migration files run their own full file contents server-side (not the
   // editor's text) — same output shape/rendering as executeSql, different endpoint.
   const executeMigration = async (filename: string) => {
-    onOutputChange({ isExecuting: true, results: null, error: null });
+    onOutputChange({ isExecuting: true, statements: null, error: null });
     try {
       const res = await fetchWithAuth("/api/simulator/migrations/execute", {
         method: "POST",
@@ -84,9 +94,9 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Migration execution failed");
-      onOutputChange({ isExecuting: false, results: data, error: null });
+      onOutputChange({ isExecuting: false, statements: data.statements ?? [], error: null });
     } catch (err: any) {
-      onOutputChange({ isExecuting: false, results: null, error: err.message });
+      onOutputChange({ isExecuting: false, statements: null, error: err.message });
     }
   };
   const executeMigrationRef = useRef(executeMigration);
@@ -207,10 +217,14 @@ export function SqlQueryCanvas({ output, onOutputChange }: SqlQueryCanvasProps) 
           <Play className={`h-3 w-3 ${output.isExecuting ? "animate-spin" : ""}`} />
           {output.isExecuting ? "Running…" : hasSelection ? "Run Selection" : "Run All"}
         </button>
-        {output.results && (
+        {output.statements && output.statements.length > 0 && (
           <span className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3 text-emerald-400" />
-            {output.results.executionMs}ms · {output.results.rowCount} rows
+            {output.statements.length} stmt{output.statements.length === 1 ? "" : "s"} ·{" "}
+            {output.statements.reduce((sum, s) => sum + s.executionMs, 0)}ms
+            {output.statements.some((s) => !s.success) && (
+              <span className="text-destructive"> · {output.statements.filter((s) => !s.success).length} failed</span>
+            )}
           </span>
         )}
       </div>

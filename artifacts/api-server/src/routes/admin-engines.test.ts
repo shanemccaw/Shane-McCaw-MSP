@@ -31,6 +31,15 @@ vi.mock("@workspace/db", () => ({
       }),
     }),
   },
+  // executeRawSql now runs each statement on a single pooled client
+  // (pool.connect() → client.query() → client.release()) so BEGIN/COMMIT
+  // scripts share one transaction; the SQL-execute tests stub this per-test.
+  pool: {
+    connect: vi.fn().mockResolvedValue({
+      query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0, fields: [] }),
+      release: vi.fn(),
+    }),
+  },
   usersTable: { id: "id", role: "role", email: "email" },
   engagementProjectsTable: {},
   signalRuleGroupsTable: {},
@@ -293,18 +302,43 @@ describe("POST /simulator/sql/execute", () => {
     expect(res.body.error).toContain("prohibited");
   });
 
-  it("executes read/write query successfully", async () => {
-    const { db } = await import("@workspace/db");
-    const mockExecute = vi.fn().mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
-    (db as any).execute = mockExecute;
+  it("executes a query and returns a per-statement result array", async () => {
+    const { pool } = await import("@workspace/db");
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1, fields: [{ name: "id" }] });
+    const mockRelease = vi.fn();
+    (pool as any).connect = vi.fn().mockResolvedValue({ query: mockQuery, release: mockRelease });
 
     const res = await request(app)
       .post("/simulator/sql/execute")
       .set(authHeader)
       .send({ query: "SELECT * FROM users;" });
     expect(res.status).toBe(200);
-    expect(res.body.rows).toEqual([{ id: 1 }]);
-    expect(mockExecute).toHaveBeenCalled();
+    expect(res.body.statements).toHaveLength(1);
+    expect(res.body.statements[0]).toMatchObject({ statementIndex: 0, success: true, rows: [{ id: 1 }], rowCount: 1, fields: ["id"] });
+    expect(mockQuery).toHaveBeenCalled();
+    expect(mockRelease).toHaveBeenCalled();
+  });
+
+  it("runs each statement independently — a failure on one does not stop the rest", async () => {
+    const { pool } = await import("@workspace/db");
+    const mockQuery = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1, fields: [{ name: "id" }] })
+      .mockRejectedValueOnce(new Error("relation \"nope\" does not exist"))
+      .mockResolvedValueOnce({ rows: [], rowCount: 2, fields: [] }) // the trailing ROLLBACK / next stmt
+      .mockResolvedValue({ rows: [], rowCount: 0, fields: [] });
+    (pool as any).connect = vi.fn().mockResolvedValue({ query: mockQuery, release: vi.fn() });
+
+    const res = await request(app)
+      .post("/simulator/sql/execute")
+      .set(authHeader)
+      .send({ query: "SELECT 1; SELECT * FROM nope; UPDATE users SET x = 1;" });
+    expect(res.status).toBe(200);
+    expect(res.body.statements).toHaveLength(3);
+    expect(res.body.statements[0].success).toBe(true);
+    expect(res.body.statements[1].success).toBe(false);
+    expect(res.body.statements[1].error).toContain("does not exist");
+    expect(res.body.statements[2].success).toBe(true);
   });
 });
 

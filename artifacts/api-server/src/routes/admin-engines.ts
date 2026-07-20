@@ -3,7 +3,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { db, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
+import { db, pool, usersTable, engagementProjectsTable, mspCustomersTable, mspsTable, mspUsersTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
+import { splitSqlStatements } from "../lib/sql-statement-splitter";
 import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -1473,19 +1474,83 @@ router.get("/simulator/db-schema", requireAdmin, async (_req: Request, res: Resp
   }
 });
 
-// Shared by /simulator/sql/execute and /simulator/migrations/execute — runs
-// raw SQL text and shapes the result identically for both callers.
-async function executeRawSql(query: string) {
-  const startTime = Date.now();
-  const result = await db.execute(sql.raw(query));
-  const executionMs = Date.now() - startTime;
+// Per-statement result — one entry per statement in the submitted script,
+// SSMS-style: each statement shows its own rows/rowCount (SELECT) or a plain
+// success (DDL/DML), and a failure on one statement is reported inline without
+// stopping the ones after it.
+interface StatementResult {
+  statementIndex: number;
+  statementText: string; // truncated preview, not the full text if huge
+  success: boolean;
+  rows: any[];
+  rowCount: number;
+  fields: string[];
+  executionMs: number;
+  error?: string;
+}
 
-  return {
-    rows: result.rows || [],
-    rowCount: result.rowCount || (result.rows ? result.rows.length : 0),
-    fields: result.fields?.map((f: any) => f.name) ?? (result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []),
-    executionMs,
-  };
+const STATEMENT_PREVIEW_MAX = 500;
+
+function previewStatement(text: string): string {
+  const collapsed = text.trim();
+  return collapsed.length > STATEMENT_PREVIEW_MAX ? `${collapsed.slice(0, STATEMENT_PREVIEW_MAX)}…` : collapsed;
+}
+
+// Shared by /simulator/sql/execute and /simulator/migrations/execute — splits
+// the raw SQL text into individual statements and runs each in its own
+// round-trip, in order, so every statement reports its own result instead of
+// only the last one's (the old single-`db.execute(sql.raw(...))` behavior).
+//
+// The whole batch runs on a SINGLE pooled connection: a `BEGIN; ...; COMMIT;`
+// script therefore shares one real transaction across its statements, and a
+// best-effort ROLLBACK in the finally guarantees a half-open/aborted
+// transaction is never handed back to the pool (a no-op warning on an
+// autocommit or already-committed connection).
+async function executeRawSql(query: string): Promise<{ statements: StatementResult[] }> {
+  const statementTexts = splitSqlStatements(query);
+  const statements: StatementResult[] = [];
+
+  const client = await pool.connect();
+  try {
+    for (let statementIndex = 0; statementIndex < statementTexts.length; statementIndex++) {
+      const statementText = statementTexts[statementIndex];
+      const startTime = Date.now();
+      try {
+        const result = await client.query(statementText);
+        statements.push({
+          statementIndex,
+          statementText: previewStatement(statementText),
+          success: true,
+          rows: result.rows || [],
+          rowCount: result.rowCount ?? (result.rows ? result.rows.length : 0),
+          fields: result.fields?.map((f: any) => f.name) ?? (result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []),
+          executionMs: Date.now() - startTime,
+        });
+      } catch (err: any) {
+        // Per-statement catch: record the failure and keep going so the rest of
+        // the batch still runs and reports its own outcome.
+        statements.push({
+          statementIndex,
+          statementText: previewStatement(statementText),
+          success: false,
+          rows: [],
+          rowCount: 0,
+          fields: [],
+          executionMs: Date.now() - startTime,
+          error: err?.message || String(err),
+        });
+      }
+    }
+  } finally {
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // No transaction in progress — expected for autocommit / already-committed scripts.
+    }
+    client.release();
+  }
+
+  return { statements };
 }
 
 /**
