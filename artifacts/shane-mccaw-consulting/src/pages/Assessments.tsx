@@ -1,14 +1,34 @@
-import React from 'react';
-import { useLocation, Link } from 'wouter';
-import { useServices, PublicService } from '../hooks/useServices';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
-import { ShieldCheck, Clock, ChevronRight, Activity, Shield, Lock, AlertTriangle, Layers, TrendingUp, Zap } from 'lucide-react';
+import { useLocation } from 'wouter';
+import { ShieldCheck, Clock, ChevronRight, Activity, Lock, AlertTriangle, Layers, TrendingUp } from 'lucide-react';
+import { Layout } from '@/components/Layout';
+import { SEOMeta } from '@/components/SEOMeta';
+import { GlassPanel } from '@/components/design-system/GlassPanel';
+import { GradientText } from '@/components/design-system/GradientText';
+import { useServices, type PublicService } from '@/hooks/useServices';
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+
+const SIGNAL_BADGES = [
+  { icon: Layers, label: 'Drift Engine', color: 'text-accent-blue' },
+  { icon: Lock, label: 'Security Engine', color: 'text-red-400' },
+  { icon: Activity, label: 'Health Engine', color: 'text-emerald-400' },
+  { icon: Clock, label: 'SLA Engine', color: 'text-indigo-400' },
+  { icon: AlertTriangle, label: 'Scope Creep Engine', color: 'text-amber-400' },
+  { icon: TrendingUp, label: 'Sales Offer Engine', color: 'text-accent-violet' },
+];
+
+const SIGNAL_ENGINES = [
+  { icon: Layers, title: 'Drift Engine', color: 'text-accent-blue', desc: 'Detects unauthorized configuration deviations from your approved baseline across all M365 workloads.' },
+  { icon: Lock, title: 'Security Engine', color: 'text-red-400', desc: 'Identifies anonymous links, stale guest accounts, OAuth app over-privileges, and MFA coverage gaps.' },
+  { icon: Activity, title: 'Health Engine', color: 'text-emerald-400', desc: 'Calculates real-time composite health scores and triggers automated remediation runbooks on threshold breach.' },
+  { icon: Clock, title: 'SLA Engine', color: 'text-indigo-400', desc: 'Tracks delivery SLAs, response timelines, milestone execution rates and uptime guarantees proactively.' },
+  { icon: AlertTriangle, title: 'Scope Creep Engine', color: 'text-amber-400', desc: 'Validates every engineer workstream against your legal SOW parameters to prevent undocumented obligations.' },
+  { icon: TrendingUp, title: 'Sales Offer Engine', color: 'text-accent-violet', desc: 'Analyzes telemetry gaps to dynamically calculate targeted upgrade recommendations and monitoring expansions.' },
+];
 
 export default function Assessments() {
   const [location, setLocation] = useLocation();
 
-  // Dynamic fetches mapping directly to telemetry-driven database content
   // {{db.assessments.list}}
   const { services, loading, error } = useServices({ category: 'assessment' });
 
@@ -37,77 +57,75 @@ export default function Assessments() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
-      <Header />
+    <Layout>
+      <SEOMeta
+        title="Assessments | Shane McCaw Consulting"
+        description="Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan, not a questionnaire. Powered by the same signal engines that run continuous monitoring."
+      />
 
-      <main className="flex-grow pt-24 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
-        {/* NASA Authority & Engine Hero */}
+      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-4xl mx-auto mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-6">
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-            NASA M365 Governance Framework Standard
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <ShieldCheck className="w-4 h-4" />
+            Built by a Former NASA M365 Architect
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight mb-5">
-            Six Signal Engines.<br />
-            <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">One Tenant. Zero Blind Spots.</span>
+          <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-5">
+            Every Signal Engine.<br />
+            <GradientText>One Tenant. Zero Blind Spots.</GradientText>
           </h1>
-          <p className="text-lg text-slate-400 leading-relaxed max-w-3xl mx-auto mb-8">
-            Architected by Shane McCaw — creator of NASA's federal Copilot governance standard. Every assessment is powered by automated signal engines that harvest Microsoft Graph telemetry to surface Drift, Security, Health, SLA, Scope Creep, and Sales Offer intelligence.
+          <p className="text-lg text-text-secondary leading-relaxed max-w-3xl mx-auto mb-8">
+            Architected by Shane McCaw — creator of the M365 Copilot governance standard NASA
+            distributed agency-wide. Every assessment is powered by the same automated signal
+            engines that harvest Microsoft Graph telemetry to surface Drift, Security, Health, SLA,
+            Scope Creep, and Sales Offer intelligence.
           </p>
 
-          {/* Engine signal badges */}
           <div className="flex flex-wrap justify-center gap-2 mb-10">
-            {[
-              { icon: Layers, label: 'Drift Engine', color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-              { icon: Lock, label: 'Security Engine', color: 'text-red-400 bg-red-500/10 border-red-500/20' },
-              { icon: Activity, label: 'Health Engine', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-              { icon: Clock, label: 'SLA Engine', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' },
-              { icon: AlertTriangle, label: 'Scope Creep Engine', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-              { icon: TrendingUp, label: 'Sales Offer Engine', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' },
-            ].map(({ icon: Icon, label, color }) => (
-              <span key={label} className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${color}`}>
+            {SIGNAL_BADGES.map(({ icon: Icon, label, color }) => (
+              <span
+                key={label}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-white/[0.08] bg-white/[0.06] text-xs font-semibold ${color}`}
+              >
                 <Icon className="w-3.5 h-3.5" />
                 {label}
               </span>
             ))}
           </div>
 
-          {/* Tab Filter */}
-          <div className="inline-flex bg-slate-900 border border-slate-800 p-1.5 rounded-xl gap-1">
+          <div className="inline-flex glass-panel p-1.5 rounded-xl gap-1">
             <button
               onClick={() => setLocation('/assessments/all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'all'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-                }`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'all' ? 'text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              style={activeTab === 'all' ? GRADIENT_BG : undefined}
             >
               All ({services.length})
             </button>
             <button
               onClick={() => setLocation('/assessments/premium')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'paid'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-                }`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'paid' ? 'text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              style={activeTab === 'paid' ? GRADIENT_BG : undefined}
             >
               Paid Deliverables ({paidAssessments.length})
             </button>
             <button
               onClick={() => setLocation('/assessments/start')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'free'
-                  ? 'bg-emerald-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-                }`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'free' ? 'text-white' : 'text-text-secondary hover:text-text-primary'
+              }`}
+              style={activeTab === 'free' ? GRADIENT_BG : undefined}
             >
               Free Snapshots ({freeAssessments.length})
             </button>
           </div>
         </div>
 
-        {/* Loading / Error States */}
         {loading && (
           <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
           </div>
         )}
 
@@ -117,9 +135,8 @@ export default function Assessments() {
           </div>
         )}
 
-        {/* Catalog Grid */}
         {!loading && !error && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {displayedServices.map((service) => {
               const isFree = service.isFreeOffering;
               const priceDisplay = isFree
@@ -131,52 +148,51 @@ export default function Assessments() {
               return (
                 <div
                   key={service.slug}
-                  className={`flex flex-col rounded-2xl p-6 transition-all duration-200 border ${isFree
-                      ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                      : 'bg-slate-900 border-blue-500/30 hover:border-blue-500/60 shadow-lg shadow-blue-950/20'
-                    }`}
+                  className={`flex flex-col rounded-2xl p-6 transition-all duration-200 border ${
+                    isFree
+                      ? 'bg-charcoal-1 border-white/[0.06] hover:border-white/[0.12]'
+                      : 'bg-charcoal-1 border-accent-blue/30 hover:border-accent-blue/60 shadow-lg shadow-accent-blue/5'
+                  }`}
                 >
-                  {/* Card Header Tag */}
                   <div className="flex items-center justify-between mb-4">
                     <span
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${isFree
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                        }`}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                        isFree
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-white/[0.06] text-accent-blue border-white/[0.08]'
+                      }`}
                     >
                       {isFree ? 'Free Telemetry Snapshot' : 'Paid Deliverable Assessment'}
                     </span>
                     {service.durationDays && (
-                      <span className="flex items-center gap-1 text-xs text-slate-400">
+                      <span className="flex items-center gap-1 text-xs text-text-tertiary">
                         <Clock className="w-3.5 h-3.5" />
                         {service.durationDays} Day Turnaround
                       </span>
                     )}
                   </div>
 
-                  {/* Title & Tagline */}
-                  <h2 className="text-xl font-bold text-white mb-2">{service.name}</h2>
-                  <p className="text-sm text-slate-400 mb-4 line-clamp-3">
-                    {service.description}
-                  </p>
+                  <h2 className="font-display text-xl font-bold text-text-primary mb-2">{service.name}</h2>
+                  <p className="text-sm text-text-secondary mb-4 line-clamp-3">{service.description}</p>
 
-                  {/* Pricing Display */}
-                  <div className="mt-auto pt-4 border-t border-slate-800/80 mb-6">
+                  <div className="mt-auto pt-4 border-t border-white/[0.06] mb-6">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-extrabold text-white">{priceDisplay}</span>
+                      <span className="font-numeric text-3xl font-medium text-text-primary">{priceDisplay}</span>
                       {!isFree && service.billingType === 'one_time' && (
-                        <span className="text-xs text-slate-400">/ one-time</span>
+                        <span className="text-xs text-text-tertiary">/ one-time</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <button
                     onClick={() => handleCheckout(service)}
-                    className={`w-full py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${isFree
-                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/10'
-                      }`}
+                    className={`w-full py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                      isFree
+                        ? 'bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]'
+                        : 'text-white hover:opacity-90'
+                    }`}
+                    style={!isFree ? GRADIENT_BG : undefined}
+                    data-track="cta"
                   >
                     <span>{isFree ? 'Request Snapshot' : 'Buy Assessment'}</span>
                     <ChevronRight className="w-4 h-4" />
@@ -187,37 +203,30 @@ export default function Assessments() {
           </div>
         )}
 
-        {/* Signal Engine Methodology Section */}
-        <section className="mt-24 pt-16 border-t border-slate-800/80">
+        <section className="mt-24 pt-16 border-t border-white/[0.06] max-w-6xl mx-auto">
           <div className="max-w-3xl mx-auto text-center mb-12">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">What the Signal Engines Surface</h2>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              Every assessment is driven by automated engines that connect via secure read-only Microsoft Graph API to instantly harvest and score your tenant governance posture.
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-4">
+              What the Signal Engines Surface
+            </h2>
+            <p className="text-sm text-text-secondary leading-relaxed">
+              Every assessment is driven by automated engines that connect via secure read-only
+              Microsoft Graph API to instantly harvest and score your tenant governance posture.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[
-              { icon: Layers, title: 'Drift Engine', color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20', desc: 'Detects unauthorized configuration deviations from your approved baseline across all M365 workloads.' },
-              { icon: Lock, title: 'Security Engine', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20', desc: 'Identifies anonymous links, stale guest accounts, OAuth app over-privileges, and MFA coverage gaps.' },
-              { icon: Activity, title: 'Health Engine', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20', desc: 'Calculates real-time composite health scores and triggers automated remediation runbooks on threshold breach.' },
-              { icon: Clock, title: 'SLA Engine', color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20', desc: 'Tracks delivery SLAs, response timelines, milestone execution rates and uptime guarantees proactively.' },
-              { icon: AlertTriangle, title: 'Scope Creep Engine', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20', desc: 'Validates every engineer workstream against your legal SOW parameters to prevent undocumented obligations.' },
-              { icon: TrendingUp, title: 'Sales Offer Engine', color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20', desc: 'Analyzes telemetry gaps to dynamically calculate targeted upgrade recommendations and monitoring expansions.' },
-            ].map(({ icon: Icon, title, color, bg, desc }) => (
-              <div key={title} className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors">
-                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center mb-3 ${bg}`}>
+            {SIGNAL_ENGINES.map(({ icon: Icon, title, color, desc }) => (
+              <GlassPanel key={title} className="p-5">
+                <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-3">
                   <Icon className={`w-5 h-5 ${color}`} />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-1.5">{title}</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
-              </div>
+                <h3 className="text-sm font-bold text-text-primary mb-1.5">{title}</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">{desc}</p>
+              </GlassPanel>
             ))}
           </div>
         </section>
-      </main>
-
-      <Footer />
-    </div>
+      </section>
+    </Layout>
   );
 }

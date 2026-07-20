@@ -1,14 +1,32 @@
-import React from "react";
-import { Header } from "../components/Header";
-import { Footer } from "../components/Footer";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useServices } from "../hooks/useServices";
+import { useServices, type PublicService } from "../hooks/useServices";
+import { Layout } from "../components/Layout";
+import { SEOMeta } from "../components/SEOMeta";
+import { GlassPanel } from "../components/design-system/GlassPanel";
+import { GradientText } from "../components/design-system/GradientText";
+import { StatPanel } from "../components/design-system/StatPanel";
 import {
   ShieldCheck, Activity, Lock, AlertTriangle, ArrowRight, Zap,
   CheckCircle2, Layers, Clock, ChevronRight, Database, Cpu, Radio,
-  BarChart2, RefreshCw, TrendingUp
+  BarChart2, RefreshCw, TrendingUp, Users, Sparkles,
 } from "lucide-react";
 
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+const SEAT_PRESETS = [10, 50, 250, 750];
+
+interface MonitoringTypeAttributes {
+  seatMin?: number;
+  seatMax?: number | null;
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+  tenantTierLabel?: string;
+}
+
+// Tenant-facing engines only — the platform's engine registry runs 12 engines total, but
+// several (Pricing, CRM, MSP Portfolio) are internal business-ops engines that don't watch a
+// customer tenant, so this page never states a single "the platform has N engines" total.
 const ENGINES = [
   {
     id: "drift",
@@ -103,105 +121,172 @@ const ENGINES = [
 ];
 
 const colorMap: Record<string, { icon: string; badge: string; border: string; check: string }> = {
-  blue:   { icon: "text-blue-400",   badge: "bg-blue-500/10 text-blue-400 border-blue-500/20",   border: "border-blue-500/20",   check: "text-blue-400" },
-  red:    { icon: "text-red-400",    badge: "bg-red-500/10 text-red-400 border-red-500/20",       border: "border-red-500/20",    check: "text-red-400" },
-  emerald:{ icon: "text-emerald-400",badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", border: "border-emerald-500/20", check: "text-emerald-400" },
-  indigo: { icon: "text-indigo-400", badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",   border: "border-indigo-500/20", check: "text-indigo-400" },
-  amber:  { icon: "text-amber-400",  badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",   border: "border-amber-500/20",  check: "text-amber-400" },
-  violet: { icon: "text-violet-400", badge: "bg-violet-500/10 text-violet-400 border-violet-500/20", border: "border-violet-500/20", check: "text-violet-400" },
+  blue: { icon: "text-accent-blue", badge: "bg-white/[0.06] text-accent-blue border-white/[0.08]", border: "border-accent-blue/20", check: "text-accent-blue" },
+  red: { icon: "text-red-400", badge: "bg-red-500/10 text-red-400 border-red-500/20", border: "border-red-500/20", check: "text-red-400" },
+  emerald: { icon: "text-emerald-400", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", border: "border-emerald-500/20", check: "text-emerald-400" },
+  indigo: { icon: "text-indigo-400", badge: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20", border: "border-indigo-500/20", check: "text-indigo-400" },
+  amber: { icon: "text-amber-400", badge: "bg-amber-500/10 text-amber-400 border-amber-500/20", border: "border-amber-500/20", check: "text-amber-400" },
+  violet: { icon: "text-accent-violet", badge: "bg-white/[0.06] text-accent-violet border-white/[0.08]", border: "border-accent-violet/20", check: "text-accent-violet" },
 };
 
 const PIPELINE = [
-  { icon: Database, label: "Microsoft Graph API", desc: "Tenant telemetry harvested every 15 minutes via authenticated Graph queries" },
-  { icon: Cpu, label: "Signal Engine Analysis", desc: "6 specialized engines evaluate telemetry against governance rule sets" },
+  { icon: Database, label: "Microsoft Graph API", desc: "Tenant telemetry harvested via authenticated Graph queries, on each check's configured schedule" },
+  { icon: Cpu, label: "Signal Engine Analysis", desc: "Specialized engines evaluate telemetry against governance rule sets" },
   { icon: Radio, label: "Alert & Prioritization", desc: "Priority Engine scores findings and routes critical alerts to dashboard" },
   { icon: RefreshCw, label: "Automated Remediation", desc: "Runbook executor resolves qualifying findings without human queue" },
   { icon: BarChart2, label: "Reporting & Insights", desc: "Tenant health score, trend analysis and executive-ready audit reports" },
 ];
 
-
 export default function Monitoring() {
   // {{db.monitoring.packages}} -- fetch monitoring tier services from database
   const { services, loading, error } = useServices();
-  const monitoringPackages = services.filter(s => s.serviceType === "monitoring_tier");
+  const monitoringRows = services.filter((s) => s.serviceType === "monitoring_tier");
+
+  const [seatCount, setSeatCount] = useState<number>(25);
+
+  // Group monitoring rows into packages by their `tier` column, each package holding one row per
+  // tenant-size band (seatMin/seatMax in typeAttributes) — same real catalog shape Home.tsx's
+  // calculator uses (website-rebuild-reference-v2.md §2: monitoring rows carry null basePrice by
+  // design, real pricing lives in typeAttributes.pricePerUserMonth).
+  const monitoringPackages = useMemo(() => {
+    const groups = new Map<string, PublicService[]>();
+    monitoringRows.forEach((row) => {
+      const key = row.tier ?? "standard";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    });
+    return Array.from(groups.values())
+      .map((rows) => [...rows].sort((a, b) => a.sortOrder - b.sortOrder))
+      .sort((a, b) => a[0].sortOrder - b[0].sortOrder);
+  }, [monitoringRows]);
+
+  const matchRowForSeats = (rows: PublicService[], seats: number): PublicService | null => {
+    return (
+      rows.find((r) => {
+        const attrs = (r.typeAttributes ?? {}) as MonitoringTypeAttributes;
+        const min = attrs.seatMin ?? 1;
+        const max = attrs.seatMax ?? Infinity;
+        return seats >= min && seats <= max;
+      }) ?? null
+    );
+  };
+
+  const computeMonthlyPrice = (row: PublicService, seats: number): number | null => {
+    const attrs = (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+    if (!attrs.pricePerUserMonth) return null;
+    const perUser = parseFloat(attrs.pricePerUserMonth);
+    if (isNaN(perUser)) return null;
+    const floor = attrs.seatCountFloor ?? attrs.seatMin ?? 1;
+    const surcharge = attrs.flatMonthlySurcharge ? parseFloat(attrs.flatMonthlySurcharge) : 0;
+    const billableSeats = Math.max(seats, floor);
+    return billableSeats * perUser + surcharge;
+  };
+
+  const packageDisplayName = (row: PublicService): string => row.name.split("—")[0].trim();
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
-      <Header />
+    <Layout>
+      <SEOMeta
+        title="Monitoring | Shane McCaw Consulting"
+        description="Continuous Microsoft 365 tenant monitoring — signal engines watching drift, security, health, and SLA compliance, priced per seat from the real catalog."
+      />
 
-      <main className="flex-grow pt-24 pb-16">
-
-        {/* HERO */}
-        <section className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto pt-8 pb-20 text-center">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-6">
+      {/* HERO */}
+      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
+        <div className="max-w-5xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
-            24/7 Automated Tenant Intelligence
+            Continuous Automated Tenant Intelligence
           </div>
-          <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight max-w-5xl mx-auto mb-6">
-            Stop Reacting. Start Governing.
+          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6">
+            Stop Reacting. <GradientText>Start Governing.</GradientText>
           </h1>
-          <p className="text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto leading-relaxed mb-10">
-            Six specialized signal engines harvest Microsoft Graph telemetry every 15 minutes — detecting drift, surfacing security threats, calculating health scores, and enforcing SLA compliance before incidents reach your clients.
+          <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
+            Specialized signal engines harvest Microsoft Graph telemetry on a recurring schedule —
+            detecting drift, surfacing security threats, calculating health scores, and enforcing
+            SLA compliance before incidents reach your clients.
           </p>
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto">
-            <Link href="/assessments" className="w-full sm:w-auto px-8 py-4 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 text-base">
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto mb-14">
+            <a
+              href="#packages"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-white shadow-lg shadow-accent-blue/20 transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-base"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
               <span>View Monitoring Packages</span>
               <ArrowRight className="w-5 h-5" />
-            </Link>
-            <Link href="/assessments/start" className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 transition-all flex items-center justify-center text-base">
+            </a>
+            <Link
+              href="/assessments/start"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base"
+              data-track="cta"
+            >
               Run Free Diagnostic First
             </Link>
           </div>
-        </section>
 
-        {/* AUTHORITY BANNER */}
-        <section className="border-y border-slate-800/80 bg-slate-900/40 py-8 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+            <StatPanel label="Engines shown below" value={ENGINES.length} />
+            <StatPanel label="Check cadence" value="Hourly–Daily" />
+            <StatPanel label="Remediation" value="Automated" />
+          </div>
+        </div>
+      </section>
+
+      {/* CREDIBILITY */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <GlassPanel className="p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-7 h-7 text-blue-400" />
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
+                <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">NASA Copilot Deployment Standard</h3>
-                <p className="text-xs text-slate-400">Monitoring framework distributed federal government-wide as the M365 governance benchmark.</p>
+                <h3 className="font-display font-semibold text-lg text-text-primary">
+                  Built on a Governance Standard Shane Wrote at NASA
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  Shane McCaw wrote the M365 Copilot governance framework NASA distributed
+                  agency-wide. This monitoring platform runs on that same discipline.
+                </p>
               </div>
             </div>
-            <div className="flex items-center gap-8 text-center">
-              {[
-                { value: "6", label: "Signal Engines" },
-                { value: "15 min", label: "Telemetry Cadence" },
-                { value: "100%", label: "Automated" },
-              ].map(stat => (
-                <div key={stat.label}>
-                  <div className="text-2xl font-extrabold text-white">{stat.value}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{stat.label}</div>
-                </div>
-              ))}
+            <div className="text-sm text-text-secondary max-w-md md:text-right">
+              Every check runs against your live tenant via Microsoft Graph — not estimated from a
+              questionnaire, not checked "whenever someone remembers to look."
             </div>
-          </div>
-        </section>
+          </GlassPanel>
+        </div>
+      </section>
 
-        {/* 6 ENGINE GRID */}
-        <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      {/* ENGINE GRID */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Six Engines. One Platform. Zero Blind Spots.</h2>
-            <p className="text-slate-400">Each engine is a purpose-built analytical module that operates independently and feeds a unified priority queue — so critical findings surface immediately, automatically.</p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              One Platform. <GradientText>Zero Blind Spots.</GradientText>
+            </h2>
+            <p className="text-text-secondary">
+              Each engine is a purpose-built analytical module that operates independently and
+              feeds a unified priority queue — so critical findings surface immediately,
+              automatically.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ENGINES.map(engine => {
+            {ENGINES.map((engine) => {
               const Icon = engine.icon;
               const c = colorMap[engine.color];
               return (
-                <div key={engine.id} className="flex flex-col p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all duration-200 group">
-                  <div className={`w-11 h-11 rounded-xl bg-slate-800 border ${c.border} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
+                <div key={engine.id} className="flex flex-col p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] hover:border-white/[0.12] transition-all duration-200 group">
+                  <div className={`w-11 h-11 rounded-xl bg-white/[0.06] border ${c.border} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
                     <Icon className={`w-5 h-5 ${c.icon}`} />
                   </div>
                   <span className={`text-[10px] uppercase font-bold tracking-wider mb-2 px-2 py-0.5 rounded-full border self-start ${c.badge}`}>{engine.badge}</span>
-                  <h3 className="text-lg font-bold text-white mb-2">{engine.name}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed mb-5 flex-grow">{engine.description}</p>
-                  <ul className="space-y-1.5 border-t border-slate-800 pt-4 mt-auto">
-                    {engine.signals.map(s => (
-                      <li key={s} className="flex items-center gap-2 text-xs text-slate-400">
+                  <h3 className="font-display text-lg font-bold text-text-primary mb-2">{engine.name}</h3>
+                  <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{engine.description}</p>
+                  <ul className="space-y-1.5 border-t border-white/[0.06] pt-4 mt-auto">
+                    {engine.signals.map((s) => (
+                      <li key={s} className="flex items-center gap-2 text-xs text-text-secondary">
                         <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${c.check}`} />
                         {s}
                       </li>
@@ -211,111 +296,212 @@ export default function Monitoring() {
               );
             })}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* TELEMETRY PIPELINE */}
-        <section className="border-t border-slate-800/80 bg-slate-900/30 py-20 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center max-w-3xl mx-auto mb-14">
-              <h2 className="text-3xl font-bold text-white mb-4">How the Intelligence Pipeline Works</h2>
-              <p className="text-slate-400">From Microsoft Graph API to automated remediation — every step executes without manual intervention.</p>
-            </div>
-            <div className="flex flex-col md:flex-row items-stretch gap-1">
-              {PIPELINE.map((step, i) => {
-                const Icon = step.icon;
-                return (
-                  <div key={step.label} className="flex flex-col md:flex-row items-start md:items-stretch flex-1">
-                    <div className="flex flex-col flex-1 p-5 rounded-2xl bg-slate-900 border border-slate-800">
-                      <div className="w-9 h-9 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3">
-                        <Icon className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Step {i + 1}</div>
-                      <div className="text-sm font-bold text-white mb-1.5">{step.label}</div>
-                      <p className="text-xs text-slate-400 leading-relaxed">{step.desc}</p>
-                    </div>
-                    {i < PIPELINE.length - 1 && (
-                      <div className="hidden md:flex items-center px-1 text-slate-700">
-                        <ChevronRight className="w-5 h-5" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* MONITORING PACKAGES */}
-        <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      {/* TELEMETRY PIPELINE */}
+      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
-            <h2 className="text-3xl font-bold text-white mb-4">Monitoring Packages</h2>
-            <p className="text-slate-400">Tiered packages dynamically loaded from the platform catalog. All packages include full engine coverage and the real-time priority dashboard.</p>
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">How the Intelligence Pipeline Works</h2>
+            <p className="text-text-secondary">From Microsoft Graph API to automated remediation — every step executes without manual intervention.</p>
           </div>
+          <div className="flex flex-col md:flex-row items-stretch gap-1">
+            {PIPELINE.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.label} className="flex flex-col md:flex-row items-start md:items-stretch flex-1">
+                  <div className="flex flex-col flex-1 p-5 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-3">
+                      <Icon className="w-4 h-4 text-accent-blue" />
+                    </div>
+                    <div className="text-[10px] font-bold text-accent-blue uppercase tracking-widest mb-1">Step {i + 1}</div>
+                    <div className="text-sm font-bold text-text-primary mb-1.5">{step.label}</div>
+                    <p className="text-xs text-text-secondary leading-relaxed">{step.desc}</p>
+                  </div>
+                  {i < PIPELINE.length - 1 && (
+                    <div className="hidden md:flex items-center px-1 text-text-tertiary">
+                      <ChevronRight className="w-5 h-5" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* MONITORING PACKAGES — real per-seat pricing: pricePerUserMonth × max(seats, seatCountFloor)
+          + flatMonthlySurcharge, read from typeAttributes (website-rebuild-reference-v2.md §2) */}
+      <section id="packages" className="py-20 px-4 sm:px-6 lg:px-8 scroll-mt-24">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">Monitoring Packages</h2>
+            <p className="text-text-secondary">
+              Tiered packages loaded live from the platform catalog, priced per seat. All packages
+              include full engine coverage and the real-time priority dashboard.
+            </p>
+          </div>
+
           {loading ? (
-            <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>
+            <div className="flex justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
+            </div>
           ) : error || monitoringPackages.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 border border-slate-800 rounded-2xl bg-slate-900/20">
-              Monitoring package data is currently unavailable. Please <Link href="/contact" className="text-blue-400 hover:underline">contact us</Link> for pricing.
+            <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+              Monitoring package data is currently unavailable. Please{" "}
+              <Link href="/contact" className="text-accent-blue hover:underline">contact us</Link> for pricing.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {monitoringPackages.map(pkg => (
-                <div key={pkg.slug} className="flex flex-col rounded-2xl p-6 bg-slate-900 border border-slate-800 hover:border-blue-500/40 transition-all duration-200">
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                      {pkg.category ? pkg.category.toUpperCase() : "MONITORING TIER"}
-                    </span>
-                    {pkg.durationDays && (
-                      <span className="flex items-center gap-1 text-xs text-slate-400">
-                        <Clock className="w-3.5 h-3.5" />{pkg.durationDays}d
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-2">{pkg.name}</h3>
-                  <p className="text-sm text-slate-400 mb-6 flex-grow line-clamp-3">{pkg.description}</p>
-                  <div className="pt-4 border-t border-slate-800 flex items-center justify-between mt-auto">
-                    <div>
-                      <span className="text-2xl font-extrabold text-white">
-                        {pkg.isFreeOffering ? "FREE" : pkg.basePrice ? `$${Number(pkg.basePrice).toLocaleString()}` : "Custom"}
-                      </span>
-                      {!pkg.isFreeOffering && pkg.basePrice && <span className="text-xs text-slate-400 ml-1">/ mo</span>}
-                    </div>
-                    <Link
-                      href={pkg.isFreeOffering ? `/contact?service=${pkg.slug}` : `/checkout?product=${pkg.slug}`}
-                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1"
-                    >
-                      <span>{pkg.isFreeOffering ? "Request" : "Get Started"}</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </Link>
+            <>
+              <div className="flex flex-col items-center mb-10">
+                <label htmlFor="seat-count" className="flex items-center gap-2 text-sm font-semibold text-text-secondary mb-3">
+                  <Users className="w-4 h-4 text-accent-blue" />
+                  How many licensed users are in your tenant?
+                </label>
+                <div className="flex items-center gap-3 flex-wrap justify-center">
+                  <input
+                    id="seat-count"
+                    type="number"
+                    min={1}
+                    value={seatCount}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setSeatCount(isNaN(v) || v < 1 ? 1 : v);
+                    }}
+                    className="w-28 text-center font-numeric text-lg font-medium bg-charcoal-1 border border-white/[0.08] rounded-xl px-3 py-2.5 text-text-primary focus:outline-none focus:border-accent-blue/60"
+                  />
+                  <div className="flex items-center gap-2">
+                    {SEAT_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => setSeatCount(preset)}
+                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                          seatCount === preset
+                            ? "text-white"
+                            : "bg-charcoal-1 text-text-secondary border border-white/[0.08] hover:text-text-primary hover:border-white/[0.16]"
+                        }`}
+                        style={seatCount === preset ? GRADIENT_BG : undefined}
+                      >
+                        {preset}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
+              </div>
 
-        {/* BOTTOM CTA */}
-        <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
-          <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-blue-950/20 to-slate-900 border border-blue-500/10 shadow-2xl relative overflow-hidden text-center">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-4 relative z-10">Not Sure Where to Start?</h2>
-            <p className="text-slate-300 max-w-xl mx-auto mb-8 relative z-10">
-              Run a free tenant diagnostic first. Our signal engines will score your current governance posture and recommend the right monitoring tier.
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {monitoringPackages.map((rows) => {
+                  const matched = matchRowForSeats(rows, seatCount);
+                  if (!matched) return null;
+
+                  const attrs = (matched.typeAttributes ?? {}) as MonitoringTypeAttributes;
+                  const price = computeMonthlyPrice(matched, seatCount);
+                  const isHighlighted = matched.highlighted;
+
+                  return (
+                    <div
+                      key={matched.tier ?? matched.slug}
+                      className={`flex flex-col rounded-2xl p-6 transition-all duration-200 relative ${
+                        isHighlighted
+                          ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
+                          : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
+                      }`}
+                    >
+                      {isHighlighted && (
+                        <span
+                          className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 rounded-full text-white text-[10px] font-bold uppercase tracking-wider"
+                          style={GRADIENT_BG}
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Most Comprehensive
+                        </span>
+                      )}
+
+                      <div className="flex justify-between items-start mb-3">
+                        <h3 className="font-display text-xl font-bold text-text-primary">{packageDisplayName(matched)}</h3>
+                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] whitespace-nowrap">
+                          {attrs.tenantTierLabel ?? "Custom"}
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-text-secondary mb-6">{matched.tagline}</p>
+
+                      <div className="pt-2 pb-6 border-b border-white/[0.06] mb-6">
+                        {price !== null ? (
+                          <>
+                            <span className="font-numeric text-3xl font-medium text-text-primary">
+                              ${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-sm text-text-tertiary ml-1">/mo</span>
+                          </>
+                        ) : (
+                          <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
+                        )}
+                        <div className="text-xs text-text-tertiary mt-1">For {seatCount.toLocaleString()} licensed users</div>
+                      </div>
+
+                      {matched.features && matched.features.length > 0 && (
+                        <ul className="space-y-2.5 mb-6 flex-grow">
+                          {matched.features.slice(0, 4).map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
+                              <CheckCircle2 className="w-4 h-4 text-accent-blue mt-0.5 shrink-0" />
+                              <span>{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <Link
+                        href={`/checkout?product=${matched.slug}`}
+                        className={`mt-auto px-4 py-3 rounded-xl text-sm font-bold text-center transition-all flex items-center justify-center gap-1 ${
+                          isHighlighted ? "text-white hover:opacity-90" : "bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]"
+                        }`}
+                        style={isHighlighted ? GRADIENT_BG : undefined}
+                        data-track="cta"
+                      >
+                        <span>Get Started</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* BOTTOM CTA */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-3xl mx-auto">
+          <GlassPanel className="p-8 sm:p-12">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">Not Sure Where to Start?</h2>
+            <p className="text-text-secondary max-w-xl mx-auto mb-8">
+              Run a free tenant diagnostic first. Our signal engines will score your current
+              governance posture and recommend the right monitoring tier.
             </p>
-            <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10">
-              <Link href="/assessments/start" className="px-6 py-3.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center justify-center gap-2">
+            <div className="flex flex-col sm:flex-row justify-center gap-4">
+              <Link
+                href="/assessments/start"
+                className="px-6 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={GRADIENT_BG}
+                data-track="cta"
+              >
                 <Zap className="w-4 h-4" />
                 Run Free Diagnostic
               </Link>
-              <Link href="/contact" className="px-6 py-3.5 rounded-xl font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors">
+              <Link
+                href="/contact"
+                className="px-6 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
+                data-track="cta"
+              >
                 Talk to Shane McCaw
               </Link>
             </div>
-          </div>
-        </section>
-      </main>
-
-      <Footer />
-    </div>
+          </GlassPanel>
+        </div>
+      </section>
+    </Layout>
   );
 }
