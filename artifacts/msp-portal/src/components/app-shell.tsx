@@ -502,6 +502,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
+        icon: History,
+        label: "Activity Timeline",
+        href: "/customer-timeline",
+        roles: ["CustomerUser"],
+      },
+      {
         icon: Gift,
         label: "My Offers",
         href: "/customer-offers",
@@ -1303,6 +1309,10 @@ function CustomerTopBar({
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings/security")}>
               <KeyRound className="size-4 text-muted-foreground" />
               <span>Password &amp; MFA</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-notifications")}>
+              <Bell className="size-4 text-muted-foreground" />
+              <span>Notification Preferences</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/download-data")}>
               <Download className="size-4 text-muted-foreground" />

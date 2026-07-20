@@ -34,6 +34,7 @@ import TrustPage from "@/pages/trust";
 import CustomerHomePage from "@/pages/customer-home";
 import CustomerDocumentsPage from "@/pages/customer-documents";
 import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
+import CustomerTimelinePage from "@/pages/customer-timeline";
 import CustomerSowPage from "@/pages/customer-sow";
 import MspCustomerSowPage from "@/pages/msp-customer-sow";
 import MspSowPublicPage from "@/pages/msp-sow-public";
@@ -59,6 +60,7 @@ import ChargebackPage from "@/pages/chargeback";
 import CustomerOffersPage from "@/pages/customer-offers";
 import MarketplacePage from "@/pages/marketplace";
 import CustomerPrivacyPage from "@/pages/customer-privacy";
+import CustomerNotificationsPage from "@/pages/customer-notifications";
 import CustomerBillingPage from "@/pages/customer-billing";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
@@ -354,6 +356,9 @@ function SlugInnerSwitch() {
       <Route path="/customer-diagnostics">
         <ProtectedRoute component={CustomerDiagnosticsPage} />
       </Route>
+      <Route path="/customer-timeline">
+        <ProtectedRoute component={CustomerTimelinePage} />
+      </Route>
       <Route path="/customer-sow/:id">
         <ProtectedRoute component={CustomerSowPage} />
       </Route>
@@ -432,6 +437,11 @@ function SlugInnerSwitch() {
       {/* Customer Privacy & Data — customer-facing */}
       <Route path="/customer-privacy">
         <ProtectedRoute component={CustomerPrivacyPage} />
+      </Route>
+
+      {/* Customer Notification Preferences — customer-facing */}
+      <Route path="/customer-notifications">
+        <ProtectedRoute component={CustomerNotificationsPage} />
       </Route>
 
       {/* Customer Team Management — customer-facing */}
