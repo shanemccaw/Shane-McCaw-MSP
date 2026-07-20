@@ -13,7 +13,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 |------|--------|------|--------|
 | 2026-07-19 | ✅ DONE | Executive Mode — Per-Widget Chart Type Choice | 221706e4 |
 | 2026-07-19 | ⏳ IN FLIGHT | Customer Tenant Timeline | |
-| 2026-07-19 | ⏳ IN FLIGHT | Customer Notification Preferences UI | |
+| 2026-07-19 | ✅ DONE | Customer Notification Preferences UI — per-category on/off + email opt-in (customer_notification_preferences table, opt-in-in-app/opt-out-email default), gated inside notification-center.ts's createNotification (direct db.insert bypass sites in portal.ts remain ungated, pre-existing debt not this task's scope). Email via existing Graph sendMessage. Webhook (v1 Teams/Slack) reuses existing outbound_webhooks/webhook-delivery.ts fan-out via event-bus.ts dispatchEvent — no new delivery infra built. Does not touch policy_rules severity/cooldown/escalation; recurring quiet hours NOT built (flagged as real follow-up needing new scheduling infra). Needs manual SQL: 2026-07-19-customer-notification-preferences.sql. | 7ce5fd93 |
 | 2026-07-19 | ⏳ IN FLIGHT | In-Portal Marketplace — Shared Across Roles | |
 | 2026-07-19 | ✅ DONE | Public Website Rebuild: Stage 1 Shell/Core | a06f8185 |
 | 2026-07-19 | ✅ DONE | engagement offer real-time trigger on qualifying events | 52f8f6b5 |
