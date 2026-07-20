@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-19 | ⏳ IN FLIGHT | Executive Mode — Per-Widget Chart Type Choice | |
 | 2026-07-19 | ⏳ IN FLIGHT | Customer Tenant Timeline | |
 | 2026-07-19 | ⏳ IN FLIGHT | Customer Notification Preferences UI | |
 | 2026-07-19 | ⏳ IN FLIGHT | In-Portal Marketplace — Shared Across Roles | |
