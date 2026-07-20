@@ -84,6 +84,7 @@ import {
   Shield,
   ShieldCheck,
   Sparkles,
+  Store,
   Sun,
   Timer,
   Trash2,
@@ -501,10 +502,24 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
+        icon: History,
+        label: "Activity Timeline",
+        href: "/customer-timeline",
+        roles: ["CustomerUser"],
+      },
+      {
         icon: Gift,
         label: "My Offers",
         href: "/customer-offers",
         roles: ["CustomerUser"],
+      },
+      {
+        icon: Store,
+        label: "Marketplace",
+        href: "/marketplace",
+        // Shared across roles — Assessment reaches it via the sidebar; CustomerUser
+        // (who uses CustomerTopBar, not the sidebar) reaches it via the avatar menu.
+        roles: ["Assessment", "CustomerUser"],
       },
       {
         icon: ShieldCheck,
@@ -1268,6 +1283,10 @@ function CustomerTopBar({
             <DropdownMenuSeparator />
 
             {/* Real pages */}
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/marketplace")}>
+              <Store className="size-4 text-muted-foreground" />
+              <span>Marketplace</span>
+            </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-team")}>
               <Users className="size-4 text-muted-foreground" />
               <span>Manage Team</span>
@@ -1290,6 +1309,10 @@ function CustomerTopBar({
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings/security")}>
               <KeyRound className="size-4 text-muted-foreground" />
               <span>Password &amp; MFA</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-notifications")}>
+              <Bell className="size-4 text-muted-foreground" />
+              <span>Notification Preferences</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/download-data")}>
               <Download className="size-4 text-muted-foreground" />

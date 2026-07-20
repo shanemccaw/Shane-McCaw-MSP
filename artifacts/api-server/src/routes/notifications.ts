@@ -24,6 +24,7 @@ export const CATEGORY_STYLES: Record<string, { icon: string; color: string }> = 
   automation:     { icon: "zap",           color: "yellow" },
   project:        { icon: "layers",        color: "blue"   },
   onboarding:     { icon: "rocket",        color: "green"  },
+  offer:          { icon: "gift",          color: "pink"   },
 };
 
 // ── Admin: SSE stream for real-time notification updates ──────────────────────

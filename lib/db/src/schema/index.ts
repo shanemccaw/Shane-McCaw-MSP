@@ -482,6 +482,25 @@ export const notificationsTable = pgTable("notifications", {
 export type InsertNotification = typeof notificationsTable.$inferInsert;
 export type Notification = typeof notificationsTable.$inferSelect;
 
+// Customer-configurable notification preferences — one row per (user, category).
+// Absence of a row means the default: in-app delivery on, email delivery off.
+// Only governs what reaches the customer (delivery channel/opt-out); it never
+// overrides MSP-configured policy_rules severity/cooldown/escalation.
+export const customerNotificationPreferencesTable = pgTable("customer_notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  category: text("category").notNull(),
+  inAppEnabled: boolean("in_app_enabled").notNull().default(true),
+  emailEnabled: boolean("email_enabled").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("customer_notif_prefs_user_category_uidx").on(t.userId, t.category),
+]);
+
+export type InsertCustomerNotificationPreference = typeof customerNotificationPreferencesTable.$inferInsert;
+export type CustomerNotificationPreference = typeof customerNotificationPreferencesTable.$inferSelect;
+
 // Project updates / communication log
 export const projectUpdatesTable = pgTable("project_updates", {
   id: serial("id").primaryKey(),
