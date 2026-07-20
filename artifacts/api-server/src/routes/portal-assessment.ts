@@ -805,6 +805,64 @@ router.post(
   },
 );
 
+// ── Comparison mode — side-by-side SOW scope versions ──────────────────────────
+//
+// Non-obvious feature from the original product spec: let the customer compare
+// their SOW scope/pricing across versions (e.g. full scope vs. a narrower
+// re-scope). Real historical versions already exist in storage — every
+// superseded regeneration is archived, not deleted (see the versioning note
+// above `loadSowDocs`) — so this is a read-only view over data already produced
+// by the scope selector (task 4); it does not generate anything new.
+//
+// Only scope-vs-scope (SOW version vs. SOW version) is genuinely comparable
+// today: every version shares the same sowPricingLines shape. A second
+// "free assessment result vs. paid upgrade" comparison was investigated and
+// found NOT buildable from real data — msp_diagnostic_findings (discrete
+// per-check severity rows) and insights_generated_documents.sowPricingLines
+// (priced workstream phases) share no common key or joinable field, so that
+// comparison is not implemented here rather than fabricated.
+router.get(
+  "/portal/assessment/sow/versions",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const docs = await loadSowDocs(userId);
+      const real = docs.filter((d) => (SOW_REAL_STATUSES as readonly string[]).includes(d.status));
+      const versions = [...real]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          status: d.status,
+          createdAt: d.createdAt.toISOString(),
+          isActive: (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status),
+          totalPrice: d.sowTotalPrice != null ? Number(d.sowTotalPrice) : null,
+          workstreams: workstreamLinesOf(d).map((l) => ({
+            title: l.title,
+            scope: l.scope,
+            priceUsd: l.priceUsd,
+            weeks: l.weeks ?? null,
+            deliveryDate: l.deliveryDate ?? null,
+          })),
+          adjustments: adjustmentLinesOf(d).map((l) => ({
+            title: l.title,
+            scope: l.scope,
+            priceUsd: l.priceUsd,
+          })),
+        }));
+      res.json({ versions });
+    } catch (err) {
+      log.error({ err, userId }, "GET /portal/assessment/sow/versions failed");
+      res.status(500).json({ error: "Failed to load statement of work versions" });
+    }
+  },
+);
+
 // ════════════════════════════════════════════════════════════════════════════
 // Task 5 — Assessment payment plan: choice, signature, checkout
 // ════════════════════════════════════════════════════════════════════════════

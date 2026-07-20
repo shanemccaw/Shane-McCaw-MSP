@@ -679,6 +679,12 @@ function StepPanel({
           <div className="mt-5">
             <AssessmentSowSelector fetchWithAuth={fetchWithAuth} />
           </div>
+          <a
+            href="/assessment/compare"
+            className="mt-3 inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Compare this scope with a previous version
+          </a>
           <Button className="mt-6" onClick={onGoToPayment}>
             Continue to choose a plan <ChevronRight className="ml-1 size-4" />
           </Button>

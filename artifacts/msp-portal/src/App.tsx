@@ -80,6 +80,7 @@ import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
 import AssessmentShellPage from "@/pages/assessment-shell";
+import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CommandCenterPage from "@/pages/command-center";
 import CustomerTeamPage from "@/pages/customer-team";
 import ComingSoonPage from "@/pages/coming-soon";
@@ -347,6 +348,11 @@ function SlugInnerSwitch() {
           assessment surfaces are later tasks). */}
       <Route path="/assessment">
         <ProtectedRoute component={AssessmentShellPage} />
+      </Route>
+      {/* Assessment Comparison Mode — side-by-side SOW scope versions, read-only
+          over the same archived-version storage the SOW Scope Selector produces. */}
+      <Route path="/assessment/compare">
+        <ProtectedRoute component={AssessmentSowComparePage} />
       </Route>
       <Route path="/command-center">
         <ProtectedRoute component={CommandCenterPage} />
