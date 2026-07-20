@@ -606,6 +606,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
+        icon: History,
+        label: "Timeline",
+        href: "/msp-timeline",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
         icon: Megaphone,
         label: "Message Center",
         href: "/message-center",

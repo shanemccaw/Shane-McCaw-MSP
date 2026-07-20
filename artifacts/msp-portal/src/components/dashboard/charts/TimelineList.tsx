@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { LucideIcon } from "lucide-react";
+import { Link } from "wouter";
 
 export interface TimelineEvent {
   id: string;
@@ -15,6 +16,8 @@ export interface TimelineEvent {
   time: string;
   icon?: LucideIcon;
   status?: "default" | "success" | "warning" | "error" | "info";
+  /** Optional deep link — wraps the event row in a <Link> when set (e.g. cross-tenant views linking into a customer's detail page). */
+  href?: string;
 }
 
 export interface TimelineListProps {
@@ -75,9 +78,18 @@ export function TimelineList({
                 {/* Content */}
                 <div className="flex flex-col flex-1 pb-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-slate-200">
-                      {event.title}
-                    </p>
+                    {event.href ? (
+                      <Link
+                        href={event.href}
+                        className="text-sm font-medium text-slate-200 hover:underline underline-offset-2"
+                      >
+                        {event.title}
+                      </Link>
+                    ) : (
+                      <p className="text-sm font-medium text-slate-200">
+                        {event.title}
+                      </p>
+                    )}
                     <time className="text-xs text-slate-500 shrink-0">
                       {event.time}
                     </time>
