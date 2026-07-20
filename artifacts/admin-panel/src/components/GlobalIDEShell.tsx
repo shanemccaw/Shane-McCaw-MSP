@@ -10,10 +10,8 @@ import { useLocation, useSearch } from "wouter";
 import {
   ChevronRight,
   LogOut,
-  PanelLeftOpen,
   PanelRightOpen,
   Search,
-  X,
 } from "lucide-react";
 import {
   Tooltip,
@@ -29,14 +27,15 @@ import { playSoundFromParams } from "@/lib/playSound";
 import { logger } from "@/lib/logger";
 import {
   WORKSPACES,
+  activeAncestorKeys,
   buildCmdKEntries,
   findWorkspace,
+  groupNodeKey,
   isItemActive,
   resolveTabMeta,
+  sectionNodeKey,
   type TreeItem,
-  type WorkspaceDef,
 } from "@/components/shell/workspaceNav";
-import { closeTab as engineCloseTab, openTab as engineOpenTab, type TabState } from "@/components/shell/tabEngine";
 import { PropertyPanelContext, type PropertySelection } from "@/components/shell/PropertyPanelContext";
 import PropertyPanel from "@/components/shell/PropertyPanel";
 import StatusBar, { type CampaignBadge } from "@/components/shell/StatusBar";
@@ -48,11 +47,13 @@ const log = logger.child({ channel: "admin.shell" });
 
 // ─── LocalStorage helpers ─────────────────────────────────────────────────────
 
-const LS_EXPLORER_COLLAPSED = "ide_explorer_collapsed";
 const LS_PROPS_COLLAPSED = "ide_props_collapsed";
 const LS_BOTTOM_OPEN = "ide_bottom_open";
 const LS_BOTTOM_HEIGHT = "ide_bottom_height";
 const LS_EMAIL_LAST_SEEN = "emailActivityLastSeenAt";
+// Set of expanded collapse-keys for the navigation tree. Absent/empty ⇒ every
+// node starts collapsed (only the top-level workspace names are visible).
+const LS_NAV_EXPANDED = "admin_nav_expanded";
 
 function readBool(key: string, fallback: boolean): boolean {
   try { const v = localStorage.getItem(key); return v !== null ? v === "true" : fallback; } catch { return fallback; }
@@ -62,6 +63,20 @@ function readNum(key: string, fallback: number): number {
 }
 function writeLs(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch {}
+}
+
+function readNavExpanded(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_NAV_EXPANDED);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch { return new Set(); }
+}
+
+function writeNavExpanded(set: Set<string>): void {
+  try { localStorage.setItem(LS_NAV_EXPANDED, JSON.stringify([...set])); } catch {}
 }
 
 function readLastSeenAt(): number | null {
@@ -79,155 +94,60 @@ function saveLastSeenAt(ts: number): void {
 
 const POLL_INTERVAL_MS = 60_000;
 
-// ─── Activity Bar ─────────────────────────────────────────────────────────────
+// ─── Navigation tree ──────────────────────────────────────────────────────────
 
-function ActivityBar({
-  activeWorkspaceId,
-  unreadEmailCount,
-  onNavigate,
-  onCmdK,
-  userEmail,
-  onLogout,
-}: {
-  activeWorkspaceId: string | null;
-  unreadEmailCount: number;
-  onNavigate: (path: string) => void;
-  onCmdK: () => void;
-  userEmail?: string;
-  onLogout: () => void;
-}) {
-  return (
-    <div className="shrink-0 w-12 flex flex-col items-center bg-card border-r border-border py-2 gap-0.5">
-      {WORKSPACES.map(ws => {
-        const Icon = ws.icon;
-        const isActive = ws.id === activeWorkspaceId;
-        const badge = ws.badgeKey === "unreadEmail" ? unreadEmailCount : 0;
-        return (
-          <Tooltip key={ws.id}>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => onNavigate(ws.defaultPath)}
-                aria-label={ws.label}
-                className={`relative w-9 h-9 flex items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
-                  isActive
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground/70 hover:text-foreground hover:bg-accent"
-                }`}
-              >
-                {isActive && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary" />
-                )}
-                <Icon className="w-[18px] h-[18px]" />
-                {badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
-                    {badge > 99 ? "99+" : badge}
-                  </span>
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <span className="font-semibold">{ws.label}</span>
-              <span className="block text-xs text-muted-foreground mt-0.5">{ws.description}</span>
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
-
-      <div className="flex-1" />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onCmdK}
-            aria-label="Quick Jump (⌘K)"
-            className="w-9 h-9 flex items-center justify-center rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">Quick Jump ⌘K</TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="w-7 h-7 my-1.5 bg-primary/15 border border-primary/30 rounded-full flex items-center justify-center cursor-default">
-            <span className="text-[11px] font-bold text-primary uppercase leading-none">
-              {userEmail?.[0] ?? "A"}
-            </span>
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <span className="font-semibold">Shane McCaw</span>
-          <span className="block text-xs text-muted-foreground mt-0.5">{userEmail ?? "Administrator"}</span>
-        </TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onLogout}
-            aria-label="Sign out"
-            className="w-9 h-9 flex items-center justify-center rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">Sign out</TooltipContent>
-      </Tooltip>
-    </div>
-  );
-}
-
-// ─── Explorer tree ────────────────────────────────────────────────────────────
-
-function ExplorerTreeItem({
+/** A leaf or a group node inside a section (recursive on `children`). */
+function NavItem({
   item,
   depth,
+  parentKey,
   pathname,
   search,
-  openGroups,
-  onToggleGroup,
-  onItemClick,
+  isOpen,
+  onToggle,
+  onNavigate,
   unreadEmailCount,
 }: {
   item: TreeItem;
   depth: number;
+  parentKey: string;
   pathname: string;
   search: string;
-  openGroups: Set<string>;
-  onToggleGroup: (id: string) => void;
-  onItemClick: (item: TreeItem) => void;
+  isOpen: (key: string) => boolean;
+  onToggle: (key: string) => void;
+  onNavigate: (item: TreeItem) => void;
   unreadEmailCount: number;
 }) {
   const Icon = item.icon;
   const badge = item.badgeKey === "unreadEmail" ? unreadEmailCount : 0;
 
   if (item.children) {
-    const childActive = item.children.some(c => isItemActive(c, pathname, search));
-    const isOpen = openGroups.has(item.id) || childActive;
+    const key = groupNodeKey(parentKey, item.id);
+    const open = isOpen(key);
     return (
       <div>
         <button
-          onClick={() => onToggleGroup(item.id)}
-          className={`w-full flex items-center gap-1.5 pr-2 py-1 text-xs font-medium transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60`}
-          style={{ paddingLeft: `${depth * 12 + 10}px` }}
+          onClick={() => onToggle(key)}
+          className="w-full flex items-center gap-1.5 pr-2 py-1 text-xs font-medium transition-colors text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+          style={{ paddingLeft: `${depth * 12 + 22}px` }}
         >
           <ChevronRight
-            className={`w-3 h-3 shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+            className={`w-3 h-3 shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
           />
           {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
           <span className="flex-1 truncate text-left">{item.label}</span>
         </button>
-        {isOpen && item.children.map(child => (
-          <ExplorerTreeItem
+        {open && item.children.map(child => (
+          <NavItem
             key={child.id}
             item={child}
             depth={depth + 1}
+            parentKey={key}
             pathname={pathname}
             search={search}
-            openGroups={openGroups}
-            onToggleGroup={onToggleGroup}
-            onItemClick={onItemClick}
+            isOpen={isOpen}
+            onToggle={onToggle}
+            onNavigate={onNavigate}
             unreadEmailCount={unreadEmailCount}
           />
         ))}
@@ -238,13 +158,13 @@ function ExplorerTreeItem({
   const active = isItemActive(item, pathname, search);
   return (
     <button
-      onClick={() => onItemClick(item)}
+      onClick={() => onNavigate(item)}
       className={`w-full flex items-center gap-2 pr-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${
         active
           ? "bg-primary/10 text-primary border-r-2 border-primary"
           : "text-muted-foreground hover:bg-accent hover:text-foreground border-r-2 border-transparent"
       }`}
-      style={{ paddingLeft: `${depth * 12 + 22}px` }}
+      style={{ paddingLeft: `${depth * 12 + 34}px` }}
     >
       {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
       <span className="flex-1 truncate text-left">{item.label}</span>
@@ -257,102 +177,82 @@ function ExplorerTreeItem({
   );
 }
 
-function Explorer({
-  workspace,
+/** The single always-visible tree: every workspace → section → item, nested. */
+function NavTree({
   pathname,
   search,
-  onItemClick,
-  onCollapse,
+  isOpen,
+  onToggle,
+  onNavigate,
   unreadEmailCount,
 }: {
-  workspace: WorkspaceDef | null;
   pathname: string;
   search: string;
-  onItemClick: (item: TreeItem) => void;
-  onCollapse: () => void;
+  isOpen: (key: string) => boolean;
+  onToggle: (key: string) => void;
+  onNavigate: (item: TreeItem) => void;
   unreadEmailCount: number;
 }) {
-  // Section + group open state, reset per workspace
-  const [openSections, setOpenSections] = useState<Set<string>>(() => new Set());
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
-  const wsIdRef = useRef<string | null>(null);
-
-  if (workspace && wsIdRef.current !== workspace.id) {
-    wsIdRef.current = workspace.id;
-    // Re-derive defaults when the workspace changes (render-time derivation
-    // keeps first paint correct).
-    const defaults = workspace.sections.filter(s => s.defaultOpen !== false).map(s => s.id);
-    setOpenSections(new Set(defaults));
-    setOpenGroups(new Set());
-  }
-
-  const toggleSection = useCallback((id: string) => {
-    setOpenSections(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleGroup = useCallback((id: string) => {
-    setOpenGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
-
   return (
-    <div className="h-full flex flex-col bg-card">
-      <div className="flex items-center justify-between pl-3 pr-2 py-2 border-b border-border shrink-0">
-        <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-widest truncate">
-          {workspace?.label ?? "Explorer"}
-        </span>
-        <button
-          onClick={onCollapse}
-          title="Collapse explorer"
-          className="p-1 rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-        >
-          <ChevronRight className="w-3.5 h-3.5 rotate-180" />
-        </button>
-      </div>
+    <nav className="flex-1 overflow-y-auto py-1">
+      {WORKSPACES.map(ws => {
+        const WsIcon = ws.icon;
+        const wsOpen = isOpen(ws.id);
+        const wsBadge = ws.badgeKey === "unreadEmail" ? unreadEmailCount : 0;
+        return (
+          <div key={ws.id} className="mb-0.5">
+            <button
+              onClick={() => onToggle(ws.id)}
+              className="w-full flex items-center gap-1.5 pl-2 pr-2 py-1.5 text-xs font-semibold text-foreground/90 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+            >
+              <ChevronRight
+                className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${wsOpen ? "rotate-90" : ""}`}
+              />
+              <WsIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+              <span className="flex-1 truncate text-left">{ws.label}</span>
+              {wsBadge > 0 && (
+                <span className="min-w-[16px] h-4 bg-destructive text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none shrink-0">
+                  {wsBadge > 99 ? "99+" : wsBadge}
+                </span>
+              )}
+            </button>
 
-      <nav className="flex-1 overflow-y-auto py-1">
-        {workspace?.sections.map(section => {
-          const isOpen = openSections.has(section.id) ||
-            section.items.some(i => isItemActive(i, pathname, search) || (i.children?.some(c => isItemActive(c, pathname, search)) ?? false));
-          return (
-            <div key={section.id} className="mb-0.5">
-              <button
-                onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-mono font-semibold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
-              >
-                <ChevronRight
-                  className={`w-2.5 h-2.5 shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
-                />
-                {section.label}
-              </button>
-              {isOpen && section.items.map(item => (
-                <ExplorerTreeItem
-                  key={item.id}
-                  item={item}
-                  depth={0}
-                  pathname={pathname}
-                  search={search}
-                  openGroups={openGroups}
-                  onToggleGroup={toggleGroup}
-                  onItemClick={onItemClick}
-                  unreadEmailCount={unreadEmailCount}
-                />
-              ))}
-            </div>
-          );
-        })}
-        {!workspace && (
-          <p className="text-xs text-muted-foreground/70 px-3 py-4">No workspace selected.</p>
-        )}
-      </nav>
-    </div>
+            {wsOpen && ws.sections.map(section => {
+              const secKey = sectionNodeKey(ws.id, section.id);
+              const secOpen = isOpen(secKey);
+              return (
+                <div key={section.id}>
+                  <button
+                    onClick={() => onToggle(secKey)}
+                    className="w-full flex items-center gap-1.5 py-1 pr-2 text-[10px] font-mono font-semibold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
+                    style={{ paddingLeft: "20px" }}
+                  >
+                    <ChevronRight
+                      className={`w-2.5 h-2.5 shrink-0 transition-transform duration-150 ${secOpen ? "rotate-90" : ""}`}
+                    />
+                    <span className="flex-1 truncate text-left">{section.label}</span>
+                  </button>
+                  {secOpen && section.items.map(item => (
+                    <NavItem
+                      key={item.id}
+                      item={item}
+                      depth={0}
+                      parentKey={secKey}
+                      pathname={pathname}
+                      search={search}
+                      isOpen={isOpen}
+                      onToggle={onToggle}
+                      onNavigate={onNavigate}
+                      unreadEmailCount={unreadEmailCount}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -368,16 +268,12 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
   const tabMeta = useMemo(() => resolveTabMeta(pathname), [pathname]);
 
   // ─── Panels ────────────────────────────────────────────────────────────────
-  const [explorerCollapsed, setExplorerCollapsed] = useState(() => readBool(LS_EXPLORER_COLLAPSED, false));
   const [propsCollapsed, setPropsCollapsed] = useState(() => readBool(LS_PROPS_COLLAPSED, false));
   const [consoleOpen, setConsoleOpen] = useState(() => readBool(LS_BOTTOM_OPEN, false));
   const [consoleHeight, setConsoleHeight] = useState(() => readNum(LS_BOTTOM_HEIGHT, 200));
   const [cmdKOpen, setCmdKOpen] = useState(false);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
-  const toggleExplorer = useCallback(() => {
-    setExplorerCollapsed(v => { writeLs(LS_EXPLORER_COLLAPSED, String(!v)); return !v; });
-  }, []);
   const toggleProps = useCallback(() => {
     setPropsCollapsed(v => { writeLs(LS_PROPS_COLLAPSED, String(!v)); return !v; });
   }, []);
@@ -385,60 +281,31 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
     setConsoleOpen(v => { writeLs(LS_BOTTOM_OPEN, String(!v)); return !v; });
   }, []);
 
-  // ─── Tabs — URL is the source of truth for the active tab ──────────────────
-  const [tabState, setTabState] = useState<TabState>({ tabs: [], activeId: null });
-  const tabContentRef = useRef(new Map<string, ReactNode>());
-  // Last full href per tab (pathname key) so re-activating a tab restores its
-  // internal ?tab= state (Marketing sections, Baseline Templates sections).
-  const lastHrefRef = useRef(new Map<string, string>());
+  // ─── Navigation tree expand/collapse state ─────────────────────────────────
+  // `expanded` is the user's persisted, per-node choice (empty ⇒ all collapsed).
+  // `forcedOpen` is the ancestor chain of the active leaf — force-expanded so a
+  // deep-linked/refreshed page always reveals its own location, without mutating
+  // the persisted state. A node is open when it is in either set.
+  const [expanded, setExpanded] = useState<Set<string>>(() => readNavExpanded());
+  const forcedOpen = useMemo(() => new Set(activeAncestorKeys(pathname, search)), [pathname, search]);
 
-  // Cache the current route's element under its tab key (render-time so the
-  // active tab always renders fresh props).
-  tabContentRef.current.set(pathname, children);
-  lastHrefRef.current.set(pathname, search ? `${pathname}?${search}` : pathname);
+  const isNodeOpen = useCallback(
+    (key: string) => expanded.has(key) || forcedOpen.has(key),
+    [expanded, forcedOpen],
+  );
 
-  useEffect(() => {
-    setTabState(prev => {
-      const next = engineOpenTab(prev, pathname, tabMeta.label);
-      if (next.tabs.length !== prev.tabs.length) {
-        log.info({ path: pathname }, `tab opened: ${tabMeta.label}`);
-      }
+  const toggleNode = useCallback((key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      writeNavExpanded(next);
       return next;
     });
-  }, [pathname, tabMeta.label]);
-
-  const handleTabClose = useCallback((id: string) => {
-    setTabState(prev => {
-      const { state, nextActiveId } = engineCloseTab(prev, id);
-      tabContentRef.current.delete(id);
-      lastHrefRef.current.delete(id);
-      log.info({ path: id }, "tab closed");
-      if (prev.activeId === id || id === pathname) {
-        // Closing the active tab: move to the next tab or the workspace default
-        const fallback = findWorkspace(pathname)?.defaultPath ?? "/command/overview";
-        const target = nextActiveId ?? fallback;
-        navigate(lastHrefRef.current.get(target) ?? target);
-      }
-      return state;
-    });
-  }, [navigate, pathname]);
+  }, []);
 
   const handleNavigate = useCallback((path: string) => {
     navigate(path);
   }, [navigate]);
-
-  const handleTabSelect = useCallback((id: string) => {
-    navigate(lastHrefRef.current.get(id) ?? id);
-  }, [navigate]);
-
-  // Prune cached content for tabs that no longer exist (safety net)
-  useEffect(() => {
-    const live = new Set(tabState.tabs.map(t => t.id));
-    live.add(pathname);
-    for (const key of [...tabContentRef.current.keys()]) {
-      if (!live.has(key)) tabContentRef.current.delete(key);
-    }
-  }, [tabState.tabs, pathname]);
 
   // ─── Workspace switch logging ──────────────────────────────────────────────
   const prevWsRef = useRef<string | null>(null);
@@ -870,11 +737,10 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
     properties: [
       { label: "Workspace", value: workspace?.label ?? "—" },
       { label: "Route", value: pathname, mono: true },
-      { label: "Open tabs", value: tabState.tabs.length, mono: true },
     ],
-  }), [tabMeta.label, workspace, pathname, tabState.tabs.length]);
+  }), [tabMeta.label, workspace, pathname]);
 
-  const handleExplorerItemClick = useCallback((item: TreeItem) => {
+  const handleNavItemClick = useCallback((item: TreeItem) => {
     if (!item.path) return;
     setPropertySelection({
       source: "explorer",
@@ -883,143 +749,97 @@ export default function GlobalIDEShell({ children }: { children: ReactNode }) {
       properties: [
         { label: "Workspace", value: workspace?.label ?? "—" },
         { label: "Route", value: item.path, mono: true },
-        { label: "Kind", value: "Explorer item" },
+        { label: "Kind", value: "Navigation item" },
       ],
     });
     navigate(item.path);
   }, [navigate, workspace]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
-  const renderedTabs = useMemo(() => {
-    const list = tabState.tabs.map(t => t.id);
-    if (!list.includes(pathname)) list.push(pathname);
-    return list;
-  }, [tabState.tabs, pathname]);
-
   return (
     <TooltipProvider delayDuration={300}>
       <PropertyPanelContext.Provider value={propertyCtx}>
         <div className="flex flex-col h-full overflow-hidden bg-background">
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            {/* ── Activity Bar ── */}
-            <ActivityBar
-              activeWorkspaceId={workspace?.id ?? null}
-              unreadEmailCount={unreadEmailCount}
-              onNavigate={handleNavigate}
-              onCmdK={() => setCmdKOpen(true)}
-              userEmail={user?.email}
-              onLogout={handleLogout}
-            />
-
-            {/* ── Explorer ── */}
-            <div
-              className={`shrink-0 border-r border-border transition-all duration-200 overflow-hidden ${
-                explorerCollapsed ? "w-0 border-r-0" : "w-56"
-              }`}
-            >
-              <Explorer
-                workspace={workspace}
-                pathname={pathname}
-                search={search}
-                onItemClick={handleExplorerItemClick}
-                onCollapse={toggleExplorer}
-                unreadEmailCount={unreadEmailCount}
-              />
-            </div>
-
-            {/* ── Center: tab bar + content + console ── */}
-            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-              {/* Tab bar */}
-              <div className="shrink-0 flex items-center bg-card border-b border-border">
-                {explorerCollapsed && (
-                  <button
-                    onClick={toggleExplorer}
-                    title="Show explorer"
-                    className="shrink-0 w-8 h-8 flex items-center justify-center text-muted-foreground/70 hover:text-foreground transition-colors border-r border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60"
-                  >
-                    <PanelLeftOpen className="w-3.5 h-3.5" />
-                  </button>
-                )}
-
-                <div className="flex items-stretch overflow-x-auto flex-1 min-w-0">
-                  {renderedTabs.map(id => {
-                    const tab = tabState.tabs.find(t => t.id === id);
-                    const label = tab?.label ?? resolveTabMeta(id).label;
-                    const isActive = id === pathname;
-                    return (
-                      <div
-                        key={id}
-                        role="tab"
-                        aria-selected={isActive}
-                        tabIndex={0}
-                        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleTabSelect(id); } }}
-                        className={`group relative flex items-center gap-1.5 pl-3 pr-1.5 border-r border-border shrink-0 cursor-pointer text-xs font-mono transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60 ${
-                          isActive
-                            ? "bg-background text-foreground"
-                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                        onClick={() => handleTabSelect(id)}
-                      >
-                        {isActive && (
-                          <span className="absolute top-0 left-0 right-0 h-0.5 bg-primary" />
-                        )}
-                        <span className="truncate max-w-[140px] py-2">{label}</span>
-                        <button
-                          onClick={e => { e.stopPropagation(); handleTabClose(id); }}
-                          title="Close tab"
-                          className={`shrink-0 w-4 h-4 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
-                            isActive ? "" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                          }`}
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Right actions */}
-                <div className="flex items-center gap-0.5 px-1.5 shrink-0 border-l border-border">
-                  {propsCollapsed && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={toggleProps}
-                          className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-                        >
-                          <PanelRightOpen className="w-3.5 h-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Show properties</TooltipContent>
-                    </Tooltip>
-                  )}
+            {/* ── Sidebar: single full navigation tree ── */}
+            <div className="shrink-0 w-64 flex flex-col bg-card border-r border-border overflow-hidden">
+              {/* Header: brand + property-panel reopen + Cmd+K */}
+              <div className="flex items-center gap-1 pl-3 pr-1.5 py-2 border-b border-border shrink-0">
+                <span className="flex-1 text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-widest truncate">
+                  Admin Console
+                </span>
+                {propsCollapsed && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => setCmdKOpen(true)}
-                        className="hidden md:flex w-7 h-7 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                        onClick={toggleProps}
+                        aria-label="Show properties"
+                        className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
                       >
-                        <kbd className="text-[9px] font-mono font-medium">⌘K</kbd>
+                        <PanelRightOpen className="w-3.5 h-3.5" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Quick Jump</TooltipContent>
+                    <TooltipContent side="bottom">Show properties</TooltipContent>
                   </Tooltip>
-                </div>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setCmdKOpen(true)}
+                      aria-label="Quick Jump (⌘K)"
+                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Quick Jump ⌘K</TooltipContent>
+                </Tooltip>
               </div>
 
-              {/* Content + console */}
+              {/* The tree */}
+              <NavTree
+                pathname={pathname}
+                search={search}
+                isOpen={isNodeOpen}
+                onToggle={toggleNode}
+                onNavigate={handleNavItemClick}
+                unreadEmailCount={unreadEmailCount}
+              />
+
+              {/* Footer: user identity + sign out */}
+              <div className="flex items-center gap-2 px-2.5 py-2 border-t border-border shrink-0">
+                <div className="w-7 h-7 bg-primary/15 border border-primary/30 rounded-full flex items-center justify-center shrink-0">
+                  <span className="text-[11px] font-bold text-primary uppercase leading-none">
+                    {user?.email?.[0] ?? "A"}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0 leading-tight">
+                  <p className="text-xs font-semibold text-foreground truncate">Shane McCaw</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{user?.email ?? "Administrator"}</p>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleLogout}
+                      aria-label="Sign out"
+                      className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 shrink-0"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Sign out</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+
+            {/* ── Center: content + console ── */}
+            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 <main className="flex-1 min-h-0 overflow-hidden relative bg-background">
                   <EmailBadgeContext.Provider value={{ refreshUnreadCount }}>
-                    {renderedTabs.map(id => (
-                      <div
-                        key={id}
-                        className="absolute inset-0 overflow-y-auto"
-                        style={{ display: id === pathname ? undefined : "none" }}
-                      >
-                        {tabContentRef.current.get(id) ?? null}
-                      </div>
-                    ))}
+                    <div className="absolute inset-0 overflow-y-auto">
+                      {children}
+                    </div>
                   </EmailBadgeContext.Provider>
                 </main>
 

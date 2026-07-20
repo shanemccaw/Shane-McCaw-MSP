@@ -2,10 +2,9 @@
  * IDEShell.test.ts
  *
  * Tests for the global IDE shell:
- * 1. Tab engine semantics — open-on-navigate, no duplicates, close behavior
- *    (the generalization of the tab logic proven in the old per-page IDEShell)
- * 2. Workspace navigation config integrity — trees, routes, activity bar
- * 3. Explorer active-item resolution (incl. ?tab= leaves)
+ * 1. Workspace navigation config integrity — trees, routes, ordering
+ * 2. Explorer active-item resolution (incl. ?tab= leaves)
+ * 3. Collapsible-node persistence keys + active-ancestor auto-expand chain
  * 4. Property Panel selection resolution
  *
  * Run with: pnpm --filter @workspace/admin-panel run test
@@ -13,126 +12,23 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  closeTab,
-  initialTabState,
-  openTab,
-  selectTab,
-  type TabState,
-} from "@/components/shell/tabEngine";
-import {
   WORKSPACES,
+  activeAncestorKeys,
   buildCmdKEntries,
   findWorkspace,
+  groupNodeKey,
   isItemActive,
   resolveTabMeta,
+  sectionNodeKey,
   workspaceLeaves,
   type TreeItem,
 } from "@/components/shell/workspaceNav";
 import { resolveShownSelection, type PropertySelection } from "@/components/shell/PropertyPanelContext";
 
-// ─── Tab engine ───────────────────────────────────────────────────────────────
-
-describe("Tab engine", () => {
-  it("starts empty", () => {
-    const state = initialTabState();
-    expect(state.tabs.length).toBe(0);
-    expect(state.activeId).toBeNull();
-  });
-
-  it("opens a tab on first navigation and activates it", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    expect(state.tabs.length).toBe(1);
-    expect(state.tabs[0]).toEqual({ id: "/pipeline/leads", label: "Leads" });
-    expect(state.activeId).toBe("/pipeline/leads");
-  });
-
-  it("does NOT open a duplicate tab when navigating to an already-open page", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    state = openTab(state, "/finance/invoices", "Invoices");
-    state = openTab(state, "/pipeline/leads", "Leads");
-    expect(state.tabs.length).toBe(2);
-    expect(state.activeId).toBe("/pipeline/leads");
-  });
-
-  it("keeps previously opened tabs when navigating away (persistence)", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    state = openTab(state, "/finance/invoices", "Invoices");
-    state = openTab(state, "/command/overview", "Overview");
-    expect(state.tabs.map(t => t.id)).toEqual([
-      "/pipeline/leads",
-      "/finance/invoices",
-      "/command/overview",
-    ]);
-    expect(state.activeId).toBe("/command/overview");
-  });
-
-  it("refreshes the label when reopening with a better label", () => {
-    let state = initialTabState();
-    state = openTab(state, "/crm/leads/42", "Lead Detail");
-    state = openTab(state, "/crm/leads/42", "Lead #42");
-    expect(state.tabs.length).toBe(1);
-    expect(state.tabs[0].label).toBe("Lead #42");
-  });
-
-  it("closing a non-active tab does not change the active tab", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    state = openTab(state, "/finance/invoices", "Invoices");
-    const { state: next, nextActiveId } = closeTab(state, "/pipeline/leads");
-    expect(next.tabs.length).toBe(1);
-    expect(nextActiveId).toBe("/finance/invoices");
-    expect(next.activeId).toBe("/finance/invoices");
-  });
-
-  it("closing the active tab activates its neighbor", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    state = openTab(state, "/finance/invoices", "Invoices");
-    state = openTab(state, "/command/overview", "Overview");
-    const { state: next, nextActiveId } = closeTab(state, "/command/overview");
-    expect(nextActiveId).toBe("/finance/invoices");
-    expect(next.tabs.some(t => t.id === "/command/overview")).toBe(false);
-  });
-
-  it("closing a middle active tab activates the tab that took its index", () => {
-    let state = initialTabState();
-    state = openTab(state, "/a", "A");
-    state = openTab(state, "/b", "B");
-    state = openTab(state, "/c", "C");
-    state = selectTab(state, "/b");
-    const { nextActiveId } = closeTab(state, "/b");
-    expect(nextActiveId).toBe("/c");
-  });
-
-  it("closing the last remaining tab yields null (caller falls back to workspace default)", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    const { state: next, nextActiveId } = closeTab(state, "/pipeline/leads");
-    expect(next.tabs.length).toBe(0);
-    expect(nextActiveId).toBeNull();
-  });
-
-  it("closing an unknown tab is a no-op", () => {
-    let state = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    const { state: next } = closeTab(state, "/nope");
-    expect(next.tabs.length).toBe(1);
-  });
-
-  it("selectTab is a no-op for unknown ids", () => {
-    let state: TabState = initialTabState();
-    state = openTab(state, "/pipeline/leads", "Leads");
-    expect(selectTab(state, "/nope").activeId).toBe("/pipeline/leads");
-  });
-});
-
 // ─── Workspace navigation config ──────────────────────────────────────────────
 
 describe("Workspace config integrity", () => {
-  it("has exactly 7 workspaces in activity-bar order", () => {
+  it("has exactly 7 workspaces in tree order", () => {
     expect(WORKSPACES.map(w => w.id)).toEqual([
       "command", "pipeline", "delivery", "finance", "content", "system", "workflows",
     ]);
@@ -246,6 +142,58 @@ describe("Explorer active-item resolution", () => {
   it("group nodes without paths are never active", () => {
     const group: TreeItem = { id: "g", label: "Group", children: [plain] };
     expect(isItemActive(group, "/pipeline/leads", "")).toBe(false);
+  });
+});
+
+// ─── Collapsible-node keys + auto-expand chain ────────────────────────────────
+
+describe("Collapsible-node persistence keys", () => {
+  it("namespaces section keys by workspace so same-named sections don't collide", () => {
+    // Both Command and System own a section with id "communications".
+    const commandComms = sectionNodeKey("command", "communications");
+    const systemComms = sectionNodeKey("system", "communications");
+    expect(commandComms).toBe("command/communications");
+    expect(systemComms).toBe("system/communications");
+    expect(commandComms).not.toBe(systemComms);
+  });
+
+  it("builds group keys under their parent key", () => {
+    const secKey = sectionNodeKey("command", "marketing");
+    expect(groupNodeKey(secKey, "mkt-leads")).toBe("command/marketing/mkt-leads");
+  });
+});
+
+describe("Active-ancestor auto-expand chain", () => {
+  it("returns the workspace + section chain for a plain leaf", () => {
+    // /pipeline/leads is a leaf under the pipeline > leads section.
+    expect(activeAncestorKeys("/pipeline/leads", "")).toEqual([
+      "pipeline",
+      "pipeline/leads",
+    ]);
+  });
+
+  it("includes the group node when the active leaf is nested in a group", () => {
+    // /command/marketing?tab=recommendations is under command > marketing > mkt-leads.
+    expect(activeAncestorKeys("/command/marketing", "tab=recommendations")).toEqual([
+      "command",
+      "command/marketing",
+      "command/marketing/mkt-leads",
+    ]);
+  });
+
+  it("falls back to just the owning workspace for a detail route with no leaf", () => {
+    expect(activeAncestorKeys("/crm/leads/42", "")).toEqual(["pipeline"]);
+  });
+
+  it("returns an empty chain for a path owned by no workspace", () => {
+    expect(activeAncestorKeys("/totally-unknown", "")).toEqual([]);
+  });
+
+  it("every key in the chain is a real, resolvable node key", () => {
+    // The section key in the chain must correspond to an actual section.
+    const chain = activeAncestorKeys("/delivery/fulfillment-queue", "");
+    expect(chain[0]).toBe("delivery");
+    expect(chain).toContain(sectionNodeKey("delivery", "fulfillment"));
   });
 });
 

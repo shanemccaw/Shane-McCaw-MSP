@@ -573,6 +573,64 @@ export function isItemActive(item: TreeItem, pathname: string, search: string): 
   return true;
 }
 
+// ─── Collapsible-node persistence keys ────────────────────────────────────────
+//
+// The single-tree shell persists each collapsible node's expand/collapse state
+// independently, in localStorage. A section's `id` is only unique *within* its
+// workspace (e.g. both Command and System own a section with id "communications"),
+// so a node's persistence key is its full ancestor-id chain joined with "/" —
+// derived entirely from the existing ids, but globally unique so two same-named
+// sections in different workspaces don't share collapse state. Workspace and
+// group (TreeItem-with-children) ids are already globally unique; a workspace's
+// key is simply its own id.
+
+/** Persistence/collapse key for a section node under a workspace. */
+export function sectionNodeKey(workspaceId: string, sectionId: string): string {
+  return `${workspaceId}/${sectionId}`;
+}
+
+/** Persistence/collapse key for a group node (TreeItem with children). */
+export function groupNodeKey(parentKey: string, groupId: string): string {
+  return `${parentKey}/${groupId}`;
+}
+
+function findActiveGroupChain(
+  items: TreeItem[],
+  parentKey: string,
+  pathname: string,
+  search: string,
+): string[] | null {
+  for (const item of items) {
+    if (item.children) {
+      const groupKey = groupNodeKey(parentKey, item.id);
+      const inner = findActiveGroupChain(item.children, groupKey, pathname, search);
+      if (inner) return [groupKey, ...inner];
+    } else if (isItemActive(item, pathname, search)) {
+      return []; // the active leaf itself is not a collapsible node
+    }
+  }
+  return null;
+}
+
+/**
+ * Collapse-keys of every collapsible ancestor of the active leaf — workspace
+ * node down to (but excluding) the leaf. The shell force-expands this chain so a
+ * deep-linked/refreshed page reveals its own location even when persisted state
+ * has that branch collapsed. Falls back to just the owning workspace for pages
+ * that have no matching tree leaf (e.g. detail routes like /crm/leads/42).
+ */
+export function activeAncestorKeys(pathname: string, search: string): string[] {
+  for (const ws of WORKSPACES) {
+    for (const section of ws.sections) {
+      const sectionKey = sectionNodeKey(ws.id, section.id);
+      const chain = findActiveGroupChain(section.items, sectionKey, pathname, search);
+      if (chain) return [ws.id, sectionKey, ...chain];
+    }
+  }
+  const ws = findWorkspace(pathname);
+  return ws ? [ws.id] : [];
+}
+
 export interface CmdKEntry {
   id: string;
   label: string;
