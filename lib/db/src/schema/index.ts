@@ -110,6 +110,41 @@ export const fulfillmentTypesTable = pgTable("fulfillment_types", {
 export type InsertFulfillmentType = typeof fulfillmentTypesTable.$inferInsert;
 export type FulfillmentType = typeof fulfillmentTypesTable.$inferSelect;
 
+// ── Document Types ────────────────────────────────────────────────────────────
+// Admin-extensible registry backing Insights document generation
+// (document-generator.ts / admin-insights.ts). Replaces the hardcoded
+// REPORT_DOC_TYPE_LABELS / CONSULTING_TYPE_LABELS / CONSULTING_SECTION_HINTS
+// object literals that used to be duplicated in both files. The AI prompt
+// CONTENT for each type remains a separate, already-DB-driven system
+// (ai_prompts, keyed "insights-<category>-<key>") — this table is only the
+// type registry (key, label, category, section hints).
+
+export const documentTypesTable = pgTable("document_types", {
+  id: serial("id").primaryKey(),
+  // The existing docType string stored on insights_generated_documents.doc_type
+  // (e.g. "security_posture_report", "sow", "task_execution_guide").
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  category: text("category", { enum: ["report", "consulting"] }).notNull(),
+  // Structure instructions substituted into the consulting prompt's
+  // {{sectionHints}} token. Null for report types (fixed prompt structure).
+  sectionHints: text("section_hints"),
+  // Mirrors task_execution_guide's special case: prompt is built from a real
+  // SOW document's HTML rather than the standard findings/scores block.
+  requiresSowHtml: boolean("requires_sow_html").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  // Soft-toggle without deleting the record (and its generated documents).
+  isActive: boolean("is_active").notNull().default(true),
+  // Soft pointer to the matching ai_prompts row, so the admin UI's
+  // "Edit Prompt" action can deep-link straight to /prompt-center/:id.
+  aiPromptId: integer("ai_prompt_id").references((): AnyPgColumn => aiPromptsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertDocumentType = typeof documentTypesTable.$inferInsert;
+export type DocumentType = typeof documentTypesTable.$inferSelect;
+
 // ── Fulfillment Idempotency Store ──────────────────────────────────────────────
 // Deduplicates resolve_fulfillment calls by (Stripe session ID | signal-fire event ID).
 // A row present means the event has already been emitted; callers skip silently.
