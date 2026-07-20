@@ -1,7 +1,0 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="180" height="180" rx="36" fill="#0A2540"/>
-  <!-- Upward trend bars for monitoring/dashboard feel -->
-  <rect x="50" y="110" width="20" height="30" rx="3" fill="#FFFFFF"/>
-  <rect x="80" y="90" width="20" height="50" rx="3" fill="#FFFFFF"/>
-  <rect x="110" y="70" width="20" height="70" rx="3" fill="#FFFFFF"/>
-</svg>
