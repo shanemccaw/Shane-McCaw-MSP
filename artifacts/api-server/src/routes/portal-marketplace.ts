@@ -49,7 +49,7 @@ const router: IRouter = Router();
 // fuller purchasable catalog. Anything not in the caller's set is not returned.
 
 const ASSESSMENT_SERVICE_TYPES = ["assessment", "monitoring_tier"] as const;
-const CUSTOMER_SERVICE_TYPES = [
+export const CUSTOMER_SERVICE_TYPES = [
   "assessment",
   "monitoring_tier",
   "micro_offer",
@@ -76,7 +76,7 @@ function serviceTypesForRole(role: MspRole | undefined): readonly string[] {
 // Only fields a customer needs to browse and decide. Internal cost, wholesale
 // pricing, workflow templates, triggering signals, etc. are never exposed here.
 
-interface MarketplaceService {
+export interface MarketplaceService {
   id: number;
   slug: string | null;
   name: string;
@@ -96,7 +96,7 @@ interface MarketplaceService {
 
 type ServiceRow = typeof servicesTable.$inferSelect;
 
-function toMarketplaceService(row: ServiceRow): MarketplaceService {
+export function toMarketplaceService(row: ServiceRow): MarketplaceService {
   // Prefer the explicit integer cents column; fall back to the numeric dollar
   // price; finally fall back to a per-seat monthly figure carried in
   // typeAttributes (how monitoring tiers express price). null = "on consultation".

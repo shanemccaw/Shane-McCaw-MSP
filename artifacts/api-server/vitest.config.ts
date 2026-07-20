@@ -95,7 +95,7 @@ export default defineConfig({
       "src/lib/engagement-followup-dispatcher.test.ts",
       "src/lib/engagement-followup-cancellation-guard.test.ts",
       "src/lib/sql-statement-splitter.test.ts",
-      "src/routes/msp-data-rights.test.ts",
+      "src/routes/msp-marketplace-purchase.test.ts",
     ],
     coverage: {
       provider: "v8",

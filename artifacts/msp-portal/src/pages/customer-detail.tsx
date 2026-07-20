@@ -74,6 +74,7 @@ import {
   Play,
   ShieldAlert,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
   TrendingUp,
   UserCheck,
@@ -492,6 +493,139 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "bg-amber-500/15 text-amber-400 border-amber-500/20",
 };
 
+// ── Purchase for Customer — MSP-initiated marketplace purchase ────────────────
+// Reuses the same customer-safe catalog shape as the real customer-facing
+// Marketplace (marketplace.tsx), fetched from the MSP-scoped catalog endpoint
+// so staff can browse + buy on the customer's behalf.
+
+interface MarketplaceCatalogService {
+  id: number;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  category: string | null;
+  priceCents: number | null;
+  perSeat: boolean;
+  billingType: "one_time" | "recurring_monthly";
+}
+
+function formatCatalogPrice(svc: MarketplaceCatalogService): string {
+  if (svc.priceCents === null) return "On consultation";
+  const dollars = (svc.priceCents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+  });
+  if (svc.perSeat) return `${dollars}/user/mo`;
+  if (svc.billingType === "recurring_monthly") return `${dollars}/mo`;
+  return dollars;
+}
+
+interface MarketplacePurchaseDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  customerId: number;
+  customerName: string;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+}
+
+function MarketplacePurchaseDialog({ open, onOpenChange, customerId, customerName, fetchWithAuth }: MarketplacePurchaseDialogProps) {
+  const [services, setServices] = useState<MarketplaceCatalogService[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [purchasingId, setPurchasingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let mounted = true;
+    setLoading(true);
+    fetchWithAuth(`/api/msp/customers/${customerId}/marketplace/catalog`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("catalog"))))
+      .then((data: { services: MarketplaceCatalogService[] }) => {
+        if (mounted) setServices(data.services ?? []);
+      })
+      .catch(() => {
+        if (mounted) toast.error("Failed to load the marketplace catalog");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [open, customerId, fetchWithAuth]);
+
+  async function handlePurchase(svc: MarketplaceCatalogService) {
+    setPurchasingId(svc.id);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${customerId}/marketplace/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serviceId: svc.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "Purchase failed");
+        return;
+      }
+      toast.success(data?.message ?? `${svc.name} purchased for ${customerName}`);
+      onOpenChange(false);
+    } catch {
+      toast.error("Purchase failed — please try again");
+    } finally {
+      setPurchasingId(null);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShoppingBag className="size-5 text-emerald-400" />
+            Purchase for {customerName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <p className="text-xs text-muted-foreground -mt-2">
+          Charged to your MSP's card on file. The customer will see this reflected in their own account.
+        </p>
+
+        {loading ? (
+          <div className="py-10 flex justify-center">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : services.length === 0 ? (
+          <div className="py-10 text-center text-sm text-muted-foreground">No catalog items available.</div>
+        ) : (
+          <div className="space-y-2">
+            {services.map((svc) => (
+              <div
+                key={svc.id}
+                className="p-4 bg-slate-950/40 border border-slate-800/40 rounded-xl flex items-center justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-100">{svc.name}</p>
+                  {(svc.tagline || svc.description) && (
+                    <p className="text-xs text-muted-foreground line-clamp-2">{svc.tagline ?? svc.description}</p>
+                  )}
+                  <p className="text-xs text-emerald-400 font-semibold mt-1">{formatCatalogPrice(svc)}</p>
+                </div>
+                <Button
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  disabled={purchasingId !== null}
+                  onClick={() => void handlePurchase(svc)}
+                >
+                  {purchasingId === svc.id ? <Loader2 className="size-3.5 animate-spin" /> : <ShoppingBag className="size-3.5" />}
+                  Purchase
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { fetchWithAuth, accessToken } = useAuth();
@@ -516,6 +650,9 @@ export default function CustomerDetailPage() {
   // Disable account state
   const [disableDialogOpen, setDisableDialogOpen] = useState(false);
   const [disableSubmitting, setDisableSubmitting] = useState(false);
+
+  // Purchase for Customer (marketplace) modal state
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -928,11 +1065,21 @@ export default function CustomerDetailPage() {
           {/* TAB 4: RETAINERS & BILLING */}
           <TabsContent value="billing" className="space-y-6">
             <Card className="border-slate-800/60 bg-slate-900/40">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
                   <DollarSign className="size-5 text-emerald-400" />
                   Active Service Retainers & Sales Bundles
                 </CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 rounded-lg shrink-0"
+                  onClick={() => setPurchaseDialogOpen(true)}
+                  disabled={customer.status === "inactive"}
+                >
+                  <ShoppingBag className="size-3.5 text-emerald-400" />
+                  Purchase for Customer
+                </Button>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="p-4 bg-slate-950/40 border border-slate-800/40 rounded-xl flex items-center justify-between">
@@ -1155,6 +1302,14 @@ export default function CustomerDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MarketplacePurchaseDialog
+        open={purchaseDialogOpen}
+        onOpenChange={setPurchaseDialogOpen}
+        customerId={customer.id}
+        customerName={customer.name}
+        fetchWithAuth={fetchWithAuth}
+      />
     </AppShell>
   );
 }
