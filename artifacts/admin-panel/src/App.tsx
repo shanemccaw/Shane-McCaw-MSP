@@ -297,7 +297,6 @@ function Router() {
 
       <Route path="/articles"><Redirect to="/content/articles" /></Route>
       <Route path="/services"><Redirect to="/content/services" /></Route>
-      <Route path="/service-page-triggers"><Redirect to="/content/service-triggers" /></Route>
       <Route path="/email-templates"><Redirect to="/content/email-templates" /></Route>
       <Route path="/contract-templates"><Redirect to="/content/contract-templates" /></Route>
       <Route path="/templates/library"><Redirect to="/content/template-library" /></Route>

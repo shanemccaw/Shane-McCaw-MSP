@@ -372,7 +372,6 @@ export const WORKSPACES: WorkspaceDef[] = [
         id: "offers", label: "Offers", defaultOpen: true,
         items: [
           { id: "con-services", label: "Services", path: "/content/services", icon: Briefcase },
-          { id: "con-service-triggers", label: "Service Triggers", path: "/content/service-triggers", icon: Zap },
         ],
       },
       {

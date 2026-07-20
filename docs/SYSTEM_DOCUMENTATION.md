@@ -2325,15 +2325,6 @@ M365 environment intelligence per client.
   updatedAt: string (ISO 8601);
 }
 ```
-**service_page_trigger_keys** — Admin-managed quiz-to-service routing keys per public page
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | serial PK | |
-| `pageSlug` | text UNIQUE | |
-| `triggerKeys` | jsonb | string[] of trigger identifiers |
-| `updatedAt` | timestamp | |
-
 
 **JSON shape:**
 ```typescript
@@ -3671,12 +3662,10 @@ All routes require `requireAdmin`.
 
 ---
 
-### 3.28 Admin: Service Page Triggers, DB Status & Dev Seed
+### 3.28 Admin: DB Status & Dev Seed
 
 | Method | Path | Auth | Request Body | Response |
 |---|---|---|---|---|
-| GET | `/admin/service-page-triggers` | `requireAdmin` | none | `T[]` |
-| PUT | `/admin/service-page-triggers/:pageSlug` | `requireAdmin` | `{ field?: value }` | `T` |
 | GET | `/admin/db-status` | `requireAdmin` | none | `T[]` |
 | POST | `/admin/db-migrate` | `requireAdmin` | `{ ...fields }` | `T` |
 | POST | `/admin/dev/seed-result` | `requireAdmin` | `{ ...fields }` | `T` |
@@ -3738,7 +3727,6 @@ All routes require `requireAdmin`.
 | GET | `/healthz` | Public | none | `HealthStatus[]` |
 | GET | `/services` | Public | query params (see Notes) | `Service[]` |
 | GET | `/public/engagement-projects` | Public | none | `EngagementProject[]` |
-| GET | `/public/service-page-triggers` | Public | none | `T[]` |
 | POST | `/contact-chat` | Public | `{ ...fields }` | `T` |
 | GET | `/booking/slots` | Public | none | `BookingSlot[]` |
 | POST | `/booking` | Public (rate-limited) | `Partial<BookingSlot>` | `BookingSlot` |
@@ -3842,7 +3830,6 @@ The Admin Panel is Shane's full business operating system. It is organized into 
 |---|---|---|
 | Articles | `/content/articles` | Blog article CRUD, Markdown editor |
 | Services | `/content/services` | Public service catalog editor |
-| Service Triggers | `/content/service-triggers` | Quiz → service routing config |
 | Email Templates | `/content/email-templates` | Edit transactional email copy |
 | Contract Templates | `/content/contract-templates` | Edit service-specific legal agreement bodies |
 | Template Library | `/content/template-library` | Instruction sets, checklists, artifact sets, deliverable sets |

@@ -1294,17 +1294,6 @@ export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
 export type InsertClientAppRegistration = typeof clientAppRegistrationsTable.$inferInsert;
 export type ClientAppRegistration = typeof clientAppRegistrationsTable.$inferSelect;
 
-// Service page trigger key mappings — which engagement project trigger keys each service page shows
-export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", {
-  id: serial("id").primaryKey(),
-  pageSlug: text("page_slug").notNull().unique(),
-  triggerKeys: jsonb("trigger_keys").$type<string[]>().notNull().default([]),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export type ServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferSelect;
-export type InsertServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferInsert;
-
 // ── MFA (Multi-Factor Authentication) ─────────────────────────────────────────
 
 export const mfaEnrollmentsTable = pgTable("mfa_enrollments", {

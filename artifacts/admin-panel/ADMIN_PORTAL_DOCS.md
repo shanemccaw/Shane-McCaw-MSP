@@ -29,7 +29,6 @@ All routes declared in `src/App.tsx`. Every route requires `RequireAdmin` except
 | `/engagement-projects` | `EngagementProjectsPage` | Service-page project templates |
 | `/email-templates` | `EmailTemplatesPage` | Transactional email template editor |
 | `/coupons` | `CouponsPage` | Stripe coupon management |
-| `/service-page-triggers` | `ServicePageTriggersPage` | Service-page keyword trigger config |
 | `/script-runner` | `ScriptRunnerPage` | Azure script executor |
 | `/crm/leads` | `LeadsPage` | Lead list |
 | `/crm/leads/:id` | `LeadDetailPage` | Lead detail and AI scoring |
@@ -91,7 +90,6 @@ All routes declared in `src/App.tsx`. Every route requires `RequireAdmin` except
 5. [Content Group](#5-content-group)
    - [Articles (`/articles`)](#51-articles)
    - [Services (`/services`)](#52-services)
-   - [Service Triggers (`/service-page-triggers`)](#53-service-triggers)
    - [Engagement Projects (`/engagement-projects`)](#54-engagement-projects)
    - [Email Templates (`/email-templates`)](#55-email-templates)
    - [Contract Templates (`/contract-templates`)](#56-contract-templates)
@@ -163,7 +161,6 @@ The `DashboardShell` wraps every authenticated page. It renders a collapsible si
 | | Coupons | `/coupons` |
 | **Content** | Articles | `/articles` |
 | | Services | `/services` |
-| | Service Triggers | `/service-page-triggers` |
 | | Engagement Projects | `/engagement-projects` |
 | | Email Templates | `/email-templates` |
 | | Contract Templates | `/contract-templates` |
@@ -732,21 +729,6 @@ Opens the **WorkflowBuilder** panel inline below the service card.
 #### Generate PDF Overview button
 
 Triggers AI generation of a branded PDF service overview document. Available per service.
-
----
-
-### 5.3 Service Triggers
-
-**Route:** `/service-page-triggers` · **Component:** `src/pages/ServicePageTriggers.tsx`
-
-Maps keyword trigger keys to consulting site service pages, controlling which Engagement Projects appear on each page.
-
-| Element | Description |
-|---|---|
-| **Page list** | One card per service page: Microsoft 365, Copilot AI, SharePoint, Power Platform, Governance, Cloud Migration. |
-| **Trigger Keys tag editor** | Tag-pill input per page. Type a keyword and press Enter (or click Add) to add a trigger key. Click the ✕ on a tag to remove it. |
-| **Save button** (per page) | `PUT /api/admin/service-page-triggers/:pageSlug` — saves the trigger key list for that page. |
-| **Last updated timestamp** | Shown below each page's trigger key editor if the mapping has been saved before. |
 
 ---
 
@@ -1470,7 +1452,6 @@ Maps every route declared in `src/App.tsx` to its documentation section. Confirm
 | `/engagement-projects` | [§5.4 Engagement Projects](#54-engagement-projects) |
 | `/email-templates` | [§5.5 Email Templates](#55-email-templates) |
 | `/coupons` | [§4.4 Coupons](#44-coupons) |
-| `/service-page-triggers` | [§5.3 Service Triggers](#53-service-triggers) |
 | `/script-runner` | [§2.4 Script Runner](#24-script-runner) |
 | `/crm/leads` | [§3.3 Leads](#33-leads) |
 | `/crm/leads/:id` | [§3.4 Lead Detail](#34-lead-detail) |
