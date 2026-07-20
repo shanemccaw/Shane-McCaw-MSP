@@ -171,6 +171,43 @@ export const insertMspUserSchema = createInsertSchema(mspUsersTable).omit({ id: 
 export type MspUser = typeof mspUsersTable.$inferSelect;
 export type InsertMspUser = typeof mspUsersTable.$inferInsert;
 
+// ── MSP Staff Customer Scopes (per-staff-member tenant-access restriction) ──────
+//
+// Additive, opt-in restriction of which customers a specific MSP staff member
+// (MSPAdmin / MSPOperator) may access. By default an MSP staff member has NO
+// rows here, which means UNRESTRICTED access to every customer in their MSP —
+// the historical, unchanged behavior. Once one or more rows exist for a staff
+// user, that user is restricted to EXACTLY that set of customers (e.g. a junior
+// technician assigned to only their book of clients).
+//
+// Enforcement is centralized in assertCustomerAccess() (the single source of
+// truth for customer ownership) and in cross-customer list/aggregate routes,
+// which narrow their results to the staff member's assigned set when scoped.
+//
+// staffUserId is a users.id (matches req.user.id / the :userId route param and
+// the JWT claim used at every enforcement site). customerId is an
+// msp_customers.id (the customer organisation). mspId is denormalized from the
+// staff member's MSP for fast per-MSP indexing and a defense-in-depth fence
+// (a scope row can only ever grant a customer within the same MSP).
+
+export const mspStaffCustomerScopesTable = pgTable("msp_staff_customer_scopes", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  staffUserId: integer("staff_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_staff_customer_scopes_staff_customer_uniq").on(t.staffUserId, t.customerId),
+  index("msp_staff_customer_scopes_staff_user_id_idx").on(t.staffUserId),
+  index("msp_staff_customer_scopes_customer_id_idx").on(t.customerId),
+  index("msp_staff_customer_scopes_msp_id_idx").on(t.mspId),
+]);
+
+export const insertMspStaffCustomerScopeSchema = createInsertSchema(mspStaffCustomerScopesTable).omit({ id: true, createdAt: true });
+export type MspStaffCustomerScope = typeof mspStaffCustomerScopesTable.$inferSelect;
+export type InsertMspStaffCustomerScope = typeof mspStaffCustomerScopesTable.$inferInsert;
+
 // ── Service Accounts (API keys for machine-to-machine) ────────────────────────
 
 export const mspServiceAccountsTable = pgTable("msp_service_accounts", {

@@ -42,7 +42,7 @@ import {
   quickWinResultSharesTable,
 } from "@workspace/db";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
@@ -88,6 +88,10 @@ router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request
       return;
     }
 
+    // Per-staff customer scoping: restrict the eligible customers to the caller's
+    // assigned set. null = unrestricted (historical default).
+    const scopedCustomerIds = await resolveStaffScopedCustomerIds(req.user!);
+
     const customerIdParam = req.query["customerId"] ? Number(req.query["customerId"]) : undefined;
     const docTypeFilter = req.query["docType"] ? String(req.query["docType"]) : undefined;
     const categoryFilter = req.query["category"] ? String(req.query["category"]) : undefined;
@@ -99,6 +103,12 @@ router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request
     // Filtering by customerId (msp_customers.id) means restricting the
     // eligible users.id set to whichever bridge row maps to that customer.
     let eligibleUserIds = [...bridge.keys()];
+    if (scopedCustomerIds !== null) {
+      eligibleUserIds = eligibleUserIds.filter((uid) => {
+        const cid = bridge.get(uid)?.customerId;
+        return cid != null && scopedCustomerIds.includes(cid);
+      });
+    }
     if (customerIdParam !== undefined && !isNaN(customerIdParam)) {
       eligibleUserIds = eligibleUserIds.filter((uid) => bridge.get(uid)?.customerId === customerIdParam);
     }
@@ -161,8 +171,13 @@ router.get("/msp/documents-hub", requireRole("MSPOperator"), async (req: Request
   }
 });
 
-/** Loads a document and confirms it belongs to a customer within mspId's book. Null if not found/not in scope. */
-async function loadScopedDocument(mspId: number, documentId: number) {
+/**
+ * Loads a document and confirms it belongs to a customer within mspId's book.
+ * Null if not found / not in the MSP. When `scopedCustomerIds` is non-null
+ * (a scoped staff member), the document's owning msp_customers.id must also be
+ * in that set — otherwise null (out of the caller's assigned scope).
+ */
+async function loadScopedDocument(mspId: number, documentId: number, scopedCustomerIds: number[] | null) {
   const [doc] = await db
     .select({
       id: insightsGeneratedDocumentsTable.id,
@@ -178,11 +193,16 @@ async function loadScopedDocument(mspId: number, documentId: number) {
   if (!doc || doc.customerId === null) return null;
 
   const [owner] = await db
-    .select({ mspId: mspUsersTable.mspId })
+    .select({ mspId: mspUsersTable.mspId, mspCustomerId: mspUsersTable.customerId })
     .from(mspUsersTable)
     .where(eq(mspUsersTable.userId, doc.customerId));
 
   if (!owner || owner.mspId !== mspId) return null;
+  // Per-staff customer scoping: fence a scoped operator out of documents owned
+  // by customers outside their assigned set (reads as 404 at the call sites).
+  if (scopedCustomerIds !== null && (owner.mspCustomerId == null || !scopedCustomerIds.includes(owner.mspCustomerId))) {
+    return null;
+  }
   return doc;
 }
 
@@ -195,7 +215,7 @@ router.get("/msp/documents-hub/:id/view", requireRole("MSPOperator"), async (req
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const doc = await loadScopedDocument(mspId, id);
+    const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
 
     res.json({ id: doc.id, title: doc.title, htmlContent: stripStagedForReviewBanner(doc.htmlContent ?? "") });
@@ -214,7 +234,7 @@ router.get("/msp/documents-hub/:id/pdf", requireRole("MSPOperator"), async (req:
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const doc = await loadScopedDocument(mspId, id);
+    const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (!["approved", "delivered"].includes(doc.status ?? "")) {
       res.status(403).json({ error: "Document not available for download" });
@@ -254,7 +274,7 @@ router.post("/msp/documents-hub/:id/share", requireRole("MSPOperator"), async (r
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const doc = await loadScopedDocument(mspId, id);
+    const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (!["approved", "delivered"].includes(doc.status ?? "") && doc.docType !== "scoped_sow") {
       res.status(403).json({ error: "Document not available to share" });

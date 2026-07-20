@@ -33,7 +33,7 @@ import {
   mspAuditLogsTable,
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth.ts";
+import { requireRole, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
 import { requirePlanFeature } from "../lib/msp-entitlement.ts";
 import { randomUUID } from "crypto";
 import { logger } from "../lib/logger.ts";
@@ -793,6 +793,11 @@ router.get(
           eq(mspCustomersTable.mspId, mspId),
         ));
       if (!customer) { apiErr(res, 404, "Customer not found in this MSP"); return; }
+      // Per-staff customer scoping: fence a scoped operator out of an
+      // unassigned customer's bundle assignments (same 404 as not-in-MSP).
+      if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+        apiErr(res, 404, "Customer not found in this MSP"); return;
+      }
 
       const assignments = await db
         .select({

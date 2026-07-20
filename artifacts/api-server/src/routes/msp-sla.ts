@@ -12,13 +12,25 @@
 import { Router, type Request, type Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.sla" });
 import { runSlaEngineForMsp, resolveSlaTimer } from "../lib/sla-engine";
 import { registerMspEngineEventClient } from "../lib/sse-channels";
 
 const router = Router();
+
+/**
+ * Per-staff customer scoping for the raw-SQL SLA feeds. Every query here already
+ * fences cross-MSP access via `msp_id = ${mspId}`; this narrows the result rows
+ * to the caller's assigned customers within their MSP. `scopedIds === null`
+ * means unrestricted (the historical default). Result sets are capped (≤200),
+ * so post-filtering in memory is safe and keeps the raw SQL untouched.
+ */
+function scopeSlaRows<T extends Record<string, unknown>>(rows: T[], scopedIds: number[] | null): T[] {
+  if (scopedIds === null) return rows;
+  return rows.filter((r) => scopedIds.includes(Number(r["customerId"])));
+}
 
 // ── GET /api/msp/sla/policies ──────────────────────────────────────────────────
 // Active policies that apply to this MSP (own + global defaults).
@@ -276,7 +288,8 @@ router.get("/msp/sla/timers", requireRole("MSPOperator"), async (req: Request, r
                   WHERE msp_id = ${mspId}
                   ORDER BY created_at DESC LIMIT 200`,
     );
-    res.json({ timers: rows.rows });
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+    res.json({ timers: scopeSlaRows(rows.rows as Record<string, unknown>[], scopedIds) });
   } catch (err) {
     log.error({ err, mspId }, "msp-sla: list timers failed");
     res.status(500).json({ error: "Failed to list SLA timers" });
@@ -323,7 +336,8 @@ router.get("/msp/sla/breaches", requireRole("MSPOperator"), async (req: Request,
                 WHERE msp_id = ${mspId} AND resolved_at IS NULL
                 ORDER BY created_at DESC LIMIT 200`,
     );
-    res.json({ breaches: rows.rows });
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+    res.json({ breaches: scopeSlaRows(rows.rows as Record<string, unknown>[], scopedIds) });
   } catch (err) {
     log.error({ err, mspId }, "msp-sla: list breaches failed");
     res.status(500).json({ error: "Failed to list SLA breaches" });
@@ -347,7 +361,8 @@ router.get("/msp/sla/escalations", requireRole("MSPOperator"), async (req: Reque
       WHERE msp_id = ${mspId} AND status IN ('pending', 'in_progress')
       ORDER BY level DESC, created_at DESC LIMIT 100
     `);
-    res.json({ escalations: rows.rows });
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+    res.json({ escalations: scopeSlaRows(rows.rows as Record<string, unknown>[], scopedIds) });
   } catch (err) {
     log.error({ err, mspId }, "msp-sla: list escalations failed");
     res.status(500).json({ error: "Failed to list SLA escalations" });
@@ -381,7 +396,8 @@ router.get("/msp/sla/compliance", requireRole("MSPOperator"), async (req: Reques
               WHERE msp_id = ${mspId}
               ORDER BY period_start DESC LIMIT 100`,
     );
-    res.json({ records: rows.rows });
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+    res.json({ records: scopeSlaRows(rows.rows as Record<string, unknown>[], scopedIds) });
   } catch (err) {
     log.error({ err, mspId }, "msp-sla: list compliance failed");
     res.status(500).json({ error: "Failed to list SLA compliance records" });
@@ -520,12 +536,13 @@ router.get("/msp/operator-tasks", requireRole("MSPOperator"), async (req: Reques
       `),
     ]);
 
-    const tasks = [
-      ...slaRows.rows,
-      ...scRows.rows,
-    ].sort((a, b) => {
-      const aDate = new Date((a as Record<string, unknown>)["createdAt"] as string);
-      const bDate = new Date((b as Record<string, unknown>)["createdAt"] as string);
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+    const tasks = scopeSlaRows(
+      [...slaRows.rows, ...scRows.rows] as Record<string, unknown>[],
+      scopedIds,
+    ).sort((a, b) => {
+      const aDate = new Date(a["createdAt"] as string);
+      const bDate = new Date(b["createdAt"] as string);
       return bDate.getTime() - aDate.getTime();
     });
 

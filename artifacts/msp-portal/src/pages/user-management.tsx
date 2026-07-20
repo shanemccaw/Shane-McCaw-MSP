@@ -407,6 +407,15 @@ export default function UserManagementPage() {
     type: "tempPass" | "bypassCode";
   } | null>(null);
 
+  // Real per-staff Customer Access Scope (msp_staff_customer_scopes). An empty
+  // assigned set = UNRESTRICTED (full MSP access) — the additive, opt-in default.
+  const [scopeCustomers, setScopeCustomers] = useState<{ id: number; name: string; status: string }[]>([]);
+  const [scopeAssignedIds, setScopeAssignedIds] = useState<number[]>([]);
+  const [scopeScopable, setScopeScopable] = useState(true);
+  const [scopeLoading, setScopeLoading] = useState(false);
+  const [scopeSaving, setScopeSaving] = useState(false);
+  const [scopeSearch, setScopeSearch] = useState("");
+
   // Load Users from backend
   const loadUsersAndInvites = useCallback(async () => {
     setLoading(true);
@@ -437,7 +446,9 @@ export default function UserManagementPage() {
             lastLoginAt: u.lastLoginAt ?? new Date(Date.now() - 1000 * 60 * 30 * (i + 1)).toISOString(),
             createdAt: u.createdAt ?? new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
             activeSessionsCount: u.activeSessionsCount ?? (u.isActive ? 1 : 0),
-            assignedCustomersCount: u.assignedCustomersCount ?? 4,
+            // Real count from msp_staff_customer_scopes. 0 = unrestricted (full
+            // MSP access), NOT "no access". Was a hardcoded mock (`?? 4`).
+            assignedCustomersCount: u.assignedCustomersCount ?? 0,
           }));
           setUsers(formatted);
         }
@@ -459,6 +470,78 @@ export default function UserManagementPage() {
   useEffect(() => {
     void loadUsersAndInvites();
   }, [loadUsersAndInvites]);
+
+  // Load a staff member's real customer-access scope when the inspector opens.
+  const loadCustomerScopes = useCallback(
+    async (userId: number) => {
+      setScopeLoading(true);
+      setScopeCustomers([]);
+      setScopeAssignedIds([]);
+      try {
+        const res = await fetchWithAuth(`/api/msp/settings/users/${userId}/customer-scopes`);
+        if (res.ok) {
+          const data = (await res.json()) as {
+            scopable?: boolean;
+            allCustomers?: { id: number; name: string; status: string }[];
+            assignedCustomerIds?: number[];
+          };
+          setScopeScopable(data.scopable ?? true);
+          setScopeCustomers(data.allCustomers ?? []);
+          setScopeAssignedIds(data.assignedCustomerIds ?? []);
+        } else {
+          setScopeScopable(false);
+        }
+      } catch {
+        setScopeScopable(false);
+      } finally {
+        setScopeLoading(false);
+      }
+    },
+    [fetchWithAuth],
+  );
+
+  const toggleScopeCustomer = (customerId: number) => {
+    setScopeAssignedIds((prev) =>
+      prev.includes(customerId) ? prev.filter((id) => id !== customerId) : [...prev, customerId],
+    );
+  };
+
+  const handleSaveScopes = async () => {
+    if (!selectedUser) return;
+    setScopeSaving(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/msp/settings/users/${selectedUser.userId}/customer-scopes`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerIds: scopeAssignedIds }),
+        },
+      );
+      if (res.ok) {
+        const count = scopeAssignedIds.length;
+        toast.success(
+          count === 0
+            ? "Full MSP access restored — this staff member can now access every customer."
+            : `Access restricted to ${count} customer${count === 1 ? "" : "s"}.`,
+        );
+        // Reflect the real count in the directory list + inspector immediately.
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.userId === selectedUser.userId ? { ...u, assignedCustomersCount: count } : u,
+          ),
+        );
+        setSelectedUser((prev) => (prev ? { ...prev, assignedCustomersCount: count } : null));
+      } else {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(err.error || "Failed to save customer access scope");
+      }
+    } catch {
+      toast.error("Failed to save customer access scope");
+    } finally {
+      setScopeSaving(false);
+    }
+  };
 
   // Filtered Users computation
   const filteredUsers = useMemo(() => {
@@ -517,6 +600,15 @@ export default function UserManagementPage() {
   const handleInspectUser = (user: FullUser) => {
     setSelectedUser(user);
     setInspectorOpen(true);
+    setScopeSearch("");
+    // Customer scoping only applies to MSP staff (MSPAdmin/MSPOperator).
+    if (user.mspRole === "MSPAdmin" || user.mspRole === "MSPOperator") {
+      void loadCustomerScopes(user.userId);
+    } else {
+      setScopeScopable(false);
+      setScopeCustomers([]);
+      setScopeAssignedIds([]);
+    }
   };
 
   const handleRoleChange = async (userId: number, newRole: MspRole) => {
@@ -1734,6 +1826,118 @@ export default function UserManagementPage() {
                             />
                           </div>
                         </div>
+
+                        {/* Customer Access Scope — real per-staff tenant restriction
+                            (msp_staff_customer_scopes). Only meaningful for MSP staff. */}
+                        {(selectedUser.mspRole === "MSPAdmin" || selectedUser.mspRole === "MSPOperator") && (
+                          <div className="p-3 border border-border/60 rounded-lg space-y-3 bg-card">
+                            <div>
+                              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                <ShieldCheck className="size-3.5 text-indigo-500" />
+                                Customer Access Scope
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                Restrict which customers this staff member can access. Select none to grant
+                                access to <span className="font-medium">every customer</span> in your MSP (the default).
+                              </p>
+                            </div>
+
+                            {scopeLoading ? (
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
+                                <Loader2 className="size-4 animate-spin" /> Loading customers…
+                              </div>
+                            ) : !scopeScopable ? (
+                              <p className="text-[11px] text-muted-foreground py-2">
+                                Customer scoping is not available for this account.
+                              </p>
+                            ) : scopeCustomers.length === 0 ? (
+                              <p className="text-[11px] text-muted-foreground py-2">
+                                No customers exist in your MSP yet.
+                              </p>
+                            ) : (
+                              <>
+                                {scopeAssignedIds.length === 0 ? (
+                                  <div className="flex items-center gap-2 p-2 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-700 dark:text-emerald-300">
+                                    <CheckCircle2 className="size-3.5 shrink-0" />
+                                    <span>Unrestricted — full access to all {scopeCustomers.length} customers.</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300">
+                                    <Lock className="size-3.5 shrink-0" />
+                                    <span>Restricted to {scopeAssignedIds.length} of {scopeCustomers.length} customers.</span>
+                                  </div>
+                                )}
+
+                                <div className="relative">
+                                  <Search className="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
+                                  <Input
+                                    placeholder="Search customers…"
+                                    value={scopeSearch}
+                                    onChange={(e) => setScopeSearch(e.target.value)}
+                                    className="pl-8 h-8 text-xs"
+                                  />
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setScopeAssignedIds([])}
+                                    className="text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                                  >
+                                    Clear (grant all)
+                                  </button>
+                                  <span className="text-muted-foreground/40">•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setScopeAssignedIds(scopeCustomers.map((c) => c.id))}
+                                    className="text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                                  >
+                                    Select all
+                                  </button>
+                                </div>
+
+                                <div className="max-h-56 overflow-y-auto border border-border/60 rounded-md divide-y divide-border/40">
+                                  {scopeCustomers
+                                    .filter(
+                                      (c) =>
+                                        scopeSearch === "" ||
+                                        c.name.toLowerCase().includes(scopeSearch.toLowerCase()),
+                                    )
+                                    .map((c) => {
+                                      const checked = scopeAssignedIds.includes(c.id);
+                                      return (
+                                        <label
+                                          key={c.id}
+                                          className="flex items-center gap-2.5 px-2.5 py-2 text-xs cursor-pointer hover:bg-muted/30"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => toggleScopeCustomer(c.id)}
+                                            className="rounded border-border"
+                                          />
+                                          <span className="flex-1 font-medium text-foreground">{c.name}</span>
+                                          <Badge variant="outline" className="text-[9px] capitalize">
+                                            {c.status}
+                                          </Badge>
+                                        </label>
+                                      );
+                                    })}
+                                </div>
+
+                                <Button
+                                  size="sm"
+                                  onClick={handleSaveScopes}
+                                  disabled={scopeSaving}
+                                  className="w-full gap-2"
+                                >
+                                  {scopeSaving && <Loader2 className="size-4 animate-spin" />}
+                                  <span>Save Customer Access</span>
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
 
                         <div className="pt-2">
                           <Button

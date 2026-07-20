@@ -29,7 +29,7 @@ import {
   policyRulesTable,
 } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger";
 
@@ -73,10 +73,20 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
     const limit = Math.min(Number(req.query["limit"] ?? 50), 200);
     const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
 
+    // Per-staff customer scoping: a scoped operator's alerts feed is restricted
+    // to their assigned customers. null = unrestricted (historical default).
+    // Applied at the DB level so unassigned customers' incidents/findings are
+    // never even loaded into memory.
+    const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+
     const customers = await db
       .select({ id: mspCustomersTable.id, name: mspCustomersTable.name })
       .from(mspCustomersTable)
-      .where(eq(mspCustomersTable.mspId, mspId));
+      .where(
+        scopedIds === null
+          ? eq(mspCustomersTable.mspId, mspId)
+          : and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, scopedIds)),
+      );
     const customerNameById = new Map(customers.map((c) => [c.id, c.name]));
 
     // ── Source 1: open policy engine incidents (already deduplicated/escalation-tracked) ──
@@ -93,7 +103,11 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
       })
       .from(policyRuleIncidentsTable)
       .innerJoin(policyRulesTable, eq(policyRuleIncidentsTable.ruleId, policyRulesTable.id))
-      .where(and(eq(policyRuleIncidentsTable.mspId, mspId), eq(policyRuleIncidentsTable.status, "open")));
+      .where(and(
+        eq(policyRuleIncidentsTable.mspId, mspId),
+        eq(policyRuleIncidentsTable.status, "open"),
+        ...(scopedIds === null ? [] : [inArray(policyRuleIncidentsTable.customerId, scopedIds)]),
+      ));
 
     const incidentAlerts: CrossTenantAlert[] = incidentRows.map((row) => ({
       id: `incident-${row.id}`,
@@ -117,7 +131,11 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
         completedAt: mspDiagnosticRunsTable.completedAt,
       })
       .from(mspDiagnosticRunsTable)
-      .where(and(eq(mspDiagnosticRunsTable.mspId, mspId), eq(mspDiagnosticRunsTable.status, "completed")))
+      .where(and(
+        eq(mspDiagnosticRunsTable.mspId, mspId),
+        eq(mspDiagnosticRunsTable.status, "completed"),
+        ...(scopedIds === null ? [] : [inArray(mspDiagnosticRunsTable.customerId, scopedIds)]),
+      ))
       .orderBy(desc(mspDiagnosticRunsTable.completedAt));
 
     const latestRunIdByCustomer = new Map<number, string>();

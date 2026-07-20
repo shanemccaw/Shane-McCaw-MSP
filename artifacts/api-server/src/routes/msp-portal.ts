@@ -18,7 +18,7 @@ import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable
 import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
-import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth.ts";
 import { randomUUID } from "crypto";
 import { getRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
@@ -691,6 +691,13 @@ router.get(
       // Base query — always scoped to the caller's own MSP
       const baseConditions = [eq(mspEventStoreTable.mspId, mspId)];
 
+      // Per-staff customer scoping: this feed names individual customers, so a
+      // scoped operator only sees events for customers in their assigned set.
+      const scopedEventIds = await resolveStaffScopedCustomerIds(req.user!);
+      if (scopedEventIds !== null) {
+        baseConditions.push(inArray(mspEventStoreTable.customerId, scopedEventIds));
+      }
+
       const rows = await db
         .select({
           id: mspEventStoreTable.id,
@@ -1062,6 +1069,13 @@ router.get(
       const conditions = [];
       conditions.push(eq(mspCustomersTable.mspId, mspId));
 
+      // Per-staff customer scoping: a scoped operator/admin only sees the
+      // customers in their assigned set (null = unrestricted, historical default).
+      const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+      if (scopedIds !== null) {
+        conditions.push(inArray(mspCustomersTable.id, scopedIds));
+      }
+
       if (search) {
         conditions.push(
           or(
@@ -1127,6 +1141,12 @@ router.get(
       const mspId = resolveMspIdStrict(req);
       if (mspId === null) {
         res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      // Per-staff customer scoping: 404 (not 403) so a scoped operator can't even
+      // confirm an out-of-scope customer exists.
+      if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+        res.status(404).json({ error: "Customer not found" });
         return;
       }
 
@@ -1200,6 +1220,13 @@ router.patch(
         return;
       }
       const data = parsed.data;
+
+      // Per-staff customer scoping: a scoped admin cannot edit a customer outside
+      // their assigned set (404, consistent with the read path above).
+      if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
 
       // Ensure customer exists and belongs to this MSP
       const [existing] = await db

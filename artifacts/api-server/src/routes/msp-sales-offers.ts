@@ -34,7 +34,7 @@ import {
   type SalesOfferState,
 } from "@workspace/db";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
-import { requireRole, requireMspScope } from "../middlewares/requireAuth";
+import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
 import { requirePlanFeature } from "../lib/msp-entitlement";
 import {
   runSalesOfferEngineForTenant,
@@ -168,6 +168,14 @@ router.post(
       const { customerId } = req.body as { customerId?: number };
       if (!customerId || isNaN(Number(customerId))) {
         apiErr(res, 400, "customerId is required");
+        return;
+      }
+
+      // Ownership + per-staff scoping: verify this customer is one the caller may
+      // act on before running the engine. (Previously this route trusted
+      // body.customerId and relied solely on the engine's mspId scoping.)
+      if (!(await assertCustomerAccess(req.user!, Number(customerId)))) {
+        apiErr(res, 404, "Customer not found");
         return;
       }
 

@@ -45,6 +45,8 @@ vi.mock("@workspace/db", () => ({
     currentLevel: "currentLevel", openedAt: "openedAt", lastEscalatedAt: "lastEscalatedAt",
   },
   policyRulesTable: { id: "id", name: "name", severity: "severity", conditionType: "conditionType" },
+  // Per-staff customer-access scoping table (read by resolveStaffScopedCustomerIds).
+  mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId", mspId: "mspId" },
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -128,13 +130,19 @@ const latestFinding = {
   createdAt: new Date("2026-07-19T10:01:00Z"),
 };
 
-/** Queue the 4 sequential db.select() calls the handler makes: customers, incidents, runs, findings. */
+/** Queue the sequential db.select() calls the handler makes. The first is the
+ *  per-staff scope lookup (resolveStaffScopedCustomerIds) — an empty result
+ *  means UNRESTRICTED (full MSP access), the default. Then: customers,
+ *  incidents, runs, findings. */
 function queueHandlerSelects(opts: {
+  scopeRows?: unknown[];
   customers?: unknown[];
   incidents?: unknown[];
   runs?: unknown[];
   findings?: unknown[];
 }) {
+  // resolveStaffScopedCustomerIds — no rows = unrestricted (historical default).
+  mockSelect.mockReturnValueOnce(buildChain(opts.scopeRows ?? []));
   mockSelect.mockReturnValueOnce(buildChain(opts.customers ?? customers));
   mockSelect.mockReturnValueOnce(buildChain(opts.incidents ?? [openIncident]));
   mockSelect.mockReturnValueOnce(buildChain(opts.runs ?? [latestRun, olderRun]));
@@ -220,5 +228,25 @@ describe("GET /msp/alerts", () => {
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(0);
     expect(res.body.alerts).toEqual([]);
+  });
+
+  it("restricts a scoped operator to their assigned customers", async () => {
+    // Staff member scoped to customer 1 only (non-empty scope rows). The handler
+    // takes the scoped branch (inArray filters), so only customer 1's data is
+    // requested/returned — customer 2's alerts never surface for this operator.
+    queueHandlerSelects({
+      scopeRows: [{ customerId: 1 }],
+      customers: [{ id: 1, name: "Acme Corp" }],
+      incidents: [openIncident], // customerId 1
+      runs: [],
+    });
+    const res = await request(makeApp())
+      .get("/msp/alerts")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.alerts[0].customerId).toBe(1);
+    expect(res.body.alerts[0].source).toBe("policy_incident");
   });
 });

@@ -50,6 +50,8 @@ import {
   db,
   mspsTable,
   mspUsersTable,
+  mspCustomersTable,
+  mspStaffCustomerScopesTable,
   mspServiceAccountsTable,
   mspConnectorConfigsTable,
   mspSubscriptionsTable,
@@ -70,7 +72,7 @@ import {
   type MspEmailTemplateKey,
   type MspConnectorMode,
 } from "@workspace/db";
-import { eq, and, desc, isNull, inArray, gte, lt } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash, randomUUID } from "crypto";
@@ -552,7 +554,141 @@ router.get("/msp/settings/users", requireRole("MSPAdmin"), async (req: Request, 
     .where(eq(mspUsersTable.mspId, mspId))
     .orderBy(desc(mspUsersTable.createdAt));
 
-  res.json(users);
+  // Real per-staff customer-scope counts (replaces the old mock
+  // assignedCustomersCount). 0 rows = UNRESTRICTED (full MSP access) — the UI
+  // renders that as "All customers", any positive number as the scoped subset.
+  const scopeCounts = await db
+    .select({ staffUserId: mspStaffCustomerScopesTable.staffUserId, n: count() })
+    .from(mspStaffCustomerScopesTable)
+    .where(eq(mspStaffCustomerScopesTable.mspId, mspId))
+    .groupBy(mspStaffCustomerScopesTable.staffUserId);
+  const scopeCountByUser = new Map(scopeCounts.map((r) => [r.staffUserId, Number(r.n)]));
+
+  res.json(
+    users.map((u) => ({
+      ...u,
+      // assignedCustomersCount === 0 means unrestricted, NOT "no access".
+      assignedCustomersCount: scopeCountByUser.get(u.userId) ?? 0,
+    })),
+  );
+});
+
+// ── Per-staff customer-access scoping (msp_staff_customer_scopes) ──────────────
+// GET returns the caller-MSP's customer list plus the target staff member's
+// currently-assigned customer ids. An empty assigned list means UNRESTRICTED
+// (full MSP access) — the additive, opt-in default. Scoping applies only to
+// MSPAdmin/MSPOperator staff (enforced by assertCustomerAccess &
+// resolveStaffScopedCustomerIds on every customer-scoped route).
+
+router.get("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspIdStrict(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const [target] = await db
+    .select({ mspRole: mspUsersTable.mspRole })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  const [allCustomers, assigned] = await Promise.all([
+    db
+      .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, status: mspCustomersTable.status })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.mspId, mspId))
+      .orderBy(mspCustomersTable.name),
+    db
+      .select({ customerId: mspStaffCustomerScopesTable.customerId })
+      .from(mspStaffCustomerScopesTable)
+      .where(and(
+        eq(mspStaffCustomerScopesTable.staffUserId, userId),
+        eq(mspStaffCustomerScopesTable.mspId, mspId),
+      )),
+  ]);
+
+  res.json({
+    mspRole: target.mspRole,
+    // Scoping is meaningful only for these staff roles; the UI hides the picker otherwise.
+    scopable: target.mspRole === "MSPAdmin" || target.mspRole === "MSPOperator",
+    allCustomers,
+    assignedCustomerIds: assigned.map((a) => a.customerId),
+  });
+});
+
+const updateScopesSchema = z.object({
+  customerIds: z.array(z.number().int().positive()),
+});
+
+router.put("/msp/settings/users/:userId/customer-scopes", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspIdStrict(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const parsed = updateScopesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+  // De-dupe the requested set.
+  const requestedIds = [...new Set(parsed.data.customerIds)];
+
+  // Target must be a staff member in the caller's own MSP.
+  const [target] = await db
+    .select({ mspRole: mspUsersTable.mspRole })
+    .from(mspUsersTable)
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .limit(1);
+  if (!target) { apiError(res, 404, "User not found in this MSP"); return; }
+  if (target.mspRole !== "MSPAdmin" && target.mspRole !== "MSPOperator") {
+    apiError(res, 400, "Customer scoping applies only to MSP staff (MSPAdmin/MSPOperator)");
+    return;
+  }
+
+  // Every requested customer must belong to THIS MSP — never let a scope row
+  // grant (or even reference) a customer outside the caller's own tenant.
+  if (requestedIds.length > 0) {
+    const owned = await db
+      .select({ id: mspCustomersTable.id })
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.mspId, mspId), inArray(mspCustomersTable.id, requestedIds)));
+    if (owned.length !== requestedIds.length) {
+      apiError(res, 400, "One or more customers do not belong to this MSP");
+      return;
+    }
+  }
+
+  // Replace the whole set atomically: clear this staff member's rows in this
+  // MSP, then insert the new set. An empty set = unrestricted (full access).
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(mspStaffCustomerScopesTable)
+      .where(and(
+        eq(mspStaffCustomerScopesTable.staffUserId, userId),
+        eq(mspStaffCustomerScopesTable.mspId, mspId),
+      ));
+    if (requestedIds.length > 0) {
+      await tx.insert(mspStaffCustomerScopesTable).values(
+        requestedIds.map((customerId) => ({
+          mspId,
+          staffUserId: userId,
+          customerId,
+          createdByUserId: req.user!.id,
+        })),
+      );
+    }
+  });
+
+  await writeAuditLog({
+    req,
+    actionType: "user.customer_scopes.update",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+    metadata: { customerIds: requestedIds, unrestricted: requestedIds.length === 0 },
+  });
+
+  res.json({ ok: true, assignedCustomerIds: requestedIds, unrestricted: requestedIds.length === 0 });
 });
 
 const updateRoleSchema = z.object({

@@ -13,7 +13,7 @@
 import { Router, Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.scope-creep" });
 import {
@@ -267,6 +267,12 @@ router.get("/msp/scope-creep/detections", requireRole("MSPOperator"), async (req
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
   const status = (req.query["status"] as string) || "open";
+  // Per-staff customer scoping. mspId already fences cross-MSP; this narrows to
+  // the caller's assigned customers within their MSP. null = unrestricted.
+  const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+  if (customerId != null && scopedIds !== null && !scopedIds.includes(customerId)) {
+    res.json({ detections: [] }); return;
+  }
   try {
     const rows = await db.execute(
       customerId != null
@@ -287,7 +293,10 @@ router.get("/msp/scope-creep/detections", requireRole("MSPOperator"), async (req
               WHERE msp_id = ${mspId} AND status = ${status}
               ORDER BY detected_at DESC LIMIT 200`,
     );
-    res.json({ detections: rows.rows });
+    const detections = scopedIds === null
+      ? rows.rows
+      : rows.rows.filter((d) => scopedIds.includes(Number((d as { customerId?: number }).customerId)));
+    res.json({ detections });
   } catch (err) {
     log.error({ err, mspId }, "msp-scope-creep: list detections failed");
     res.status(500).json({ error: "Failed to list detections" });
@@ -301,6 +310,10 @@ router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : null;
+  const scopedIds = await resolveStaffScopedCustomerIds(req.user!);
+  if (customerId != null && scopedIds !== null && !scopedIds.includes(customerId)) {
+    res.json({ violations: [] }); return;
+  }
   try {
     const rows = await db.execute(
       customerId != null
@@ -321,7 +334,10 @@ router.get("/msp/scope-creep/violations", requireRole("MSPOperator"), async (req
               WHERE msp_id = ${mspId}
               ORDER BY created_at DESC LIMIT 200`,
     );
-    res.json({ violations: rows.rows });
+    const violations = scopedIds === null
+      ? rows.rows
+      : rows.rows.filter((v) => scopedIds.includes(Number((v as { customerId?: number }).customerId)));
+    res.json({ violations });
   } catch (err) {
     log.error({ err, mspId }, "msp-scope-creep: list violations failed");
     res.status(500).json({ error: "Failed to list violations" });

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db, mspCustomersTable, type MspRole } from "@workspace/db";
+import { db, mspCustomersTable, mspStaffCustomerScopesTable, type MspRole } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
 
@@ -226,7 +226,12 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
         eq(mspCustomersTable.mspId, user.mspId),
       ))
       .limit(1);
-    return Boolean(customer);
+    if (!customer) return false;
+    // Per-staff-member tenant-access scoping (additive, opt-in). A staff member
+    // with no scope rows is unrestricted (historical default); once scoped, they
+    // may only reach customers in their assigned set — even within their own MSP.
+    if (await isCustomerBlockedByStaffScope(user, customerId)) return false;
+    return true;
   }
 
   if (effectiveRole === "CustomerUser" || effectiveRole === "Free" || effectiveRole === "Assessment") {
@@ -234,6 +239,47 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
   }
 
   return false;
+}
+
+// ── Per-staff-member customer-access scoping (msp_staff_customer_scopes) ────────
+/**
+ * Returns the explicit set of `msp_customers.id` an MSP staff member is limited
+ * to, or `null` when the member is UNRESTRICTED. `null` means "no restriction"
+ * — the historical default — and is returned both when the member has zero
+ * scope rows and when their role is not MSP-staff.
+ *
+ * Only MSPAdmin / MSPOperator can be scoped. PlatformAdmin is cross-MSP and is
+ * never scoped here; CustomerUser / Free / Assessment are already pinned to
+ * their own `customerId` claim, so per-customer scoping does not apply to them.
+ *
+ * List/aggregate routes call this to narrow their result set (e.g.
+ * `inArray(table.customerId, ids)` when non-null). Single-customer routes should
+ * prefer `assertCustomerAccess` (which already folds this in) or
+ * `isCustomerBlockedByStaffScope`.
+ */
+export async function resolveStaffScopedCustomerIds(user: AuthUser): Promise<number[] | null> {
+  const effectiveRole: MspRole | undefined =
+    user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  if (effectiveRole !== "MSPAdmin" && effectiveRole !== "MSPOperator") return null;
+
+  const rows = await db
+    .select({ customerId: mspStaffCustomerScopesTable.customerId })
+    .from(mspStaffCustomerScopesTable)
+    .where(eq(mspStaffCustomerScopesTable.staffUserId, user.id));
+
+  if (rows.length === 0) return null; // unrestricted — full MSP access
+  return rows.map((r) => r.customerId);
+}
+
+/**
+ * True when `user` is a scoped MSP staff member whose assigned customer set does
+ * NOT include `customerId`. False (i.e. allowed) whenever the member is
+ * unrestricted, including for every non-MSP-staff role. Use this to fence a
+ * single-customer route that resolves its own customerId.
+ */
+export async function isCustomerBlockedByStaffScope(user: AuthUser, customerId: number): Promise<boolean> {
+  const scoped = await resolveStaffScopedCustomerIds(user);
+  return scoped !== null && !scoped.includes(customerId);
 }
 
 export function requireCustomerScope(source: "params" | "query" | "body" = "params") {

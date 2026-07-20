@@ -42,7 +42,7 @@ import {
   scriptModulesTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or, sql } from "drizzle-orm";
-import { requireRole, requireAuth } from "../middlewares/requireAuth";
+import { requireRole, requireAuth, assertCustomerAccess, isCustomerBlockedByStaffScope, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 import { runDiagnostics } from "../lib/diagnostics-runner";
@@ -91,9 +91,11 @@ router.post(
 
       // 2. Authorization: PlatformAdmin/admin can diagnose any customer.
       //    MSPOperator/MSPAdmin must own this customer.
-      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
-      if (!isPlatformAdmin) {
-        await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      // Ownership + per-staff scoping via the shared source of truth. NOTE: this
+      // replaced a prior tautological check that passed the customer's OWN mspId
+      // (never the caller's), which did not actually fence cross-MSP access.
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
       }
 
       // 3. Resolve packageKey.  Body override is accepted (useful for testing),
@@ -173,9 +175,11 @@ router.get(
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
 
-      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
-      if (!isPlatformAdmin) {
-        await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      // Ownership + per-staff scoping via the shared source of truth. NOTE: this
+      // replaced a prior tautological check that passed the customer's OWN mspId
+      // (never the caller's), which did not actually fence cross-MSP access.
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
       }
 
       const [pkgRow] = await db
@@ -226,8 +230,11 @@ router.get(
         .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
-      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
-      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      // Ownership + per-staff scoping via the shared source of truth (was a
+      // tautological customer-owns-itself check that ignored the caller's mspId).
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
+      }
 
       const limit = Math.min(parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10), 100);
       const offset = parseInt(String((req.query as Record<string, unknown>).offset ?? "0"), 10);
@@ -274,8 +281,11 @@ router.get(
         .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
-      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
-      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      // Ownership + per-staff scoping via the shared source of truth (was a
+      // tautological customer-owns-itself check that ignored the caller's mspId).
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
+      }
 
       const limit = Math.min(parseInt(String((req.query as Record<string, unknown>).limit ?? "50"), 10), 100);
 
@@ -312,8 +322,11 @@ router.get(
         .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
-      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
-      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      // Ownership + per-staff scoping via the shared source of truth (was a
+      // tautological customer-owns-itself check that ignored the caller's mspId).
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
+      }
 
       const [run] = await db
         .select()
@@ -387,6 +400,22 @@ router.get(
           }
           if (userMspId) {
             await assertCustomerBelongsToMsp(customerId, userMspId);
+          }
+          // Per-staff customer scoping: a scoped operator cannot stream progress
+          // for a run on a customer outside their assigned set (404, not 403, to
+          // avoid revealing the run exists). This hand-rolled SSE auth path can't
+          // reuse assertCustomerAccess directly (no req.user), so rebuild the
+          // minimal AuthUser from the verified query-JWT claims.
+          const sseUser: AuthUser = {
+            id: Number(decoded.id),
+            email: String(decoded.email ?? ""),
+            role: decoded.role === "admin" ? "admin" : "client",
+            mspRole: userRole as AuthUser["mspRole"],
+            mspId: userMspId,
+            customerId: decoded.customerId as number | undefined,
+          };
+          if (await isCustomerBlockedByStaffScope(sseUser, customerId)) {
+            res.status(404).json({ error: "Run not found" }); return;
           }
         }
       }
