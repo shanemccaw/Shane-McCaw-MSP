@@ -1482,12 +1482,6 @@ router.post("/simulator/sql/execute", requireAdmin, async (req: Request, res: Re
       return res.status(400).json({ error: "A valid SQL query string is required." });
     }
 
-    // Destructive SQL command protection
-    const DESTRUCTIVE_KEYWORDS = /\b(drop|truncate|alter|rename)\b/i;
-    if (DESTRUCTIVE_KEYWORDS.test(query)) {
-      return res.status(400).json({ error: "Destructive SQL commands (DROP, TRUNCATE, ALTER, RENAME) are prohibited." });
-    }
-
     const startTime = Date.now();
     const result = await db.execute(sql.raw(query));
     const executionMs = Date.now() - startTime;
