@@ -708,6 +708,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
       name: usersTable.name,
       phone: usersTable.phone,
       isActive: mspUsersTable.isActive,
+      mfaEnforced: mspUsersTable.mfaEnforced,
       department: mspUsersTable.department,
       jobTitle: mspUsersTable.jobTitle,
       createdAt: mspUsersTable.createdAt,
@@ -768,7 +769,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     isActive: m.isActive,
     isLockedOut: false,
     mfaStatus: reduceMfaStatus(methodsByUser.get(m.userId) ?? []),
-    mfaEnforced: false,
+    mfaEnforced: m.mfaEnforced,
     department: m.department ?? "",
     jobTitle: m.jobTitle ?? "",
     lastLoginAt: lastLoginByUser.get(m.userId) ?? null,
@@ -831,6 +832,50 @@ router.patch("/portal/team/:userId/status", requireAuth, async (req: Request, re
   }
 
   res.json({ ok: true, isActive });
+});
+
+// ─── CLIENT: Team member MFA enforcement toggle ──────────────────────────────
+router.patch("/portal/team/:userId/mfa-enforcement", requireAuth, async (req: Request, res: Response) => {
+  const targetUserId = parseInt(req.params.userId as string, 10);
+  if (isNaN(targetUserId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  const { enforced } = req.body as { enforced?: boolean };
+  if (typeof enforced !== "boolean") {
+    res.status(400).json({ error: "enforced must be a boolean" });
+    return;
+  }
+
+  const [targetMspUser] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, targetUserId))
+    .limit(1);
+  if (!targetMspUser?.customerId) {
+    res.status(404).json({ error: "Team member not found" });
+    return;
+  }
+
+  const allowed = await assertCustomerAccess(req.user!, targetMspUser.customerId);
+  if (!allowed) {
+    res.status(403).json({ error: "Access to this team member is not permitted" });
+    return;
+  }
+
+  await db.update(mspUsersTable).set({ mfaEnforced: enforced }).where(eq(mspUsersTable.userId, targetUserId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: enforced ? "team_member_mfa_enforcement_enabled" : "team_member_mfa_enforcement_disabled",
+    entityType: "user",
+    entityId: targetUserId,
+  });
+
+  res.json({ ok: true, mfaEnforced: enforced });
 });
 
 // ─── CLIENT: Team member password reset (send email) ─────────────────────────

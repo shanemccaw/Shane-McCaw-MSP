@@ -63,7 +63,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
+  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaSetupRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
   /** Complete an MFA flow by supplying the tokens received from the MFA challenge endpoint */
   completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
   logout: () => Promise<void>;
@@ -389,6 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshToken?: string;
         refreshExpiresAt?: string;
         mfaRequired?: boolean;
+        mfaSetupRequired?: boolean;
         mfaToken?: string;
         methods?: string[];
         error?: string;
@@ -398,6 +399,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (data.mfaRequired) {
         return { mfaRequired: true, mfaToken: data.mfaToken, methods: data.methods };
+      }
+
+      if (data.mfaSetupRequired) {
+        return { mfaSetupRequired: true };
       }
 
       if (data.accessToken) {

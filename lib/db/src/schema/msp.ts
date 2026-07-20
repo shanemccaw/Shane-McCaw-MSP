@@ -133,6 +133,12 @@ export const mspUsersTable = pgTable("msp_users", {
   // approve regardless of this flag. Checked live (not cached in the JWT) so
   // permission changes take effect immediately.
   canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
+  // Requires this team member to have an active MFA enrollment to log in.
+  // Set false by default so an existing team member is never silently locked
+  // out the moment this column lands — an MSPAdmin/customer opts a user in
+  // explicitly via the team-management toggle. Checked live at login, not
+  // cached in the JWT.
+  mfaEnforced: boolean("mfa_enforced").notNull().default(false),
   // Account-level theme preference (light/dark), so the customer never has to
   // re-toggle after logging in on a new device or a cache clear. Null means
   // "no preference set yet" — the client falls back to OS prefers-color-scheme.

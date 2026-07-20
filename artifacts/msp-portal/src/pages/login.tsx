@@ -291,6 +291,7 @@ export default function LoginPage() {
   const search = useSearch();
   const [serverError, setServerError] = useState<string | null>(null);
   const [mfaState, setMfaState] = useState<{ mfaToken: string; methods: string[] } | null>(null);
+  const [mfaSetupRequired, setMfaSetupRequired] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   // Slug from context (slug-scoped router) takes priority over ?t= query param
@@ -330,6 +331,11 @@ export default function LoginPage() {
       const result = await login(data.email, data.password);
       if (result.mfaRequired && result.mfaToken) {
         setMfaState({ mfaToken: result.mfaToken, methods: result.methods ?? [] });
+        return;
+      }
+
+      if (result.mfaSetupRequired) {
+        setMfaSetupRequired(true);
         return;
       }
 
@@ -401,6 +407,35 @@ export default function LoginPage() {
           <p className="text-center text-xs text-sidebar-foreground/40">
             Access is provisioned by your administrator
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (mfaSetupRequired) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="w-full max-w-sm space-y-6">
+          {brandedHeader}
+          <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+            <CardHeader className="space-y-1 pb-4">
+              <CardTitle className="text-lg">Two-factor authentication required</CardTitle>
+              <CardDescription>
+                Your organization requires two-factor authentication for this account, but none is
+                set up yet. Contact your team administrator to complete MFA setup before signing in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => setMfaSetupRequired(false)}
+              >
+                Back to sign in
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );

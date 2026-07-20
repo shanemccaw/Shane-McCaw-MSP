@@ -256,6 +256,22 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
+  // No active MFA enrollment. If this account's team has enforcement turned
+  // on for this user (customer-team.tsx toggle), block login until they set
+  // one up rather than letting them in unprotected — an enforced-but-unenrolled
+  // user is distinct from mfaRequired (which implies enrollment already exists).
+  const [mspUserRow] = await db
+    .select({ mfaEnforced: mspUsersTable.mfaEnforced })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, user.id))
+    .limit(1);
+
+  if (mspUserRow?.mfaEnforced) {
+    const mfaToken = signMfaToken(user.id, []);
+    res.json({ mfaSetupRequired: true, mfaToken });
+    return;
+  }
+
   const mspClaims = await getMspClaims(user.id);
   const payload = buildUserPayload(user, mspClaims);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
