@@ -2449,3 +2449,44 @@ export const insertDashboardExecutiveSummarySchema = createInsertSchema(dashboar
 export type DashboardExecutiveSummary = typeof dashboardExecutiveSummariesTable.$inferSelect;
 export type InsertDashboardExecutiveSummary = typeof dashboardExecutiveSummariesTable.$inferInsert;
 
+// ── MSP Partner QBR (Quarterly Business Review) ────────────────────────────────
+//
+// An AI-generated, cross-customer leadership document summarising an MSP's whole
+// book for a single quarter — the "Partner QBR" surfaced in MSP Executive Mode.
+//
+// This is deliberately an MSP-level (whole-book) document, NOT a per-customer
+// deliverable — the per-customer, client-facing formal document is the
+// consolidated SOW (insights_generated_documents, customerId-scoped). Because a
+// QBR spans every customer in the book, it cannot live in
+// insights_generated_documents (whose customerId FK is a single users.id with no
+// mspId), so it gets its own MSP-scoped table.
+//
+// Caching / cost discipline: exactly one QBR per (mspId, quarterKey). A QBR is a
+// quarterly artifact by nature, and an Opus-4.8 generation is expensive, so we
+// never regenerate speculatively — a request within the same quarter returns the
+// cached row; a manual "Regenerate" (force) overwrites it in place.
+export const mspPartnerQbrsTable = pgTable("msp_partner_qbrs", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // Human/sortable quarter identifier, e.g. "2026-Q3". Unique per MSP.
+  quarterKey: text("quarter_key").notNull(),
+  status: text("status", { enum: ["generating", "ready", "failed"] }).notNull().default("generating"),
+  title: text("title").notNull().default(""),
+  // The generated formal document as HTML (same convention as a consolidated SOW).
+  htmlContent: text("html_content").notNull().default(""),
+  // The real book data the QBR was grounded on, captured at generation time for
+  // audit / reproducibility (top risks + top opportunities + book rollup).
+  dataSnapshot: jsonb("data_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  model: text("model"),
+  errorMessage: text("error_message"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_partner_qbrs_msp_quarter_idx").on(t.mspId, t.quarterKey),
+]);
+
+export const insertMspPartnerQbrSchema = createInsertSchema(mspPartnerQbrsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspPartnerQbr = typeof mspPartnerQbrsTable.$inferSelect;
+export type InsertMspPartnerQbr = typeof mspPartnerQbrsTable.$inferInsert;
+

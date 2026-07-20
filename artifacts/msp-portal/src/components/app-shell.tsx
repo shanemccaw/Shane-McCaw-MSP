@@ -61,6 +61,7 @@ import {
   FileText,
   FolderOpen,
   FolderSync,
+  Gauge,
   Gift,
   GitBranch,
   History,
@@ -574,6 +575,12 @@ const NAV_SECTIONS: NavSection[] = [
         label: "MSPs",
         href: "/msps",
         roles: ["PlatformAdmin"],
+      },
+      {
+        icon: Gauge,
+        label: "Executive Mode",
+        href: "/executive",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
         icon: Users,

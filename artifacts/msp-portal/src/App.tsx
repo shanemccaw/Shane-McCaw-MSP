@@ -58,6 +58,7 @@ import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
 import AlertsPage from "@/pages/alerts";
+import MspExecutivePage from "@/pages/msp-executive";
 import MspTimelinePage from "@/pages/msp-timeline";
 import MessageCenterPage from "@/pages/message-center";
 import DocumentsHubPage from "@/pages/documents-hub";
@@ -418,6 +419,13 @@ function SlugInnerSwitch() {
       {/* Cross-Tenant Alerts */}
       <Route path="/alerts">
         <ProtectedRoute component={AlertsPage} />
+      </Route>
+
+      {/* MSP Executive Mode — simplified leadership view: top-risk + top-opportunity
+          tenants across the book, plus an AI Partner QBR. A stripped-down companion
+          to /customers, not a replacement. */}
+      <Route path="/executive">
+        <ProtectedRoute component={MspExecutivePage} />
       </Route>
 
       {/* Cross-Tenant Timeline */}
