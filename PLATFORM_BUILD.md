@@ -298,3 +298,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ⏳ IN FLIGHT | Resequence Assessment Funnel — Lead → Consent-Time Prospect Account → Free/Paid Split |  |
 | 2026-07-21 | ⏳ IN FLIGHT | Assessments Scan-Simulator: Color + Selector Polish + Contrast |  |
 | 2026-07-21 | ⏳ IN FLIGHT — Fix Associated Documents Crash |  |
+| 2026-07-21 | ⏳ IN FLIGHT | Split usePersonalizationState.tsx Exports |  |
