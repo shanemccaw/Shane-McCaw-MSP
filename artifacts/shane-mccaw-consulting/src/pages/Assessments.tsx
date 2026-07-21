@@ -17,6 +17,8 @@ import { Layout } from '@/components/Layout';
 import { SEOMeta } from '@/components/SEOMeta';
 import { GradientText } from '@/components/design-system/GradientText';
 import { GlassPanel } from '@/components/design-system/GlassPanel';
+import { RiskList } from '@/components/design-system/RiskList';
+import { WorkflowSteps } from '@/components/design-system/WorkflowSteps';
 import { useServices, type PublicService } from '@/hooks/useServices';
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -361,7 +363,7 @@ export default function Assessments() {
               Personal Credential
             </div>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
-              Built by the CURRENT Microsoft 365 Architect for NASA
+              Built by the CURRENT <GradientText>Microsoft 365 Architect</GradientText> for NASA
             </h2>
             <p className="text-text-secondary text-lg leading-relaxed mb-4">
               Shane McCaw is the current M365 Architect at NASA, where he built the Copilot
@@ -380,46 +382,41 @@ export default function Assessments() {
 
       {/* 4. Why These Assessments Matter */}
       <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5 text-center">
             Why These Assessments Matter
           </h2>
-          <p className="text-text-secondary text-lg leading-relaxed">
+          <p className="text-text-secondary text-lg leading-relaxed mb-6 text-center">
             Misconfigured access, unmanaged sharing, and licensing waste don't announce
-            themselves — they compound quietly until an incident, an audit, or a failed Copilot
-            rollout forces the issue. An assessment turns that invisible risk into a
-            prioritized, actionable list before it costs you, so the fix happens on your
-            timeline instead of someone else's.
+            themselves — they compound quietly until something forces the issue. An
+            assessment turns that invisible risk into a prioritized, actionable list before
+            it costs you, so the fix happens on your timeline instead of someone else's.
           </p>
+          <RiskList
+            items={[
+              'An incident exposes the misconfigured access nobody was tracking.',
+              "An audit surfaces the unmanaged sharing that's been open the whole time.",
+              'A failed Copilot rollout reveals the licensing waste you were already paying for.',
+            ]}
+          />
         </div>
       </section>
 
       {/* 5. How These Assessments Work */}
       <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
             How These Assessments Work
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {[
-              { step: '1', title: 'Pick a category', body: "Browse by category or answer 3 quick questions and we'll point you to the right one." },
-              { step: '2', title: 'Grant scoped consent', body: 'Nothing runs against your tenant until you explicitly authorize it.' },
-              { step: '3', title: 'Real Graph-based scan', body: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
-              { step: '4', title: 'Findings compiled', body: 'Results are ranked by real risk, not a generic severity label.' },
-              { step: '5', title: 'Portal access', body: 'Create your account and track findings, results, and next steps going forward.' },
-            ].map((s) => (
-              <div key={s.step} className="text-center">
-                <div
-                  className="w-9 h-9 mx-auto mb-3 rounded-full flex items-center justify-center text-white text-sm font-bold font-numeric"
-                  style={GRADIENT_BG}
-                >
-                  {s.step}
-                </div>
-                <h3 className="font-display text-sm font-bold text-text-primary mb-1">{s.title}</h3>
-                <p className="text-xs text-text-secondary leading-relaxed">{s.body}</p>
-              </div>
-            ))}
-          </div>
+          <WorkflowSteps
+            steps={[
+              { title: 'Pick a category', description: "Browse by category or answer 3 quick questions and we'll point you to the right one." },
+              { title: 'Grant scoped consent', description: 'Nothing runs against your tenant until you explicitly authorize it.' },
+              { title: 'Real Graph-based scan', description: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
+              { title: 'Findings compiled', description: 'Results are ranked by real risk, not a generic severity label.' },
+              { title: 'Portal access', description: 'Create your account and track findings, results, and next steps going forward.' },
+            ]}
+          />
         </div>
       </section>
 
@@ -428,226 +425,231 @@ export default function Assessments() {
         <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
           Assessment Wizard
         </h2>
-        <div className="max-w-3xl mx-auto mb-10">
-          <GlassPanel className="p-6 sm:p-8">
-            {!wizardOpen && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+        {/* Two-column so the wizard and its live-sorted zone results stay visible
+            together — the wizard sticks in the left column while the right column
+            (zone tiles + card results, reordered live by score) scrolls independently,
+            instead of forcing a long scroll from the wizard down to its own results. */}
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8 items-start">
+          <div className="lg:sticky lg:top-28">
+            <GlassPanel className="p-6 sm:p-8">
+              {!wizardOpen && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+                  <div>
+                    <h2 className="font-display text-xl font-bold text-text-primary mb-1">
+                      Not sure where to start?
+                    </h2>
+                    <p className="text-sm text-text-secondary">
+                      3 quick questions — watch the right category light up as you answer.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleStartWizard}
+                    className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+                    style={GRADIENT_BG}
+                    data-track="cta"
+                  >
+                    Start
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {wizardOpen && !wizardDone && (
                 <div>
-                  <h2 className="font-display text-xl font-bold text-text-primary mb-1">
-                    Not sure where to start?
-                  </h2>
-                  <p className="text-sm text-text-secondary">
-                    3 quick questions — watch the right category light up as you answer.
+                  <div className="flex items-center justify-center gap-2 mb-6">
+                    {WIZARD_QUESTIONS.map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-2 w-2 rounded-full transition-all duration-200 ${
+                          i === questionIndex
+                            ? 'w-6 bg-accent-blue'
+                            : i < questionIndex
+                              ? 'bg-accent-blue/60'
+                              : 'bg-white/[0.12]'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
+                    {WIZARD_QUESTIONS[questionIndex].text}
+                  </h3>
+                  <div className="space-y-3">
+                    {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
+                      <button
+                        key={option.text}
+                        onClick={() => handleAnswer(option)}
+                        className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
+                      >
+                        {option.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {wizardOpen && wizardDone && (
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
+                    Based on your answers
                   </p>
+                  <h3 className="font-display text-xl font-bold text-text-primary mb-4">
+                    {bestZones.length > 0 ? (
+                      <>
+                        <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
+                        {bestZones.length > 1 ? 'are' : 'is'} your best match
+                      </>
+                    ) : (
+                      "We couldn't quite pin down a single match — browse the categories below"
+                    )}
+                  </h3>
+                  <button
+                    onClick={handleRetakeWizard}
+                    className="text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Retake the quiz
+                  </button>
                 </div>
-                <button
-                  onClick={handleStartWizard}
-                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
-                  style={GRADIENT_BG}
-                  data-track="cta"
-                >
-                  Start
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+              )}
+            </GlassPanel>
+          </div>
+
+          <div id="assessment-categories">
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">
+              Assessment Categories
+            </h2>
+
+            {loading && (
+              <div className="flex justify-center items-center py-20">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
               </div>
             )}
 
-            {wizardOpen && !wizardDone && (
-              <div>
-                <div className="flex items-center justify-center gap-2 mb-6">
-                  {WIZARD_QUESTIONS.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-2 w-2 rounded-full transition-all duration-200 ${
-                        i === questionIndex
-                          ? 'w-6 bg-accent-blue'
-                          : i < questionIndex
-                            ? 'bg-accent-blue/60'
-                            : 'bg-white/[0.12]'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
-                  {WIZARD_QUESTIONS[questionIndex].text}
-                </h3>
-                <div className="space-y-3">
-                  {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
-                    <button
-                      key={option.text}
-                      onClick={() => handleAnswer(option)}
-                      className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
-                    >
-                      {option.text}
-                    </button>
-                  ))}
-                </div>
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center max-w-xl mx-auto my-8">
+                Failed to load assessment catalog. Please refresh or contact support.
               </div>
             )}
 
-            {wizardOpen && wizardDone && (
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
-                  Based on your answers
-                </p>
-                <h3 className="font-display text-xl font-bold text-text-primary mb-4">
-                  {bestZones.length > 0 ? (
-                    <>
-                      <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
-                      {bestZones.length > 1 ? 'are' : 'is'} your best match
-                    </>
-                  ) : (
-                    "We couldn't quite pin down a single match — browse the categories below"
-                  )}
-                </h3>
-                <button
-                  onClick={handleRetakeWizard}
-                  className="text-sm text-text-secondary hover:text-text-primary transition-colors"
-                >
-                  Retake the quiz
-                </button>
+            {!loading && !error && (
+              <div className="space-y-10">
+                {services.length === 0 && (
+                  <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                    No active offerings found in the database. Please contact support.
+                  </div>
+                )}
+
+                {services.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {ZONES.map((zone, idx) => {
+                      const Icon = zone.icon;
+                      const count = servicesByZone[zone.key].length;
+                      const isBest = bestZones.includes(zone.key);
+                      const isGood = !isBest && goodZones.includes(zone.key);
+                      const isSelected = selectedZone === zone.key;
+                      const rank = isBest ? 0 : isGood ? 1 : 2;
+
+                      const tile = (
+                        <button
+                          onClick={() => focusZone(zone.key)}
+                          className={`w-full h-full flex flex-col items-start text-left p-5 rounded-2xl transition-all duration-200 ${
+                            isSelected
+                              ? 'bg-charcoal-1 border border-accent-blue/50'
+                              : isBest
+                                ? 'bg-charcoal-1'
+                                : 'glass-panel hover:border-white/[0.18]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full mb-3">
+                            <Icon className="w-6 h-6 text-accent-blue" />
+                            {isBest && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
+                                Best match
+                              </span>
+                            )}
+                            {isGood && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                                Good match
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-display text-base font-bold text-text-primary mb-1">{zone.label}</h3>
+                          <p className="text-xs text-text-secondary leading-relaxed mb-3 flex-grow">{zone.blurb}</p>
+                          <span className="text-[11px] text-text-secondary">
+                            {count} assessment{count === 1 ? '' : 's'}
+                          </span>
+                        </button>
+                      );
+
+                      return (
+                        <div key={zone.key} style={{ order: rank * 10 + idx }}>
+                          {isBest ? (
+                            <div className="rounded-2xl p-[1.5px] h-full" style={GRADIENT_BG}>
+                              {tile}
+                            </div>
+                          ) : (
+                            tile
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {services.length > 0 && (
+                  <div className="flex flex-col gap-8">
+                    {ZONES.map((zone, idx) => {
+                      const Icon = zone.icon;
+                      const zoneServices = servicesByZone[zone.key];
+                      const isBest = bestZones.includes(zone.key);
+                      const isGood = !isBest && goodZones.includes(zone.key);
+                      const isFocused = selectedZone === zone.key;
+                      const rank = isBest ? 0 : isGood ? 1 : 2;
+                      // Live-scored recede: only kicks in once the wizard has produced a
+                      // score (maxScore > 0), same trigger as the zone tiles above — reacts
+                      // after every answer, not just at wizard completion.
+                      const isDimmed = maxScore > 0 && !isBest && !isGood;
+
+                      return (
+                        <div
+                          key={zone.key}
+                          ref={(el) => {
+                            zoneSectionRefs.current[zone.key] = el;
+                          }}
+                          style={{ order: rank * 10 + idx }}
+                          className={`scroll-mt-28 rounded-2xl transition-all duration-300 ${
+                            isDimmed ? 'opacity-50' : 'opacity-100'
+                          } ${isFocused ? 'ring-1 ring-accent-blue/40' : ''}`}
+                        >
+                          <div className="flex items-center gap-2 mb-4 px-1">
+                            <Icon className="w-5 h-5 text-accent-blue" />
+                            <h3 className="font-display text-lg font-bold text-text-primary">{zone.label}</h3>
+                            {isBest && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
+                                Best match
+                              </span>
+                            )}
+                            {isGood && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                                Good match
+                              </span>
+                            )}
+                          </div>
+                          {zoneServices.length > 0 ? (
+                            <div className="space-y-3">{zoneServices.map((service) => renderAssessmentCard(service))}</div>
+                          ) : (
+                            <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                              No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this category yet.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-          </GlassPanel>
+          </div>
         </div>
-      </section>
-
-      {/* 7. Assessment Categories */}
-      <section id="assessment-categories" className="py-12 px-4 sm:px-6 lg:px-8">
-        <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
-          Assessment Categories
-        </h2>
-
-        {loading && (
-          <div className="flex justify-center items-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center max-w-xl mx-auto my-8">
-            Failed to load assessment catalog. Please refresh or contact support.
-          </div>
-        )}
-
-        {!loading && !error && (
-          <div className="max-w-6xl mx-auto space-y-10">
-            {services.length === 0 && (
-              <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
-                No active offerings found in the database. Please contact support.
-              </div>
-            )}
-
-            {services.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {ZONES.map((zone, idx) => {
-                  const Icon = zone.icon;
-                  const count = servicesByZone[zone.key].length;
-                  const isBest = bestZones.includes(zone.key);
-                  const isGood = !isBest && goodZones.includes(zone.key);
-                  const isSelected = selectedZone === zone.key;
-                  const rank = isBest ? 0 : isGood ? 1 : 2;
-
-                  const tile = (
-                    <button
-                      onClick={() => focusZone(zone.key)}
-                      className={`w-full h-full flex flex-col items-start text-left p-5 rounded-2xl transition-all duration-200 ${
-                        isSelected
-                          ? 'bg-charcoal-1 border border-accent-blue/50'
-                          : isBest
-                            ? 'bg-charcoal-1'
-                            : 'glass-panel hover:border-white/[0.18]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full mb-3">
-                        <Icon className="w-6 h-6 text-accent-blue" />
-                        {isBest && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
-                            Best match
-                          </span>
-                        )}
-                        {isGood && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
-                            Good match
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="font-display text-base font-bold text-text-primary mb-1">{zone.label}</h3>
-                      <p className="text-xs text-text-secondary leading-relaxed mb-3 flex-grow">{zone.blurb}</p>
-                      <span className="text-[11px] text-text-secondary">
-                        {count} assessment{count === 1 ? '' : 's'}
-                      </span>
-                    </button>
-                  );
-
-                  return (
-                    <div key={zone.key} style={{ order: rank * 10 + idx }}>
-                      {isBest ? (
-                        <div className="rounded-2xl p-[1.5px] h-full" style={GRADIENT_BG}>
-                          {tile}
-                        </div>
-                      ) : (
-                        tile
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {services.length > 0 && (
-              <div className="flex flex-col gap-8">
-                {ZONES.map((zone, idx) => {
-                  const Icon = zone.icon;
-                  const zoneServices = servicesByZone[zone.key];
-                  const isBest = bestZones.includes(zone.key);
-                  const isGood = !isBest && goodZones.includes(zone.key);
-                  const isFocused = selectedZone === zone.key;
-                  const rank = isBest ? 0 : isGood ? 1 : 2;
-                  // Live-scored recede: only kicks in once the wizard has produced a
-                  // score (maxScore > 0), same trigger as the zone tiles above — reacts
-                  // after every answer, not just at wizard completion.
-                  const isDimmed = maxScore > 0 && !isBest && !isGood;
-
-                  return (
-                    <div
-                      key={zone.key}
-                      ref={(el) => {
-                        zoneSectionRefs.current[zone.key] = el;
-                      }}
-                      style={{ order: rank * 10 + idx }}
-                      className={`scroll-mt-28 rounded-2xl transition-all duration-300 ${
-                        isDimmed ? 'opacity-50' : 'opacity-100'
-                      } ${isFocused ? 'ring-1 ring-accent-blue/40' : ''}`}
-                    >
-                      <div className="flex items-center gap-2 mb-4 px-1">
-                        <Icon className="w-5 h-5 text-accent-blue" />
-                        <h3 className="font-display text-lg font-bold text-text-primary">{zone.label}</h3>
-                        {isBest && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
-                            Best match
-                          </span>
-                        )}
-                        {isGood && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
-                            Good match
-                          </span>
-                        )}
-                      </div>
-                      {zoneServices.length > 0 ? (
-                        <div className="space-y-3">{zoneServices.map((service) => renderAssessmentCard(service))}</div>
-                      ) : (
-                        <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
-                          No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this category yet.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
       </section>
 
       {/* 8. What's Inside Each Assessment */}
