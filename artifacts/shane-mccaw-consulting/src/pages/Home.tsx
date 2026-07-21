@@ -212,30 +212,35 @@ const HOW_IT_WORKS_STEPS = [
   {
     step: 1,
     title: "Establish the link",
+    railLabel: "Connect",
     description:
       "A quick, consent-gated connection to your Microsoft 365 tenant — no agents to install, no scripts to run.",
   },
   {
     step: 2,
     title: "Full-spectrum scan",
+    railLabel: "Scan",
     description:
       "Real Graph API checks across governance, compliance, adoption, Copilot readiness, architecture, licensing, and security.",
   },
   {
     step: 3,
     title: "Every gap, logged",
+    railLabel: "Findings",
     description:
       "Configuration drift, security gaps, licensing waste, and compliance exceptions are logged as real, inspectable findings — not a generic score with no explanation.",
   },
   {
     step: 4,
     title: "A real number, not a guess",
+    railLabel: "Score",
     description:
       "A composite health score plus a pillar-by-pillar breakdown — not a generic questionnaire estimate.",
   },
   {
     step: 5,
     title: "Fixed automatically, or flagged for you",
+    railLabel: "Remediate",
     description:
       "Where write-back remediation is configured for your tenant, common issues resolve automatically. Everything else is ranked and re-checked on your next scheduled evaluation.",
   },
@@ -253,14 +258,14 @@ const HOME_SCAN_SURFACES = [
 
 // Illustrative-only mockup data for the How It Works showcase's Findings/Score/Remediate
 // stages — not a live/real customer score, same convention as the (now-replaced) static
-// Mission Control preview panel this section used to show. ringValue 74 (amber tier per
-// PillarScoreRing's scoreTone) is a believable "current" reading; remediatedRingValue 92
-// (green tier) is the Remediate stage's illustrative after-state — both values distinct from
-// the Governance topic page's own illustrative 49/85 pair, not copied from it.
+// Mission Control preview panel this section used to show. ringValue 49 (red tier per
+// PillarScoreRing's scoreTone) matches the same treatment applied to the Governance topic
+// page's illustrative ring; remediatedRingValue 92 (green tier) is the Remediate stage's
+// illustrative after-state.
 const HOME_HOW_IT_WORKS_DASHBOARD = {
   panelLabel: "Mission Control preview",
   ringLabel: "Composite tenant health",
-  ringValue: 74,
+  ringValue: 49,
   remediatedRingValue: 92,
   metrics: [
     { label: "Configuration drift flags", count: 9 },
@@ -913,10 +918,10 @@ export default function Home() {
             environment.
           </p>
 
-          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto mb-14">
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-2xl mx-auto mb-14">
             <a
               href="#catalog"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-white shadow-lg shadow-accent-blue/20 transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-base"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-white shadow-lg shadow-accent-blue/20 transition-opacity hover:opacity-90 flex items-center justify-center gap-2 text-base whitespace-nowrap"
               style={GRADIENT_BG}
               data-track="cta"
             >
@@ -925,7 +930,7 @@ export default function Home() {
             </a>
             <Link
               href="/assessments?tab=free"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base"
+              className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base whitespace-nowrap"
               data-track="cta"
             >
               Run a Free Assessment First
@@ -937,10 +942,10 @@ export default function Home() {
           <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
             Real infrastructure watching your tenant — not marketing numbers
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-            <StatPanel label="Platform engines" value="12" />
-            <StatPanel label="Check cadence" value="Hourly–Daily" />
-            <StatPanel label="Scan source" value="Live Graph API" />
+          <div className="flex flex-wrap items-stretch justify-center gap-4 max-w-4xl mx-auto">
+            <StatPanel label="Platform engines" value="12" className="min-w-[180px]" />
+            <StatPanel label="Check cadence" value="Hourly–Daily" className="min-w-[220px]" />
+            <StatPanel label="Scan source" value="Live Graph API" className="min-w-[260px]" />
           </div>
         </div>
       </section>
@@ -1130,14 +1135,14 @@ export default function Home() {
       {/* CATALOG */}
       <section id="catalog" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-10">
+          <div className="text-center max-w-3xl mx-auto mb-10">
             <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Commercial Tenant Pricing
             </p>
             <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
               Mission-Grade Pricing for <GradientText>Commercial Tenants</GradientText>
             </h2>
-            <p className="text-text-secondary max-w-xl">
+            <p className="text-text-secondary max-w-xl mx-auto">
               Enter your seat count — pricing recalculates live from the real catalog, no
               sales call required. This is commercial Microsoft 365 monitoring and
               assessment pricing, not a federal compliance score or a government contract
@@ -1153,7 +1158,7 @@ export default function Home() {
           <div className="space-y-16">
             {/* ROW 1 — MONITORING (hero) */}
             <div>
-              <div className="mb-8">
+              <div className="text-center max-w-2xl mx-auto mb-8">
                 <span
                   className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-3"
                   style={GRADIENT_BG}
@@ -1164,7 +1169,7 @@ export default function Home() {
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
                   Tenant Telemetry &amp; <GradientText>Drift Enforcement</GradientText>
                 </h3>
-                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                <p className="text-sm text-text-secondary leading-relaxed mt-2">
                   Scheduled Graph-based scans across governance, security, compliance, and
                   adoption — the recurring foundation everything else feeds. Priced per licensed
                   seat, live from the real catalog.

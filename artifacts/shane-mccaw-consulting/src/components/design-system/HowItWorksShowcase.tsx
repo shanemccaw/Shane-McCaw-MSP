@@ -44,6 +44,10 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 interface WorkflowStep {
   title: string;
   description: string;
+  /** Short label for the panel's own bottom rail (stage buttons are narrow,
+   *  5-across) — falls back to the full `title` when absent, so callers with
+   *  already-short titles (e.g. "Connect", "Scan") don't need to set this. */
+  railLabel?: string;
 }
 
 interface ScanSurface {
@@ -400,6 +404,19 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
     return () => obs.disconnect();
   }, [reduced]);
 
+  // Mirrors the pause condition into a ref, updated synchronously on every
+  // render (not via its own effect) — closes a real race where a click's
+  // setStopped(true) and the auto-advance effect's clearInterval cleanup
+  // are NOT synchronous with each other (cleanup is a passive effect,
+  // deferred until after paint), so an already-scheduled interval tick can
+  // still fire in that gap and silently advance `active` one stage past
+  // whatever the user just clicked — reading as a click "jumping" to the
+  // wrong step. The interval tick below checks this ref before advancing,
+  // which IS synchronous with the click (refs update mid-render, well
+  // before the browser can run any queued timer callback).
+  const skipAdvanceRef = useRef(false);
+  skipAdvanceRef.current = reduced || stopped || pausedByPanel || pausedByFocus || !inView;
+
   // Auto-advance. Deliberately does NOT depend on `active` — the interval's
   // own tick advances `active` via the functional setActive updater below,
   // so re-running this effect on every tick would tear down and recreate the
@@ -411,7 +428,10 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
   // stage duration after a manual retarget.
   useEffect(() => {
     if (reduced || stopped || pausedByPanel || pausedByFocus || !inView || stageCount < 2) return;
-    const id = setInterval(() => setActive((a) => (a + 1) % stageCount), STAGE_MS);
+    const id = setInterval(() => {
+      if (skipAdvanceRef.current) return;
+      setActive((a) => (a + 1) % stageCount);
+    }, STAGE_MS);
     return () => clearInterval(id);
   }, [reduced, stopped, pausedByPanel, pausedByFocus, inView, stageCount, restartToken]);
 
@@ -455,8 +475,11 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
       >
         <IllustrativeBadge />
         {/* The badge occupies ~11rem top-right; the step title is dropped on
-            mobile (it's in the rail below) so the header never runs under it. */}
-        <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6 pr-32 sm:pr-28">
+            mobile (it's in the rail below) so the header never runs under it.
+            sm:pr-36 (not pr-28) — at the panel's narrowest real width (the
+            lg 2-column breakpoint, ~1024-1180px viewport), pr-28 left the
+            longest step titles running under the badge. */}
+        <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6 pr-32 sm:pr-36">
           Step {active + 1} of {stageCount}
           <span className="hidden sm:inline"> — {activeStep?.title}</span>
         </h3>
@@ -501,7 +524,7 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
                   i === active ? "text-text-primary" : "text-text-secondary"
                 }`}
               >
-                {step.title}
+                {step.railLabel ?? step.title}
               </span>
             </button>
           ))}
