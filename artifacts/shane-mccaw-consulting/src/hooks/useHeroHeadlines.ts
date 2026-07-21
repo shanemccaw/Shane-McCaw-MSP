@@ -14,10 +14,25 @@ const TYPE_SPEED_MS = 35;
 const DELETE_SPEED_MS = 20;
 const PAUSE_MS = 2500;
 
+function shuffle<T>(arr: T[]): T[] {
+  const result = arr.slice();
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 /**
  * Fetches admin-authored hero headlines and types/deletes/loops through them,
  * one character at a time. Falls back to a single static headline if the API
  * returns nothing (e.g. pre-migration empty table) or fails.
+ *
+ * While the fetch is in flight, only the single fallback headline is available
+ * (headlines.length === 1). Rotation is held on that entry rather than looping
+ * it — the fallback text is identical to the DB's sort_order=0 headline, so
+ * looping it while waiting would visibly replay the same headline before the
+ * real rotation (now shuffled) takes over.
  */
 export function useTypewriterHeadline(): {
   leadDisplayed: string;
@@ -25,6 +40,7 @@ export function useTypewriterHeadline(): {
   headlines: HeroHeadline[];
 } {
   const [headlines, setHeadlines] = useState<HeroHeadline[]>([FALLBACK_HEADLINE]);
+  const [loaded, setLoaded] = useState(false);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [phase, setPhase] = useState<"typing" | "deleting">("typing");
@@ -35,11 +51,17 @@ export function useTypewriterHeadline(): {
       .then((r) => (r.ok ? (r.json() as Promise<HeroHeadline[]>) : Promise.reject()))
       .then((data) => {
         if (!cancelled && Array.isArray(data) && data.length > 0) {
-          setHeadlines(data);
+          setHeadlines(shuffle(data));
+          setHeadlineIndex(0);
+          setCharCount(0);
+          setPhase("typing");
         }
       })
       .catch(() => {
         // keep the fallback headline
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -48,8 +70,15 @@ export function useTypewriterHeadline(): {
 
   const current = headlines[headlineIndex % headlines.length];
   const fullText = current.leadText + current.gradientText;
+  const holdOnFallback = !loaded && headlines.length === 1;
 
   useEffect(() => {
+    if (holdOnFallback && phase === "typing" && charCount >= fullText.length) {
+      // Fully typed the fallback while still waiting on the real headlines —
+      // hold here instead of deleting/retyping the same entry on a loop.
+      return;
+    }
+
     let timeout: ReturnType<typeof setTimeout>;
 
     if (phase === "typing") {
@@ -68,7 +97,7 @@ export function useTypewriterHeadline(): {
     }
 
     return () => clearTimeout(timeout);
-  }, [charCount, phase, fullText, headlines.length]);
+  }, [charCount, phase, fullText, headlines.length, holdOnFallback]);
 
   const typed = fullText.slice(0, charCount);
   return {
