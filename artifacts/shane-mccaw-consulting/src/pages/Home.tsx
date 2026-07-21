@@ -95,7 +95,7 @@ const ENGINES = [
     id: "drift",
     name: "Drift Engine",
     description:
-      "Every admin change gets fingerprinted against your baseline the moment it happens — not discovered six months later in an audit.",
+      "Every admin change is fingerprinted against your baseline and flagged the next time your tenant is evaluated — not discovered six months later in an audit.",
     badge: "Configuration Baseline",
     icon: Layers,
   },
@@ -111,7 +111,7 @@ const ENGINES = [
     id: "health",
     name: "Health Engine",
     description:
-      "Scores tenant risk in real time and fires automated remediation runbooks — most issues get fixed before a human ever sees them.",
+      "Scores tenant risk on every scheduled check. Where write-back remediation is configured for your tenant, common issues get resolved automatically — otherwise, they're flagged for you to act on.",
     badge: "SLA Remediation",
     icon: Activity,
   },
@@ -127,7 +127,7 @@ const ENGINES = [
     id: "scope-creep",
     name: "Scope Creep Engine",
     description:
-      "Checks live engineering work against the signed SOW continuously, catching drift between what was promised and what's being delivered.",
+      "Checks live engineering work against the signed SOW on every scheduled review, catching drift between what was promised and what's being delivered.",
     badge: "Statement of Work Auditing",
     icon: AlertTriangle,
   },
@@ -152,31 +152,31 @@ const ENGINES = [
 const HOW_IT_WORKS_STEPS = [
   {
     step: 1,
-    title: "Connect your tenant",
+    title: "Establish the link",
     description:
       "A quick, consent-gated connection to your Microsoft 365 tenant — no agents to install, no scripts to run.",
   },
   {
     step: 2,
-    title: "We scan everything",
+    title: "Full-spectrum scan",
     description:
       "Real Graph API checks across governance, compliance, adoption, Copilot readiness, architecture, licensing, and security.",
   },
   {
     step: 3,
-    title: "You get a real number",
+    title: "A real number, not a guess",
     description:
       "A composite health score plus a pillar-by-pillar breakdown — not a generic questionnaire estimate.",
   },
   {
     step: 4,
-    title: "We watch it change",
+    title: "Scheduled drift enforcement",
     description:
-      "Monitoring re-checks your tenant on a real schedule, catching drift the moment it happens instead of six months later.",
+      "Monitoring re-checks your tenant on a real cadence — hourly to daily, with critical events flagged within minutes on Enhanced and Premium — catching drift long before an annual audit would.",
   },
   {
     step: 5,
-    title: "You always know where you stand",
+    title: "Full visibility, on demand",
     description:
       "Every score, every finding, every change — visible whenever you check, not buried in an annual audit.",
   },
@@ -498,7 +498,7 @@ export default function Home() {
             style={GRADIENT_BG}
             data-track="cta"
           >
-            <span>{item.isFreeOffering ? "Request" : "Purchase"}</span>
+            <span>{item.isFreeOffering ? "Begin Mission Readiness" : "Deploy Full Evaluation"}</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -717,7 +717,7 @@ export default function Home() {
                   style={isHighlighted ? GRADIENT_BG : undefined}
                   data-track="cta"
                 >
-                  <span>Start Monitoring</span>
+                  <span>Activate Tenant Telemetry</span>
                   <ChevronRight className="w-4 h-4" />
                 </Link>
               </div>
@@ -740,7 +740,7 @@ export default function Home() {
         <div className="max-w-5xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
-            Built by a Former NASA M365 Architect
+            Built by a NASA M365 Architect
           </div>
 
           <div
@@ -817,23 +817,26 @@ export default function Home() {
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
+                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-2">
+                  Operator Credential
+                </p>
                 <h3 className="font-display font-semibold text-lg text-text-primary">
-                  A Governance Standard Built at NASA
+                  The Same Standard I Run at NASA
                 </h3>
                 <p className="text-sm text-text-secondary mt-1">
-                  Shane McCaw wrote the M365 Copilot governance framework NASA distributed
-                  agency-wide, and works day-to-day inside NASA's BOD-25 secure-configuration
-                  push, CISA's SCuBA hardening baselines, and its Zero Trust architecture
-                  rollout. That same discipline shapes how every engine on this platform is
-                  built — this platform doesn't score your tenant against those specific
-                  federal frameworks today, but it's built by someone who lives in them.
+                  I wrote the M365 Copilot governance framework NASA distributed agency-wide,
+                  and I work day-to-day inside NASA's BOD-25 secure-configuration push, CISA's
+                  SCuBA hardening baselines, and its Zero Trust architecture rollout. This
+                  platform doesn't score your tenant against those specific federal
+                  frameworks — that's not what it's built to do — but every engine on it runs
+                  on the same discipline I bring to NASA's own environment.
                 </p>
               </div>
             </div>
             <div className="text-sm text-text-secondary max-w-md md:text-right">
               Risk, drift, and compliance are checked against your real tenant on a real
               schedule — not estimated from a questionnaire, and not left running in the
-              background pretending nothing changes.
+              background hoping nothing changed.
             </div>
           </GlassPanel>
         </div>
@@ -843,10 +846,13 @@ export default function Home() {
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
+            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+              Tenant Telemetry &amp; Drift Enforcement
+            </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              How <GradientText>Continuous Monitoring</GradientText> Actually Works
+              How <GradientText>Drift Enforcement</GradientText> Actually Works
             </h2>
-            <p className="text-text-secondary">Five real steps. No black box.</p>
+            <p className="text-text-secondary">Five real steps, on a real schedule. No black box.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
@@ -926,6 +932,9 @@ export default function Home() {
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
+            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+              Operational Intelligence Systems
+            </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
               {ENGINES.length} Engines. <GradientText>Zero Guesswork.</GradientText>
             </h2>
@@ -960,11 +969,11 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <div className="mb-10">
             <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
-              Pricing That Matches Your Tenant
+              Pricing Calibrated to Your Tenant
             </h2>
             <p className="text-text-secondary max-w-xl">
-              Tell us your seat count — Monitoring pricing recalculates live from the catalog. No
-              sales call required.
+              Enter your seat count — Tenant Telemetry pricing recalculates live from the
+              catalog. No sales call required.
             </p>
           </div>
 
@@ -989,9 +998,11 @@ export default function Home() {
                 <Sparkles className="w-3 h-3" />
                 The Core Product
               </span>
-              <h3 className="font-display text-2xl font-bold text-text-primary mb-2">Tenant Monitoring</h3>
+              <h3 className="font-display text-2xl font-bold text-text-primary mb-2">
+                Tenant Telemetry &amp; Drift Enforcement
+              </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
-                Continuous Graph-based scans across governance, security, compliance, and
+                Scheduled Graph-based scans across governance, security, compliance, and
                 adoption — the recurring foundation everything else feeds.
               </p>
             </button>
@@ -1007,9 +1018,12 @@ export default function Home() {
               <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-4">
                 Start Here — Free
               </span>
-              <h3 className="font-display text-lg font-bold text-text-primary mb-2">Assessment</h3>
+              <h3 className="font-display text-lg font-bold text-text-primary mb-2">
+                Mission Readiness Evaluation
+              </h3>
               <p className="text-sm text-text-secondary leading-relaxed">
-                A real scan of your tenant — see where you stand before you commit to anything.
+                A real Graph API scan of your tenant — know exactly where you stand before you
+                commit to anything.
               </p>
             </button>
 
@@ -1026,8 +1040,8 @@ export default function Home() {
               </span>
               <h3 className="font-display text-lg font-bold text-text-primary mb-2">Advisory Retainers</h3>
               <p className="text-sm text-text-secondary leading-relaxed">
-                Fractional M365 architecture guidance — the upgrade path once you're already
-                monitoring.
+                Fractional M365 architecture guidance for tenants already under monitoring —
+                the upgrade path, not a cold-start engagement.
               </p>
             </button>
           </div>
@@ -1048,8 +1062,9 @@ export default function Home() {
               No Guessing. Just Your Real Number.
             </h2>
             <p className="text-text-secondary max-w-xl mx-auto mb-8 text-sm sm:text-base">
-              Start with a free assessment to see where your tenant stands today, or go straight to
-              continuous monitoring built on the governance discipline Shane developed at NASA.
+              Start with a free Mission Readiness Evaluation to see where your tenant stands
+              today, or move straight to Tenant Telemetry &amp; Drift Enforcement — built on the
+              same discipline I bring to M365 governance at NASA.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4 max-w-xs sm:max-w-none mx-auto">
               <a
@@ -1058,7 +1073,7 @@ export default function Home() {
                 style={GRADIENT_BG}
                 data-track="cta"
               >
-                See Monitoring Pricing
+                Activate Tenant Telemetry
               </a>
               <Link
                 href="/contact"
