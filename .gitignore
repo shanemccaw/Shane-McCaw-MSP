@@ -55,3 +55,4 @@ data/uploads/documents/*.pdf
 attached_assets/*.txt
 artifacts/api-server/src/lib/workflow-executor.ts
 CLAUDE.md
+"artifacts/shane-mccaw-consulting/public/sitemap.xml" 
