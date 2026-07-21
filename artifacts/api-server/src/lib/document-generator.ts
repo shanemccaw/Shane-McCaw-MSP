@@ -60,6 +60,39 @@ export interface GenerateAndDeliverOptions {
   testMode?: boolean;
 }
 
+// ── Document type labels (mirrors admin-insights.ts) ──────────────────────────
+
+const REPORT_DOC_TYPE_LABELS: Record<string, string> = {
+  executive_summary:           "Executive Summary",
+  full_readiness_report:       "Full Readiness Report",
+  security_posture_report:     "Security Posture Report",
+  governance_maturity_report:  "Governance Maturity Report",
+  data_exposure_risk_report:   "Data Exposure Risk Report",
+  license_optimization_report: "License Optimization Report",
+};
+
+const CONSULTING_TYPE_LABELS: Record<string, string> = {
+  sow:                         "Statement of Work",
+  task_execution_guide:        "SOW Task Execution Guide",
+  remediation_plan:            "Remediation Plan",
+  deployment_plan:             "Deployment Plan",
+  governance_framework:        "Governance Framework",
+  security_hardening_plan:     "Security Hardening Plan",
+  copilot_enablement_plan:     "Copilot Enablement Plan",
+  identity_modernization_plan: "Identity Modernization Plan",
+};
+
+const CONSULTING_SECTION_HINTS: Record<string, string> = {
+  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria (each criterion on its own line as <div style='margin:6px 0'>&#9744; criterion</div>), Terms & Conditions",
+  task_execution_guide:        "Use the project task list below as your source. For EACH task produce: Task name (h3), Purpose (one sentence), Prerequisites, Step-by-step instructions (numbered, technically specific for Microsoft 365), Expected outcome, Validation check, Common pitfalls. Group tasks by their workflow phase/group. Add an intro section and a completion checklist at the end.",
+  remediation_plan:            "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
+  deployment_plan:             "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
+  governance_framework:        "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process",
+  security_hardening_plan:     "Include: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Privileged Access Workstations, Defender Configuration, Security Monitoring, Incident Response",
+  copilot_enablement_plan:     "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy",
+  identity_modernization_plan: "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission",
+};
+
 // ── Tier 02 Pricing Formula (verbatim — embedded into every SOW prompt) ───────
 
 const TIER_02_PRICING_FORMULA = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
