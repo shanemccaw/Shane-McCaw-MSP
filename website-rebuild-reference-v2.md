@@ -211,6 +211,8 @@ The floating glass stat panel (e.g. "Tenant health — 98.2" / "Signals watched 
 - No FedRAMP/GCC/GCC-High/government-contractor marketing anywhere on the site — platform explicitly excludes government tenants
 - No compliance claims (SOC 2, HIPAA, etc.) beyond what's formally documented — currently: "building toward SOC 2 Type I," nothing further
 - Known live violations to fix during rebuild, not carry forward: forced compliance-badge injection in the AI landing-page generator (`admin-marketing.ts:2432` — hardcodes FedRAMP/FISMA/ITAR/GCC High/HIPAA/SOC 2/NIST badges into every generated page); fabricated data surfaces (Command Center, Team Members, hardcoded health/security percentages) — not website-scope directly, but must not be screenshotted/referenced as proof in site copy
+- Shane is the CURRENT M365 Architect at NASA — confirmed directly by Shane. Always present tense ("M365 Architect at NASA"), never "Former." This has regressed multiple times across this project (later tasks copying stale prior-page phrasing) — every prompt touching any page with this reference should explicitly verify present tense, not assume it's already correct.
+- No platform-level claims of federal/FedRAMP/FISMA/GCC alignment or hardening, in any phrasing — locked, applies regardless of tone/voice direction requested in any future task. Shane's personal NASA credential is always fair game stated with full confidence; claims about the platform's compliance posture or lineage to real mission-control systems are not, unless and until actually true and verified.
 
 ---
 
