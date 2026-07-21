@@ -337,7 +337,6 @@ export default function Home() {
   // {{db.services.all}}
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
-  const [activeCatalogTab, setActiveCatalogTab] = useState<"monitoring" | "assessments" | "retainers">("monitoring");
   const [seatCount, setSeatCount] = useState<number>(25);
   const { leadDisplayed, gradientDisplayed, headlines } = useTypewriterHeadline();
 
@@ -399,14 +398,31 @@ export default function Home() {
   const seatSlider = useMemo(() => {
     const mins: number[] = [];
     const maxes: number[] = [];
+    let hasUnboundedBand = false;
     monitoringRows.forEach((row) => {
       const attrs = (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
-      if (typeof attrs.seatMin === "number") mins.push(attrs.seatMin);
-      if (typeof attrs.seatMax === "number") maxes.push(attrs.seatMax);
+      const hasMin = typeof attrs.seatMin === "number";
+      if (hasMin) mins.push(attrs.seatMin as number);
+      if (typeof attrs.seatMax === "number") {
+        maxes.push(attrs.seatMax);
+      } else if (hasMin) {
+        // A band with a real seatMin but a null/absent seatMax is the unbounded
+        // "Enterprise" tier (seatMax: null in the catalog). The slider must extend
+        // PAST the highest finite seatMax or this band is never selectable — which
+        // is the real defect behind the seat slider capping at the last finite tier.
+        hasUnboundedBand = true;
+      }
     });
     const sliderMin = mins.length ? Math.min(...mins, 1) : 1;
     const finiteCeiling = maxes.length ? Math.max(...maxes) : null;
-    const sliderMax = finiteCeiling ?? (mins.length ? Math.max(...mins) * 4 : 500);
+    const topMin = mins.length ? Math.max(...mins) : 1;
+    // When an unbounded Enterprise band exists, give the slider real headroom above
+    // both the highest finite seatMax and the Enterprise band's own seatMin so that
+    // band can actually be reached and priced (Enterprise still quotes higher via
+    // Contact for tenants beyond this range — the "+" suffix on the max label signals it).
+    const sliderMax = hasUnboundedBand
+      ? Math.max(finiteCeiling ?? 0, topMin) * 4
+      : (finiteCeiling ?? topMin * 4);
     const markers = Array.from(new Set(mins.filter((m) => m > sliderMin && m < sliderMax))).sort(
       (a, b) => a - b,
     );
@@ -760,7 +776,10 @@ export default function Home() {
                 )}
 
                 <Link
-                  href={`/checkout/${matched.slug}`}
+                  // Carry the selected seat count into checkout. Without ?seats=, the
+                  // checkout + server default to 1 seat and charge pricePerUserMonth × 1
+                  // (≈ $7) instead of the real per-tenant price — the critical revenue bug.
+                  href={`/checkout/${matched.slug}?seats=${clampedSeatCount}`}
                   className={`mt-auto px-4 py-3 rounded-xl text-sm font-bold text-center transition-all flex items-center justify-center gap-1 ${
                     isHighlighted ? "text-white hover:opacity-90" : "bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]"
                   }`}
@@ -1100,79 +1119,67 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Path selector — asymmetric on purpose: Monitoring is the core recurring product and
-              gets the wide/framed card, Assessment is the free qualifying step, Retainer is the
-              upgrade path for people already monitoring. Same selection interaction as the old
-              pill tabs (activeCatalogTab), just reframed as three distinct paths instead of three
-              equal options. */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
-            <button
-              onClick={() => setActiveCatalogTab("monitoring")}
-              className={`md:col-span-2 text-left rounded-2xl p-6 transition-all duration-200 ${
-                activeCatalogTab === "monitoring"
-                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
-                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
-              }`}
-            >
-              <span
-                className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-4"
-                style={GRADIENT_BG}
-              >
-                <Sparkles className="w-3 h-3" />
-                The Core Product
-              </span>
-              <h3 className="font-display text-2xl font-bold text-text-primary mb-2">
-                Tenant Telemetry &amp; Drift Enforcement
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Scheduled Graph-based scans across governance, security, compliance, and
-                adoption — the recurring foundation everything else feeds.
-              </p>
-            </button>
+          {/* Full-width stacked rows in priority order — Monitoring (the recurring hero
+              product) → Assessment (the free qualifying step) → Retainer (the upgrade path).
+              Replaces the old 3-way tab/path-card layout, where Monitoring's correct visual
+              weight left Assessment and Retainer squeezed with no room to present their offer.
+              Each row now owns a full-width band and reads cleanly top-to-bottom on mobile. */}
+          <div className="space-y-16">
+            {/* ROW 1 — MONITORING (hero) */}
+            <div>
+              <div className="mb-8">
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-3"
+                  style={GRADIENT_BG}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  The Core Product
+                </span>
+                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+                  Tenant Telemetry &amp; <GradientText>Drift Enforcement</GradientText>
+                </h3>
+                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                  Scheduled Graph-based scans across governance, security, compliance, and
+                  adoption — the recurring foundation everything else feeds. Priced per licensed
+                  seat, live from the real catalog.
+                </p>
+              </div>
+              {renderMonitoringCalculator()}
+            </div>
 
-            <button
-              onClick={() => setActiveCatalogTab("assessments")}
-              className={`text-left rounded-2xl p-6 transition-all duration-200 ${
-                activeCatalogTab === "assessments"
-                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
-                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
-              }`}
-            >
-              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-4">
-                Start Here — Free
-              </span>
-              <h3 className="font-display text-lg font-bold text-text-primary mb-2">
-                Mission Readiness Evaluation
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                A real Graph API scan of your tenant — know exactly where you stand before you
-                commit to anything.
-              </p>
-            </button>
+            {/* ROW 2 — ASSESSMENT (free qualifying step) */}
+            <div className="pt-12 border-t border-white/[0.06]">
+              <div className="mb-8">
+                <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
+                  Start Here — Free
+                </span>
+                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+                  Mission Readiness <GradientText>Evaluation</GradientText>
+                </h3>
+                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                  A real Graph API scan of your tenant — know exactly where you stand before you
+                  commit to anything.
+                </p>
+              </div>
+              {renderAssessmentSplit()}
+            </div>
 
-            <button
-              onClick={() => setActiveCatalogTab("retainers")}
-              className={`text-left rounded-2xl p-6 transition-all duration-200 ${
-                activeCatalogTab === "retainers"
-                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
-                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
-              }`}
-            >
-              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-4">
-                For Existing Customers
-              </span>
-              <h3 className="font-display text-lg font-bold text-text-primary mb-2">Advisory Retainers</h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Fractional M365 architecture guidance for tenants already under monitoring —
-                the upgrade path, not a cold-start engagement.
-              </p>
-            </button>
-          </div>
-
-          <div className="flex justify-center">
-            {activeCatalogTab === "monitoring" && renderMonitoringCalculator()}
-            {activeCatalogTab === "assessments" && renderAssessmentSplit()}
-            {activeCatalogTab === "retainers" && renderProductGrid(retainers)}
+            {/* ROW 3 — RETAINER / ADVISORY (upgrade path) */}
+            <div className="pt-12 border-t border-white/[0.06]">
+              <div className="mb-8">
+                <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
+                  For Existing Customers
+                </span>
+                <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
+                  Advisory <GradientText>Retainers</GradientText>
+                </h3>
+                <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
+                  Fractional M365 architecture guidance for tenants already under monitoring —
+                  the upgrade path, not a cold-start engagement.
+                </p>
+              </div>
+              {renderProductGrid(retainers)}
+            </div>
           </div>
         </div>
       </section>
