@@ -184,16 +184,16 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
   const pct = Math.round((step / total) * 100);
   return (
     <div className="w-full">
-      <div className="flex justify-between text-xs text-white/60 mb-1">
+      <div className="flex justify-between text-xs text-text-tertiary mb-1">
         <span>
           Question {step} of {total}
         </span>
         <span>{pct}%</span>
       </div>
-      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+      <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
         <div
-          className="h-full bg-primary rounded-full transition-all duration-500"
-          style={{ width: `${pct}%` }}
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, ...GRADIENT_BG }}
         />
       </div>
     </div>
@@ -204,14 +204,14 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function ScoreBar({ score, label }: { score: number; label: string }) {
   const pct = (score / 10) * 100;
   const colour =
-    score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-primary" : "bg-red-400";
+    score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-accent-blue" : "bg-red-400";
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-white/80">{label}</span>
-        <span className="text-white font-semibold">{score}/10</span>
+        <span className="text-text-secondary">{label}</span>
+        <span className="font-numeric text-text-primary font-semibold">{score}/10</span>
       </div>
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+      <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
         <div
           className={cn(
             "h-full rounded-full transition-all duration-700",
@@ -373,12 +373,12 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-[#0A2540] rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-charcoal-1 rounded-2xl shadow-2xl border border-white/[0.08] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] shrink-0">
           <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-primary" />
-            <span className="font-semibold text-white text-sm">
+            <Brain className="w-5 h-5 text-accent-blue" />
+            <span className="font-display font-semibold text-text-primary text-sm">
               Copilot Readiness Assessment
             </span>
           </div>
@@ -389,7 +389,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
           )}
           <button
             onClick={onClose}
-            className="text-white/50 hover:text-white transition-colors ml-2 shrink-0"
+            className="text-text-tertiary hover:text-text-primary transition-colors ml-2 shrink-0"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -401,14 +401,14 @@ function QuizModal({ onClose }: { onClose: () => void }) {
           {/* Intro state */}
           {state === "intro" && (
             <div className="space-y-6 text-center py-4">
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
-                <Brain className="w-8 h-8 text-primary" />
+              <div className="w-16 h-16 rounded-full bg-accent-blue/15 flex items-center justify-center mx-auto">
+                <Brain className="w-8 h-8 text-accent-blue" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-2">
                   How Copilot-Ready Is Your Organisation?
                 </h2>
-                <p className="text-white/70 text-sm leading-relaxed max-w-md mx-auto">
+                <p className="text-text-secondary text-sm leading-relaxed max-w-md mx-auto">
                   Answer 10 AI-powered questions across 5 readiness dimensions.
                   Takes around 5 minutes. You'll receive a personalised PDF
                   report and service recommendation by email.
@@ -431,16 +431,17 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 ].map((item, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-2 bg-white/5 rounded-lg p-3"
+                    className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-lg p-3"
                   >
-                    <span className="text-primary">{item.icon}</span>
-                    <span className="text-white/70 text-xs">{item.label}</span>
+                    <span className="text-accent-blue">{item.icon}</span>
+                    <span className="text-text-secondary text-xs">{item.label}</span>
                   </div>
                 ))}
               </div>
               <button
                 onClick={() => void startQuiz()}
-                className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={GRADIENT_BG}
               >
                 Start the Assessment <ChevronRight className="w-4 h-4" />
               </button>
@@ -452,12 +453,12 @@ function QuizModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-6">
               {loading && !currentQuestion ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <Loader2 className="w-8 h-8 text-accent-blue animate-spin" />
                 </div>
               ) : (
                 <>
-                  <div className="bg-white/5 rounded-xl p-5 border border-white/10">
-                    <p className="text-white text-base leading-relaxed">
+                  <div className="bg-white/[0.04] rounded-xl p-5 border border-white/[0.08]">
+                    <p className="text-text-primary text-base leading-relaxed">
                       {currentQuestion}
                     </p>
                   </div>
@@ -469,13 +470,14 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       onKeyDown={handleKeyDown}
                       placeholder="Type your answer here… (Cmd/Ctrl+Enter to submit)"
                       rows={4}
-                      className="w-full bg-white/5 border border-white/20 rounded-xl p-4 text-white placeholder:text-white/30 text-sm resize-none focus:outline-none focus:border-primary/60 transition-colors"
+                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-tertiary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
                       disabled={loading}
                     />
                     <button
                       onClick={() => void submitAnswer()}
                       disabled={!answer.trim() || loading}
-                      className="w-full py-3 px-6 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-3 px-6 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                      style={GRADIENT_BG}
                     >
                       {loading ? (
                         <>
@@ -503,10 +505,10 @@ function QuizModal({ onClose }: { onClose: () => void }) {
             <form onSubmit={handleSubmit(onLeadSubmit)} className="space-y-5">
               <div className="text-center mb-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">
+                <h3 className="font-display text-xl font-bold text-text-primary">
                   Assessment Complete!
                 </h3>
-                <p className="text-white/60 text-sm mt-1">
+                <p className="text-text-secondary text-sm mt-1">
                   Enter your details to receive your personalised PDF report by
                   email.
                 </p>
@@ -518,13 +520,13 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">
+                  <label className="block text-text-secondary text-sm mb-1.5">
                     Full Name *
                   </label>
                   <input
                     {...register("name")}
                     placeholder="Jane Smith"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                   {errors.name && (
                     <p className="text-red-400 text-xs mt-1">
@@ -533,14 +535,14 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">
+                  <label className="block text-text-secondary text-sm mb-1.5">
                     Work Email *
                   </label>
                   <input
                     {...register("email")}
                     type="email"
                     placeholder="jane@company.com"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                   {errors.email && (
                     <p className="text-red-400 text-xs mt-1">
@@ -549,23 +551,24 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">
+                  <label className="block text-text-secondary text-sm mb-1.5">
                     Company (optional)
                   </label>
                   <input
                     {...register("company")}
                     placeholder="Acme Corp"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                 </div>
               </div>
               <button
                 type="submit"
-                className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={GRADIENT_BG}
               >
                 Get My Readiness Report <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-white/30 text-xs text-center">
+              <p className="text-text-tertiary text-xs text-center">
                 Your report will be emailed instantly. No spam, ever.
               </p>
             </form>
@@ -574,11 +577,11 @@ function QuizModal({ onClose }: { onClose: () => void }) {
           {/* Submitting state */}
           {state === "submitting" && (
             <div className="flex flex-col items-center justify-center py-16 space-y-4">
-              <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              <p className="text-white font-semibold">
+              <Loader2 className="w-10 h-10 text-accent-blue animate-spin" />
+              <p className="text-text-primary font-semibold">
                 Analysing your responses…
               </p>
-              <p className="text-white/50 text-sm">
+              <p className="text-text-secondary text-sm">
                 Generating your personalised readiness report
               </p>
             </div>
@@ -589,18 +592,18 @@ function QuizModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-6">
               <div className="text-center">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">
+                <h3 className="font-display text-xl font-bold text-text-primary">
                   Your Readiness Report
                 </h3>
                 {submittedEmail ? (
-                  <p className="text-white/50 text-sm mt-1">
+                  <p className="text-text-secondary text-sm mt-1">
                     PDF report sent to{" "}
                     <span className="text-teal-400 font-medium">
                       {submittedEmail}
                     </span>
                   </p>
                 ) : (
-                  <p className="text-white/50 text-sm mt-1">
+                  <p className="text-text-secondary text-sm mt-1">
                     Check your inbox — your full PDF report has been emailed to
                     you.
                   </p>
@@ -609,8 +612,8 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
               {/* Forward report form — only shown when a valid resend token was issued */}
               {results.leadId && results.resendToken && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">
                     Forward Report to Another Address
                   </p>
                   {resendState === "sent" ? (
@@ -637,12 +640,13 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                         }}
                         placeholder="colleague@company.com"
                         required
-                        className="flex-1 min-w-0 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-primary"
+                        className="flex-1 min-w-0 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60"
                       />
                       <button
                         type="submit"
                         disabled={resendState === "sending" || !resendEmail}
-                        className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+                        className="flex items-center gap-1.5 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-90 whitespace-nowrap flex-shrink-0"
+                        style={GRADIENT_BG}
                       >
                         {resendState === "sending" ? (
                           <>
@@ -665,19 +669,19 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
               {/* Score + Tier */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                  <p className="text-white/50 text-xs mb-1">Total Score</p>
-                  <p className="text-4xl font-bold text-primary">
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-center">
+                  <p className="text-text-tertiary text-xs mb-1">Total Score</p>
+                  <p className="font-numeric text-4xl font-bold gradient-text">
                     {results.totalScore}
                   </p>
-                  <p className="text-white/40 text-xs">out of 50</p>
+                  <p className="text-text-tertiary text-xs">out of 50</p>
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                  <p className="text-white/50 text-xs mb-1">Maturity Tier</p>
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-center">
+                  <p className="text-text-tertiary text-xs mb-1">Maturity Tier</p>
                   <div
                     className={cn(
                       "inline-block px-3 py-1 rounded-full text-white text-sm font-bold mt-1",
-                      TIER_COLOURS[results.tier] ?? "bg-primary",
+                      TIER_COLOURS[results.tier] ?? "bg-blue-500",
                     )}
                   >
                     {results.tier}
@@ -686,8 +690,8 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               </div>
 
               {/* Category breakdown */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-                <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 space-y-3">
+                <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">
                   Category Breakdown
                 </p>
                 {CATEGORIES.map((cat) => (
@@ -701,26 +705,26 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
               {/* What it means */}
               {results.whatThisMeans && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-2">
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">
                     What This Means
                   </p>
-                  <p className="text-white/80 text-sm leading-relaxed">
+                  <p className="text-text-secondary text-sm leading-relaxed">
                     {results.whatThisMeans}
                   </p>
                 </div>
               )}
 
               {/* Recommended service */}
-              <div className="bg-primary/10 border border-primary/30 rounded-xl p-4">
-                <p className="text-primary text-xs font-semibold uppercase tracking-wider mb-1">
+              <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-4">
+                <p className="text-accent-blue text-xs font-semibold uppercase tracking-wider mb-1">
                   Recommended Next Step
                 </p>
-                <p className="text-white font-bold text-base">
+                <p className="text-text-primary font-bold text-base">
                   {results.recommendedService}
                 </p>
                 {results.serviceDescription && (
-                  <p className="text-white/60 text-sm mt-1">
+                  <p className="text-text-secondary text-sm mt-1">
                     {results.serviceDescription}
                   </p>
                 )}
@@ -731,25 +735,26 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 const upsell =
                   TIER_UPSELLS[results.tier] ?? TIER_UPSELLS["Developing"];
                 return (
-                  <div className="bg-primary/10 border border-primary/30 rounded-xl p-5 space-y-3">
+                  <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-5 space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-primary text-xs font-bold uppercase tracking-wider">
+                      <p className="text-accent-blue text-xs font-bold uppercase tracking-wider">
                         Recommended Next Step
                       </p>
-                      <span className="text-primary text-xs font-semibold bg-primary/10 px-2.5 py-1 rounded-full border border-primary/30">
+                      <span className="text-accent-blue text-xs font-semibold bg-accent-blue/10 px-2.5 py-1 rounded-full border border-accent-blue/30">
                         {upsell.badge}
                       </span>
                     </div>
-                    <p className="text-white font-bold text-base">
+                    <p className="text-text-primary font-bold text-base">
                       {upsell.name}
                     </p>
-                    <p className="text-white/70 text-sm leading-relaxed">
+                    <p className="text-text-secondary text-sm leading-relaxed">
                       {upsell.description}
                     </p>
                     <div className="flex flex-col sm:flex-row gap-2 pt-1">
                       <a
                         href={`/checkout/${upsell.slug}`}
-                        className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5"
+                        style={GRADIENT_BG}
                         onClick={() =>
                           trackEvent("quiz_upsell_cta_click", {
                             quiz_type: "copilot",
@@ -763,7 +768,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       </a>
                       <a
                         href="/book"
-                        className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                         onClick={() =>
                           trackEvent("quiz_upsell_book_click", {
                             quiz_type: "copilot",
@@ -778,7 +783,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                     <div className="text-center pt-1">
                       <a
                         href={upsell.servicePath}
-                        className="inline-flex items-center gap-1 text-primary/70 hover:text-primary text-sm transition-colors"
+                        className="inline-flex items-center gap-1 text-accent-blue/70 hover:text-accent-blue text-sm transition-colors"
                         onClick={() =>
                           trackEvent("quiz_service_page_click", {
                             quiz_type: "copilot",

@@ -6,6 +6,8 @@ import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRigh
 import { cn } from "@/lib/utils";
 import { trackEvent, identifyLead, trackAssessmentStarted } from "@/lib/analytics";
 
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
   role: "user" | "assistant";
@@ -82,12 +84,12 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
   const pct = Math.round((step / total) * 100);
   return (
     <div className="w-full">
-      <div className="flex justify-between text-xs text-white/60 mb-1">
+      <div className="flex justify-between text-xs text-text-tertiary mb-1">
         <span>Question {step} of {total}</span>
         <span>{pct}%</span>
       </div>
-      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-        <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+      <div className="w-full h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, ...GRADIENT_BG }} />
       </div>
     </div>
   );
@@ -96,14 +98,14 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 // ─── Score Bar ─────────────────────────────────────────────────────────────────
 function ScoreBar({ score, label }: { score: number; label: string }) {
   const pct = (score / 10) * 100;
-  const colour = score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-primary" : "bg-red-400";
+  const colour = score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-accent-blue" : "bg-red-400";
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
-        <span className="text-white/80">{label}</span>
-        <span className="text-white font-semibold">{score}/10</span>
+        <span className="text-text-secondary">{label}</span>
+        <span className="font-numeric text-text-primary font-semibold">{score}/10</span>
       </div>
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+      <div className="h-2 bg-white/[0.08] rounded-full overflow-hidden">
         <div className={cn("h-full rounded-full transition-all duration-700", colour)} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -147,10 +149,10 @@ function LiveScorecard({
   if (!anyAnswered) return null;
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+    <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">Live Score Preview</p>
-        <span className="text-white/30 text-xs italic">Provisional · final scores at submission</span>
+        <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">Live Score Preview</p>
+        <span className="text-text-tertiary text-xs italic">Provisional · final scores at submission</span>
       </div>
       <div className="space-y-2.5">
         {categories.map((cat) => {
@@ -163,27 +165,27 @@ function LiveScorecard({
             return (
               <div key={cat.key} className="space-y-1 opacity-35">
                 <div className="flex justify-between text-xs">
-                  <span className="text-white/60">{cat.label}</span>
-                  <span className="text-white/40">—</span>
+                  <span className="text-text-secondary">{cat.label}</span>
+                  <span className="text-text-tertiary">—</span>
                 </div>
-                <div className="h-1.5 bg-white/10 rounded-full" />
+                <div className="h-1.5 bg-white/[0.08] rounded-full" />
               </div>
             );
           }
 
           const displayScore = score ?? 5;
           const pct = (displayScore / 10) * 100;
-          const colour = displayScore >= 7 ? "bg-teal-400" : displayScore >= 4 ? "bg-primary" : "bg-red-400";
+          const colour = displayScore >= 7 ? "bg-teal-400" : displayScore >= 4 ? "bg-accent-blue" : "bg-red-400";
 
           return (
             <div key={cat.key} className="space-y-1">
               <div className="flex justify-between text-xs">
-                <span className="text-white/80">{cat.label}</span>
-                <span className={cn("font-semibold", isComplete ? "text-white" : "text-white/60")}>
+                <span className="text-text-secondary">{cat.label}</span>
+                <span className={cn("font-numeric font-semibold", isComplete ? "text-text-primary" : "text-text-secondary")}>
                   {isComplete ? `${displayScore}/10` : `~${displayScore}/10`}
                 </span>
               </div>
-              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/[0.08] rounded-full overflow-hidden">
                 <div
                   className={cn("h-full rounded-full transition-all duration-700", colour, !isComplete && "opacity-70")}
                   style={{ width: `${pct}%` }}
@@ -350,17 +352,17 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-[#0A2540] rounded-2xl shadow-2xl border border-white/10 overflow-hidden">
+      <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-charcoal-1 rounded-2xl shadow-2xl border border-white/[0.08] overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 shrink-0">
-          <span className="font-semibold text-white text-sm">{config.title}</span>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] shrink-0">
+          <span className="font-display font-semibold text-text-primary text-sm">{config.title}</span>
           {state === "questioning" && (
             <div className="flex-1 mx-6">
               <ProgressBar step={questionIndex} total={TOTAL_QUESTIONS} />
             </div>
           )}
-          <button onClick={onClose} className="text-white/50 hover:text-white transition-colors ml-2 shrink-0" aria-label="Close">
+          <button onClick={onClose} className="text-text-tertiary hover:text-text-primary transition-colors ml-2 shrink-0" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -372,8 +374,8 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
           {state === "intro" && (
             <div className="space-y-6 text-center py-4">
               <div>
-                <h2 className="text-2xl font-bold text-white mb-2">{config.introTitle}</h2>
-                <p className="text-white/70 text-sm leading-relaxed max-w-md mx-auto">{config.introDescription}</p>
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-2">{config.introTitle}</h2>
+                <p className="text-text-secondary text-sm leading-relaxed max-w-md mx-auto">{config.introDescription}</p>
               </div>
               <div className="grid grid-cols-3 gap-3 text-left">
                 {[
@@ -381,15 +383,16 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                   { icon: <Award className="w-4 h-4" />, label: feat2 },
                   { icon: <Zap className="w-4 h-4" />, label: feat3 },
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-white/5 rounded-lg p-3">
-                    <span className="text-primary">{item.icon}</span>
-                    <span className="text-white/70 text-xs">{item.label}</span>
+                  <div key={i} className="flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-lg p-3">
+                    <span className="text-accent-blue">{item.icon}</span>
+                    <span className="text-text-secondary text-xs">{item.label}</span>
                   </div>
                 ))}
               </div>
               <button
                 onClick={() => void startQuiz()}
-                className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={GRADIENT_BG}
               >
                 Start the Assessment <ChevronRight className="w-4 h-4" />
               </button>
@@ -401,12 +404,12 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
             <div className="space-y-6">
               {loading && !currentQuestion ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                  <Loader2 className="w-8 h-8 text-accent-blue animate-spin" />
                 </div>
               ) : (
                 <>
-                  <div className="bg-white/5 rounded-xl p-5 border border-white/10">
-                    <p className="text-white text-base leading-relaxed">{currentQuestion}</p>
+                  <div className="bg-white/[0.04] rounded-xl p-5 border border-white/[0.08]">
+                    <p className="text-text-primary text-base leading-relaxed">{currentQuestion}</p>
                   </div>
                   <div className="space-y-3">
                     <textarea
@@ -416,13 +419,14 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                       onKeyDown={handleKeyDown}
                       placeholder="Type your answer here… (Cmd/Ctrl+Enter to submit)"
                       rows={4}
-                      className="w-full bg-white/5 border border-white/20 rounded-xl p-4 text-white placeholder:text-white/30 text-sm resize-none focus:outline-none focus:border-primary/60 transition-colors"
+                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-tertiary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
                       disabled={loading}
                     />
                     <button
                       onClick={() => void submitAnswer()}
                       disabled={!answer.trim() || loading}
-                      className="w-full py-3 px-6 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-3 px-6 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                      style={GRADIENT_BG}
                     >
                       {loading ? (
                         <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
@@ -443,45 +447,46 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
             <form onSubmit={handleSubmit(onLeadSubmit)} className="space-y-5">
               <div className="text-center mb-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">Assessment Complete!</h3>
-                <p className="text-white/60 text-sm mt-1">Enter your details to receive your personalised PDF report by email.</p>
+                <h3 className="font-display text-xl font-bold text-text-primary">Assessment Complete!</h3>
+                <p className="text-text-secondary text-sm mt-1">Enter your details to receive your personalised PDF report by email.</p>
               </div>
               {submitError && (
                 <p className="text-red-400 text-sm text-center bg-red-400/10 rounded-lg p-3">{submitError}</p>
               )}
               <div className="space-y-4">
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Full Name *</label>
+                  <label className="block text-text-secondary text-sm mb-1.5">Full Name *</label>
                   <input {...register("name")} placeholder="Jane Smith"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                   {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Work Email *</label>
+                  <label className="block text-text-secondary text-sm mb-1.5">Work Email *</label>
                   <input {...register("email")} type="email" placeholder="jane@company.com"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                   {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
                 </div>
                 <div>
-                  <label className="block text-white/70 text-sm mb-1.5">Company (optional)</label>
+                  <label className="block text-text-secondary text-sm mb-1.5">Company (optional)</label>
                   <input {...register("company")} placeholder="Acme Corp"
-                    className="w-full bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                 </div>
               </div>
               <button type="submit"
-                className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2">
+                className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                style={GRADIENT_BG}>
                 Get My Report <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-white/30 text-xs text-center">Your report will be emailed instantly. No spam, ever.</p>
+              <p className="text-text-tertiary text-xs text-center">Your report will be emailed instantly. No spam, ever.</p>
             </form>
           )}
 
           {/* Submitting */}
           {state === "submitting" && (
             <div className="flex flex-col items-center justify-center py-16 space-y-4">
-              <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              <p className="text-white font-semibold">Analysing your responses…</p>
-              <p className="text-white/50 text-sm">Generating your personalised report</p>
+              <Loader2 className="w-10 h-10 text-accent-blue animate-spin" />
+              <p className="text-text-primary font-semibold">Analysing your responses…</p>
+              <p className="text-text-secondary text-sm">Generating your personalised report</p>
             </div>
           )}
 
@@ -490,18 +495,18 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
             <div className="space-y-6">
               <div className="text-center">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white">Your Report</h3>
+                <h3 className="font-display text-xl font-bold text-text-primary">Your Report</h3>
                 {submittedEmail ? (
-                  <p className="text-white/50 text-sm mt-1">PDF report sent to <span className="text-teal-400 font-medium">{submittedEmail}</span></p>
+                  <p className="text-text-secondary text-sm mt-1">PDF report sent to <span className="text-teal-400 font-medium">{submittedEmail}</span></p>
                 ) : (
-                  <p className="text-white/50 text-sm mt-1">Check your inbox — your full PDF report has been emailed.</p>
+                  <p className="text-text-secondary text-sm mt-1">Check your inbox — your full PDF report has been emailed.</p>
                 )}
               </div>
 
               {/* Resend form */}
               {results.leadId && results.resendToken && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
                   {resendState === "sent" ? (
                     <div className="flex items-center gap-2 text-teal-400 text-sm">
                       <CheckCircle className="w-4 h-4" /> Report sent!
@@ -513,10 +518,10 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                         value={resendEmail}
                         onChange={(e) => setResendEmail(e.target.value)}
                         placeholder="another@email.com"
-                        className="flex-1 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder:text-white/30 text-sm focus:outline-none focus:border-primary/60 transition-colors"
+                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                       />
                       <button type="submit" disabled={resendState === "sending" || !resendEmail}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40">
+                        className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-text-primary text-sm font-medium rounded-lg transition-colors disabled:opacity-40">
                         {resendState === "sending" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
                       </button>
                     </form>
@@ -534,7 +539,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                       "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border",
                       shareCopied
                         ? "bg-teal-500/10 border-teal-500/30 text-teal-400"
-                        : "bg-white/5 border-white/20 text-white/70 hover:bg-white/10 hover:text-white"
+                        : "bg-white/[0.04] border-white/[0.1] text-text-secondary hover:bg-white/[0.08] hover:text-text-primary"
                     )}
                   >
                     {shareCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
@@ -544,20 +549,20 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
               )}
 
               {/* Score overview */}
-              <div className="bg-white/5 border border-white/10 rounded-xl p-5 space-y-4">
+              <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
-                    <p className="text-white font-bold text-3xl">{results.totalScore}<span className="text-white/40 text-lg font-normal">/50</span></p>
+                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
+                    <p className="font-numeric font-bold text-3xl"><span className="gradient-text">{results.totalScore}</span><span className="text-text-tertiary text-lg font-normal">/50</span></p>
                   </div>
                   <div className="text-right">
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
+                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
                     <span className={cn("inline-block text-white text-sm font-bold px-3 py-1 rounded-full", tierColour)}>
                       {results.tier}
                     </span>
                   </div>
                 </div>
-                <div className="space-y-3 pt-2 border-t border-white/10">
+                <div className="space-y-3 pt-2 border-t border-white/[0.08]">
                   {config.categories.map((cat) => (
                     <ScoreBar
                       key={cat.key}
@@ -570,36 +575,37 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
 
               {/* AI analysis */}
               {results.whatThisMeans && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5 space-y-3">
-                  <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
-                  <p className="text-white/80 text-sm leading-relaxed">{results.whatThisMeans}</p>
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5 space-y-3">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
+                  <p className="text-text-secondary text-sm leading-relaxed">{results.whatThisMeans}</p>
                 </div>
               )}
 
               {/* Upsell */}
               {upsell && (
-                <div className="bg-primary/10 border border-primary/30 rounded-xl p-5 space-y-3">
+                <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-primary text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
-                    <span className="text-primary text-xs font-semibold bg-primary/10 px-2.5 py-1 rounded-full border border-primary/30">
+                    <p className="text-accent-blue text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
+                    <span className="text-accent-blue text-xs font-semibold bg-accent-blue/10 px-2.5 py-1 rounded-full border border-accent-blue/30">
                       {upsell.badge}
                     </span>
                   </div>
-                  <p className="text-white font-bold text-base">{upsell.name}</p>
-                  <p className="text-white/70 text-sm leading-relaxed">
+                  <p className="text-text-primary font-bold text-base">{upsell.name}</p>
+                  <p className="text-text-secondary text-sm leading-relaxed">
                     {results?.whyThisFits || upsell.description}
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <a
                       href={`/checkout/${upsell.slug}`}
-                      className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5"
+                      style={GRADIENT_BG}
                       onClick={() => results && trackEvent("quiz_upsell_cta_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                     >
                       {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                     <a
                       href="/book"
-                      className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                       onClick={() => results && trackEvent("quiz_upsell_details_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, destination: "book-call" })}
                     >
                       Book a Free Call
@@ -609,9 +615,9 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
               )}
 
               {results.roiProjection && (
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-                  <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
-                  <p className="text-white/80 text-sm leading-relaxed">{results.roiProjection}</p>
+                <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
+                  <p className="text-text-secondary text-sm leading-relaxed">{results.roiProjection}</p>
                 </div>
               )}
             </div>
