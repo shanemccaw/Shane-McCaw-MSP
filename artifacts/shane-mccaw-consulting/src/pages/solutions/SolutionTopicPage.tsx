@@ -15,6 +15,7 @@ import { HowItWorksShowcase } from "@/components/design-system/HowItWorksShowcas
 import { CategoryBreakdownGrid } from "@/components/design-system/CategoryBreakdownGrid";
 import { TrendLineChart } from "@/components/design-system/TrendLineChart";
 import { SurfaceRadarChart } from "@/components/design-system/SurfaceRadarChart";
+import { ScatterChart } from "@/components/design-system/ScatterChart";
 import { ScanSurfaceStrip } from "@/components/design-system/ScanSurfaceStrip";
 import {
   getSolutionTopic,
@@ -162,12 +163,14 @@ function FlagshipScoreCard({ dashboard }: { dashboard: SolutionTopicFlagship["da
 }
 
 /**
- * Drift Engine trend line — paired with the "What It Does" section's own drift/
- * cadence claim ("Baseline drift isn't watched in real time … deviations are
- * flagged on your next scheduled evaluation"), matching the panel's trendNote
- * language. No scroll-reveal gating: the original combined panel never gated the
- * chart itself on `revealed` (only the ring dasharray and bar widths), so this
- * preserves that exact behavior.
+ * Engine trend line — paired with the "What It Does" section's own drift/
+ * cadence claim (e.g. Governance's "deviations are flagged on your next
+ * scheduled evaluation", or Security's recurring-scan cadence), matching the
+ * panel's trendNote language. The heading defaults to the Governance pilot's
+ * Drift Engine label; topics re-checked by a different real engine pass their
+ * own honest panelHeading instead. No scroll-reveal gating: the original
+ * combined panel never gated the chart itself on `revealed` (only the ring
+ * dasharray and bar widths), so this preserves that exact behavior.
  */
 function FlagshipDriftPanel({
   driftTrend,
@@ -180,7 +183,7 @@ function FlagshipDriftPanel({
     <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
       <IllustrativeBadge />
       <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-1 pr-28">
-        Drift Engine — scheduled evaluations
+        {driftTrend.panelHeading ?? "Drift Engine — scheduled evaluations"}
       </div>
       <TrendLineChart
         data={driftTrend.points}
@@ -191,6 +194,40 @@ function FlagshipDriftPanel({
       <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
         <span className="text-xs text-text-secondary">{trendNote}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * License utilization scatter — the "What It Does" companion panel for a topic
+ * whose section prose makes a two-measure relationship claim instead of a
+ * drift/cadence one (M365 Health: "tracks license utilization and waste
+ * separately from the health score"). Same panel chrome and badge/caption
+ * conventions as FlagshipDriftPanel; the SKU names are real M365 license
+ * concepts, the seat values illustrative under the badge.
+ */
+function FlagshipScatterPanel({
+  scatter,
+}: {
+  scatter: NonNullable<SolutionTopicFlagship["dashboard"]["licenseScatter"]>;
+}) {
+  return (
+    <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+      <IllustrativeBadge />
+      <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-1 pr-28">
+        {scatter.panelHeading}
+      </div>
+      <ScatterChart
+        points={scatter.points}
+        xLabel={scatter.xLabel}
+        yLabel={scatter.yLabel}
+        height={200}
+        className="mt-3"
+      />
+      <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+        <span className="text-xs text-text-secondary">{scatter.caption}</span>
       </div>
     </div>
   );
@@ -475,13 +512,15 @@ export default function SolutionTopicPage() {
 
       {useExpandedStructure ? (
         <>
-          {/* What This Product Actually Does — flagship pairs the prose with the Drift
-              Engine trend chart, since this section is the one that actually makes the
-              drift/cadence claim ("deviations are flagged on your next scheduled
-              evaluation") the chart depicts; the scan-surface strip still runs full-width
-              below, reinforcing the surface enumeration in the paragraph above it. */}
+          {/* What This Product Actually Does — flagship pairs the prose with the visual
+              matching this section's OWN claim: an engine trend chart where the prose
+              makes a drift/cadence claim ("deviations are flagged on your next scheduled
+              evaluation"), a license-utilization scatter where it makes a two-measure
+              relationship claim (M365 Health's waste-tracked-separately), or no side
+              panel at all when the prose claims neither; the scan-surface strip still
+              runs full-width below, reinforcing the surface enumeration either way. */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
-            {flagship?.dashboard.driftTrend ? (
+            {flagship?.dashboard.driftTrend || flagship?.dashboard.licenseScatter ? (
               <div className="max-w-5xl mx-auto">
                 <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                   <FlagshipHeadingText h={flagship.headings.whatItDoes} />
@@ -490,10 +529,14 @@ export default function SolutionTopicPage() {
                   <div>
                     <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
                   </div>
-                  <FlagshipDriftPanel
-                    driftTrend={flagship.dashboard.driftTrend}
-                    trendNote={flagship.dashboard.trendNote}
-                  />
+                  {flagship.dashboard.driftTrend ? (
+                    <FlagshipDriftPanel
+                      driftTrend={flagship.dashboard.driftTrend}
+                      trendNote={flagship.dashboard.trendNote}
+                    />
+                  ) : (
+                    <FlagshipScatterPanel scatter={flagship.dashboard.licenseScatter!} />
+                  )}
                 </div>
                 {flagship.scanSurfaces && <ScanSurfaceStrip items={flagship.scanSurfaces} className="mt-10" />}
               </div>
@@ -553,6 +596,7 @@ export default function SolutionTopicPage() {
                   steps={topic.howItWorks ?? []}
                   dashboard={flagship.dashboard}
                   scanSurfaces={flagship.scanSurfaces ?? []}
+                  stages={flagship.showcaseStages}
                 />
               </div>
             ) : (
@@ -590,20 +634,24 @@ export default function SolutionTopicPage() {
               </section>
 
               <section className="py-12 px-4 sm:px-6 lg:px-8">
-                <div className="max-w-5xl mx-auto">
+                <div className={`${flagship.surfaceRadar ? "max-w-5xl" : "max-w-3xl"} mx-auto`}>
                   <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                     <FlagshipHeadingText h={flagship.headings.modules} />
                   </h2>
                   <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
-                    <div>
-                      <DeliverablesList items={topic.coverage} />
-                    </div>
-                    {/* The modules claim ("four real surfaces, one accountable baseline") as
-                        one web — a radar of the same four coverage surfaces, paired directly
-                        beside the checklist it illustrates. Sub-scores are illustrative,
-                        badged with the same convention as the score card above. */}
-                    {flagship.surfaceRadar && (
+                  {/* The modules claim ("four real surfaces, one accountable baseline") as
+                      one web — a radar of the same coverage surfaces, paired directly
+                      beside the checklist it illustrates. Sub-scores are illustrative,
+                      badged with the same convention as the score card above. Topics
+                      whose modules AREN'T parallel dimensions scored in relation (e.g.
+                      Migration's sequential gates, or M365 Health where the score card
+                      already carries the 7-pillar grid) omit the radar and keep the
+                      checklist at prose width instead of a half-empty grid. */}
+                  {flagship.surfaceRadar ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                      <div>
+                        <DeliverablesList items={topic.coverage} />
+                      </div>
                       <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
                         <IllustrativeBadge />
                         <div aria-hidden="true">
@@ -617,8 +665,10 @@ export default function SolutionTopicPage() {
                           {flagship.surfaceRadar.caption}
                         </p>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <DeliverablesList items={topic.coverage} />
+                  )}
                   <FlagshipDocProducts
                     slugs={flagship.docProductSlugs}
                     heading={flagship.headings.docProducts}

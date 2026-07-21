@@ -50,12 +50,70 @@ interface WorkflowStep {
   railLabel?: string;
 }
 
-interface ScanSurface {
+export interface ScanSurface {
   icon: LucideIcon;
   label: string;
   /** Real per-surface description (scanSurfaces data — already page copy). */
   sublabel?: string;
 }
+
+/**
+ * Per-stage visual spec for the site-wide flagship rollout: every override
+ * defaults to the Governance pilot's original hardcoded copy, so callers
+ * without `stages` (Governance itself) render byte-identically to before.
+ * Topics whose real steps or engine attribution differ (e.g. Migration's
+ * Discover→Validate engagement sequence, or a topic re-checked by the Security
+ * Engine rather than the Drift Engine) pass their own honest labels instead of
+ * inheriting another topic's claims.
+ */
+export interface ConnectStageSpec {
+  kind: "connect";
+  fromLabel?: string;
+  viaLabel?: string;
+  toLabel?: string;
+  /** One line per claim from the step's REAL page copy — never generic boilerplate. */
+  checklist?: string[];
+}
+export interface ScanStageSpec {
+  kind: "scan";
+  /** Defaults to the showcase's scanSurfaces prop (the topic's real scan coverage). */
+  surfaces?: ScanSurface[];
+  /** Present-tense verb for the rotating status line ("Scanning", "Discovering"…). */
+  verb?: string;
+  completeText?: string;
+}
+export interface FindingsStageSpec {
+  kind: "findings";
+  /** Defaults to dashboard.panelLabel. */
+  panelLabel?: string;
+  /** Footer text after the amber count — the stage's real claim, per topic. */
+  note?: string;
+}
+export interface ScoreStageSpec {
+  kind: "score";
+}
+export interface RemediateStageSpec {
+  kind: "remediate";
+  headline?: string;
+  /** The re-check attribution line — MUST name the topic's real engine/cadence. */
+  note?: string;
+  afterLabel?: string;
+}
+export type ShowcaseStageSpec =
+  | ConnectStageSpec
+  | ScanStageSpec
+  | FindingsStageSpec
+  | ScoreStageSpec
+  | RemediateStageSpec;
+
+/** The Governance pilot's original stage order — the default for every caller. */
+const DEFAULT_STAGES: ShowcaseStageSpec[] = [
+  { kind: "connect" },
+  { kind: "scan" },
+  { kind: "findings" },
+  { kind: "score" },
+  { kind: "remediate" },
+];
 
 /** Structural subset of SolutionTopicFlagship["dashboard"] (solutionsTopics.ts). */
 interface ShowcaseDashboard {
@@ -71,6 +129,9 @@ interface HowItWorksShowcaseProps {
   steps: WorkflowStep[];
   dashboard: ShowcaseDashboard;
   scanSurfaces: ScanSurface[];
+  /** Per-stage visual specs (flagship rollout) — omitted by Governance, which
+   *  keeps the original hardcoded five-stage sequence via DEFAULT_STAGES. */
+  stages?: ShowcaseStageSpec[];
 }
 
 /** Static read, matching useRevealOnScroll's lazy-init convention (SolutionTopicPage.tsx). */
@@ -122,8 +183,23 @@ function StageCell({
   );
 }
 
-/** Stage 1 — the scoped, read-only Graph API connection being established. */
-function ConnectStage({ animate }: { animate: boolean }) {
+/** Stage 1 — the scoped, read-only Graph API connection being established.
+ *  Labels/checklist default to the Governance pilot's copy; other topics pass
+ *  their own real claims (a Migration "Design" gate reuses the same A→B visual
+ *  grammar with source-inventory → locked-architecture endpoints). */
+function ConnectStage({
+  animate,
+  fromLabel = "Your tenant",
+  viaLabel = "Microsoft Graph API",
+  toLabel = "Read-only scan",
+  checklist = ["Scoped connection", "Read-only", "No agent installed", "No standing credential left behind"],
+}: {
+  animate: boolean;
+  fromLabel?: string;
+  viaLabel?: string;
+  toLabel?: string;
+  checklist?: string[];
+}) {
   return (
     <div>
       <div className="flex items-center gap-3">
@@ -132,7 +208,7 @@ function ConnectStage({ animate }: { animate: boolean }) {
             <Building2 className="w-6 h-6 text-text-secondary" />
           </div>
           <span className="text-[10px] uppercase tracking-wider text-text-secondary text-center leading-tight">
-            Your tenant
+            {fromLabel}
           </span>
         </div>
         <div className="relative flex-1 h-14">
@@ -152,7 +228,7 @@ function ConnectStage({ animate }: { animate: boolean }) {
             />
           )}
           <div className="absolute inset-x-0 bottom-0 text-center text-[10px] uppercase tracking-wider text-text-secondary truncate">
-            Microsoft Graph API
+            {viaLabel}
           </div>
         </div>
         <div className="flex flex-col items-center gap-2.5 shrink-0 w-24">
@@ -160,21 +236,19 @@ function ConnectStage({ animate }: { animate: boolean }) {
             <ShieldCheck className="w-6 h-6 text-accent-blue" />
           </div>
           <span className="text-[10px] uppercase tracking-wider text-text-secondary text-center leading-tight">
-            Read-only scan
+            {toLabel}
           </span>
         </div>
       </div>
-      {/* Each line is a claim from the Connect step's real copy — scoped,
-          read-only, no agent installed, no standing credential. */}
+      {/* Each line is a claim from this step's real page copy (default: scoped,
+          read-only, no agent installed, no standing credential). */}
       <div className="mt-10 mx-auto w-fit space-y-3.5">
-        {["Scoped connection", "Read-only", "No agent installed", "No standing credential left behind"].map(
-          (line) => (
-            <div key={line} className="flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="text-sm text-text-secondary">{line}</span>
-            </div>
-          ),
-        )}
+        {checklist.map((line) => (
+          <div key={line} className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-sm text-text-secondary">{line}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -187,6 +261,8 @@ function ScanStage({
   revealed,
   reduced,
   surfaces,
+  verb = "Scanning",
+  completeText = "Scan complete — findings logged",
 }: {
   active: boolean;
   /** Delayed reveal (useRevealedWhileFading) — stays true through the fade-out
@@ -194,6 +270,8 @@ function ScanStage({
   revealed: boolean;
   reduced: boolean;
   surfaces: ScanSurface[];
+  verb?: string;
+  completeText?: string;
 }) {
   const total = surfaces.length;
   // Number of surfaces finished so far; the row at this index is "scanning".
@@ -233,7 +311,7 @@ function ScanStage({
       </div>
       {/* The literal rotating status line, driven by the real surface labels. */}
       <div className="mt-3 text-xs text-text-secondary min-h-[1.25rem]">
-        {complete ? "Scan complete — findings logged" : `Scanning ${surfaces[shownDone]?.label ?? ""}…`}
+        {complete ? completeText : `${verb} ${surfaces[shownDone]?.label ?? ""}…`}
       </div>
       <div className="mt-6 space-y-4">
         {surfaces.map((s, i) => {
@@ -258,7 +336,7 @@ function ScanStage({
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
               ) : (
                 <span className="text-[10px] uppercase tracking-wider text-text-secondary opacity-60 shrink-0 mt-0.5">
-                  {state === "scanning" ? "Scanning…" : "Queued"}
+                  {state === "scanning" ? `${verb}…` : "Queued"}
                 </span>
               )}
             </div>
@@ -275,16 +353,20 @@ function ScanStage({
 function FindingsStage({
   revealed,
   dashboard,
+  panelLabel,
+  note = "findings logged this scheduled evaluation — each one inspectable",
 }: {
   revealed: boolean;
   dashboard: ShowcaseDashboard;
+  panelLabel?: string;
+  note?: string;
 }) {
   const maxCount = Math.max(...dashboard.metrics.map((m) => m.count), 1);
   const totalCount = dashboard.metrics.reduce((sum, m) => sum + m.count, 0);
   return (
     <div>
       <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-5">
-        {dashboard.panelLabel}
+        {panelLabel ?? dashboard.panelLabel}
       </div>
       <div className="space-y-4">
         {dashboard.metrics.map((m, i) => (
@@ -309,13 +391,11 @@ function FindingsStage({
         ))}
       </div>
       {/* Sum of the counts shown above (FlagshipDriftPanel's footer language) —
-          "logged … on your next scheduled evaluation" is the Findings step's
-          real copy. */}
+          the note text is each topic's real Findings-step claim. */}
       <div className="mt-6 pt-4 border-t border-white/[0.06] flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
         <span className="text-xs text-text-secondary">
-          <span className="font-numeric text-amber-400">{totalCount}</span> findings logged this scheduled
-          evaluation — each one inspectable
+          <span className="font-numeric text-amber-400">{totalCount}</span> {note}
         </span>
       </div>
     </div>
@@ -339,7 +419,19 @@ function ScoreStage({ revealed, dashboard }: { revealed: boolean; dashboard: Sho
  *  mechanism (ranked fixes, re-checked next scheduled evaluation), NOT a real
  *  customer's scores. Falls back to the plain score if no remediated value is
  *  authored, rather than inventing one here. */
-function RemediateStage({ revealed, dashboard }: { revealed: boolean; dashboard: ShowcaseDashboard }) {
+function RemediateStage({
+  revealed,
+  dashboard,
+  headline = "Ranked fixes — biggest exposure closed first",
+  note = "Drift Engine re-checks the same baseline on your next scheduled evaluation",
+  afterLabel = "After remediation",
+}: {
+  revealed: boolean;
+  dashboard: ShowcaseDashboard;
+  headline?: string;
+  note?: string;
+  afterLabel?: string;
+}) {
   const after = dashboard.remediatedRingValue;
   if (after === undefined) {
     return <ScoreStage revealed={revealed} dashboard={dashboard} />;
@@ -354,28 +446,25 @@ function RemediateStage({ revealed, dashboard }: { revealed: boolean; dashboard:
         <ArrowRight className="w-5 h-5 text-text-secondary shrink-0" />
         <div className="flex flex-col items-center gap-2 shrink-0">
           <PillarScoreRing value={after} size={136} strokeWidth={10} revealed={revealed} />
-          <span className="text-[10px] uppercase tracking-wider text-text-secondary">After remediation</span>
+          <span className="text-[10px] uppercase tracking-wider text-text-secondary">{afterLabel}</span>
         </div>
       </div>
-      {/* Both lines are the Remediate step's real copy, compressed — ranked
-          fixes by exposure, re-checked by the Drift Engine on the next
-          scheduled evaluation. */}
+      {/* Both lines are this step's real copy, compressed — the note MUST name
+          the topic's real engine/cadence (default: the Governance pilot's
+          Drift Engine claim). */}
       <div className="mt-7 text-center">
-        <div className="text-sm font-semibold text-text-primary">
-          Ranked fixes — biggest exposure closed first
-        </div>
-        <div className="text-xs text-text-secondary mt-1.5">
-          Drift Engine re-checks the same baseline on your next scheduled evaluation
-        </div>
+        <div className="text-sm font-semibold text-text-primary">{headline}</div>
+        <div className="text-xs text-text-secondary mt-1.5">{note}</div>
         <div className="text-xs text-text-secondary opacity-70 mt-1">{dashboard.caption}</div>
       </div>
     </div>
   );
 }
 
-export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWorksShowcaseProps) {
+export function HowItWorksShowcase({ steps, dashboard, scanSurfaces, stages }: HowItWorksShowcaseProps) {
   const reduced = usePrefersReducedMotion();
-  const stageCount = Math.min(steps.length, 5);
+  const stageSpecs = stages ?? DEFAULT_STAGES;
+  const stageCount = Math.min(steps.length, stageSpecs.length);
   const [active, setActive] = useState(0);
   const [pausedByPanel, setPausedByPanel] = useState(false);
   const [pausedByFocus, setPausedByFocus] = useState(false);
@@ -445,21 +534,62 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
     if (deliberate) setStopped(true);
   };
 
-  // The Connect stage's dash/dot loops are the only INFINITE animations, so
-  // they respect every pause flag AND `inView` — not just reduced motion
+  // Connect-stage dash/dot loops are the only INFINITE animations, so they
+  // respect every pause flag AND `inView` — not just reduced motion
   // (WCAG 2.2.2) — so the loop never starts before it's scrolled into view
   // and stops the moment it scrolls back out; the other stages' sweeps are
-  // single sub-5s runs.
-  const allStageCells: ((revealed: boolean) => ReactNode)[] = [
-    () => <ConnectStage animate={active === 0 && !reduced && !anyPause && inView} />,
-    (revealed) => (
-      <ScanStage active={active === 1} revealed={revealed} reduced={reduced} surfaces={scanSurfaces} />
-    ),
-    (revealed) => <FindingsStage revealed={revealed} dashboard={dashboard} />,
-    (revealed) => <ScoreStage revealed={revealed} dashboard={dashboard} />,
-    (revealed) => <RemediateStage revealed={revealed} dashboard={dashboard} />,
-  ];
-  const stageCells = allStageCells.slice(0, stageCount);
+  // single sub-5s runs. Cells are built from the per-topic stage specs (each
+  // closing over its own index, so a spec kind may appear at any position or
+  // more than once — e.g. Migration's Design and Execute gates both reuse the
+  // connect grammar).
+  const stageCells: ((revealed: boolean) => ReactNode)[] = stageSpecs
+    .slice(0, stageCount)
+    .map((spec, i) => {
+      switch (spec.kind) {
+        case "connect":
+          return () => (
+            <ConnectStage
+              animate={active === i && !reduced && !anyPause && inView}
+              fromLabel={spec.fromLabel}
+              viaLabel={spec.viaLabel}
+              toLabel={spec.toLabel}
+              checklist={spec.checklist}
+            />
+          );
+        case "scan":
+          return (revealed: boolean) => (
+            <ScanStage
+              active={active === i}
+              revealed={revealed}
+              reduced={reduced}
+              surfaces={spec.surfaces ?? scanSurfaces}
+              verb={spec.verb}
+              completeText={spec.completeText}
+            />
+          );
+        case "findings":
+          return (revealed: boolean) => (
+            <FindingsStage
+              revealed={revealed}
+              dashboard={dashboard}
+              panelLabel={spec.panelLabel}
+              note={spec.note}
+            />
+          );
+        case "score":
+          return (revealed: boolean) => <ScoreStage revealed={revealed} dashboard={dashboard} />;
+        case "remediate":
+          return (revealed: boolean) => (
+            <RemediateStage
+              revealed={revealed}
+              dashboard={dashboard}
+              headline={spec.headline}
+              note={spec.note}
+              afterLabel={spec.afterLabel}
+            />
+          );
+      }
+    });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
