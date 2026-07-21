@@ -80,6 +80,13 @@ function stepIndex(s: Step): number {
 const guestInfoSchema = z.object({
   name: z.string().min(2, "Please enter your full name"),
   email: z.string().email("Please enter a valid email address"),
+  // Terms acceptance is gated HERE — before the consent step is reachable — so a
+  // visitor cannot initiate the Microsoft 365 admin-consent redirect (real tenant
+  // access) without first agreeing to the Terms of Service (which incorporates the
+  // DPA by reference) and Privacy Policy that govern how that tenant data is processed.
+  termsAccepted: z.boolean().refine((v) => v === true, {
+    message: "You must agree to the Terms of Service and Privacy Policy to continue",
+  }),
 });
 type GuestInfo = z.infer<typeof guestInfoSchema>;
 
@@ -341,6 +348,11 @@ export default function Checkout() {
       const cachedInfo = loadGuestInfoCache(storedSessionId);
       if (cachedInfo) {
         setGuestInfo(cachedInfo);
+        // Terms were accepted at the guest-info step before consent. The cache (which
+        // survives the cross-origin consent redirect) carries that acceptance forward so
+        // the payment step reflects it without re-prompting. If the cache was wiped, this
+        // stays false and the payment step falls back to an interactive terms checkbox.
+        setTermsAccepted(cachedInfo.termsAccepted === true);
       }
 
       // Recover seat count from the server-side session. The URL ?seats= param is read
@@ -380,7 +392,7 @@ export default function Checkout() {
 
   const form = useForm<GuestInfo>({
     resolver: zodResolver(guestInfoSchema),
-    defaultValues: { name: "", email: "" },
+    defaultValues: { name: "", email: "", termsAccepted: false },
   });
 
   // Use the recovered seat count when returning from consent (URL stripped by navigate).
@@ -397,11 +409,14 @@ export default function Checkout() {
         seats: effectiveSeats,
       });
       saveSessionId(newSessionId);
-      // Cache guestInfo in localStorage so it survives the cross-origin consent redirect.
-      // The server-side session holds the canonical copy; this is a client-side convenience cache.
+      // Cache guestInfo (including the terms-accepted flag) in localStorage so it survives
+      // the cross-origin consent redirect. The server-side session holds the canonical copy;
+      // this is a client-side convenience cache.
       saveGuestInfoCache(newSessionId, data);
       setSessionId(newSessionId);
       setGuestInfo(data);
+      // Zod validation already guaranteed data.termsAccepted === true to reach here.
+      setTermsAccepted(true);
       setStep("consent");
     } catch {
       toast({
@@ -724,6 +739,39 @@ export default function Checkout() {
                             </FormItem>
                           )}
                         />
+                        {/* Terms / clickwrap gate — required BEFORE the M365 admin-consent step.
+                            Agreeing here is what unlocks the consent step; a visitor cannot grant
+                            real tenant access without first accepting the Terms of Service (which
+                            incorporates the DPA by reference) and Privacy Policy. */}
+                        <FormField
+                          control={form.control}
+                          name="termsAccepted"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-start gap-3">
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value}
+                                    onCheckedChange={(v) => field.onChange(v === true)}
+                                    className="mt-0.5 border-white/20 data-[state=checked]:bg-accent-blue data-[state=checked]:border-accent-blue"
+                                  />
+                                </FormControl>
+                                <FormLabel className="text-sm font-normal text-text-secondary leading-snug cursor-pointer">
+                                  I agree to the{" "}
+                                  <Link href="/legal/terms" className="underline text-accent-blue">
+                                    Terms of Service
+                                  </Link>{" "}
+                                  and{" "}
+                                  <Link href="/legal/privacy" className="underline text-accent-blue">
+                                    Privacy Policy
+                                  </Link>
+                                  . Agreement is required before granting Microsoft 365 admin access.
+                                </FormLabel>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                         <Button
                           type="submit"
                           className="w-full text-white"
@@ -901,33 +949,56 @@ export default function Checkout() {
                       </div>
                     )}
 
-                    {/* Terms / clickwrap */}
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id="terms-check"
-                        checked={termsAccepted}
-                        onCheckedChange={(v) => setTermsAccepted(!!v)}
-                        className="border-white/20 data-[state=checked]:bg-accent-blue data-[state=checked]:border-accent-blue"
-                      />
-                      <label
-                        htmlFor="terms-check"
-                        className="text-sm text-text-secondary leading-snug cursor-pointer"
-                      >
-                        I agree to the{" "}
-                        <Link href="/legal/terms" className="underline text-accent-blue">
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link href="/legal/privacy" className="underline text-accent-blue">
-                          Privacy Policy
-                        </Link>
-                        . {service.isFree ? (
-                          'I understand that clicking "Confirm and Get Started" will register my free account and start onboarding.'
-                        ) : (
-                          'I understand that clicking "Proceed to payment" will redirect me to Stripe to complete the purchase.'
-                        )}
-                      </label>
-                    </div>
+                    {/* Terms / clickwrap — accepted earlier at the info step (before M365 consent).
+                        Normally we just confirm that prior acceptance. If the acceptance state
+                        didn't survive (e.g. localStorage wiped during the cross-origin redirect),
+                        fall back to an interactive checkbox so the user is never hard-blocked.
+                        Either way the pay button stays gated on termsAccepted below. */}
+                    {termsAccepted ? (
+                      <div className="flex items-start gap-3 rounded-xl border border-accent-blue/20 bg-accent-blue/5 p-4">
+                        <CheckCircle2 className="size-5 text-accent-blue shrink-0 mt-0.5" />
+                        <p className="text-sm text-text-secondary leading-snug">
+                          You've agreed to the{" "}
+                          <Link href="/legal/terms" className="underline text-accent-blue">
+                            Terms of Service
+                          </Link>{" "}
+                          and{" "}
+                          <Link href="/legal/privacy" className="underline text-accent-blue">
+                            Privacy Policy
+                          </Link>
+                          . {service.isFree
+                            ? 'Clicking "Confirm and Get Started" will register your free account and start onboarding.'
+                            : 'Clicking "Proceed to payment" will redirect you to Stripe to complete the purchase.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="terms-check"
+                          checked={termsAccepted}
+                          onCheckedChange={(v) => setTermsAccepted(!!v)}
+                          className="border-white/20 data-[state=checked]:bg-accent-blue data-[state=checked]:border-accent-blue"
+                        />
+                        <label
+                          htmlFor="terms-check"
+                          className="text-sm text-text-secondary leading-snug cursor-pointer"
+                        >
+                          I agree to the{" "}
+                          <Link href="/legal/terms" className="underline text-accent-blue">
+                            Terms of Service
+                          </Link>{" "}
+                          and{" "}
+                          <Link href="/legal/privacy" className="underline text-accent-blue">
+                            Privacy Policy
+                          </Link>
+                          . {service.isFree ? (
+                            'I understand that clicking "Confirm and Get Started" will register my free account and start onboarding.'
+                          ) : (
+                            'I understand that clicking "Proceed to payment" will redirect me to Stripe to complete the purchase.'
+                          )}
+                        </label>
+                      </div>
+                    )}
 
                     <div className="flex items-start gap-2 text-sm text-text-secondary">
                       <ShieldCheck className="size-4 text-accent-blue shrink-0 mt-0.5" />
