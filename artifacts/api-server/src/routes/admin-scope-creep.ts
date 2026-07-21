@@ -27,11 +27,27 @@ import {
   acknowledgeScopeCreepDetection,
   computeScopeCreepCompliance,
   type ScopeCreepPolicy,
+  type ScopeCreepFulfillmentType,
 } from "../lib/scope-creep-engine";
 
 const log = logger.child({ channel: "engine.scope-creep" });
 
 const router: IRouter = Router();
+
+const FULFILLMENT_TYPES: ScopeCreepFulfillmentType[] = ["assessment", "monitoring", "project", "retainer"];
+
+/**
+ * Normalize a request-body fulfillment_type value.
+ * Returns the validated value, or null for absent/empty (NULL = applies to all
+ * types). Throws on a present-but-invalid value so the handler can 400.
+ */
+function normalizeFulfillmentType(raw: unknown): ScopeCreepFulfillmentType | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw === "string" && (FULFILLMENT_TYPES as string[]).includes(raw)) {
+    return raw as ScopeCreepFulfillmentType;
+  }
+  throw new Error(`Invalid fulfillmentType: must be one of ${FULFILLMENT_TYPES.join(", ")} or null`);
+}
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +57,7 @@ function rowToPolicy(r: Record<string, unknown>): ScopeCreepPolicy {
     mspId: r.mspId as number | null,
     name: r.name as string,
     description: r.description as string | null,
+    fulfillmentType: (r.fulfillmentType ?? null) as ScopeCreepPolicy["fulfillmentType"],
     driftThresholdPct: r.driftThresholdPct as number,
     expansionThresholdPct: r.expansionThresholdPct as number,
     timelineSlipDays: r.timelineSlipDays as number,
@@ -90,6 +107,7 @@ router.get("/admin/scope-creep/policies/:id", requireAdmin, async (req: Request,
   try {
     const rows = await db.execute(sql`
       SELECT id, msp_id AS "mspId", name, description,
+             fulfillment_type AS "fulfillmentType",
              drift_threshold_pct AS "driftThresholdPct",
              expansion_threshold_pct AS "expansionThresholdPct",
              timeline_slip_days AS "timelineSlipDays",
@@ -112,10 +130,17 @@ router.get("/admin/scope-creep/policies/:id", requireAdmin, async (req: Request,
 
 router.post("/admin/scope-creep/policies", requireAdmin, async (req: Request, res: Response) => {
   const b = req.body as Record<string, unknown>;
+  let fulfillmentType: ScopeCreepFulfillmentType | null;
+  try {
+    fulfillmentType = normalizeFulfillmentType(b.fulfillmentType);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Invalid fulfillmentType" });
+    return;
+  }
   try {
     const result = await db.execute(sql`
       INSERT INTO scope_creep_policies (
-        msp_id, name, description,
+        msp_id, name, description, fulfillment_type,
         drift_threshold_pct, expansion_threshold_pct, timeline_slip_days,
         drift_weight, expansion_weight, timeline_slip_weight,
         violation_score_threshold, escalation_rules, is_active
@@ -123,6 +148,7 @@ router.post("/admin/scope-creep/policies", requireAdmin, async (req: Request, re
         ${(b.mspId ?? null) as number | null},
         ${b.name as string},
         ${(b.description ?? null) as string | null},
+        ${fulfillmentType},
         ${(b.driftThresholdPct ?? 20) as number},
         ${(b.expansionThresholdPct ?? 15) as number},
         ${(b.timelineSlipDays ?? 7) as number},
@@ -146,9 +172,27 @@ router.post("/admin/scope-creep/policies", requireAdmin, async (req: Request, re
 router.patch("/admin/scope-creep/policies/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const b = req.body as Record<string, unknown>;
+  // fulfillment_type is set only when the key is present in the body. An explicit
+  // value (including null, to reset a policy back to applies-to-all) overwrites;
+  // omitting the key leaves the column unchanged. This differs from the COALESCE
+  // pattern below because null is itself a meaningful value for this column.
+  let fulfillmentTypeFragment;
+  if ("fulfillmentType" in b) {
+    let ft: ScopeCreepFulfillmentType | null;
+    try {
+      ft = normalizeFulfillmentType(b.fulfillmentType);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid fulfillmentType" });
+      return;
+    }
+    fulfillmentTypeFragment = sql`fulfillment_type = ${ft},`;
+  } else {
+    fulfillmentTypeFragment = sql``;
+  }
   try {
     await db.execute(sql`
       UPDATE scope_creep_policies SET
+        ${fulfillmentTypeFragment}
         name = COALESCE(${(b.name ?? null) as string | null}, name),
         description = COALESCE(${(b.description ?? null) as string | null}, description),
         drift_threshold_pct = COALESCE(${(b.driftThresholdPct ?? null) as number | null}, drift_threshold_pct),

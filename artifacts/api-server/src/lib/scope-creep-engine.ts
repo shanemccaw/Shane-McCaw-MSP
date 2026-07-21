@@ -23,6 +23,13 @@ const log = logger.child({ channel: "engine.scope-creep" });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The fulfillment type an engagement is delivered under. A scope-creep policy may
+ * be scoped to exactly one of these, or left NULL to apply to all of them (the
+ * historical generic catch-all behavior).
+ */
+export type ScopeCreepFulfillmentType = "assessment" | "monitoring" | "project" | "retainer";
+
 export interface ScopeCreepEscalationRule {
   level: number;
   triggerScore: number;
@@ -38,6 +45,8 @@ export interface ScopeCreepPolicy {
   mspId: number | null;
   name: string;
   description: string | null;
+  /** Fulfillment type this policy is scoped to; null = applies to all types. */
+  fulfillmentType: ScopeCreepFulfillmentType | null;
   driftThresholdPct: number;
   expansionThresholdPct: number;
   timelineSlipDays: number;
@@ -241,34 +250,47 @@ export function computeScopeCreepEngine(
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
-async function fetchPolicies(mspId?: number): Promise<ScopeCreepPolicy[]> {
-  const rows = await db.execute(
-    mspId != null
-      ? sql`SELECT id, msp_id AS "mspId", name, description,
-              drift_threshold_pct AS "driftThresholdPct",
-              expansion_threshold_pct AS "expansionThresholdPct",
-              timeline_slip_days AS "timelineSlipDays",
-              drift_weight AS "driftWeight",
-              expansion_weight AS "expansionWeight",
-              timeline_slip_weight AS "timelineSlipWeight",
-              violation_score_threshold AS "violationScoreThreshold",
-              escalation_rules AS "escalationRules",
-              is_active AS "isActive",
-              created_at AS "createdAt", updated_at AS "updatedAt"
-            FROM scope_creep_policies WHERE is_active = true AND (msp_id = ${mspId} OR msp_id IS NULL)`
-      : sql`SELECT id, msp_id AS "mspId", name, description,
-              drift_threshold_pct AS "driftThresholdPct",
-              expansion_threshold_pct AS "expansionThresholdPct",
-              timeline_slip_days AS "timelineSlipDays",
-              drift_weight AS "driftWeight",
-              expansion_weight AS "expansionWeight",
-              timeline_slip_weight AS "timelineSlipWeight",
-              violation_score_threshold AS "violationScoreThreshold",
-              escalation_rules AS "escalationRules",
-              is_active AS "isActive",
-              created_at AS "createdAt", updated_at AS "updatedAt"
-            FROM scope_creep_policies WHERE is_active = true`,
-  );
+/**
+ * Fetch active scope-creep policies.
+ *
+ * @param mspId           If provided, restrict to this MSP's policies plus any
+ *                        global (msp_id IS NULL) policies.
+ * @param fulfillmentType If provided, restrict to policies scoped to this exact
+ *                        fulfillment type PLUS any policy with a NULL
+ *                        fulfillment_type (NULL = generic catch-all, applies to
+ *                        all types). If omitted, no fulfillment filtering is
+ *                        applied — every active policy is returned, preserving the
+ *                        historical undifferentiated behavior for callers that do
+ *                        not (yet) know the engagement's fulfillment type.
+ */
+async function fetchPolicies(
+  mspId?: number,
+  fulfillmentType?: ScopeCreepFulfillmentType,
+): Promise<ScopeCreepPolicy[]> {
+  const conditions = [sql`is_active = true`];
+  if (mspId != null) {
+    conditions.push(sql`(msp_id = ${mspId} OR msp_id IS NULL)`);
+  }
+  if (fulfillmentType != null) {
+    conditions.push(sql`(fulfillment_type = ${fulfillmentType} OR fulfillment_type IS NULL)`);
+  }
+  const whereClause = sql.join(conditions, sql` AND `);
+
+  const rows = await db.execute(sql`
+    SELECT id, msp_id AS "mspId", name, description,
+      fulfillment_type AS "fulfillmentType",
+      drift_threshold_pct AS "driftThresholdPct",
+      expansion_threshold_pct AS "expansionThresholdPct",
+      timeline_slip_days AS "timelineSlipDays",
+      drift_weight AS "driftWeight",
+      expansion_weight AS "expansionWeight",
+      timeline_slip_weight AS "timelineSlipWeight",
+      violation_score_threshold AS "violationScoreThreshold",
+      escalation_rules AS "escalationRules",
+      is_active AS "isActive",
+      created_at AS "createdAt", updated_at AS "updatedAt"
+    FROM scope_creep_policies WHERE ${whereClause}
+  `);
   return (rows.rows as unknown as ScopeCreepPolicy[]).map(r => ({
     ...r,
     escalationRules: Array.isArray(r.escalationRules) ? r.escalationRules : [],
@@ -312,19 +334,25 @@ async function countOpenViolations(customerId?: number, mspId?: number): Promise
   return parseInt((rows.rows[0] as { cnt: string }).cnt, 10) || 0;
 }
 
-export async function runScopeCreepEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
+export async function runScopeCreepEngineForTenant(
+  customerId: number,
+  ctx?: { evaluationTimestamp?: Date; fulfillmentType?: ScopeCreepFulfillmentType },
+): Promise<ScopeCreepEngineOutput> {
   const [detections, policies, openViolations] = await Promise.all([
     fetchOpenDetections(undefined, customerId),
-    fetchPolicies(),
+    fetchPolicies(undefined, ctx?.fulfillmentType),
     countOpenViolations(customerId),
   ]);
   return computeScopeCreepEngine(detections, policies, openViolations, ctx?.evaluationTimestamp);
 }
 
-export async function runScopeCreepEngineForMsp(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<ScopeCreepEngineOutput> {
+export async function runScopeCreepEngineForMsp(
+  mspId: number,
+  ctx?: { evaluationTimestamp?: Date; fulfillmentType?: ScopeCreepFulfillmentType },
+): Promise<ScopeCreepEngineOutput> {
   const [detections, policies, openViolations] = await Promise.all([
     fetchOpenDetections(mspId),
-    fetchPolicies(mspId),
+    fetchPolicies(mspId, ctx?.fulfillmentType),
     countOpenViolations(undefined, mspId),  // MSP-scoped: only this MSP's violations
   ]);
   return computeScopeCreepEngine(detections, policies, openViolations, ctx?.evaluationTimestamp);
@@ -712,6 +740,7 @@ export async function ensureScopeCreepTables(): Promise<void> {
       msp_id INTEGER,
       name TEXT NOT NULL,
       description TEXT,
+      fulfillment_type TEXT CHECK (fulfillment_type IN ('assessment','monitoring','project','retainer')),
       drift_threshold_pct NUMERIC NOT NULL DEFAULT 20,
       expansion_threshold_pct NUMERIC NOT NULL DEFAULT 15,
       timeline_slip_days NUMERIC NOT NULL DEFAULT 7,
@@ -724,6 +753,13 @@ export async function ensureScopeCreepTables(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Self-heal existing installs: ensure fulfillment_type exists so the engine's
+  // SELECT never crashes even before the manual constraint migration is run.
+  // (The authoritative CHECK constraint lives in the manual migration; NULL = all types.)
+  await db.execute(sql`
+    ALTER TABLE scope_creep_policies ADD COLUMN IF NOT EXISTS fulfillment_type TEXT
   `);
 
   await db.execute(sql`
