@@ -1,9 +1,12 @@
 ﻿import type { AssessmentModuleProps } from "./module-registry";
 import { PillarModuleShell, findingBg } from "./PillarModuleShell";
 import { Sparkles, CheckCircle2, XCircle } from "lucide-react";
+import { EngineTrendChart } from "@/components/charts/EngineTrendChart";
+import { useAuth } from "@/lib/auth-context";
 
 export default function CopilotModule({ results, loading, error }: AssessmentModuleProps) {
   const pillar = results?.pillars?.copilot ?? null;
+  const { user } = useAuth();
   return (
     <PillarModuleShell
       label="Copilot AI Readiness"
@@ -14,6 +17,13 @@ export default function CopilotModule({ results, loading, error }: AssessmentMod
     >
       {(p) => (
         <div className="space-y-4">
+          {user?.customerId != null && (
+            // Copilot readiness is a pillar within the Health Engine, not a
+            // standalone engine key — engine-history.ts tracks whole-engine
+            // trends only, so this shows the Health Engine's overall series
+            // (of which Copilot readiness is one contributing pillar).
+            <EngineTrendChart engineKey="health" title="Tenant Health Trend" height={180} />
+          )}
           {p.findings.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Readiness Blockers</p>

@@ -99,6 +99,8 @@ export default defineConfig({
       "src/lib/sql-statement-splitter.test.ts",
       "src/routes/msp-data-rights.test.ts",
       "src/routes/msp-marketplace-purchase.test.ts",
+      "src/routes/portal-engine-history.test.ts",
+      "src/routes/msp-engine-history.test.ts",
     ],
     coverage: {
       provider: "v8",

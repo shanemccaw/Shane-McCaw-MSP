@@ -47,6 +47,7 @@ import { runEngineManifestForTenant } from "../lib/engine-registry";
 import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
 import { createAuditLog } from "../lib/audit";
 import { logger } from "../lib/logger";
+import { CUSTOMER_SAFE_ENGINES } from "../lib/customer-safe-engines";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -67,14 +68,7 @@ function resolveCustomerId(req: Request): number | null {
 // themselves, which surface in the findings feed). sla/scope_creep follow the
 // customer-safe translation precedent of portal-customer-engines.ts.
 
-const CUSTOMER_ENGINES: Array<{ key: string; label: string }> = [
-  { key: "health", label: "Tenant Health" },
-  { key: "security", label: "Security" },
-  { key: "drift", label: "Configuration Drift" },
-  { key: "monitoring", label: "Monitoring" },
-  { key: "sla", label: "Service Levels" },
-  { key: "scope_creep", label: "Scope" },
-];
+const CUSTOMER_ENGINES = CUSTOMER_SAFE_ENGINES;
 const CUSTOMER_ENGINE_KEYS = CUSTOMER_ENGINES.map((e) => e.key);
 
 /** Aligned with the portal card severity vocabulary (finding-offer-card.tsx). */

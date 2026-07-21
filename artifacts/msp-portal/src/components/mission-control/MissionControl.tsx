@@ -48,6 +48,7 @@ import {
   InstantRemediationCard,
   type FindingSeverity,
 } from "@/components/ui/finding-offer-card";
+import { EngineTrendChart } from "@/components/charts/EngineTrendChart";
 
 // ── Server payload shapes (portal-mission-control.ts) ───────────────────────
 
@@ -474,6 +475,13 @@ export function MissionControl() {
           <span className="text-sm text-muted-foreground">Engine status unavailable right now.</span>
         )}
       </Card>
+
+      {/* ── Health trend ── */}
+      {hasScanHistory && (
+        <Card className="px-6 py-4">
+          <EngineTrendChart engineKey="health" title="Tenant Health Trend" height={220} />
+        </Card>
+      )}
 
       {/* ── Severity-grouped findings boxes ── */}
       {!overviewLoading && overview && (

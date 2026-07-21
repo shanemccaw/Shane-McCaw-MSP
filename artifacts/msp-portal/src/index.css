@@ -44,6 +44,7 @@
   --color-status-green: hsl(var(--status-green));
   --color-status-blue: hsl(var(--status-blue));
   --color-status-violet: hsl(var(--status-violet));
+  --color-status-teal: hsl(var(--status-teal));
 
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
@@ -167,6 +168,7 @@
   --status-green: 149 45% 36%;
   --status-blue: 212 87% 52%;
   --status-violet: 271 45% 52%;
+  --status-teal: 174 60% 36%;
 
   /* Sidebar — layered one step darker than page background */
   --sidebar: 0 0% 96%;
@@ -271,6 +273,7 @@
   --status-green: 149 36% 49%;
   --status-blue: 212 87% 64%;
   --status-violet: 271 51% 71%;
+  --status-teal: 174 55% 55%;
 
   /* Sidebar / header layer — #1f1f1f, one step above page bg */
   --sidebar: 0 0% 12.2%;

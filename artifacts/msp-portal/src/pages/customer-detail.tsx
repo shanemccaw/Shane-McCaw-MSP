@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { EngineTrendChart } from "@/components/charts/EngineTrendChart";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -909,6 +910,9 @@ export default function CustomerDetailPage() {
             <TabsTrigger value="diagnostics" className="rounded-lg text-xs font-semibold px-4 py-2">
               Diagnostics & Runs
             </TabsTrigger>
+            <TabsTrigger value="engine-trends" className="rounded-lg text-xs font-semibold px-4 py-2">
+              Engine Trends
+            </TabsTrigger>
             <TabsTrigger value="billing" className="rounded-lg text-xs font-semibold px-4 py-2">
               Retainers & Billing
             </TabsTrigger>
@@ -1060,6 +1064,29 @@ export default function CustomerDetailPage() {
               accessToken={accessToken ?? undefined}
               isInactive={customer.status === "inactive"}
             />
+          </TabsContent>
+
+          {/* TAB: ENGINE TRENDS */}
+          <TabsContent value="engine-trends" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="border-slate-800/60 bg-slate-900/40 p-4">
+                <EngineTrendChart
+                  engineKey="health"
+                  customerId={customer.id}
+                  title="Tenant Health Trend"
+                  height={240}
+                />
+              </Card>
+              <Card className="border-slate-800/60 bg-slate-900/40 p-4">
+                <EngineTrendChart
+                  engineKey="drift"
+                  customerId={customer.id}
+                  variant="bar"
+                  title="Configuration Drift Trend"
+                  height={240}
+                />
+              </Card>
+            </div>
           </TabsContent>
 
           {/* TAB 4: RETAINERS & BILLING */}
