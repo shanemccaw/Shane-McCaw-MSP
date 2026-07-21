@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-21 | ⏳ IN FLIGHT | Contact Page Redesign + Persistent Chat Bubble | — |
 | 2026-07-21 | ⏳ IN FLIGHT | Book Page Restyle — Dark Theme | — |
 | 2026-07-21 | ⏳ IN FLIGHT | Unify Tenant Signal Catalog into custom_signals | — |
 | 2026-07-21 | ✅ DONE | Fix 'Watched Continuously By' Overclaim — `SolutionTopicPage.tsx`'s shared related-engine label (~line 383, rendered identically across all 8 Solutions/Topic pages) hardcoded "Watched continuously by" directly above each topic's `relatedEngine.name`/`description`, contradicting the accuracy corrections already made in each topic's own `relatedEngine.description` in `solutionsTopics.ts` (which explicitly deny continuous/real-time monitoring). Changed the label to "Powered by" — no other part of `SolutionTopicPage.tsx` touched, `solutionsTopics.ts` untouched. Confirmed via grep of `src/` (dist/ build artifacts still contain the old string from a stale prior build, expected — not source) that "Watched continuously" no longer appears in source. `shane-mccaw-consulting` typechecks clean (`npx tsc -p tsconfig.json --noEmit`, exit 0). | 2cdcb0a0 |
