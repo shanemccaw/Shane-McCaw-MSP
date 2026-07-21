@@ -51,6 +51,13 @@ export function Header() {
   const isActive = (prefix: string) =>
     location === prefix || location.startsWith(prefix + "/");
 
+  // De-emphasized on the Assessments listing page (not the per-assessment detail
+  // pages) so "Book a Call" doesn't read as a top-level equal alternative to the
+  // self-serve assessment/wizard flow there.
+  const isAssessmentsPage = ["/assessment", "/assessments", "/assessments/all", "/assessments/start", "/assessments/premium"].includes(
+    location,
+  );
+
   const navLinkClass = (active: boolean) =>
     cn(
       "px-3.5 py-2 rounded-lg text-sm font-medium transition-colors",
@@ -188,15 +195,26 @@ export function Header() {
               <LogIn className="w-4 h-4" />
               <span>Client Login</span>
             </Link>
-            <Link
-              href="/book"
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
-              data-track="cta"
-            >
-              <span>Book a Call</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            {isAssessmentsPage ? (
+              <Link
+                href="/book"
+                className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
+                data-track="cta"
+              >
+                <span>Or book a call</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            ) : (
+              <Link
+                href="/book"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                data-track="cta"
+              >
+                <span>Book a Call</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
           </div>
 
           {/* Mobile toggle */}
@@ -250,15 +268,26 @@ export function Header() {
           <Link href="/login" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Client Login</Link>
 
           <div className="pt-4">
-            <Link
-              href="/book"
-              onClick={closeMobileMenu}
-              className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
-              style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
-              data-track="cta"
-            >
-              Book a Call
-            </Link>
+            {isAssessmentsPage ? (
+              <Link
+                href="/book"
+                onClick={closeMobileMenu}
+                className="w-full text-center py-2 px-4 text-xs font-medium text-text-secondary block"
+                data-track="cta"
+              >
+                Or book a call
+              </Link>
+            ) : (
+              <Link
+                href="/book"
+                onClick={closeMobileMenu}
+                className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
+                style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                data-track="cta"
+              >
+                Book a Call
+              </Link>
+            )}
           </div>
         </div>
       )}
