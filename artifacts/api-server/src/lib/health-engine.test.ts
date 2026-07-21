@@ -24,7 +24,7 @@ import { describe, it, expect, vi } from "vitest";
 // the test pure and DB-free, mirroring build-tenant-profile.test.ts's approach
 // of mocking at the module boundary rather than reaching into @workspace/db.
 vi.mock("./tenant-signals.ts", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("./tenant-signals.ts")>();
   return {
     ...actual,
     buildTenantProfile: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock("./tenant-signals.ts", async (importOriginal) => {
   };
 });
 vi.mock("./priority-engine.ts", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("./priority-engine.ts")>();
   return {
     ...actual,
     fetchSignalRulesAndGroups: vi.fn(),
