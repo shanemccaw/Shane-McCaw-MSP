@@ -503,22 +503,28 @@ export default function SolutionTopicPage() {
           </section>
 
           {flagship ? (
-            /* What You Get + Product Modules / Features — flagship two-column layout:
-               the two content groups sit side by side instead of stacked single-column
-               rows, with the Portal-style dashboard preview replacing the plain
-               checklist as the visual lead of "What You Get", and the topic's real
-               document products (live catalog rows) listed full-width below. */
+            /* What You Get + Product Modules / Features — flagship layout. The Portal-style
+               dashboard preview now leads the section full-width, under its own heading,
+               instead of being nested inside the "What You Get" column above that column's
+               checklist: with items-start (no row-stretch), stacking the tall preview panel
+               on top of the whatYouGet checklist made that column roughly twice the height
+               of the plain modules column next to it, which rendered as a diagonal-looking
+               2x2 split (preview top-left, the short modules checklist floating top-right,
+               the whatYouGet checklist pushed down to bottom-left, empty space bottom-right)
+               — confirmed via live screenshot. The two checklists now sit as a real adjacent
+               pair below the preview, at comparable heights, with the topic's real document
+               products (live catalog rows) listed full-width under both. */
             <section className="py-12 px-4 sm:px-6 lg:px-8">
               <div className="max-w-6xl mx-auto">
+                <div className="max-w-3xl mx-auto mb-10">
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                    <FlagshipHeadingText h={flagship.headings.whatYouGet} />
+                  </h2>
+                  <FlagshipPortalPreview dashboard={flagship.dashboard} />
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                      <FlagshipHeadingText h={flagship.headings.whatYouGet} />
-                    </h2>
-                    <FlagshipPortalPreview dashboard={flagship.dashboard} />
-                    <div className="mt-6">
-                      <DeliverablesList items={topic.whatYouGet ?? []} />
-                    </div>
+                    <DeliverablesList items={topic.whatYouGet ?? []} />
                   </div>
                   <div>
                     <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
