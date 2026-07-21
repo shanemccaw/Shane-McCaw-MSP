@@ -46,7 +46,7 @@ interface PillarScoreRingProps {
   /** Label rendered under the ring (text token, never the data color). */
   label?: string;
   /**
-   * Sweep-in control for the site's scroll-reveal pattern (FlagshipPortalPreview):
+   * Sweep-in control for the site's scroll-reveal pattern (FlagshipScoreCard):
    * false renders the ring at zero and the dasharray transition plays when it
    * flips true. Leave default true when no reveal choreography is needed.
    */

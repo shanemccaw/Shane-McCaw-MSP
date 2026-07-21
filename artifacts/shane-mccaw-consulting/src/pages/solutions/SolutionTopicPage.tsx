@@ -96,30 +96,22 @@ function IllustrativeBadge() {
 }
 
 /**
- * Portal-style dashboard preview for a flagship topic's "What You Get" section,
- * rebuilt on the Portal's REAL ring pattern (msp-portal score-ring.tsx geometry via
- * PillarScoreRing: SVG dasharray sweep, threshold-colored) instead of the earlier
- * conic-gradient approximation — one large primary ring, an optional Mission
- * Control-style grid of small pillar rings (CategoryBreakdownGrid), the topic's
- * real, code-verified metric names as bars, and an optional Drift Engine trend
- * line (TrendLineChart) matching the panel's trendNote language. All values are
- * clearly-badged illustrative. Ring + bars sweep in from zero on first scroll into
- * view using the site's established width-transition pattern (QuizResultsPage.tsx);
- * the sweep is skipped for prefers-reduced-motion. Metric semantics are the real
- * product's target-0 semantics: count 0 = healthy (empty track, quiet value),
- * count > 0 = flat amber bar scaled to the largest count.
+ * Shared scroll-reveal used by every flagship visual panel below — each panel now
+ * lives in its own content section (Contextual Visual Enrichment redistribution
+ * task) rather than one shared IntersectionObserver on a single combined panel, so
+ * each gets its own independent reveal-on-scroll instance. Lazy-initialized so
+ * reduced-motion users are "revealed" before first paint — a post-paint setState
+ * here would still play the width/dasharray transition.
  */
-function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  // Lazy-initialized so reduced-motion users are "revealed" before first paint —
-  // a post-paint setState here would still play the width transition.
+function useRevealOnScroll<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
   const [revealed, setRevealed] = useState(
     () => typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
 
   useEffect(() => {
     if (revealed) return;
-    const el = panelRef.current;
+    const el = ref.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       ([entry]) => {
@@ -134,16 +126,28 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
     return () => obs.disconnect();
   }, [revealed]);
 
-  const maxCount = Math.max(...dashboard.metrics.map((m) => m.count), 1);
+  return [ref, revealed] as const;
+}
+
+/**
+ * Primary score ring + 7-pillar breakdown grid — paired with the "What You Get"
+ * section's real-score claim ("Your governance posture as a live score"). Rebuilt
+ * on the Portal's REAL ring pattern (msp-portal score-ring.tsx geometry via
+ * PillarScoreRing: SVG dasharray sweep, threshold-colored). Ring + rings sweep in
+ * from zero on first scroll into view (site's established width-transition
+ * pattern, QuizResultsPage.tsx); skipped for prefers-reduced-motion.
+ */
+function FlagshipScoreCard({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
+  const [ref, revealed] = useRevealOnScroll<HTMLDivElement>();
 
   return (
-    <GlassPanel ref={panelRef} className="p-6 sm:p-8 relative">
+    <div ref={ref} className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
       <IllustrativeBadge />
-      <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6">
+      <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6 pr-28">
         {dashboard.panelLabel}
       </h3>
 
-      <div className="flex items-center gap-6 mb-7">
+      <div className="flex items-center gap-6">
         <div aria-hidden="true" className="shrink-0">
           <PillarScoreRing value={dashboard.ringValue} size={112} strokeWidth={9} revealed={revealed} />
         </div>
@@ -157,14 +161,37 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
           already keeps the illustrative values out of the accessibility tree, while
           the mini-heading and the 7 real pillar names stay readable to AT. */}
       {dashboard.pillarBreakdown && (
-        <div className="mb-7">
+        <div className="mt-7">
           <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-3">
             Architecture Health Engine — all 7 pillars
           </div>
           <CategoryBreakdownGrid items={dashboard.pillarBreakdown} revealed={revealed} />
         </div>
       )}
+    </div>
+  );
+}
 
+/**
+ * Real, code-verified metric bars — paired with the "How It Works" section's
+ * "Findings" step ("Every lifecycle policy exception, naming violation, ownerless
+ * Group, and baseline deviation is logged as a real, inspectable finding"), the
+ * exact prose these counts represent. Target-0 semantics: count 0 = healthy (empty
+ * track, quiet value), count > 0 = flat amber bar scaled to the largest count.
+ */
+function FlagshipFindingsPanel({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
+  const [ref, revealed] = useRevealOnScroll<HTMLDivElement>();
+  const maxCount = Math.max(...dashboard.metrics.map((m) => m.count), 1);
+
+  return (
+    <div
+      ref={ref}
+      className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8 h-full flex flex-col justify-center"
+    >
+      <IllustrativeBadge />
+      <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6 pr-28">
+        {dashboard.panelLabel}
+      </h3>
       <div className="space-y-3">
         {dashboard.metrics.map((m, i) => (
           <div key={m.label} className="flex items-center gap-3">
@@ -187,25 +214,42 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
           </div>
         ))}
       </div>
+    </div>
+  );
+}
 
-      {dashboard.driftTrend && (
-        <div className="mt-5 pt-4 border-t border-white/[0.06]">
-          <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1">
-            Drift Engine — scheduled evaluations
-          </div>
-          <TrendLineChart
-            data={dashboard.driftTrend.points}
-            seriesLabel={dashboard.driftTrend.seriesLabel}
-            height={120}
-          />
-        </div>
-      )}
-
-      <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-        <span className="text-xs text-text-secondary">{dashboard.trendNote}</span>
+/**
+ * Drift Engine trend line — paired with the "What It Does" section's own drift/
+ * cadence claim ("Baseline drift isn't watched in real time … deviations are
+ * flagged on your next scheduled evaluation"), matching the panel's trendNote
+ * language. No scroll-reveal gating: the original combined panel never gated the
+ * chart itself on `revealed` (only the ring dasharray and bar widths), so this
+ * preserves that exact behavior.
+ */
+function FlagshipDriftPanel({
+  driftTrend,
+  trendNote,
+}: {
+  driftTrend: NonNullable<SolutionTopicFlagship["dashboard"]["driftTrend"]>;
+  trendNote: string;
+}) {
+  return (
+    <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+      <IllustrativeBadge />
+      <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1 pr-28">
+        Drift Engine — scheduled evaluations
       </div>
-    </GlassPanel>
+      <TrendLineChart
+        data={driftTrend.points}
+        seriesLabel={driftTrend.seriesLabel}
+        height={140}
+        className="mt-3"
+      />
+      <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+        <span className="text-xs text-text-secondary">{trendNote}</span>
+      </div>
+    </div>
   );
 }
 
@@ -488,17 +532,37 @@ export default function SolutionTopicPage() {
 
       {useExpandedStructure ? (
         <>
-          {/* What This Product Actually Does */}
+          {/* What This Product Actually Does — flagship pairs the prose with the Drift
+              Engine trend chart, since this section is the one that actually makes the
+              drift/cadence claim ("deviations are flagged on your next scheduled
+              evaluation") the chart depicts; the scan-surface strip still runs full-width
+              below, reinforcing the surface enumeration in the paragraph above it. */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
-              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                {flagship ? <FlagshipHeadingText h={flagship.headings.whatItDoes} /> : "What This Solution Actually Does"}
-              </h2>
-              <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
-              {/* The real surfaces the scan reads, as icon-led cards (flagship only) —
-                  pure iconography of the prose enumeration above, no data values. */}
-              {flagship?.scanSurfaces && <ScanSurfaceStrip items={flagship.scanSurfaces} className="mt-8" />}
-            </div>
+            {flagship?.dashboard.driftTrend ? (
+              <div className="max-w-5xl mx-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                      <FlagshipHeadingText h={flagship.headings.whatItDoes} />
+                    </h2>
+                    <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
+                  </div>
+                  <FlagshipDriftPanel
+                    driftTrend={flagship.dashboard.driftTrend}
+                    trendNote={flagship.dashboard.trendNote}
+                  />
+                </div>
+                {flagship.scanSurfaces && <ScanSurfaceStrip items={flagship.scanSurfaces} className="mt-10" />}
+              </div>
+            ) : (
+              <div className="max-w-3xl mx-auto">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  {flagship ? <FlagshipHeadingText h={flagship.headings.whatItDoes} /> : "What This Solution Actually Does"}
+                </h2>
+                <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
+                {flagship?.scanSurfaces && <ScanSurfaceStrip items={flagship.scanSurfaces} className="mt-8" />}
+              </div>
+            )}
           </section>
 
           {/* Built by the Microsoft 365 Architect for NASA */}
@@ -530,77 +594,98 @@ export default function SolutionTopicPage() {
             </div>
           </section>
 
-          {/* How This Product Works */}
+          {/* How This Product Works — flagship pairs the steps with the real finding
+              counts, since the "Findings" step is literally what these bars represent
+              ("Every lifecycle policy exception, naming violation, ownerless Group, and
+              baseline deviation is logged as a real, inspectable finding"). */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
-              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                {flagship ? <FlagshipHeadingText h={flagship.headings.howItWorks} /> : "How This Solution Works"}
-              </h2>
-              <WorkflowSteps steps={topic.howItWorks ?? []} />
-            </div>
+            {flagship ? (
+              <div className="max-w-5xl mx-auto">
+                {/* items-stretch (not items-start): the findings card has far less
+                    content than the 5-step workflow list, so stretching it to match
+                    column height and vertically centering its bars avoids a tall
+                    empty gap beside a short floating card. */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                      <FlagshipHeadingText h={flagship.headings.howItWorks} />
+                    </h2>
+                    <WorkflowSteps steps={topic.howItWorks ?? []} />
+                  </div>
+                  <FlagshipFindingsPanel dashboard={flagship.dashboard} />
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-3xl mx-auto">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  How This Solution Works
+                </h2>
+                <WorkflowSteps steps={topic.howItWorks ?? []} />
+              </div>
+            )}
           </section>
 
           {flagship ? (
-            /* What You Get + Product Modules / Features — flagship layout. The Portal-style
-               dashboard preview now leads the section full-width, under its own heading,
-               instead of being nested inside the "What You Get" column above that column's
-               checklist: with items-start (no row-stretch), stacking the tall preview panel
-               on top of the whatYouGet checklist made that column roughly twice the height
-               of the plain modules column next to it, which rendered as a diagonal-looking
-               2x2 split (preview top-left, the short modules checklist floating top-right,
-               the whatYouGet checklist pushed down to bottom-left, empty space bottom-right)
-               — confirmed via live screenshot. The two checklists now sit as a real adjacent
-               pair below the preview, at comparable heights, with the topic's real document
-               products (live catalog rows) listed full-width under both. */
-            <section className="py-12 px-4 sm:px-6 lg:px-8">
-              <div className="max-w-6xl mx-auto">
-                <div className="max-w-3xl mx-auto mb-10">
-                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                    <FlagshipHeadingText h={flagship.headings.whatYouGet} />
-                  </h2>
-                  <FlagshipPortalPreview dashboard={flagship.dashboard} />
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
-                  <div>
-                    <DeliverablesList items={topic.whatYouGet ?? []} />
-                  </div>
-                  <div>
-                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                      <FlagshipHeadingText h={flagship.headings.modules} />
-                    </h2>
-                    <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
-                    <DeliverablesList items={topic.coverage} />
-                  </div>
-                </div>
-                {/* The modules claim ("four real surfaces, one accountable baseline") as one
-                    web — a radar of the same four coverage surfaces, centered below the
-                    checklist pair so neither grid column regains the height imbalance the
-                    earlier diagonal-split fix removed. Sub-scores are illustrative, badged
-                    with the same convention as the Portal preview above. */}
-                {flagship.surfaceRadar && (
-                  <div className="mt-10 max-w-2xl mx-auto">
-                    <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
-                      <IllustrativeBadge />
-                      <div aria-hidden="true">
-                        <SurfaceRadarChart
-                          axes={flagship.surfaceRadar.axes}
-                          seriesLabel="Illustrative sub-score"
-                          height={260}
-                          className="mt-4"
-                        />
-                      </div>
-                      <p className="text-xs text-text-secondary text-center mt-3">
-                        {flagship.surfaceRadar.caption}
-                      </p>
+            /* What You Get + Product Modules / Features — flagship layout, redistributed
+               into two independent paired sections (Contextual Visual Enrichment
+               redistribution task) instead of one combined cluster: "What You Get" pairs
+               its checklist with the score ring + 7-pillar breakdown (the section's own
+               "live score" claim), and "Modules" pairs its checklist with the radar chart
+               (the section's own "four real surfaces on one web" claim) — each visual now
+               sits beside the specific claim it illustrates, not bundled together in one
+               panel ahead of both checklists. */
+            <>
+              <section className="py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                    <div>
+                      <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                        <FlagshipHeadingText h={flagship.headings.whatYouGet} />
+                      </h2>
+                      <DeliverablesList items={topic.whatYouGet ?? []} />
                     </div>
+                    <FlagshipScoreCard dashboard={flagship.dashboard} />
                   </div>
-                )}
-                <FlagshipDocProducts
-                  slugs={flagship.docProductSlugs}
-                  heading={flagship.headings.docProducts}
-                />
-              </div>
-            </section>
+                </div>
+              </section>
+
+              <section className="py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-5xl mx-auto">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                    <div>
+                      <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                        <FlagshipHeadingText h={flagship.headings.modules} />
+                      </h2>
+                      <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
+                      <DeliverablesList items={topic.coverage} />
+                    </div>
+                    {/* The modules claim ("four real surfaces, one accountable baseline") as
+                        one web — a radar of the same four coverage surfaces, paired directly
+                        beside the checklist it illustrates. Sub-scores are illustrative,
+                        badged with the same convention as the score card above. */}
+                    {flagship.surfaceRadar && (
+                      <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+                        <IllustrativeBadge />
+                        <div aria-hidden="true">
+                          <SurfaceRadarChart
+                            axes={flagship.surfaceRadar.axes}
+                            seriesLabel="Illustrative sub-score"
+                            height={240}
+                          />
+                        </div>
+                        <p className="text-xs text-text-secondary text-center mt-3">
+                          {flagship.surfaceRadar.caption}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <FlagshipDocProducts
+                    slugs={flagship.docProductSlugs}
+                    heading={flagship.headings.docProducts}
+                  />
+                </div>
+              </section>
+            </>
           ) : (
             <>
               {/* What You Get */}
