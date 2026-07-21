@@ -192,3 +192,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-20 | ⏳ IN FLIGHT | Register Generate Campaign from Current Events as a System Workflow | |
 | 2026-07-20 | ⏳ IN FLIGHT | Build Generate Campaign from Current Events — New System Workflow | |
 | 2026-07-20 | ⏳ IN FLIGHT | Launch Control — Fix Action-to-Template Link | |
+| 2026-07-20 | ⏳ IN FLIGHT | Home Catalog Selector — Path Cards + Free/Paid Split | |
