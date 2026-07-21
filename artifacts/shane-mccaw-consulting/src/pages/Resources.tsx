@@ -95,7 +95,7 @@ export default function Resources() {
       {/* Hero */}
       <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Resources</p>
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Resources</p>
           <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mb-6">
             Microsoft 365 &amp; <GradientText>Copilot AI Insights</GradientText>
           </h1>

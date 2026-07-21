@@ -187,7 +187,7 @@ export default function QuizResultsPage() {
           {loading && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4">
               <Loader2 className="w-10 h-10 text-accent-blue animate-spin" />
-              <p className="text-text-tertiary text-sm">Loading your results…</p>
+              <p className="text-text-secondary text-sm">Loading your results…</p>
             </div>
           )}
 
@@ -217,7 +217,7 @@ export default function QuizResultsPage() {
                 <h1 className="text-2xl font-bold text-text-primary">
                   <GradientText>{data.reportName}</GradientText>
                 </h1>
-                <p className="text-text-tertiary text-sm">
+                <p className="text-text-secondary text-sm">
                   Results for <span className="text-text-primary font-medium">{data.name}</span>
                   {data.createdAt && (
                     <> &middot; {new Date(data.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</>
@@ -245,13 +245,13 @@ export default function QuizResultsPage() {
               <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6 space-y-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
+                    <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
                     <p className="text-text-primary font-bold text-3xl">
-                      {data.totalScore}<span className="text-text-tertiary text-lg font-normal">/50</span>
+                      {data.totalScore}<span className="text-text-secondary text-lg font-normal">/50</span>
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
+                    <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
                     <span className={cn("inline-block text-white text-sm font-bold px-3 py-1.5 rounded-full", tierColour)}>
                       {data.tier}
                     </span>
@@ -271,7 +271,7 @@ export default function QuizResultsPage() {
               {/* What this means */}
               {data.whatThisMeans && (
                 <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6 space-y-2">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
                   <p className="text-text-secondary text-sm leading-relaxed">{data.whatThisMeans}</p>
                 </div>
               )}
@@ -283,7 +283,7 @@ export default function QuizResultsPage() {
                 {data.whyThisFits && (
                   <p className="text-text-secondary text-sm leading-relaxed">{data.whyThisFits}</p>
                 )}
-                <p className="text-text-tertiary text-xs italic">
+                <p className="text-text-secondary text-xs italic">
                   This snapshot reflects your environment at the time of the assessment. Your results may change as your M365 configuration evolves.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
@@ -314,13 +314,13 @@ export default function QuizResultsPage() {
               {/* ROI projection */}
               {data.roiProjection && (
                 <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
                   <p className="text-text-secondary text-sm leading-relaxed">{data.roiProjection}</p>
                 </div>
               )}
 
               {/* Footer attribution */}
-              <p className="text-center text-text-tertiary text-xs pt-2">
+              <p className="text-center text-text-secondary text-xs pt-2">
                 Powered by{" "}
                 <a href="/" className="text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2">
                   Shane McCaw Consulting

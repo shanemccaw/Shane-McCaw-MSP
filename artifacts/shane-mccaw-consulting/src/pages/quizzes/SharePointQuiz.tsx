@@ -211,7 +211,7 @@ export default function SharePointQuiz() {
 
           <div className="flex flex-wrap justify-center gap-6">
             {["5 minutes", "Free PDF report", "No account required", "No sales call"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-text-tertiary text-sm">
+              <div key={item} className="flex items-center gap-2 text-text-secondary text-sm">
                 <CheckCircle className="w-4 h-4 text-accent-blue" />
                 {item}
               </div>
@@ -409,7 +409,7 @@ export default function SharePointQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-2 h-10 rounded-full ${dim.colour}`} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">{dim.label}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">{dim.label}</p>
                     <h3 className="font-display font-bold text-lg text-text-primary">{dim.title}</h3>
                   </div>
                 </div>
@@ -428,7 +428,7 @@ export default function SharePointQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">Your Output</p>
                     <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
                   </div>
                 </div>
@@ -658,7 +658,7 @@ export default function SharePointQuiz() {
           >
             Take the Free Assessment Now
           </button>
-          <p className="text-text-tertiary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
+          <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 

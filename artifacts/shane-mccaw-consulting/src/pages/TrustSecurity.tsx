@@ -57,7 +57,7 @@ export default function TrustSecurity() {
 
       <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
             Trust &amp; Security
           </p>
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-6">

@@ -45,7 +45,7 @@ export default function Book() {
           <p className="text-lg text-text-secondary max-w-2xl mx-auto leading-relaxed mb-3">
             30 years of Microsoft 365 expertise. The same assessment methodology used at NASA. Applied directly to your environment — at no cost and no obligation.
           </p>
-          <p className="text-text-tertiary text-base max-w-xl mx-auto leading-relaxed">
+          <p className="text-text-secondary text-base max-w-xl mx-auto leading-relaxed">
             A genuine conversation, not a sales presentation. Bring your real questions and your actual challenges.
           </p>
         </div>

@@ -184,7 +184,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
   const pct = Math.round((step / total) * 100);
   return (
     <div className="w-full">
-      <div className="flex justify-between text-xs text-text-tertiary mb-1">
+      <div className="flex justify-between text-xs text-text-secondary mb-1">
         <span>
           Question {step} of {total}
         </span>
@@ -470,7 +470,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       onKeyDown={handleKeyDown}
                       placeholder="Type your answer here… (Cmd/Ctrl+Enter to submit)"
                       rows={4}
-                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-tertiary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
+                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-secondary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
                       disabled={loading}
                     />
                     <button
@@ -526,7 +526,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                   <input
                     {...register("name")}
                     placeholder="Jane Smith"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                   {errors.name && (
                     <p className="text-red-400 text-xs mt-1">
@@ -542,7 +542,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                     {...register("email")}
                     type="email"
                     placeholder="jane@company.com"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                   {errors.email && (
                     <p className="text-red-400 text-xs mt-1">
@@ -557,7 +557,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                   <input
                     {...register("company")}
                     placeholder="Acme Corp"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                   />
                 </div>
               </div>
@@ -568,7 +568,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               >
                 Get My Readiness Report <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-text-tertiary text-xs text-center">
+              <p className="text-text-secondary text-xs text-center">
                 Your report will be emailed instantly. No spam, ever.
               </p>
             </form>
@@ -613,7 +613,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               {/* Forward report form — only shown when a valid resend token was issued */}
               {results.leadId && results.resendToken && (
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">
                     Forward Report to Another Address
                   </p>
                   {resendState === "sent" ? (
@@ -640,7 +640,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                         }}
                         placeholder="colleague@company.com"
                         required
-                        className="flex-1 min-w-0 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60"
+                        className="flex-1 min-w-0 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
                       />
                       <button
                         type="submit"
@@ -670,14 +670,14 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               {/* Score + Tier */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-center">
-                  <p className="text-text-tertiary text-xs mb-1">Total Score</p>
+                  <p className="text-text-secondary text-xs mb-1">Total Score</p>
                   <p className="font-numeric text-4xl font-bold gradient-text">
                     {results.totalScore}
                   </p>
-                  <p className="text-text-tertiary text-xs">out of 50</p>
+                  <p className="text-text-secondary text-xs">out of 50</p>
                 </div>
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 text-center">
-                  <p className="text-text-tertiary text-xs mb-1">Maturity Tier</p>
+                  <p className="text-text-secondary text-xs mb-1">Maturity Tier</p>
                   <div
                     className={cn(
                       "inline-block px-3 py-1 rounded-full text-white text-sm font-bold mt-1",
@@ -691,7 +691,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 
               {/* Category breakdown */}
               <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 space-y-3">
-                <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">
+                <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">
                   Category Breakdown
                 </p>
                 {CATEGORIES.map((cat) => (
@@ -706,7 +706,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               {/* What it means */}
               {results.whatThisMeans && (
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">
                     What This Means
                   </p>
                   <p className="text-text-secondary text-sm leading-relaxed">
@@ -870,7 +870,7 @@ export default function CopilotQuiz() {
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <p className="text-text-tertiary text-sm mt-4">
+          <p className="text-text-secondary text-sm mt-4">
             No account required · Results and PDF delivered instantly
           </p>
         </div>
@@ -1123,7 +1123,7 @@ export default function CopilotQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-2 h-10 rounded-full ${item.colour}`} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">
                       {item.label}
                     </p>
                     <h3 className="font-display font-bold text-lg text-text-primary">
@@ -1174,7 +1174,7 @@ export default function CopilotQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">Your Output</p>
                     <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
                   </div>
                 </div>
@@ -1293,7 +1293,7 @@ export default function CopilotQuiz() {
           >
             Take the Free Assessment Now
           </button>
-          <p className="text-text-tertiary text-sm mt-4">
+          <p className="text-text-secondary text-sm mt-4">
             No account required · No sales follow-up · Results delivered
             instantly
           </p>

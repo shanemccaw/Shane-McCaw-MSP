@@ -201,7 +201,7 @@ export default function ArchitectEnterprise() {
           </p>
 
           <p className="font-numeric text-5xl font-bold mb-2 text-text-primary">{displayPrice}</p>
-          <p className="text-text-tertiary mb-8 text-lg">/month · cancel anytime</p>
+          <p className="text-text-secondary mb-8 text-lg">/month · cancel anytime</p>
 
           <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-4">
             For regulated, complex, and high-risk organizations where M365 is not just infrastructure — it's the operational backbone your compliance posture, security model, and enterprise productivity depend on.
@@ -413,7 +413,7 @@ export default function ArchitectEnterprise() {
         <div className="max-w-4xl mx-auto">
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-1">Smaller scope?</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-1">Smaller scope?</p>
               <h3 className="font-display text-xl font-bold text-text-primary mb-2">Architect Growth</h3>
               <p className="text-text-secondary text-sm max-w-md">
                 25 hours/month with priority 4-hour response, two strategy calls, and proactive tenant health monitoring. Most popular for organizations actively modernizing who aren't yet at enterprise scale.

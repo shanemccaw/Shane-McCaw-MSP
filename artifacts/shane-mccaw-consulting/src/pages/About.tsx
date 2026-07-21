@@ -167,7 +167,7 @@ export default function About() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Ideal Clients</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Ideal Clients</p>
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">Who I Help — and Why</h2>
             <p className="text-text-secondary mt-4 max-w-2xl mx-auto leading-relaxed">
               Three types of organizations get the most from Shane's practice. Each has a different
@@ -248,7 +248,7 @@ export default function About() {
       {/* Why NASA Experience Matters */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4 text-center">Compliance Depth</p>
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-4 text-center">Compliance Depth</p>
           <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-8 text-center leading-tight">
             Why NASA Experience Matters for Your Organization
           </h2>
@@ -302,7 +302,7 @@ export default function About() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
             <div>
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Engagement Triggers</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Engagement Triggers</p>
               <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-6 leading-tight">
                 Why IT Leaders Bring Me In
               </h2>
@@ -333,7 +333,7 @@ export default function About() {
               </ul>
             </div>
             <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 lg:sticky lg:top-8">
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Why It Works</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Why It Works</p>
               <h3 className="font-display text-xl font-bold text-text-primary mb-4 leading-snug">
                 High-Stakes Decisions. Tested Judgment. No Ramp-Up.
               </h3>
@@ -362,7 +362,7 @@ export default function About() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-16 items-start">
             <div>
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-6">Background</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-6">Background</p>
               <div className="space-y-6 text-[1.0625rem] text-text-secondary leading-relaxed">
                 <p>
                   Shane McCaw's career in the Microsoft ecosystem began in 1994. At the time, Office
@@ -456,7 +456,7 @@ export default function About() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
             <div>
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">The NASA Advantage</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">The NASA Advantage</p>
               <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-6 leading-tight">
                 What Working at NASA Every Day Means for You
               </h2>
@@ -500,7 +500,7 @@ export default function About() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Career</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Career</p>
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">30 Years. One Ecosystem.</h2>
           </div>
           <div className="relative">
@@ -561,7 +561,7 @@ export default function About() {
       {/* Elevator Pitch */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-[860px] mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-6 text-center">Elevator Pitch</p>
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-6 text-center">Elevator Pitch</p>
           <GlassPanel className="relative p-10">
             <div className="absolute -top-4 left-10 text-accent-blue text-6xl font-serif leading-none select-none">"</div>
             <p className="text-text-primary text-lg md:text-xl leading-relaxed mb-6">
@@ -595,7 +595,7 @@ export default function About() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">How Shane Works</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">How Shane Works</p>
               <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-8 leading-tight">
                 Hands-On. Direct. No Shortcuts.
               </h2>
@@ -612,7 +612,7 @@ export default function About() {
               </div>
             </div>
             <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8">
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-6">Who Works With Shane</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-6">Who Works With Shane</p>
               <div className="space-y-5">
                 {[
                   { label: "Mid-market organizations (100–5,000 seats)", desc: "Too large to wing their M365 setup, too lean to hire a full-time architect. Shane fills that gap." },
@@ -634,7 +634,7 @@ export default function About() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Technical Expertise</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Technical Expertise</p>
             <h2 className="font-display text-3xl font-bold text-text-primary">Core Competencies</h2>
           </div>
           <div className="flex flex-wrap justify-center gap-3">
@@ -655,7 +655,7 @@ export default function About() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Working Together</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Working Together</p>
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">How Organizations Engage With Shane</h2>
             <p className="text-text-secondary mt-4 max-w-2xl mx-auto leading-relaxed">
               Every engagement is scoped and priced clearly — no open-ended retainers you didn't agree
@@ -709,7 +709,7 @@ export default function About() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Engagements</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Engagements</p>
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">How You Can Work With Me</h2>
             <p className="text-text-secondary mt-4 max-w-2xl mx-auto leading-relaxed">
               The governance discipline, compliance depth, and hands-on Microsoft 365 experience Shane

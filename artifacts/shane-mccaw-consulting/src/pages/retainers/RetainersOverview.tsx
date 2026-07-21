@@ -176,7 +176,7 @@ function ScopedCard({ tier }: { tier: RetainerTier }) {
       {startingAt && (
         <p className="font-numeric text-2xl font-medium text-text-primary mb-0.5">
           Starting at {startingAt}
-          <span className="text-sm font-normal text-text-tertiary">/mo</span>
+          <span className="text-sm font-normal text-text-secondary">/mo</span>
         </p>
       )}
 
@@ -576,7 +576,7 @@ export default function RetainersOverview() {
                         </span>
                         <span className="block text-lg font-numeric font-bold text-text-primary">
                           {fmtPrice(tier.price) ?? "—"}
-                          <span className="text-sm font-normal text-text-tertiary">/mo</span>
+                          <span className="text-sm font-normal text-text-secondary">/mo</span>
                         </span>
                       </th>
                     ))}

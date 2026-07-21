@@ -282,7 +282,7 @@ function AssessmentHealthOverview() {
         <GlassPanel className="p-8 sm:p-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-2">
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-2">
                 Your real tenant health, right now
               </p>
               <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
@@ -504,7 +504,7 @@ export default function Home() {
                   {item.isFreeOffering ? "FREE" : item.basePrice ? `$${Number(item.basePrice).toLocaleString()}` : "Custom"}
                 </span>
                 {!item.isFreeOffering && item.basePrice && (
-                  <span className="text-xs text-text-tertiary ml-1">/ one-time</span>
+                  <span className="text-xs text-text-secondary ml-1">/ one-time</span>
                 )}
               </div>
               <Link
@@ -555,7 +555,7 @@ export default function Home() {
               {item.isFreeOffering ? "FREE" : item.basePrice ? `$${Number(item.basePrice).toLocaleString()}` : "Custom"}
             </span>
             {!item.isFreeOffering && item.basePrice && (
-              <span className="text-xs text-text-tertiary ml-1">/ one-time</span>
+              <span className="text-xs text-text-secondary ml-1">/ one-time</span>
             )}
           </div>
           <Link
@@ -689,7 +689,7 @@ export default function Home() {
               }}
             />
           </div>
-          <div className="flex justify-between text-[10px] text-text-tertiary font-numeric mb-6">
+          <div className="flex justify-between text-[10px] text-text-secondary font-numeric mb-6">
             <span>{seatSlider.sliderMin.toLocaleString()}</span>
             <span>{seatSlider.sliderMax.toLocaleString()}+</span>
           </div>
@@ -756,7 +756,7 @@ export default function Home() {
                       <span className="font-numeric text-3xl font-medium text-text-primary">
                         ${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </span>
-                      <span className="text-sm text-text-tertiary ml-1">/mo</span>
+                      <span className="text-sm text-text-secondary ml-1">/mo</span>
                     </>
                   ) : (
                     <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
@@ -881,7 +881,7 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">What We Do</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">What We Do</p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
               Mission-Grade <GradientText>Monitoring for Microsoft 365</GradientText>
             </h2>
@@ -917,7 +917,7 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Operator Credential
             </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary">
@@ -951,7 +951,7 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">The Difference</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">The Difference</p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
               Real Tenant Telemetry — <GradientText>Not Questionnaires</GradientText>
             </h2>
@@ -997,7 +997,7 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Continuous Monitoring
             </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -1068,7 +1068,7 @@ export default function Home() {
       <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Operational Intelligence Systems
             </p>
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -1105,7 +1105,7 @@ export default function Home() {
       <section id="catalog" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
           <div className="mb-10">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Commercial Tenant Pricing
             </p>
             <h2 className="font-display text-3xl font-bold text-text-primary mb-3">

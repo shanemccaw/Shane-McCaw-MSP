@@ -17,7 +17,7 @@ interface StatPanelProps {
 export function StatPanel({ label, value, className }: StatPanelProps) {
   return (
     <GlassPanel className={cn("px-5 py-4 flex flex-col gap-1", className)}>
-      <span className="text-xs uppercase tracking-wider text-text-tertiary">{label}</span>
+      <span className="text-xs uppercase tracking-wider text-text-secondary">{label}</span>
       <span className="font-numeric text-2xl font-medium text-text-primary">{value}</span>
     </GlassPanel>
   );

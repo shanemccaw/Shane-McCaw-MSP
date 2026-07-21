@@ -182,7 +182,7 @@ export default function ArchitectEssentials() {
           ) : (
             <p className="font-numeric text-2xl font-bold mb-2 text-text-primary">Contact for pricing</p>
           )}
-          <p className="text-text-tertiary mb-8 text-lg">/month · cancel with 30 days' notice</p>
+          <p className="text-text-secondary mb-8 text-lg">/month · cancel with 30 days' notice</p>
 
           <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-4">
             Most organizations don't need a full-time M365 architect. They need one available — consistently, predictably, without a scoping call, without a proposal, without a retainer lock-in.

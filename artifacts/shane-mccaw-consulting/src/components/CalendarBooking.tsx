@@ -285,7 +285,7 @@ export function CalendarBooking() {
                 <input
                   {...register("name")}
                   placeholder="Jane Smith"
-                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
+                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-secondary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
                 />
                 {errors.name && <p className="text-xs text-rose-400 mt-1">{errors.name.message}</p>}
               </div>
@@ -298,7 +298,7 @@ export function CalendarBooking() {
                   {...register("email")}
                   type="email"
                   placeholder="jane@company.com"
-                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
+                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-secondary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
                 />
                 {errors.email && <p className="text-xs text-rose-400 mt-1">{errors.email.message}</p>}
               </div>
@@ -310,7 +310,7 @@ export function CalendarBooking() {
                 <input
                   {...register("company")}
                   placeholder="Acme Corp"
-                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
+                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-secondary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition"
                 />
               </div>
 
@@ -323,7 +323,7 @@ export function CalendarBooking() {
                   rows={4}
                   maxLength={300}
                   placeholder="What are your biggest Microsoft 365 challenges? What do you hope to get out of this call?"
-                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-tertiary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition resize-none"
+                  className="w-full rounded-lg border border-white/[0.12] bg-white/[0.04] text-text-primary placeholder:text-text-secondary px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-blue/30 focus:border-accent-blue/60 transition resize-none"
                 />
                 {errors.topic && <p className="text-xs text-rose-400 mt-1">{errors.topic.message}</p>}
                 <p className="text-xs text-text-secondary mt-1">Max 300 characters</p>

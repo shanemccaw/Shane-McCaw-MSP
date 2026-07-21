@@ -64,7 +64,7 @@ function ShareButtons({ title }: { title: string }) {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">Share</span>
+      <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Share</span>
       <a
         href={linkedInUrl}
         target="_blank"
@@ -168,11 +168,11 @@ export default function ArticlePage() {
               <Tag className="w-3 h-3" />
               {article.category}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-text-tertiary text-xs">
+            <span className="inline-flex items-center gap-1.5 text-text-secondary text-xs">
               <Calendar className="w-3 h-3" />
               {article.date}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-text-tertiary text-xs">
+            <span className="inline-flex items-center gap-1.5 text-text-secondary text-xs">
               <Clock className="w-3 h-3" />
               {article.readingTime}
             </span>

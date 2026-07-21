@@ -585,7 +585,7 @@ export default function Monitoring() {
                             <span className="font-numeric text-3xl font-medium text-text-primary">
                               ${price.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </span>
-                            <span className="text-sm text-text-tertiary ml-1">/mo</span>
+                            <span className="text-sm text-text-secondary ml-1">/mo</span>
                           </>
                         ) : (
                           <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>

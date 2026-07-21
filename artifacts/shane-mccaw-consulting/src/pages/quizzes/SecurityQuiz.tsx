@@ -178,7 +178,7 @@ export default function SecurityQuiz() {
             This 10-question assessment — built on the same Zero Trust and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your security posture is exposed before an auditor or attacker does.
           </p>
 
-          <p className="text-text-tertiary text-sm font-medium mb-10 max-w-xl mx-auto">
+          <p className="text-text-secondary text-sm font-medium mb-10 max-w-xl mx-auto">
             Built for mid-market organisations and regulated industries where a security gap is never just a technical problem.
           </p>
 
@@ -213,7 +213,7 @@ export default function SecurityQuiz() {
 
           <div className="flex flex-wrap justify-center gap-6">
             {["5 minutes", "Free PDF report", "No sales call required"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-text-tertiary text-sm">
+              <div key={item} className="flex items-center gap-2 text-text-secondary text-sm">
                 <CheckCircle className="w-4 h-4 text-accent-blue" />
                 {item}
               </div>
@@ -377,7 +377,7 @@ export default function SecurityQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-2 h-10 rounded-full ${item.colour}`} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">{item.label}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">{item.label}</p>
                     <h3 className="font-display font-bold text-lg text-text-primary">{item.title}</h3>
                   </div>
                 </div>
@@ -408,7 +408,7 @@ export default function SecurityQuiz() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-secondary">Your Output</p>
                     <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
                   </div>
                 </div>
@@ -642,7 +642,7 @@ export default function SecurityQuiz() {
           >
             Take the Free Assessment
           </button>
-          <p className="text-text-tertiary text-sm mt-4">5 minutes · Instant results · No sales call</p>
+          <p className="text-text-secondary text-sm mt-4">5 minutes · Instant results · No sales call</p>
           <div className="mt-6">
             <a href="/book" data-track="cta" className="text-text-secondary hover:text-text-primary text-sm font-medium transition-colors">
               Prefer to talk first? Book a Discovery Call →

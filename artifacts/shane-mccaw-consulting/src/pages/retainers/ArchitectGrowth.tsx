@@ -399,7 +399,7 @@ export default function ArchitectGrowth() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
-            <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-1">Lighter workload?</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-1">Lighter workload?</p>
             <h3 className="font-display text-lg font-bold text-text-primary mb-2">Architect Essentials</h3>
             <p className="text-text-secondary text-sm mb-4">
               10 hours/month with a monthly strategy call and async support. Great if your environment is stable.
@@ -412,7 +412,7 @@ export default function ArchitectGrowth() {
             </Link>
           </div>
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
-            <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-1">Need full dedication?</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-1">Need full dedication?</p>
             <h3 className="font-display text-lg font-bold text-text-primary mb-2">Architect Enterprise</h3>
             <p className="text-text-secondary text-sm mb-4">
               50 hours/month with weekly calls, same-day emergency response, and a custom technology roadmap.

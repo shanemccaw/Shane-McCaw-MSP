@@ -231,7 +231,7 @@ export default function Msp() {
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16 max-w-3xl mx-auto">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Differentiate Your Practice</p>
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Differentiate Your Practice</p>
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">Why MSPs Choose Shane McCaw's Platform</h2>
             <p className="text-text-secondary mt-4 leading-relaxed text-sm sm:text-base">
               M365 administration is typically delivered as a low-margin commodity. Our partners package M365 as a premium compliance service — enabling automated billing protection, drift control, and tenant alignment.
@@ -301,7 +301,7 @@ export default function Msp() {
           {step === "tiers" && (
             <>
               <div className="text-center mb-16">
-                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Partnership Tiers</p>
+                <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Partnership Tiers</p>
                 <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">Choose Your Partnership Plan</h2>
                 <p className="text-text-secondary mt-4 max-w-xl mx-auto leading-relaxed">
                   All tiers grant white-label deliverable licenses, Shane's governance baseline profiles, and automated partner portal management access.
@@ -457,7 +457,7 @@ export default function Msp() {
                 >
                   ← Back to tiers
                 </button>
-                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Onboarding Package</p>
+                <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Onboarding Package</p>
                 <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">
                   How Would You Like to Get Started?
                 </h2>
@@ -524,7 +524,7 @@ export default function Msp() {
                 >
                   ← Back
                 </button>
-                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Review & Confirm</p>
+                <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">Review & Confirm</p>
                 <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">
                   Almost There
                 </h2>
@@ -619,7 +619,7 @@ export default function Msp() {
         <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16 max-w-3xl mx-auto">
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">What Partners Deliver</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">What Partners Deliver</p>
               <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">The Shane McCaw Methodology — White-Labeled</h2>
               <p className="text-text-secondary mt-4 leading-relaxed text-sm sm:text-base">
                 Every tier gives your team access to the same methodology Shane uses for direct engagements — adapted for MSP delivery at scale.
@@ -650,7 +650,7 @@ export default function Msp() {
         <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
           <div className="max-w-3xl mx-auto">
             <GlassPanel className="p-8 sm:p-12">
-              <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Ready to Talk?</p>
+              <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">Ready to Talk?</p>
               <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
                 Not Sure Which Tier Is Right? <GradientText>Talk to Shane First.</GradientText>
               </h2>

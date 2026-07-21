@@ -162,7 +162,7 @@ function FlagshipScoreCard({ dashboard }: { dashboard: SolutionTopicFlagship["da
           the mini-heading and the 7 real pillar names stay readable to AT. */}
       {dashboard.pillarBreakdown && (
         <div className="mt-7">
-          <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-3">
+          <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
             Architecture Health Engine — all 7 pillars
           </div>
           <CategoryBreakdownGrid items={dashboard.pillarBreakdown} revealed={revealed} />
@@ -236,7 +236,7 @@ function FlagshipDriftPanel({
   return (
     <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
       <IllustrativeBadge />
-      <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1 pr-28">
+      <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-1 pr-28">
         Drift Engine — scheduled evaluations
       </div>
       <TrendLineChart
@@ -783,7 +783,7 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10">
-                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+                <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
                   Powered by
                 </p>
                 <h3 className="font-display text-2xl font-bold text-text-primary mb-3">

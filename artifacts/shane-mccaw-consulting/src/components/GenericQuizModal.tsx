@@ -84,7 +84,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
   const pct = Math.round((step / total) * 100);
   return (
     <div className="w-full">
-      <div className="flex justify-between text-xs text-text-tertiary mb-1">
+      <div className="flex justify-between text-xs text-text-secondary mb-1">
         <span>Question {step} of {total}</span>
         <span>{pct}%</span>
       </div>
@@ -151,8 +151,8 @@ function LiveScorecard({
   return (
     <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">Live Score Preview</p>
-        <span className="text-text-tertiary text-xs italic">Provisional · final scores at submission</span>
+        <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider">Live Score Preview</p>
+        <span className="text-text-secondary text-xs italic">Provisional · final scores at submission</span>
       </div>
       <div className="space-y-2.5">
         {categories.map((cat) => {
@@ -419,7 +419,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                       onKeyDown={handleKeyDown}
                       placeholder="Type your answer here… (Cmd/Ctrl+Enter to submit)"
                       rows={4}
-                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-tertiary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
+                      className="w-full bg-white/[0.04] border border-white/[0.1] rounded-xl p-4 text-text-primary placeholder:text-text-secondary text-sm resize-none focus:outline-none focus:border-accent-blue/60 transition-colors"
                       disabled={loading}
                     />
                     <button
@@ -457,19 +457,19 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                 <div>
                   <label className="block text-text-secondary text-sm mb-1.5">Full Name *</label>
                   <input {...register("name")} placeholder="Jane Smith"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                   {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}
                 </div>
                 <div>
                   <label className="block text-text-secondary text-sm mb-1.5">Work Email *</label>
                   <input {...register("email")} type="email" placeholder="jane@company.com"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                   {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}
                 </div>
                 <div>
                   <label className="block text-text-secondary text-sm mb-1.5">Company (optional)</label>
                   <input {...register("company")} placeholder="Acme Corp"
-                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
+                    className="w-full bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors" />
                 </div>
               </div>
               <button type="submit"
@@ -477,7 +477,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                 style={GRADIENT_BG}>
                 Get My Report <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-text-tertiary text-xs text-center">Your report will be emailed instantly. No spam, ever.</p>
+              <p className="text-text-secondary text-xs text-center">Your report will be emailed instantly. No spam, ever.</p>
             </form>
           )}
 
@@ -506,7 +506,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
               {/* Resend form */}
               {results.leadId && results.resendToken && (
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
                   {resendState === "sent" ? (
                     <div className="flex items-center gap-2 text-teal-400 text-sm">
                       <CheckCircle className="w-4 h-4" /> Report sent!
@@ -518,7 +518,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                         value={resendEmail}
                         onChange={(e) => setResendEmail(e.target.value)}
                         placeholder="another@email.com"
-                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-text-primary placeholder:text-text-tertiary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
+                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-3 py-2 text-text-primary placeholder:text-text-secondary text-sm focus:outline-none focus:border-accent-blue/60 transition-colors"
                       />
                       <button type="submit" disabled={resendState === "sending" || !resendEmail}
                         className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-text-primary text-sm font-medium rounded-lg transition-colors disabled:opacity-40">
@@ -552,11 +552,11 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
               <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
-                    <p className="font-numeric font-bold text-3xl"><span className="gradient-text">{results.totalScore}</span><span className="text-text-tertiary text-lg font-normal">/50</span></p>
+                    <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
+                    <p className="font-numeric font-bold text-3xl"><span className="gradient-text">{results.totalScore}</span><span className="text-text-secondary text-lg font-normal">/50</span></p>
                   </div>
                   <div className="text-right">
-                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
+                    <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
                     <span className={cn("inline-block text-white text-sm font-bold px-3 py-1 rounded-full", tierColour)}>
                       {results.tier}
                     </span>
@@ -576,7 +576,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
               {/* AI analysis */}
               {results.whatThisMeans && (
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5 space-y-3">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
                   <p className="text-text-secondary text-sm leading-relaxed">{results.whatThisMeans}</p>
                 </div>
               )}
@@ -616,7 +616,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
 
               {results.roiProjection && (
                 <div className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-5">
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
                   <p className="text-text-secondary text-sm leading-relaxed">{results.roiProjection}</p>
                 </div>
               )}
