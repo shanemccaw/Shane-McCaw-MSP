@@ -424,6 +424,111 @@ export default function Home() {
     );
   };
 
+  // Free stays understated/plain glass; Paid gets the gradient-bordered treatment — same
+  // gradient-wrap technique implied by the isHighlighted monitoring-tier card's accent
+  // border below, just carried to a full gradient ring since Free/Paid needs a starker split
+  // than "highlighted vs not" within a single tier grid.
+  const renderAssessmentCard = (item: PublicService, isPaid: boolean) => {
+    const card = (
+      <div
+        className={`flex flex-col h-full rounded-2xl p-6 transition-all duration-200 ${
+          isPaid ? "bg-charcoal-1" : "glass-panel hover:border-white/[0.18]"
+        }`}
+      >
+        <div className="flex justify-between items-start mb-4">
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08]">
+            {item.category ? item.category.toUpperCase() : "ENTERPRISE"}
+          </span>
+          {item.durationDays && (
+            <span className="flex items-center gap-1 text-xs text-text-tertiary">
+              <Clock className="w-3.5 h-3.5" />
+              {item.durationDays} Days
+            </span>
+          )}
+        </div>
+
+        <h3 className="font-display text-xl font-bold text-text-primary mb-2">{item.name}</h3>
+        <p className="text-sm text-text-secondary mb-6 flex-grow line-clamp-3">{item.description}</p>
+
+        <div className="pt-4 border-t border-white/[0.06] flex items-center justify-between mt-auto">
+          <div>
+            <span className="font-numeric text-2xl font-medium text-text-primary">
+              {item.isFreeOffering ? "FREE" : item.basePrice ? `$${Number(item.basePrice).toLocaleString()}` : "Custom"}
+            </span>
+            {!item.isFreeOffering && item.basePrice && (
+              <span className="text-xs text-text-tertiary ml-1">/ one-time</span>
+            )}
+          </div>
+          <Link
+            href={item.isFreeOffering ? `/contact?service=${item.slug}` : `/checkout?product=${item.slug}`}
+            className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
+            style={GRADIENT_BG}
+            data-track="cta"
+          >
+            <span>{item.isFreeOffering ? "Request" : "Purchase"}</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+    );
+
+    if (!isPaid) {
+      return <div key={item.slug}>{card}</div>;
+    }
+
+    return (
+      <div key={item.slug} className="rounded-2xl p-[1.5px]" style={GRADIENT_BG}>
+        {card}
+      </div>
+    );
+  };
+
+  const renderAssessmentSplit = () => {
+    if (servicesLoading) {
+      return (
+        <div className="flex justify-center items-center py-20 w-full">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
+        </div>
+      );
+    }
+
+    if (servicesError || assessments.length === 0) {
+      return (
+        <div className="text-center py-12 text-text-secondary w-full border border-white/[0.08] rounded-2xl bg-charcoal-1">
+          No active offerings found in the database. Please contact support.
+        </div>
+      );
+    }
+
+    const freeAssessments = assessments.filter((a) => a.isFreeOffering);
+    const paidAssessments = assessments.filter((a) => !a.isFreeOffering);
+
+    return (
+      <div className="w-full space-y-12">
+        {freeAssessments.length > 0 && (
+          <div>
+            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">
+              Start here — no cost
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {freeAssessments.map((item) => renderAssessmentCard(item, false))}
+            </div>
+          </div>
+        )}
+        {paidAssessments.length > 0 && (
+          <div>
+            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">
+              Go deeper — paid assessments
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paidAssessments.map((item) => renderAssessmentCard(item, true))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderMonitoringCalculator = () => {
     if (servicesLoading) {
       return (
@@ -803,50 +908,83 @@ export default function Home() {
       {/* CATALOG */}
       <section id="catalog" className="py-16 px-4 sm:px-6 lg:px-8 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
-            <div>
-              <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
-                Pricing That Matches Your Tenant
-              </h2>
-              <p className="text-text-secondary max-w-xl">
-                Tell us your seat count — Monitoring pricing recalculates live from the catalog. No
-                sales call required.
+          <div className="mb-10">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-3">
+              Pricing That Matches Your Tenant
+            </h2>
+            <p className="text-text-secondary max-w-xl">
+              Tell us your seat count — Monitoring pricing recalculates live from the catalog. No
+              sales call required.
+            </p>
+          </div>
+
+          {/* Path selector — asymmetric on purpose: Monitoring is the core recurring product and
+              gets the wide/framed card, Assessment is the free qualifying step, Retainer is the
+              upgrade path for people already monitoring. Same selection interaction as the old
+              pill tabs (activeCatalogTab), just reframed as three distinct paths instead of three
+              equal options. */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+            <button
+              onClick={() => setActiveCatalogTab("monitoring")}
+              className={`md:col-span-2 text-left rounded-2xl p-6 transition-all duration-200 ${
+                activeCatalogTab === "monitoring"
+                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
+                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
+              }`}
+            >
+              <span
+                className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white mb-4"
+                style={GRADIENT_BG}
+              >
+                <Sparkles className="w-3 h-3" />
+                The Core Product
+              </span>
+              <h3 className="font-display text-2xl font-bold text-text-primary mb-2">Tenant Monitoring</h3>
+              <p className="text-sm text-text-secondary leading-relaxed">
+                Continuous Graph-based scans across governance, security, compliance, and
+                adoption — the recurring foundation everything else feeds.
               </p>
-            </div>
-            <div className="flex glass-panel p-1.5 rounded-xl self-start md:self-auto">
-              <button
-                onClick={() => setActiveCatalogTab("monitoring")}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeCatalogTab === "monitoring" ? "text-white" : "text-text-secondary hover:text-text-primary"
-                }`}
-                style={activeCatalogTab === "monitoring" ? GRADIENT_BG : undefined}
-              >
-                Tenant Monitoring
-              </button>
-              <button
-                onClick={() => setActiveCatalogTab("assessments")}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeCatalogTab === "assessments" ? "text-white" : "text-text-secondary hover:text-text-primary"
-                }`}
-                style={activeCatalogTab === "assessments" ? GRADIENT_BG : undefined}
-              >
-                Paid M365 Assessments
-              </button>
-              <button
-                onClick={() => setActiveCatalogTab("retainers")}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeCatalogTab === "retainers" ? "text-white" : "text-text-secondary hover:text-text-primary"
-                }`}
-                style={activeCatalogTab === "retainers" ? GRADIENT_BG : undefined}
-              >
-                Advisory Retainers
-              </button>
-            </div>
+            </button>
+
+            <button
+              onClick={() => setActiveCatalogTab("assessments")}
+              className={`text-left rounded-2xl p-6 transition-all duration-200 ${
+                activeCatalogTab === "assessments"
+                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
+                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
+              }`}
+            >
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-4">
+                Start Here — Free
+              </span>
+              <h3 className="font-display text-lg font-bold text-text-primary mb-2">Assessment</h3>
+              <p className="text-sm text-text-secondary leading-relaxed">
+                A real scan of your tenant — see where you stand before you commit to anything.
+              </p>
+            </button>
+
+            <button
+              onClick={() => setActiveCatalogTab("retainers")}
+              className={`text-left rounded-2xl p-6 transition-all duration-200 ${
+                activeCatalogTab === "retainers"
+                  ? "bg-charcoal-1 border-2 border-accent-blue/50 shadow-lg shadow-accent-blue/10"
+                  : "bg-charcoal-1 border border-white/[0.06] hover:border-accent-blue/30"
+              }`}
+            >
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-4">
+                For Existing Customers
+              </span>
+              <h3 className="font-display text-lg font-bold text-text-primary mb-2">Advisory Retainers</h3>
+              <p className="text-sm text-text-secondary leading-relaxed">
+                Fractional M365 architecture guidance — the upgrade path once you're already
+                monitoring.
+              </p>
+            </button>
           </div>
 
           <div className="flex justify-center">
             {activeCatalogTab === "monitoring" && renderMonitoringCalculator()}
-            {activeCatalogTab === "assessments" && renderProductGrid(assessments)}
+            {activeCatalogTab === "assessments" && renderAssessmentSplit()}
             {activeCatalogTab === "retainers" && renderProductGrid(retainers)}
           </div>
         </div>
