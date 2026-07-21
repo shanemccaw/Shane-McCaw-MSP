@@ -239,3 +239,5 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ⏳ IN FLIGHT | Home Pricing Redesign + Critical Seat Slider Bug |  |
 | 2026-07-21 | ⏳ IN FLIGHT | Assessments Page Polish |  |
 | 2026-07-21 | ⏳ IN FLIGHT | Governance Topic Page: Flagship Rebuild |  |
+| 2026-07-21 | ⏳ IN FLIGHT | Quiz UI Full Rebuild |  |
+| 2026-07-21 | ⏳ IN FLIGHT | Investigate --text-secondary Token Contrast |  |
