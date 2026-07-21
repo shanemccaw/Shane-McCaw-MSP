@@ -6,6 +6,9 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
+import { RiskList } from "@/components/design-system/RiskList";
+import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
+import { DeliverablesList } from "@/components/design-system/DeliverablesList";
 import { getSolutionTopic, HEALTH_PILLAR_LABELS, topicMatchesKeywordText } from "@/data/solutionsTopics";
 import { PersonalizedContent } from "@/components/PersonalizedContent";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
@@ -245,14 +248,7 @@ export default function SolutionTopicPage() {
                 Why This Product Matters
               </h2>
               <p className="text-text-secondary leading-relaxed mb-6">{topic.whyItMattersIntro}</p>
-              <ul className="space-y-3">
-                {topic.risks.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-accent-violet shrink-0 mt-0.5" />
-                    <span className="text-text-secondary leading-relaxed">{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <RiskList items={topic.risks} />
             </div>
           </section>
 
@@ -262,19 +258,7 @@ export default function SolutionTopicPage() {
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 How This Product Works
               </h2>
-              <ol className="space-y-5">
-                {(topic.howItWorks ?? []).map((step, i) => (
-                  <li key={step.title} className="flex items-start gap-4">
-                    <span className="shrink-0 w-8 h-8 rounded-full glass-panel flex items-center justify-center text-accent-blue text-sm font-semibold font-numeric">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <p className="text-text-primary font-semibold mb-1">{step.title}</p>
-                      <p className="text-text-secondary leading-relaxed">{step.description}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+              <WorkflowSteps steps={topic.howItWorks ?? []} />
             </div>
           </section>
 
@@ -284,14 +268,7 @@ export default function SolutionTopicPage() {
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 What You Get
               </h2>
-              <ul className="space-y-3">
-                {(topic.whatYouGet ?? []).map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
-                    <span className="text-text-secondary leading-relaxed">{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <DeliverablesList items={topic.whatYouGet ?? []} />
             </div>
           </section>
 
@@ -302,14 +279,7 @@ export default function SolutionTopicPage() {
                 Product Modules & Features
               </h2>
               <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
-              <ul className="space-y-3">
-                {topic.coverage.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
-                    <span className="text-text-secondary leading-relaxed">{item}</span>
-                  </li>
-                ))}
-              </ul>
+              <DeliverablesList items={topic.coverage} />
             </div>
           </section>
 

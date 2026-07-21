@@ -20,6 +20,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
+import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import { useServices, type PublicService } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
@@ -987,22 +988,7 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-            <div className="space-y-7">
-              {HOW_IT_WORKS_STEPS.map((s) => (
-                <div key={s.step} className="flex gap-4">
-                  <div
-                    className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-numeric font-semibold text-sm text-white"
-                    style={GRADIENT_BG}
-                  >
-                    {s.step}
-                  </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-text-primary mb-1">{s.title}</h3>
-                    <p className="text-sm text-text-secondary leading-relaxed">{s.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <WorkflowSteps steps={HOW_IT_WORKS_STEPS} />
 
             <GlassPanel className="p-6 sm:p-8 relative">
               <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
