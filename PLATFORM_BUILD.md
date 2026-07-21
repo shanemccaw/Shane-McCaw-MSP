@@ -238,3 +238,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ✅ DONE | Fix Quick-Start Packs Scan-First Copy | f43c89f9 |
 | 2026-07-21 | ⏳ IN FLIGHT | Home Pricing Redesign + Critical Seat Slider Bug |  |
 | 2026-07-21 | ⏳ IN FLIGHT | Assessments Page Polish |  |
+| 2026-07-21 | ⏳ IN FLIGHT | Governance Topic Page: Flagship Rebuild |  |
