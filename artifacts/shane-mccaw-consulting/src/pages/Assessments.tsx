@@ -27,6 +27,7 @@ import { GradientText } from '@/components/design-system/GradientText';
 import { GlassPanel } from '@/components/design-system/GlassPanel';
 import { IllustrativeBadge } from '@/components/design-system/IllustrativeBadge';
 import { WorkflowSteps } from '@/components/design-system/WorkflowSteps';
+import { PillarScoreRing } from '@/components/design-system/PillarScoreRing';
 import { useServices, type PublicService } from '@/hooks/useServices';
 import { ZONES, type ZoneKey, type ZoneDef, getZoneForService } from '@/lib/assessmentZones';
 
@@ -105,20 +106,37 @@ const SCAN_PREVIEW_ROWS: { icon: LucideIcon; label: string; detail: string }[] =
 ];
 
 const SCAN_ROW_MS = 1500;
-const SCAN_HOLD_MS = 3400;
+const SCAN_LIST_HOLD_MS = 1400;
 const SCAN_RESTART_MS = 700;
+const SCORE_STEP = 2;
+const SCORE_TICK_MS = 35;
+const SCORE_HOLD_MS = 2600;
+/**
+ * Illustrative example score only (IllustrativeBadge + "Example data" caption
+ * make that explicit — a real scan's number comes from the Architecture
+ * Health Engine). Deliberately below PillarScoreRing's 60 amber threshold —
+ * the preview is showing a tenant with real gaps, matching "findings ranked
+ * by real risk", not a clean bill of health.
+ */
+const ILLUSTRATIVE_SCORE = 54;
 
 /**
  * The hero's signature visual: what watching a consented tenant scan actually
  * looks like — progress bar sweeping while real scan surfaces advance
- * queued → scanning → done, then a completion hold and a loop. Clearly
- * illustrative (IllustrativeBadge + explicit "not a live scan" caption),
- * never implying a scan is running for a cold visitor.
+ * queued → scanning → done, then a crossfade into the illustrative score
+ * card (PillarScoreRing, the same ring used site-wide for pillar/topic
+ * scores) with the ring and its numeral counting up together, then a hold
+ * and a loop back to the scan. Clearly illustrative (IllustrativeBadge +
+ * explicit "not a live scan" caption), never implying a scan is running for
+ * a cold visitor.
  *
  * Motion honesty follows HowItWorksShowcase's conventions: loops only while
  * scrolled into view, carries a persistent pause/play toggle (WCAG 2.2.2),
- * and renders the finished state statically under prefers-reduced-motion.
- * The whole visual stack is aria-hidden decoration — the badge, caption, and
+ * and renders the finished state (here, the completed score card) statically
+ * under prefers-reduced-motion. The crossfade itself reuses
+ * HowItWorksShowcase's StageCell grammar (stacked grid cells, opacity/
+ * translate transition) rather than inventing a new transition style. The
+ * whole visual stack is aria-hidden decoration — the badge, caption, and
  * pause control stay in the accessibility tree.
  */
 function TenantScanPreview() {
@@ -129,6 +147,8 @@ function TenantScanPreview() {
   const total = SCAN_PREVIEW_ROWS.length;
   // Number of surfaces finished; the row at this index is "scanning".
   const [done, setDone] = useState(0);
+  const [phase, setPhase] = useState<'scanning' | 'score'>('scanning');
+  const [scoreValue, setScoreValue] = useState(0);
   const [stopped, setStopped] = useState(false);
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -142,18 +162,44 @@ function TenantScanPreview() {
     return () => obs.disconnect();
   }, [reduced]);
 
-  // One self-rescheduling timeout per tick: rows advance on SCAN_ROW_MS, the
-  // completed state holds for SCAN_HOLD_MS, and the emptied bar rests briefly
-  // before the next pass starts.
+  // Scan phase: rows advance on SCAN_ROW_MS; once the list is complete, hold
+  // briefly on "Scan complete" (SCAN_LIST_HOLD_MS) before handing off to the
+  // score phase below.
   useEffect(() => {
-    if (reduced || stopped || !inView) return;
-    const delay = done >= total ? SCAN_HOLD_MS : done === 0 ? SCAN_RESTART_MS : SCAN_ROW_MS;
-    const t = setTimeout(() => setDone((d) => (d >= total ? 0 : d + 1)), delay);
+    if (reduced || stopped || !inView || phase !== 'scanning') return;
+    if (done >= total) {
+      const t = setTimeout(() => setPhase('score'), SCAN_LIST_HOLD_MS);
+      return () => clearTimeout(t);
+    }
+    const delay = done === 0 ? SCAN_RESTART_MS : SCAN_ROW_MS;
+    const t = setTimeout(() => setDone((d) => Math.min(d + 1, total)), delay);
     return () => clearTimeout(t);
-  }, [done, reduced, stopped, inView, total]);
+  }, [done, phase, reduced, stopped, inView, total]);
+
+  // Score phase: counts scoreValue up to ILLUSTRATIVE_SCORE (driving both the
+  // PillarScoreRing sweep and its numeral, since both read straight off this
+  // same value), holds on the finished card for SCORE_HOLD_MS, then resets
+  // back into a fresh scan pass.
+  useEffect(() => {
+    if (reduced || stopped || !inView || phase !== 'score') return;
+    if (scoreValue < ILLUSTRATIVE_SCORE) {
+      const t = setTimeout(() => setScoreValue((v) => Math.min(v + SCORE_STEP, ILLUSTRATIVE_SCORE)), SCORE_TICK_MS);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => {
+      setPhase('scanning');
+      setDone(0);
+      setScoreValue(0);
+    }, SCORE_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [phase, scoreValue, reduced, stopped, inView]);
 
   const shownDone = reduced ? total : done;
   const complete = shownDone >= total;
+  // Under reduced motion, the one static frame shown is the completed score
+  // card — the actual endpoint of the animation, not a mid-scan frame.
+  const showScore = reduced || phase === 'score';
+  const shownScore = reduced ? ILLUSTRATIVE_SCORE : scoreValue;
 
   return (
     <div ref={ref} className="relative rounded-2xl glass-panel p-6 sm:p-8">
@@ -162,51 +208,69 @@ function TenantScanPreview() {
         What a running assessment looks like
       </div>
 
-      <div aria-hidden="true">
-        <div className="h-2 rounded-full bg-white/[0.08] overflow-hidden">
-          <div
-            className="h-full rounded-full"
-            style={{
-              ...GRADIENT_BG,
-              width: `${(shownDone / total) * 100}%`,
-              // Snap (no reverse-sweep) when the loop resets to an empty bar.
-              transition: shownDone === 0 ? 'none' : `width ${SCAN_ROW_MS}ms linear`,
-            }}
-          />
-        </div>
-        <div className="mt-3 text-xs text-text-secondary min-h-[1.25rem]">
-          {complete
-            ? 'Scan complete — findings ranked by real risk'
-            : `Scanning ${SCAN_PREVIEW_ROWS[shownDone]?.label ?? ''}…`}
+      <div aria-hidden="true" className="grid">
+        <div
+          className={`col-start-1 row-start-1 transition-[opacity,transform] duration-500 motion-reduce:transition-none ${
+            showScore ? 'opacity-0 translate-y-1.5 pointer-events-none' : 'opacity-100 translate-y-0'
+          }`}
+        >
+          <div className="h-2 rounded-full bg-white/[0.08] overflow-hidden">
+            <div
+              className="h-full rounded-full"
+              style={{
+                ...GRADIENT_BG,
+                width: `${(shownDone / total) * 100}%`,
+                // Snap (no reverse-sweep) when the loop resets to an empty bar.
+                transition: shownDone === 0 ? 'none' : `width ${SCAN_ROW_MS}ms linear`,
+              }}
+            />
+          </div>
+          <div className="mt-3 text-xs text-text-secondary min-h-[1.25rem]">
+            {complete
+              ? 'Scan complete — findings ranked by real risk'
+              : `Scanning ${SCAN_PREVIEW_ROWS[shownDone]?.label ?? ''}…`}
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {SCAN_PREVIEW_ROWS.map((row, i) => {
+              const state = i < shownDone ? 'done' : i === shownDone && !complete ? 'scanning' : 'queued';
+              const Icon = row.icon;
+              return (
+                <div key={row.label} className="flex items-start gap-3">
+                  <Icon
+                    className={`w-4 h-4 shrink-0 mt-0.5 ${
+                      state === 'scanning' ? 'text-accent-blue animate-pulse' : 'text-text-secondary'
+                    } ${state === 'queued' ? 'opacity-40' : ''}`}
+                  />
+                  <div className={`flex-1 min-w-0 ${state === 'queued' ? 'opacity-50' : ''}`}>
+                    <div className="text-xs text-text-secondary">{row.label}</div>
+                    <div className="text-[11px] text-text-secondary opacity-60 leading-snug mt-0.5">
+                      {row.detail}
+                    </div>
+                  </div>
+                  {state === 'done' ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wider text-text-secondary opacity-60 shrink-0 mt-0.5">
+                      {state === 'scanning' ? 'Scanning…' : 'Queued'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="mt-6 space-y-4">
-          {SCAN_PREVIEW_ROWS.map((row, i) => {
-            const state = i < shownDone ? 'done' : i === shownDone && !complete ? 'scanning' : 'queued';
-            const Icon = row.icon;
-            return (
-              <div key={row.label} className="flex items-start gap-3">
-                <Icon
-                  className={`w-4 h-4 shrink-0 mt-0.5 ${
-                    state === 'scanning' ? 'text-accent-blue animate-pulse' : 'text-text-secondary'
-                  } ${state === 'queued' ? 'opacity-40' : ''}`}
-                />
-                <div className={`flex-1 min-w-0 ${state === 'queued' ? 'opacity-50' : ''}`}>
-                  <div className="text-xs text-text-secondary">{row.label}</div>
-                  <div className="text-[11px] text-text-secondary opacity-60 leading-snug mt-0.5">
-                    {row.detail}
-                  </div>
-                </div>
-                {state === 'done' ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                ) : (
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary opacity-60 shrink-0 mt-0.5">
-                    {state === 'scanning' ? 'Scanning…' : 'Queued'}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+        <div
+          className={`col-start-1 row-start-1 flex flex-col items-center text-center py-2 transition-[opacity,transform] duration-500 motion-reduce:transition-none ${
+            showScore ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1.5 pointer-events-none'
+          }`}
+        >
+          <PillarScoreRing value={shownScore} size={112} strokeWidth={9} revealed={showScore} />
+          <div className="mt-4 text-sm font-semibold text-text-primary">Illustrative tenant score</div>
+          <div className="mt-1.5 text-xs text-text-secondary">
+            {total} surfaces scanned — findings ranked by real risk
+          </div>
         </div>
       </div>
 
@@ -273,11 +337,12 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'Entra ID · Conditional Access · Intune',
     hook: 'Identity is the layer attackers try first — and the gap between “enforced” and “actually enforced” is where they get in.',
     body:
-      'A Conditional Access policy that quietly skips a legacy app, MFA that never got registered on a privileged role, a departed admin’s account still holding access — none of it announces itself until someone probes it. This zone audits what’s actually protecting your sign-ins and devices, not what the policy binder says.',
+      'A Conditional Access policy that quietly skips a legacy app, MFA that never got registered on a privileged role, a departed admin’s account still holding access — none of it announces itself until someone probes it. This zone audits what’s actually protecting your sign-ins and devices, not what the policy binder says, across four dedicated audits: security posture, Conditional Access, Entra ID identity, and Intune device management.',
     // ids 17, 23, 32, 33
     finds: [
       'Users, apps, and sign-in scenarios with no Conditional Access protection at all',
       'MFA coverage gaps on privileged roles, plus stale and orphaned accounts still holding access',
+      'Conflicting or redundant Conditional Access policies flagged and explained',
       'Unmanaged and out-of-policy devices quietly sitting outside your security baseline',
     ],
   },
@@ -286,10 +351,11 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'SOC 2 · NIST CSF · ISO 27001 · CMMC',
     hook: 'The worst time to learn where your tenant stands against a framework is when the auditor tells you.',
     body:
-      'Each mapping audit takes your real configuration and walks it control by control against the framework you’re actually facing — SOC 2, NIST CSF, ISO 27001, or CMMC Level 1-2 — so every gap is known, scoped, and closing on your schedule instead of surfacing as a formal finding.',
+      'Each mapping audit takes your real configuration and walks it control by control against the framework you’re actually facing — SOC 2’s trust services criteria, NIST CSF’s five core functions, ISO 27001’s Annex A controls, or CMMC Level 1-2 practices — so every gap is known, scoped, and closing on your schedule instead of surfacing as a formal finding.',
     // ids 18-21
     finds: [
-      'A control-by-control gap report against the specific framework you’re facing',
+      'Four frameworks covered as dedicated audits — SOC 2, NIST CSF, ISO 27001, and CMMC Level 1-2 — scoped to the one you’re actually facing, not a one-size-fits-all report',
+      'A control-by-control gap report against that framework’s real structure',
       'Remediation guidance scoped to close each gap — not generic best practices',
       'A document you can hand straight to your compliance team or auditor',
     ],
@@ -299,12 +365,13 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'SharePoint · Teams · Exchange',
     hook: 'Sharing sprawl doesn’t fail loudly. It compounds quietly until an audit or an incident finds it for you.',
     body:
-      'Broad-access links nobody remembers creating, guest access that outlived its project, retention and labeling policies silently failing, mail authentication loose enough to let spoofed messages through — this zone reads how your collaboration stack is actually configured, workload by workload.',
+      'Broad-access links nobody remembers creating, guest access that outlived its project, retention and labeling policies silently failing, mail authentication loose enough to let spoofed messages through, Teams and channels multiplying with no owner or lifecycle policy behind them — this zone reads your entire collaboration stack as it’s actually configured, workload by workload: SharePoint, Teams, Exchange, and the sensitivity labels and DLP rules meant to hold it all together.',
     // ids 22, 26, 29, 30, 31
     finds: [
-      'Overshared sites, broad-access links, and external guest access as actually configured',
-      'Sensitive data that’s unlabeled or overexposed, mapped by location',
-      'Mail authentication gaps (SPF/DKIM/DMARC) that let phishing and spoofing get through',
+      'Overshared sites, broad-access links, and external guest access as actually configured — SharePoint and Teams alike',
+      'Sensitive data that’s unlabeled or overexposed, mapped by location, plus DLP and retention policies quietly failing',
+      'Mail authentication gaps (SPF/DKIM/DMARC) and anti-phishing policy holes that let spoofing and phishing through',
+      'Team and channel sprawl — ownership gaps and missing lifecycle policy across your collaboration stack',
     ],
   },
   {
@@ -312,11 +379,11 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'Readiness · Data exposure · Licensing',
     hook: 'Copilot will happily summarize whatever your permission model already exposes — for anyone who asks.',
     body:
-      'Readiness isn’t a license count. It’s whether the content Copilot’s index can reach is content people should actually see, whether the seats you’re paying for will get used, and what’s standing between you and a safe rollout. This zone answers all three before you flip the switch.',
+      'Readiness isn’t a license count. It’s whether the content Copilot’s index can reach is content people should actually see, whether the seats you’re paying for will get used, and what’s standing between you and a safe rollout. The free Snapshot gives you that top-line score and your top 3 blockers; the full Assessment goes past it into every blocker across licensing, data, and governance, plus a phased rollout plan scoped to your tenant.',
     // ids 14, 25, 26
     finds: [
       'Sensitive content Copilot could surface today, mapped by location and exposure type',
-      'Licensing eligibility plus every rollout blocker, identified and ranked',
+      'Licensing eligibility, plus every rollout blocker identified and ranked — not just the top 3',
       'A phased rollout plan scoped to your tenant — not a generic adoption deck',
     ],
   },
@@ -325,7 +392,7 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'Every SKU · Every seat',
     hook: 'License waste never shows up as a line item. It just renews.',
     body:
-      'Seats still assigned to people who left, premium SKUs doing basic work, add-ons nobody activated — the utilization data exists in your tenant, but nobody reconciles it against what you’re paying. This zone turns it into named, counted savings you can take into your next renewal.',
+      'Seats still assigned to people who left, premium SKUs doing basic work, add-ons nobody activated — the utilization data exists in your tenant, but nobody reconciles it against what you’re paying. The free Waste Audit gives you a quick-look estimate of what’s recoverable; the paid Optimization Assessment turns a complete utilization analysis into a right-sized licensing plan and a negotiation-ready number for your next renewal.',
     // ids 15, 27
     finds: [
       'Unused and underused licenses, named and counted across every SKU',
@@ -338,12 +405,12 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
     tag: 'Whole tenant · Ranked',
     hook: 'No single admin center shows you cross-domain drift. That’s why it goes unnoticed for years.',
     body:
-      'Identity, security, governance, and licensing degrade together, and the first symptom usually shows up in a different domain than its cause. The big-picture assessments read the whole tenant in one pass and rank what to fix first — including whether you’re actually ready for the migration or rollout you’re planning.',
+      'Identity, security, governance, and licensing degrade together, and the first symptom usually shows up in a different domain than its cause. This zone covers four angles on that same whole-tenant view — a free Governance Snapshot to start, a full architect-reviewed Health Audit across every domain, a Migration Readiness go/no-go before a cutover date, and an Adoption & Change Management read on why rollout stalled — each ranking what to fix first instead of leaving it buried in a different admin center.',
     // ids 13, 16, 24, 28
     finds: [
       'One cross-domain picture: identity, security, governance, and licensing together',
       'Every finding ranked by real risk, not generic severity labels',
-      'Migration blockers and stalled adoption identified before they derail a cutover date',
+      'Migration blockers and stalled adoption identified before they derail a cutover date or a rollout',
     ],
   },
 ];
@@ -648,6 +715,36 @@ export default function Assessments() {
             </div>
           </div>
 
+          {/* Zone intro — the real risk story plus what a scan here actually
+              turns up, grounded in the catalog's real deliverables. Rendered
+              first (ahead of the assessment list below), and independent of
+              the catalog fetch since it's static per-zone content. */}
+          <div className="mb-10 rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="shrink-0 w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                <Icon className="w-5 h-5 text-amber-400" />
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
+                {why.tag}
+              </span>
+            </div>
+            <h2 className="font-display text-lg font-bold text-text-primary leading-snug mb-2">{why.hook}</h2>
+            <p className="text-sm text-text-secondary leading-relaxed mb-5">{why.body}</p>
+            <div className="pt-4 border-t border-white/[0.06]">
+              <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
+                What a scan here turns up
+              </div>
+              <ul className="space-y-2">
+                {why.finds.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5">
+                    <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="text-sm text-text-secondary leading-relaxed">{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
           {loading && (
             <div className="flex justify-center items-center py-20">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
@@ -714,34 +811,6 @@ export default function Assessments() {
                   No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this zone yet.
                 </div>
               )}
-
-              {/* The zone's risk story — same grounded content the index's
-                  "why" grid shows, kept adjacent to the cards it justifies. */}
-              <div className="mt-12 rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="shrink-0 w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-amber-400" />
-                  </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
-                    {why.tag}
-                  </span>
-                </div>
-                <h2 className="font-display text-lg font-bold text-text-primary leading-snug mb-2">{why.hook}</h2>
-                <p className="text-sm text-text-secondary leading-relaxed mb-5">{why.body}</p>
-                <div className="pt-4 border-t border-white/[0.06]">
-                  <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
-                    What a scan here turns up
-                  </div>
-                  <ul className="space-y-2">
-                    {why.finds.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5">
-                        <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                        <span className="text-sm text-text-secondary leading-relaxed">{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
 
               <div className="mt-10 text-center">
                 <p className="text-sm text-text-secondary mb-3">Not sure this is the right zone?</p>
