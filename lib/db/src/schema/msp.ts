@@ -2234,6 +2234,37 @@ export const insertBaselineActionTemplateAuditLogSchema = createInsertSchema(bas
 export type BaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferSelect;
 export type InsertBaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferInsert;
 
+// ── Write Action Catalog (M365 Launch Control) ──────────────────────────────────
+//
+// Schema-definition-only mapping of an already-live table (created via manual
+// SQL, no migration file in this repo) — catalogs the universe of possible
+// M365 write actions, independent of which ones have a runnable
+// baseline_action_templates row yet. Live columns not independently
+// re-verified against information_schema in this session (no DB access in
+// this environment) — verify against the real table before relying on exact
+// types/nullability.
+
+export const writeActionCatalogTable = pgTable("write_action_catalog", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull(),
+  actionName: text("action_name").notNull(),
+  surface: text("surface").notNull(),
+  requiredPermission: text("required_permission"),
+  safeOrGated: text("safe_or_gated", { enum: ["safe", "gated"] }).notNull(),
+  minBundledTier: text("min_bundled_tier"),
+  requiredCapabilityKey: text("required_capability_key"),
+  snapshotNotes: text("snapshot_notes"),
+  status: text("status"),
+  blockedReason: text("blocked_reason"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("write_action_catalog_domain_idx").on(t.domain),
+]);
+
+export type WriteActionCatalog = typeof writeActionCatalogTable.$inferSelect;
+export type InsertWriteActionCatalog = typeof writeActionCatalogTable.$inferInsert;
+
 // ── Config Packs ───────────────────────────────────────────────────────────────
 
 export const configPacksTable = pgTable("config_packs", {

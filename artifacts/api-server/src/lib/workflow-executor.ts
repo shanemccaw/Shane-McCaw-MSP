@@ -420,6 +420,7 @@ export async function runBaselineTemplateAgainstTenant(
   tenantId: string,
   customerId: number,
   payload: Record<string, unknown>,
+  source?: string,
 ): Promise<BaselineTemplateExecutionResult> {
   const [template] = await db
     .select()
@@ -471,6 +472,7 @@ export async function runBaselineTemplateAgainstTenant(
       customerId,
       tenantId,
       executedAt: new Date().toISOString(),
+      ...(source !== undefined ? { source } : {}),
     },
   }).catch((auditErr: unknown) => {
     log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");

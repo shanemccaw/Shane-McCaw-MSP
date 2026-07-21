@@ -36,7 +36,7 @@ export class OverageError extends Error {
 }
 
 /** Loads the subscription + service tier for an MSP, or null if none. */
-async function loadTier(mspId: number) {
+export async function loadTier(mspId: number) {
   const [sub] = await db
     .select({
       serviceId: mspSubscriptionsTable.serviceId,
@@ -62,6 +62,28 @@ async function loadTier(mspId: number) {
     overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
     tierCapabilities: (attrs.tierCapabilities ?? {}) as Record<string, boolean>,
   };
+}
+
+export type MspTier = Awaited<ReturnType<typeof loadTier>>;
+
+/**
+ * Pure decision function behind requirePlanFeature() — no subscription (or a
+ * suspended/revoked one) fails closed; a missing key in tierCapabilities means
+ * available, `false` means gated. Exported (alongside loadTier) so a caller
+ * checking many feature keys against the same MSP (e.g. annotating a catalog
+ * listing) can load the tier once and evaluate every key against it, rather
+ * than re-querying per key.
+ */
+export function tierAllowsFeature(tier: MspTier, feature: string): boolean {
+  if (!tier) return false;
+  if (tier.dunningState === "access_revoked" || tier.dunningState === "archival_flagged") return false;
+  const capabilities = (tier.tierCapabilities ?? {}) as Record<string, boolean>;
+  return capabilities[feature] !== false;
+}
+
+/** Convenience one-shot wrapper around loadTier() + tierAllowsFeature(). */
+export async function hasPlanFeature(mspId: number, feature: string): Promise<boolean> {
+  return tierAllowsFeature(await loadTier(mspId), feature);
 }
 
 /**
