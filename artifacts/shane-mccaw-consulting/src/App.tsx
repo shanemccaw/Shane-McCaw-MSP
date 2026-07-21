@@ -26,6 +26,7 @@ import { PersonalizationProvider } from "./hooks/usePersonalizationState";
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
 import Solutions from "./pages/Solutions";
 import SolutionTopicPage from "./pages/solutions/SolutionTopicPage";
+import GovernancePage from "./pages/solutions/GovernancePage";
 import Products from "./pages/Products";
 import TrustSecurity from "./pages/TrustSecurity";
 import QuizHub from "./pages/QuizHub";
@@ -125,6 +126,10 @@ export default function App() {
       <Route path="/onboarding" component={OnboardingLink} />
 
       {/* Stage 2 sitemap pages — real content, replacing Stage 1's StubPage skeleton (website-rebuild-reference-v2.md §5/§7) */}
+      {/* Governance has its own dedicated Standard SaaS Section Structure page (8 sections,
+          not the shared 4-section SolutionTopicPage template) — must be matched before the
+          generic /solutions/:slug wildcard below, or wouter's Switch would never reach it. */}
+      <Route path="/solutions/governance" component={GovernancePage} />
       <Route path="/solutions/:slug" component={SolutionTopicPage} />
       <Route path="/solutions" component={Solutions} />
       <Route path="/products" component={Products} />

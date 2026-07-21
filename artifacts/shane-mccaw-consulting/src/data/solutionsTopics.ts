@@ -192,10 +192,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     icon: Share2,
     pillar: "Architecture",
     gradientPhrase: "an intranet people actually use",
-    headlinePrefix: "From site sprawl to ",
-    headlineSuffix: "an intranet people actually use.",
+    headlinePrefix: "Most SharePoint intranets fail quietly. ",
+    headlineSuffix: "Yours doesn't have to.",
     subhead:
-      "Most SharePoint environments grow site-by-site with no information architecture behind them. The result: duplicate content, broken permission inheritance, and an intranet nobody opens voluntarily.",
+      "SharePoint surfaces exactly the site architecture and permission model you've built — this scans that real surface before sprawl and broken inheritance turn the intranet into the tool nobody opens.",
     quizHref: "/sharepoint-quiz",
     stats: [
       { label: "Architecture pillar", value: "Scored" },
@@ -225,11 +225,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     shortLabel: "Power Platform",
     icon: Zap,
     pillar: "Architecture",
-    gradientPhrase: "before it's shadow IT",
-    headlinePrefix: "Get ahead of Power Platform sprawl ",
-    headlineSuffix: "before it's shadow IT.",
+    gradientPhrase: "Govern it before it scales past you",
+    headlinePrefix: "Power Platform scales fast. ",
+    headlineSuffix: "Govern it before it scales past you.",
     subhead:
-      "Every business user with a Power Apps license can build something that touches production data. Without environment strategy and DLP policy, that's not empowerment — it's an ungoverned attack surface with nobody's name on it.",
+      "Every Power Apps and Power Automate maker in your tenant can already touch production data. This maps your real environment strategy, DLP policy coverage, and connector exposure — before an ungoverned app becomes the one nobody can explain in an audit.",
     quizHref: "/power-platform-quiz",
     stats: [
       { label: "Architecture pillar", value: "Scored" },
@@ -249,9 +249,47 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     relatedEngine: {
       name: "Health Engine",
       description:
-        "Scores tenant risk in real time across licensing utilization and operational exposure, including citizen-developer sprawl.",
+        "Scores tenant risk on evaluation across licensing utilization and operational exposure, including citizen-developer sprawl.",
     },
     healthPillarKeys: ["architecture"],
+    productOverview:
+      "Power Platform Governance runs a live, read-only scan against your tenant's actual Power Platform admin surface — every environment beyond the unmanaged default, every Data Loss Prevention policy and the connectors it does or doesn't cover, every app and flow with (or without) a real owner, and every premium connector already in use. It's the same surface a citizen developer touches when they build something in an afternoon, so the scan shows you exactly what's already running, and what's ungoverned, before it becomes the app nobody can explain in an audit.",
+    credibilityBody:
+      "I govern Power Platform inside NASA's own tenant every day — environment strategy, DLP policy design, and citizen-developer oversight for real makers building real apps, not case studies I read about. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same governance discipline I apply at NASA is what's engineered into this scan.",
+    whyItMattersIntro:
+      "Power Platform sprawl doesn't fail quietly — it fails the day an auditor, regulator, or breach investigation asks which app touched which data, and the honest answer is nobody's actually sure.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only connection to your Power Platform admin surface and Microsoft Graph. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine reads every environment, each DLP policy and the connectors it covers, app and flow ownership, and premium connector usage across your tenant.",
+      },
+      {
+        title: "Findings",
+        description: "Every ungoverned environment, DLP coverage gap, orphaned app or flow, and premium connector exposure is logged as a real, inspectable finding — not a scored questionnaire answer.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll up into your real Architecture pillar score inside the Architecture Health Engine.",
+      },
+      {
+        title: "Remediate",
+        description: "You get the specific fixes, ranked by which one closes the biggest exposure first — and the same scan runs again on your next scheduled evaluation to confirm it stayed fixed.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Architecture pillar score for Power Platform, not a self-reported estimate",
+      "A full environment and DLP policy coverage report — every environment beyond the default, and exactly which connectors each DLP policy does and doesn't reach",
+      "An app and flow ownership map — what's actually running, who owns it, and what happens when that maker leaves",
+      "A premium connector and licensing exposure read — what's already in use, and what it's costing you",
+      "Zero questionnaires. Every finding comes from a live scan of your actual tenant, and every score updates the next time the Health Engine evaluates it.",
+    ],
+    modulesIntro: "Power Platform Governance checks four real surfaces before a citizen-developer app becomes a citizen-developer incident:",
+    finalCtaBody:
+      "Start a free Assessment and get your real Architecture pillar score for Power Platform — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
   },
   {
     slug: "teams",
