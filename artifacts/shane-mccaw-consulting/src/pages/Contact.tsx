@@ -1,271 +1,27 @@
 import { SEOMeta } from "@/components/SEOMeta";
-import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { Layout } from "@/components/Layout";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
-import { Mail, MapPin, Clock, Send, MessageSquare, ArrowRight } from "lucide-react";
-import { identifyLead, trackEvent } from "@/lib/analytics";
+import { StatPanel } from "@/components/design-system/StatPanel";
+import { ContactChatWidget } from "@/components/ContactChatWidget";
+import { PortalSupportHandoff } from "@/components/PortalSupportHandoff";
+import { Mail, MapPin, Clock, MessageSquare } from "lucide-react";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { usePortalUrl } from "@/hooks/usePersonalizationData";
+import { useEffect } from "react";
+import { trackEvent } from "@/lib/analytics";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
-interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
-
-interface LeadPayload {
-  name?: string;
-  email?: string;
-  company?: string;
-  companySize?: string;
-  serviceArea?: string;
-  howFound?: string;
-  message?: string;
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-end gap-2 mb-4">
-      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style={GRADIENT_BG}>
-        AI
-      </div>
-      <div className="bg-white/[0.06] border border-white/[0.1] rounded-2xl rounded-bl-sm px-4 py-3">
-        <div className="flex gap-1.5 items-center h-4">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-bounce [animation-delay:0ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-bounce [animation-delay:150ms]" />
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-bounce [animation-delay:300ms]" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ChatBubble({ message }: { message: ChatMessage }) {
-  const isAI = message.role === "assistant";
-  return (
-    <div className={`flex items-end gap-2 mb-4 ${isAI ? "" : "flex-row-reverse"}`}>
-      {isAI ? (
-        <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold" style={GRADIENT_BG}>
-          AI
-        </div>
-      ) : (
-        <div className="w-7 h-7 rounded-full bg-white/[0.1] border border-white/[0.12] flex items-center justify-center flex-shrink-0 text-text-primary text-xs font-bold">
-          You
-        </div>
-      )}
-      <div
-        className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-          isAI
-            ? "bg-white/[0.06] border border-white/[0.1] rounded-bl-sm text-text-primary"
-            : "text-white rounded-br-sm"
-        }`}
-        style={isAI ? undefined : GRADIENT_BG}
-      >
-        {message.content}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Assessment-tier Portal handoff (website-rebuild-reference-v2.md §3, Stage 4b): a
- * recognized, logged-in visitor with a real Portal account gets routed straight into
- * msp-portal's real AI support chat (support-chat.tsx, route /support, requireAuth-gated
- * POST /api/msp/support/chat) instead of the generic contact-chat form here — that AI
- * already has real tenant context and can propose real remediations, this one can't.
- * Cross-app link reuses the EXISTING POST /api/public/checkout/gate email→portalUrl
- * mechanism (usePortalUrl) — the same one Login.tsx/CheckoutGate.tsx already use for
- * this exact handoff. Only rendered when portalUrl actually resolved; the caller falls
- * back to the standard contact-chat form otherwise (see usePortalUrl's own doc comment
- * for why resolution can fail — confirmed via code read, not guessed).
- */
-function PortalSupportHandoff({ portalUrl }: { portalUrl: string }) {
-  return (
-    <GlassPanel className="flex flex-col items-center justify-center text-center px-8 py-12" style={{ minHeight: "520px" }}>
-      <div className="w-14 h-14 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-5 text-accent-blue">
-        <MessageSquare className="w-6 h-6" />
-      </div>
-      <h3 className="font-display text-lg font-bold text-text-primary mb-2">Skip the form — go straight to your Portal</h3>
-      <p className="text-text-secondary text-sm max-w-sm mb-6">
-        You already have an account. Your Portal's AI assistant knows your real tenant data and can
-        propose actual fixes — not just gather details for a follow-up.
-      </p>
-      <a
-        href={`${portalUrl}/support`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-        style={GRADIENT_BG}
-        data-track="cta"
-        data-testid="contact-portal-support-link"
-        onClick={() => trackEvent("personalization_nudge_click", { tier: "assessment", surface: "contact_portal_handoff" })}
-      >
-        Open Portal Support Chat <ArrowRight className="w-4 h-4" />
-      </a>
-      <p className="text-xs text-text-secondary mt-4">
-        Prefer this form instead?{" "}
-        <a href="mailto:info@shanemccaw.com" className="text-accent-blue hover:underline">
-          Email Shane directly
-        </a>
-        .
-      </p>
-    </GlassPanel>
-  );
-}
-
 export default function Contact() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [initError, setInitError] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { tier } = usePersonalizationState();
   const { portalUrl } = usePortalUrl();
-
-  const scrollToBottom = () => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function init() {
-      setIsLoading(true);
-      try {
-        const res = await fetch("/api/contact-chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [] }),
-        });
-        if (!res.ok) throw new Error("init failed");
-        const data = (await res.json()) as { reply: string };
-        if (!cancelled) {
-          setMessages([{ role: "assistant", content: data.reply }]);
-        }
-      } catch {
-        if (!cancelled) setInitError(true);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    }
-    void init();
-    return () => { cancelled = true; };
-  }, []);
-
-  const sendMessage = async () => {
-    const text = input.trim();
-    if (!text || isLoading || isSubmitted) return;
-
-    const newMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
-    setMessages(newMessages);
-    setInput("");
-    setIsLoading(true);
-
-    try {
-      const res = await fetch("/api/contact-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
-      });
-
-      if (!res.ok) throw new Error("chat failed");
-      const data = (await res.json()) as { reply: string; lead?: LeadPayload };
-
-      if (data.lead) {
-        const lead = data.lead;
-
-        if (!lead.name || !lead.email) {
-          setMessages([
-            ...newMessages,
-            {
-              role: "assistant",
-              content: "I'm missing a couple of details — could you confirm your name and email address so I can send your info to Shane?",
-            },
-          ]);
-        } else {
-          let leadSaved = false;
-          let leadError = "";
-          try {
-            const leadRes = await fetch("/api/leads", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: lead.name,
-                email: lead.email,
-                company: lead.company ?? null,
-                companySize: lead.companySize ?? null,
-                serviceArea: lead.serviceArea ?? null,
-                message: lead.message ?? null,
-                source: "contact_form",
-                howFound: lead.howFound ?? null,
-              }),
-            });
-            if (leadRes.ok) {
-              leadSaved = true;
-            } else {
-              const body = await leadRes.json().catch(() => ({})) as { error?: string };
-              leadError = body.error ?? `Server error ${leadRes.status}`;
-            }
-          } catch (networkErr) {
-            leadError = "Network error";
-          }
-
-          if (leadSaved) {
-            if (lead.email) void identifyLead(lead.email);
-            const confirmMsg = data.reply ||
-              "Thanks! Your information has been sent to Shane. He'll personally follow up within one business day.";
-            setMessages([...newMessages, { role: "assistant", content: confirmMsg }]);
-            setIsSubmitted(true);
-          } else {
-            setMessages([
-              ...newMessages,
-              {
-                role: "assistant",
-                content: `I wasn't able to save your message right now (${leadError}). Could you try again, or email Shane directly at info@shanemccaw.com?`,
-              },
-            ]);
-          }
-        }
-      } else {
-        setMessages([...newMessages, { role: "assistant", content: data.reply }]);
-      }
-    } catch {
-      setMessages([
-        ...newMessages,
-        {
-          role: "assistant",
-          content: "Sorry, something went wrong on my end. Please try again or email info@shanemccaw.com directly.",
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
-      if (!isSubmitted) {
-        setTimeout(() => inputRef.current?.focus(), 50);
-      }
-    }
-  };
 
   useEffect(() => {
     if (tier === "assessment" && portalUrl) {
       trackEvent("personalization_shown", { tier: "assessment", surface: "contact_portal_handoff" });
     }
   }, [tier, portalUrl]);
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage();
-    }
-  };
 
   return (
     <Layout>
@@ -275,20 +31,27 @@ export default function Contact() {
       />
 
       {/* HERO */}
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
+      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
         <div className="max-w-5xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Contact Shane McCaw</p>
-          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-3xl mb-6">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <MessageSquare className="w-4 h-4" />
+            Direct Line — No Account Managers
+          </div>
+          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6">
             Get in <GradientText>Touch</GradientText>
           </h1>
-          <p className="text-lg text-text-secondary max-w-2xl leading-relaxed mb-4">
-            You're contacting the Lead M365 Architect at NASA — 30 years of Microsoft ecosystem
-            experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
+          <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
+            You're contacting the Lead M365 Architect at NASA. Tell me what you're dealing
+            with and you'll get a straight, senior-level answer on whether and how I can
+            help — no fluff, no sales pitch.
           </p>
-          <p className="text-text-secondary max-w-xl leading-relaxed">
-            Tell me what you're dealing with and you'll get a straight, senior&#8209;level answer on
-            whether and how I can help — no fluff, no sales pitch.
-          </p>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
+            <StatPanel label="Response Time" value="1 Day" />
+            <StatPanel label="Experience" value="30 Years" />
+            <StatPanel label="Background" value="NASA Lead Architect" />
+            <StatPanel label="Who You Reach" value="Shane, Directly" />
+          </div>
         </div>
       </section>
 
@@ -349,78 +112,9 @@ export default function Contact() {
               </p>
 
               {tier === "assessment" && portalUrl ? (
-                <PortalSupportHandoff portalUrl={portalUrl} />
+                <PortalSupportHandoff portalUrl={portalUrl} surface="contact_portal_handoff" />
               ) : (
-              <div className="bg-charcoal-1 rounded-2xl border border-white/[0.06] flex flex-col" style={{ minHeight: "520px" }}>
-                <div className="border-b border-white/[0.06] px-6 py-4 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={GRADIENT_BG}>AI</div>
-                  <div>
-                    <p className="text-sm font-semibold text-text-primary">Shane's AI Assistant</p>
-                    <p className="text-xs text-text-secondary">Here to gather the details so Shane can follow up personally</p>
-                  </div>
-                  <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Online
-                  </span>
-                </div>
-
-                <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-6" style={{ maxHeight: "440px" }}>
-                  {initError && messages.length === 0 && !isLoading && (
-                    <div className="text-sm text-text-secondary text-center py-8">
-                      Couldn't connect to the assistant.{" "}
-                      <a href="mailto:info@shanemccaw.com" className="text-accent-blue hover:underline">
-                        Email Shane directly
-                      </a>{" "}
-                      instead.
-                    </div>
-                  )}
-                  {messages.map((msg, i) => (
-                    <ChatBubble key={i} message={msg} />
-                  ))}
-                  {isLoading && <TypingIndicator />}
-                </div>
-
-                <div className="border-t border-white/[0.06] px-4 py-4">
-                  {isSubmitted ? (
-                    <div className="text-center py-2">
-                      <p className="text-sm text-text-secondary">
-                        Conversation complete.{" "}
-                        <a href="/book" className="text-accent-blue hover:underline font-medium">
-                          Book a call
-                        </a>{" "}
-                        if you'd like to connect sooner.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 items-end">
-                      <textarea
-                        ref={inputRef}
-                        rows={1}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={isLoading || isSubmitted}
-                        placeholder="Type your reply…"
-                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{ maxHeight: "120px" }}
-                        data-testid="chat-input"
-                      />
-                      <button
-                        onClick={() => void sendMessage()}
-                        disabled={!input.trim() || isLoading || isSubmitted}
-                        className="flex-shrink-0 w-10 h-10 rounded-lg text-white flex items-center justify-center transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-                        style={GRADIENT_BG}
-                        data-testid="chat-send"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                  <p className="text-[10px] text-text-secondary mt-2 text-center">
-                    Press <kbd className="font-mono bg-white/[0.06] border border-white/[0.1] rounded px-1">Enter</kbd> to send · Shift+Enter for new line
-                  </p>
-                </div>
-              </div>
+                <ContactChatWidget style={{ minHeight: "520px" }} />
               )}
 
               {/* What Happens Next */}

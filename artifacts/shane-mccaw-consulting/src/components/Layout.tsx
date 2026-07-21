@@ -4,6 +4,7 @@ import { Footer } from "./Footer";
 import { BackToTop } from "./BackToTop";
 import { TestimonialDiscountCallout } from "./TestimonialDiscountCallout";
 import { EngagementOfferPanel } from "./EngagementOfferPanel";
+import { PersistentChatBubble } from "./PersistentChatBubble";
 
 const BANNER_KEY = "offer-banner-dismissed";
 
@@ -40,6 +41,7 @@ export function Layout({ children }: LayoutProps) {
       <Footer />
       <BackToTop />
       <EngagementOfferPanel />
+      <PersistentChatBubble />
     </div>
   );
 }
