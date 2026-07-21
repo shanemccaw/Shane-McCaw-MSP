@@ -155,7 +155,7 @@ export default function Products() {
     <Layout>
       <SEOMeta
         title="Quick-Start Packs | Shane McCaw Consulting"
-        description="Fixed-price, fixed-scope Microsoft 365 configuration packs — build your tenant baseline without a prerequisite scan or a drawn-out proposal cycle."
+        description="Fixed-price, fixed-scope Microsoft 365 configuration packs — we scan your tenant first, then build your baseline, without a drawn-out proposal cycle."
       />
 
       <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
@@ -164,7 +164,7 @@ export default function Products() {
             Quick-Start Packs
           </p>
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-6">
-            Fixed scope. Fixed price. <GradientText>No scan required.</GradientText>
+            Fixed scope. Fixed price. <GradientText>We scan first, then act.</GradientText>
           </h1>
           <p className="text-lg text-text-secondary leading-relaxed">
             Productized configuration packs that build your tenant baseline directly — no
