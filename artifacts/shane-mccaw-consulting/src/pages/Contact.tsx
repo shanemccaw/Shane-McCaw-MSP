@@ -3,7 +3,6 @@ import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { Layout } from "@/components/Layout";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
-import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
 import { Mail, MapPin, Clock, Send, MessageSquare, ArrowRight } from "lucide-react";
 import { identifyLead, trackEvent } from "@/lib/analytics";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
@@ -451,14 +450,6 @@ export default function Contact() {
                   </li>
                 </ol>
               </div>
-
-              {/* Microsoft Bookings Inline Embed — only shown when configured */}
-              {import.meta.env.VITE_BOOKINGS_URL && (
-                <div className="mt-10" data-testid="bookings-embed-contact">
-                  <h3 className="font-display text-xl font-bold text-text-primary mb-4">Or Book Directly on My Calendar</h3>
-                  <MicrosoftBookingsEmbed minHeight={630} />
-                </div>
-              )}
             </div>
 
             {/* Sidebar */}
