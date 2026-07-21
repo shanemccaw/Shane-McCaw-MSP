@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-21 | ⏳ IN FLIGHT | Reduce Site-Wide Section Spacing | — |
 | 2026-07-21 | ⏳ IN FLIGHT | Contact Page Redesign + Persistent Chat Bubble | — |
 | 2026-07-21 | ✅ DONE | Book Page Restyle — Dark Theme — Book.tsx (the /book page) had 6 occurrences of old light-theme styling (bg-white/bg-[#F7F9FC]/text-[#0A2540]) and zero design-system component usage, the same "never got the Stage 2b treatment" gap already fixed on other pages. Rebuilt onto the real design system (GlassPanel/GradientText/charcoal-1/text-primary/text-secondary/text-tertiary/accent-blue/accent-violet), matching Monitoring.tsx/Checkout.tsx's already-fixed pattern. Also restyled CalendarBooking.tsx — the booking-widget component is used exclusively by Book.tsx (confirmed via grep, no other page renders it), so it was included as the page's own booking UI rather than left as a stark white box embedded in a now-dark page; no other page touched. Pure re-skin — no booking functionality/logic changed. Verified via grep that old light-theme classes (bg-white, #F7F9FC, #0A2540, #0078D4, text-muted-foreground, border-border, bg-slate-*, bg-rose-50/border-rose-200/text-rose-500/700) are fully removed from both files. `shane-mccaw-consulting` typechecks clean (`npx tsc -p tsconfig.json --noEmit`, exit 0). | 42590ead |
 | 2026-07-21 | ⏳ IN FLIGHT | Unify Tenant Signal Catalog into custom_signals | — |
