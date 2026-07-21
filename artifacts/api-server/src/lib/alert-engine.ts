@@ -41,89 +41,6 @@ function getAdminPanelBaseUrl(): string {
   return "http://localhost:80/admin-panel";
 }
 
-// ── Default rules seeded on first startup ────────────────────────────────────
-
-interface DefaultRule {
-  ruleKey: string;
-  label: string;
-  description: string;
-  conditionType: "dlq_backlog" | "billing_failure" | "sla_breach" | "event_bus_backlog" | "job_failure_rate";
-  threshold: number;
-  windowMinutes: number;
-  severity: "warning" | "critical";
-  cooldownMinutes: number;
-  deepLinkPath: string;
-}
-
-const DEFAULT_RULES: DefaultRule[] = [
-  {
-    ruleKey: "dlq_backlog_warning",
-    label: "DLQ Backlog Warning",
-    description: "DLQ has more unresolved items than threshold",
-    conditionType: "dlq_backlog",
-    threshold: 5,
-    windowMinutes: 60,
-    severity: "warning",
-    cooldownMinutes: 60,
-    deepLinkPath: "/system/dlq",
-  },
-  {
-    ruleKey: "dlq_backlog_critical",
-    label: "DLQ Backlog Critical",
-    description: "DLQ has critically many unresolved items",
-    conditionType: "dlq_backlog",
-    threshold: 20,
-    windowMinutes: 60,
-    severity: "critical",
-    cooldownMinutes: 30,
-    deepLinkPath: "/system/dlq",
-  },
-  {
-    ruleKey: "billing_failure_warning",
-    label: "MSP Billing Failure",
-    description: "One or more MSP platform subscriptions have an unresolved payment failure",
-    conditionType: "billing_failure",
-    threshold: 1,
-    windowMinutes: 60,
-    severity: "warning",
-    cooldownMinutes: 240,
-    deepLinkPath: "/system/platform-revenue",
-  },
-  {
-    ruleKey: "sla_breach_warning",
-    label: "SLA Breach Warning",
-    description: "Fulfilment items are past their SLA deadline",
-    conditionType: "sla_breach",
-    threshold: 1,
-    windowMinutes: 60,
-    severity: "warning",
-    cooldownMinutes: 120,
-    deepLinkPath: "/delivery/projects",
-  },
-  {
-    ruleKey: "event_bus_backlog_warning",
-    label: "Webhook Delivery Failures",
-    description: "Outbound webhook deliveries are failing at an elevated rate",
-    conditionType: "event_bus_backlog",
-    threshold: 10,
-    windowMinutes: 30,
-    severity: "warning",
-    cooldownMinutes: 60,
-    deepLinkPath: "/system/observability",
-  },
-  {
-    ruleKey: "job_failure_rate_warning",
-    label: "Background Job Failures",
-    description: "Background jobs are failing at an elevated rate",
-    conditionType: "job_failure_rate",
-    threshold: 5,
-    windowMinutes: 30,
-    severity: "warning",
-    cooldownMinutes: 60,
-    deepLinkPath: "/system/observability",
-  },
-];
-
 // ── Table bootstrapping (idempotent via pool.query) ───────────────────────────
 
 async function ensureAlertTables(): Promise<void> {
@@ -165,25 +82,6 @@ async function ensureAlertTables(): Promise<void> {
     CREATE INDEX IF NOT EXISTS msp_alert_events_fired_at_idx ON msp_alert_events (fired_at);
     CREATE INDEX IF NOT EXISTS msp_alert_rules_condition_type_idx ON msp_alert_rules (condition_type);
   `);
-}
-
-// ── Seed default rules ────────────────────────────────────────────────────────
-
-async function seedDefaultRules(): Promise<void> {
-  for (const rule of DEFAULT_RULES) {
-    await pool.query(
-      `INSERT INTO msp_alert_rules
-         (rule_key, label, description, condition_type, threshold, window_minutes,
-          severity, enabled, delivery_email, delivery_push, cooldown_minutes, deep_link_path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,true,true,true,$8,$9)
-       ON CONFLICT (rule_key) DO NOTHING`,
-      [
-        rule.ruleKey, rule.label, rule.description, rule.conditionType,
-        rule.threshold, rule.windowMinutes, rule.severity,
-        rule.cooldownMinutes, rule.deepLinkPath,
-      ],
-    );
-  }
 }
 
 // ── Condition evaluators ──────────────────────────────────────────────────────
@@ -454,17 +352,17 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Ensure alert tables exist and default rules are seeded. Called once at server
- * startup. Does NOT start any polling loop — evaluation is triggered by the
- * "__system__: Alert Rule Evaluation" seeded Workflow (see seed-system-workflows.ts),
- * which fires evaluateRules() via the alert_evaluate_rules workflow node every 5
- * minutes on its own schedule trigger.
+ * Ensure alert tables exist. Called once at server startup. Does NOT seed any
+ * default rules — all msp_alert_rules configuration must be created deliberately
+ * (admin UI or direct SQL), never auto-populated. Does NOT start any polling loop
+ * either — evaluation is triggered by the "__system__: Alert Rule Evaluation"
+ * seeded Workflow (see seed-system-workflows.ts), which fires evaluateRules() via
+ * the alert_evaluate_rules workflow node every 5 minutes on its own schedule trigger.
  */
 export async function ensureAlertEngineReady(): Promise<void> {
   try {
     await ensureAlertTables();
-    await seedDefaultRules();
-    log.info("alert-engine: tables ensured, default rules seeded");
+    log.info("alert-engine: tables ensured");
   } catch (err) {
     log.warn({ err }, "alert-engine: startup init failed (non-fatal)");
   }
