@@ -15,7 +15,7 @@
  *   />
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +37,12 @@ interface ConfirmModalProps {
   cancelLabel?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void | Promise<void>;
+  // Optional extra content rendered between the description and the footer —
+  // e.g. dynamic input fields the confirm action depends on.
+  children?: ReactNode;
+  // Disables the confirm action without affecting cancel — e.g. required
+  // fields in `children` not yet filled in.
+  confirmDisabled?: boolean;
 }
 
 export function ConfirmModal({
@@ -48,6 +54,8 @@ export function ConfirmModal({
   cancelLabel = "Cancel",
   variant = "default",
   onConfirm,
+  children,
+  confirmDisabled = false,
 }: ConfirmModalProps) {
   const [isPending, setIsPending] = useState(false);
 
@@ -70,10 +78,11 @@ export function ConfirmModal({
             <AlertDialogDescription>{description}</AlertDialogDescription>
           )}
         </AlertDialogHeader>
+        {children && <div className="py-2">{children}</div>}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isPending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            disabled={isPending}
+            disabled={isPending || confirmDisabled}
             onClick={(e) => {
               e.preventDefault();
               void handleConfirm();

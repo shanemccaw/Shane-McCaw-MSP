@@ -82,6 +82,7 @@ import {
   Play,
   Plus,
   Receipt,
+  Rocket,
   Search,
   Send,
   Shield,
@@ -617,6 +618,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: AlertTriangle,
         label: "Alerts",
         href: "/alerts",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: Rocket,
+        label: "Launch Control",
+        href: "/launch-control",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {

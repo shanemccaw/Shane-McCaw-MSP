@@ -136,16 +136,27 @@ router.get(
         return;
       }
 
-      const [tier, customerTier, catalog] = await Promise.all([
+      const [tier, customerTier, catalog, templates] = await Promise.all([
         loadTier(mspId),
         resolveCustomerMonitoringTier(customerId),
         db.select().from(writeActionCatalogTable).orderBy(asc(writeActionCatalogTable.sortOrder)),
+        db
+          .select({
+            templateId: baselineActionTemplatesTable.templateId,
+            requiredVariables: baselineActionTemplatesTable.requiredVariables,
+          })
+          .from(baselineActionTemplatesTable),
       ]);
       const customerTierRank = resolveTierRank(customerTier);
+      // Keyed off write_action_catalog.template_id, not the catalog row's own
+      // id — a catalog row only has non-empty requiredVariables once it's
+      // wired to a real baseline_action_templates row.
+      const requiredVariablesByTemplateId = new Map(templates.map((t) => [t.templateId, t.requiredVariables]));
 
       const actions = catalog.map((row) => ({
         ...row,
         availability: computeAvailability(row, tier, customerTierRank),
+        requiredVariables: row.templateId ? (requiredVariablesByTemplateId.get(row.templateId) ?? []) : [],
       }));
 
       res.json({ actions, customerTier });

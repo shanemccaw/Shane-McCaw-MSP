@@ -59,6 +59,7 @@ import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
 import AlertsPage from "@/pages/alerts";
+import LaunchControlPage from "@/pages/launch-control";
 import MspExecutivePage from "@/pages/msp-executive";
 import MspTimelinePage from "@/pages/msp-timeline";
 import MessageCenterPage from "@/pages/message-center";
@@ -424,6 +425,11 @@ function SlugInnerSwitch() {
       {/* Cross-Tenant Alerts */}
       <Route path="/alerts">
         <ProtectedRoute component={AlertsPage} />
+      </Route>
+
+      {/* M365 Launch Control */}
+      <Route path="/launch-control">
+        <ProtectedRoute component={LaunchControlPage} />
       </Route>
 
       {/* MSP Executive Mode — simplified leadership view: top-risk + top-opportunity
