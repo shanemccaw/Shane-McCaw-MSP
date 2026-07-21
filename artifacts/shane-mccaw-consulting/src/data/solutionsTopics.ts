@@ -30,6 +30,19 @@ export interface SolutionTopic {
    * m365-health is the only topic scored as the full 7-pillar composite.
    */
   healthPillarKeys: string[];
+  /**
+   * Optional standard-SaaS-structure content (currently populated for the "copilot"
+   * topic only — see PLATFORM_BUILD.md's "Copilot & AI Topic Page" entry). When present,
+   * SolutionTopicPage.tsx renders the expanded 8-section layout instead of the default
+   * cold-visitor template. Left undefined for every other topic so they render unchanged.
+   */
+  productOverview?: string;
+  credibilityBody?: string;
+  whyItMattersIntro?: string;
+  howItWorks?: { title: string; description: string }[];
+  whatYouGet?: string[];
+  modulesIntro?: string;
+  finalCtaBody?: string;
 }
 
 export const SOLUTIONS_TOPICS: SolutionTopic[] = [
@@ -40,10 +53,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     icon: Brain,
     pillar: "Copilot readiness",
     gradientPhrase: "Copilot readiness",
-    headlinePrefix: "Most Copilot deployments fail before the first prompt. ",
+    headlinePrefix: "Most Copilot deployments fail. ",
     headlineSuffix: "Yours doesn't have to.",
     subhead:
-      "Copilot surfaces whatever your permission model already exposes. Oversharing, stale group membership, and ungoverned OneDrive links become Copilot's search index — not a hypothetical risk, but the first thing a real rollout uncovers.",
+      "Copilot answers with whatever your permission model already exposes — this scans that exact surface before a rollout finds out the hard way.",
     quizHref: "/copilot-quiz",
     stats: [
       { label: "Copilot readiness pillar", value: "Scored" },
@@ -66,6 +79,43 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         "Hunts anonymous share links, stale guest access, and over-privileged access — the exact surface area Copilot inherits.",
     },
     healthPillarKeys: ["copilot"],
+    productOverview:
+      "Copilot & AI Readiness runs a live, read-only Microsoft Graph API scan against your tenant's actual permission model — SharePoint and OneDrive sharing links, sensitivity label coverage, group membership, and Copilot license assignment. It's the same surface area Copilot's semantic index reads from, so the scan shows you exactly what Copilot could already surface in an answer, before you turn it on for anyone.",
+    credibilityBody:
+      "I wrote the M365 Copilot governance framework NASA distributed agency-wide, and the oversharing, permission-inheritance, and sensitivity-label problems this page scans for are ones I govern inside NASA's own tenant every day — not case studies I read about. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same discipline that governs Copilot at NASA is what's engineered into this scan.",
+    whyItMattersIntro:
+      "An ungoverned Copilot rollout doesn't fail quietly — it fails in front of the exact employee who shouldn't have seen the answer it just gave them.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only Graph API connection. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine reads SharePoint and OneDrive sharing, sensitivity labels, group membership, and Copilot license assignment across your tenant.",
+      },
+      {
+        title: "Findings",
+        description: "Every oversharing exposure, stale permission, and licensing mismatch is logged as a real, inspectable finding — not a scored questionnaire answer.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll up into your real Copilot Readiness pillar score inside the Architecture Health Engine.",
+      },
+      {
+        title: "Remediate",
+        description: "You get the specific fixes, ranked by which one closes the biggest exposure first — and the Security Engine keeps re-checking the same surface after you fix it.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Copilot Readiness pillar score, not a self-reported estimate",
+      "A full oversharing exposure report — every anonymous link, stale permission, and orphaned group Copilot's index can already reach",
+      "A licensing fit read — who actually needs a Copilot seat, and who doesn't",
+      "Zero questionnaires. Every finding comes from a live Graph API scan of your actual tenant.",
+    ],
+    modulesIntro: "Copilot & AI Readiness checks four real surfaces before you flip the switch:",
+    finalCtaBody:
+      "Start a free Assessment and get your real Copilot Readiness score — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
   },
   {
     slug: "security-compliance",

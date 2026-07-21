@@ -63,6 +63,11 @@ export default function SolutionTopicPage() {
 
   if (!topic) return <NotFound />;
 
+  // Standard SaaS 8-section structure (PLATFORM_BUILD.md "Copilot & AI Topic Page" task) —
+  // scoped to the topic that has the extra content fields populated, so the other 7
+  // Solutions/Topic pages keep rendering the original template below, unchanged.
+  const useExpandedStructure = Boolean(topic.productOverview);
+
   const Icon = topic.icon;
 
   const coldHeadline = (
@@ -209,85 +214,215 @@ export default function SolutionTopicPage() {
         </div>
       </section>
 
-      {/* What we look at */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
-          <div>
-            <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-              What this covers
-            </h2>
-            <ul className="space-y-3">
-              {topic.coverage.map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
-                  <span className="text-text-secondary leading-relaxed">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+      {useExpandedStructure ? (
+        <>
+          {/* What This Product Actually Does */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                What This Product Actually Does
+              </h2>
+              <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
+            </div>
+          </section>
 
-          <div>
-            <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-              What's actually at risk
-            </h2>
-            <ul className="space-y-3">
-              {topic.risks.map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-accent-violet shrink-0 mt-0.5" />
-                  <span className="text-text-secondary leading-relaxed">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
+          {/* Built by the Microsoft 365 Architect for NASA */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <GlassPanel className="p-8 sm:p-10">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-4">
+                  Built by the <GradientText>Microsoft 365 Architect</GradientText> for NASA
+                </h2>
+                <p className="text-text-secondary leading-relaxed">{topic.credibilityBody}</p>
+              </GlassPanel>
+            </div>
+          </section>
 
-      {/* Related engine */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <GlassPanel className="p-8 sm:p-10">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
-              Watched continuously by
-            </p>
-            <h3 className="font-display text-2xl font-bold text-text-primary mb-3">
-              {topic.relatedEngine.name}
-            </h3>
-            <p className="text-text-secondary leading-relaxed">
-              {topic.relatedEngine.description}
-            </p>
-          </GlassPanel>
-        </div>
-      </section>
+          {/* Why This Product Matters */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                Why This Product Matters
+              </h2>
+              <p className="text-text-secondary leading-relaxed mb-6">{topic.whyItMattersIntro}</p>
+              <ul className="space-y-3">
+                {topic.risks.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-accent-violet shrink-0 mt-0.5" />
+                    <span className="text-text-secondary leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
 
-      {/* Bottom CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-            See where <GradientText>{topic.title}</GradientText> stands in your tenant
-          </h2>
-          <p className="text-text-secondary mb-8 max-w-xl mx-auto">
-            A free assessment scans against the real Graph API — not a questionnaire. Or start with
-            the {topic.shortLabel.toLowerCase()} quiz for a faster, self-reported read.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link
-              href="/assessment"
-              className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
-              data-track="cta"
-            >
-              Start an Assessment
-            </Link>
-            <Link
-              href="/monitoring"
-              className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
-              data-track="cta"
-            >
-              See Monitoring Pricing
-            </Link>
-          </div>
-        </div>
-      </section>
+          {/* How This Product Works */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                How This Product Works
+              </h2>
+              <ol className="space-y-5">
+                {(topic.howItWorks ?? []).map((step, i) => (
+                  <li key={step.title} className="flex items-start gap-4">
+                    <span className="shrink-0 w-8 h-8 rounded-full glass-panel flex items-center justify-center text-accent-blue text-sm font-semibold font-numeric">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <p className="text-text-primary font-semibold mb-1">{step.title}</p>
+                      <p className="text-text-secondary leading-relaxed">{step.description}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
+          {/* What You Get */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                What You Get
+              </h2>
+              <ul className="space-y-3">
+                {(topic.whatYouGet ?? []).map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
+                    <span className="text-text-secondary leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+
+          {/* Product Modules / Features */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                Product Modules & Features
+              </h2>
+              <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
+              <ul className="space-y-3">
+                {topic.coverage.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
+                    <span className="text-text-secondary leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+
+          {/* Begin Mission Readiness */}
+          <section className="py-20 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto text-center">
+              <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
+                Begin <GradientText>Mission Readiness</GradientText>
+              </h2>
+              <p className="text-text-secondary mb-8 max-w-xl mx-auto">{topic.finalCtaBody}</p>
+              <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <Link
+                  href="/assessment"
+                  className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                  data-track="cta"
+                >
+                  Start an Assessment
+                </Link>
+                <Link
+                  href="/monitoring"
+                  className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
+                  data-track="cta"
+                >
+                  See Monitoring Pricing
+                </Link>
+              </div>
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          {/* What we look at */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  What this covers
+                </h2>
+                <ul className="space-y-3">
+                  {topic.coverage.map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-accent-blue shrink-0 mt-0.5" />
+                      <span className="text-text-secondary leading-relaxed">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  What's actually at risk
+                </h2>
+                <ul className="space-y-3">
+                  {topic.risks.map((item) => (
+                    <li key={item} className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-accent-violet shrink-0 mt-0.5" />
+                      <span className="text-text-secondary leading-relaxed">{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          {/* Related engine */}
+          <section className="py-16 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <GlassPanel className="p-8 sm:p-10">
+                <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+                  Watched continuously by
+                </p>
+                <h3 className="font-display text-2xl font-bold text-text-primary mb-3">
+                  {topic.relatedEngine.name}
+                </h3>
+                <p className="text-text-secondary leading-relaxed">
+                  {topic.relatedEngine.description}
+                </p>
+              </GlassPanel>
+            </div>
+          </section>
+
+          {/* Bottom CTA */}
+          <section className="py-20 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto text-center">
+              <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
+                See where <GradientText>{topic.title}</GradientText> stands in your tenant
+              </h2>
+              <p className="text-text-secondary mb-8 max-w-xl mx-auto">
+                A free assessment scans against the real Graph API — not a questionnaire. Or start with
+                the {topic.shortLabel.toLowerCase()} quiz for a faster, self-reported read.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <Link
+                  href="/assessment"
+                  className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
+                  style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
+                  data-track="cta"
+                >
+                  Start an Assessment
+                </Link>
+                <Link
+                  href="/monitoring"
+                  className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
+                  data-track="cta"
+                >
+                  See Monitoring Pricing
+                </Link>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
     </Layout>
   );
 }
