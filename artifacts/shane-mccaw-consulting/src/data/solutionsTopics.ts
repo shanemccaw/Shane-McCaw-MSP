@@ -441,10 +441,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         // illustrative, inside the panel's badge; governance deliberately equals
         // the primary ring's value so the breakdown reads as one coherent scenario.
         pillarBreakdown: [
-          { label: "Governance", value: 61 },
-          { label: "Compliance", value: 81 },
+          { label: "Governance", value: 49 },
+          { label: "Compliance", value: 32 },
           { label: "Adoption", value: 88 },
-          { label: "Copilot Readiness", value: 66 },
+          { label: "Copilot Readiness", value: 38 },
           { label: "Architecture", value: 79 },
           { label: "Licensing", value: 91 },
           { label: "Security", value: 58 },

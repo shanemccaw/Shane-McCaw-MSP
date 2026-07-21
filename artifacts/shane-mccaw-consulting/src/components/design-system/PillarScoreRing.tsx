@@ -108,7 +108,10 @@ export function PillarScoreRing({
         </text>
       </svg>
       {label && (
-        <span className="text-xs font-medium text-text-secondary text-center leading-tight">
+        <span
+          className="text-xs font-medium text-text-secondary text-center leading-tight break-words"
+          style={{ maxWidth: size }}
+        >
           {label}
         </span>
       )}
