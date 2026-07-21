@@ -207,12 +207,12 @@ export default function Monitoring() {
             Continuous Automated Tenant Intelligence
           </div>
           <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6">
-            Stop Reacting. <GradientText>Start Governing.</GradientText>
+            Stop Finding Out Late. <GradientText>Start Watching Continuously.</GradientText>
           </h1>
           <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
             Six signal engines watch your Microsoft 365 tenant on a recurring Graph-based
             schedule — catching drift, security exposure, health decline, and SLA risk before
-            they reach your clients.
+            they become a real problem.
           </p>
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto mb-14">
             <a
