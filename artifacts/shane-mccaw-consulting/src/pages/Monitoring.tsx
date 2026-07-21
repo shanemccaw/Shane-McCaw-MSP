@@ -14,6 +14,10 @@ import {
 } from "lucide-react";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+// Same connected-step visual language as WorkflowSteps.tsx (design-system component): a
+// gradient circle per step joined by this connector line, so a pipeline with unevenly long
+// step copy reads as one continuous sequence instead of a row of mismatched-height cards.
+const CONNECTOR_BG = { background: "linear-gradient(180deg, var(--accent-blue), rgba(255,255,255,0.08))" };
 const SEAT_PRESETS = [10, 50, 250, 750];
 
 interface MonitoringTypeAttributes {
@@ -23,6 +27,59 @@ interface MonitoringTypeAttributes {
   pricePerUserMonth?: string;
   flatMonthlySurcharge?: string | null;
   tenantTierLabel?: string;
+  includedEngines?: string[] | null;
+  includedFeatures?: string[] | null;
+}
+
+// Checklist copy for `typeAttributes.includedEngines` keys — byte-identical to Home.tsx's own
+// copy of this map (confirmed against the real Engine Registry, api-server/src/lib/engine-registry.ts,
+// 12 keys total — "live_monitor" is NOT one of them and does not appear in either the Engine
+// Registry or the Plan Feature Registry (msp-entitlement.ts PLAN_FEATURE_DEFS), confirmed via
+// grep — so it is never added here; the ~5-min live activity feed differentiator stays
+// represented as page copy below, not a fabricated catalog key). Internal back-office engines
+// (priority, pricing, forecasting, crm, msp) are deliberately omitted from customer-facing copy.
+const ENGINE_CHECKLIST_LABELS: Record<string, string> = {
+  health: "Architecture Health scoring — governance, compliance, adoption, Copilot, and licensing",
+  security: "Security Engine — anonymous links, guest access, OAuth risk, and MFA gaps",
+  drift: "Drift Engine — every admin change fingerprinted against your baseline",
+  sla: "SLA Engine — support commitments tracked against the clock",
+  scope_creep: "Scope Creep Engine — live work checked against your signed SOW",
+  monitoring: "Scheduled tenant scans on a real schedule",
+  sales_offer: "Recommendation Engine — tells you what to fix next",
+};
+
+// Checklist copy for `typeAttributes.includedFeatures` keys — byte-identical to Home.tsx's copy
+// (confirmed against msp-entitlement.ts PLAN_FEATURE_DEFS). Unmapped keys fall back to a
+// humanized version of the raw key rather than being silently dropped.
+const FEATURE_CHECKLIST_LABELS: Record<string, string> = {
+  advanced_signals: "Advanced tenant signal rules and priority scoring",
+  custom_workflows: "Custom automation workflows",
+  sla_scope_creep_custom_rules: "MSP-authored SLA / Scope-Creep override rules",
+  sales_offers: "Sales Offer Engine recommendations",
+  custom_bundle_composition: "Custom multi-package monitoring bundles",
+};
+
+function humanizeFeatureKey(key: string): string {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Real, per-tier differentiator source — the same live typeAttributes.includedEngines/
+// includedFeatures the admin Product Catalog's Monitoring Tier editor writes and every other
+// entitlement check in the platform reads. Previously this page instead rendered the row's
+// static `features` text column, which was never kept in sync with real per-tier entitlements
+// (Basic and Enhanced both showed the identical "Scheduled tenant scans on a real schedule"
+// line) — Home.tsx's own monitoring-package teaser already used this correct, real mechanism.
+function buildTierChecklist(attrs: MonitoringTypeAttributes): string[] {
+  const engineItems = (attrs.includedEngines ?? [])
+    .map((key) => ENGINE_CHECKLIST_LABELS[key])
+    .filter((label): label is string => Boolean(label));
+  const featureItems = (attrs.includedFeatures ?? []).map(
+    (key) => FEATURE_CHECKLIST_LABELS[key] ?? humanizeFeatureKey(key),
+  );
+  return [...engineItems, ...featureItems];
 }
 
 // Tenant-facing engines only — the platform's engine registry runs 12 engines total, but
@@ -235,8 +292,8 @@ export default function Monitoring() {
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
             <StatPanel label="Engines shown below" value={ENGINES.length} />
-            <StatPanel label="Scheduled checks" value="Hourly–Daily" />
-            <StatPanel label="Critical events (Enhanced/Premium)" value="~5 min" />
+            <StatPanel label="Check cadence" value={<span className="whitespace-nowrap">Hourly–Daily</span>} />
+            <StatPanel label="Critical alerts (Enhanced+)" value={<span className="whitespace-nowrap">~5 min</span>} />
             <StatPanel label="Remediation" value="Automated" />
           </div>
         </div>
@@ -311,10 +368,14 @@ export default function Monitoring() {
               package — while critical changes on Enhanced/Premium tiers are also caught
               through a live activity feed that reviews your tenant's audit log roughly every
               five minutes: not an instant feed, but close enough that drift and exposure don't
-              sit unnoticed for a quarter. Either way, anything that crosses a configured
-              severity threshold — including a drop in your Health Engine score — is picked up
-              by the same alert-dispatch sweep that runs every fifteen minutes, so it reaches
-              the right inbox on its own instead of waiting for someone to open the dashboard.
+              sit unnoticed for a quarter. On top of your own tenant telemetry, we also track
+              Microsoft's own Message Center and Service Health feed for your tenant as that
+              access rolls out — so a Microsoft-side outage or planned service change is
+              already on our radar, not something you have to go check yourself. Either way,
+              anything that crosses a configured severity threshold — including a drop in your
+              Health Engine score — is picked up by the same alert-dispatch sweep that runs
+              every fifteen minutes, so it reaches the right inbox on its own instead of waiting
+              for someone to open the dashboard.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -374,28 +435,33 @@ export default function Monitoring() {
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">How Monitoring Works</h2>
             <p className="text-text-secondary">From Microsoft Graph API to your dashboard — detection, scoring, and alerting run automatically on every scheduled check.</p>
           </div>
-          <div className="flex flex-col md:flex-row items-stretch gap-1">
+          <ol className="relative max-w-2xl mx-auto">
             {PIPELINE.map((step, i) => {
               const Icon = step.icon;
               return (
-                <div key={step.label} className="flex flex-col md:flex-row items-start md:items-stretch flex-1">
-                  <div className="flex flex-col flex-1 p-5 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-3">
-                      <Icon className="w-4 h-4 text-accent-blue" />
-                    </div>
-                    <div className="text-[10px] font-bold text-accent-blue uppercase tracking-widest mb-1">Step {i + 1}</div>
-                    <div className="text-sm font-bold text-text-primary mb-1.5">{step.label}</div>
-                    <p className="text-xs text-text-secondary leading-relaxed">{step.desc}</p>
-                  </div>
+                <li key={step.label} className="relative flex gap-5 pb-10 last:pb-0">
                   {i < PIPELINE.length - 1 && (
-                    <div className="hidden md:flex items-center px-1 text-text-tertiary">
-                      <ChevronRight className="w-5 h-5" />
-                    </div>
+                    <span
+                      className="absolute left-[22px] top-11 bottom-0 w-px"
+                      style={CONNECTOR_BG}
+                      aria-hidden="true"
+                    />
                   )}
-                </div>
+                  <span
+                    className="relative z-10 shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-white"
+                    style={GRADIENT_BG}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </span>
+                  <div className="pt-1">
+                    <div className="text-[10px] font-bold text-accent-blue uppercase tracking-widest mb-1">Step {i + 1}</div>
+                    <div className="text-base font-bold text-text-primary mb-1.5">{step.label}</div>
+                    <p className="text-sm text-text-secondary leading-relaxed">{step.desc}</p>
+                  </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         </div>
       </section>
 
@@ -614,6 +680,7 @@ export default function Monitoring() {
                   const attrs = (matched.typeAttributes ?? {}) as MonitoringTypeAttributes;
                   const price = computeMonthlyPrice(matched, seatCount);
                   const isHighlighted = matched.highlighted;
+                  const checklist = buildTierChecklist(attrs);
 
                   return (
                     <div
@@ -657,9 +724,9 @@ export default function Monitoring() {
                         <div className="text-xs text-text-secondary mt-1">For {seatCount.toLocaleString()} licensed users</div>
                       </div>
 
-                      {matched.features && matched.features.length > 0 && (
+                      {checklist.length > 0 && (
                         <ul className="space-y-2.5 mb-6 flex-grow">
-                          {matched.features.slice(0, 4).map((f, i) => (
+                          {checklist.map((f, i) => (
                             <li key={i} className="flex items-start gap-2 text-sm text-text-secondary">
                               <CheckCircle2 className="w-4 h-4 text-accent-blue mt-0.5 shrink-0" />
                               <span>{f}</span>
