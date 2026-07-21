@@ -380,7 +380,7 @@ export default function SolutionTopicPage() {
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10">
                 <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
-                  Watched continuously by
+                  Powered by
                 </p>
                 <h3 className="font-display text-2xl font-bold text-text-primary mb-3">
                   {topic.relatedEngine.name}
