@@ -384,10 +384,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "Security Engine re-checks the same surface after you fix it",
         },
       ],
-      // Best-guess catalog slugs (document_product rows are admin-managed DB
-      // data with no in-repo seed) — unresolved slugs hide silently by design;
-      // Shane confirms/corrects against the live Product Catalog.
-      docProductSlugs: ["copilot-readiness-report", "copilot-governance-framework-plan"],
+      // Verified against the LIVE public catalog (/api/services?type=
+      // document_product, 2026-07-21): Copilot Readiness Assessment (document)
+      // $499 + Copilot Enablement Plan $999 — the two Copilot-specific rows.
+      docProductSlugs: ["copilot-readiness-assessment-doc", "copilot-enablement-plan"],
     },
   },
   {
@@ -602,9 +602,9 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "Scans repeat on a scheduled cadence — a fixed finding that regresses gets caught again",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["m365-security-assessment-report", "security-remediation-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): Security Posture
+      // Report $299 + Security Hardening Plan $999 — the two security-specific rows.
+      docProductSlugs: ["security-posture-report-doc", "security-hardening-plan"],
     },
   },
   {
@@ -1029,9 +1029,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "Drift Engine keeps tracking the same architecture as it moves",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["sharepoint-architecture-report", "sharepoint-governance-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): no SharePoint-
+      // titled documents exist, so these are the two whose real scope this page
+      // covers — Data Exposure Risk Report $349 (the oversharing/permission
+      // surface) + Drift & Change History Report $149 (this page's Drift Engine).
+      docProductSlugs: ["data-exposure-risk-report", "drift-change-history-report-onetime"],
     },
   },
   {
@@ -1225,9 +1227,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "The same scan runs again on your next scheduled evaluation to confirm it stayed fixed",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["power-platform-governance-report", "power-platform-governance-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): no Power
+      // Platform document products exist, so the block hides entirely (its
+      // component renders nothing for an empty/unresolved list) rather than
+      // listing generic documents under a Power Platform heading.
+      docProductSlugs: [],
     },
   },
   {
@@ -1422,9 +1426,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "Health Engine keeps re-checking the same surface after you fix it",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["teams-governance-report", "teams-governance-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): no Teams
+      // document products exist, so the block hides entirely (its component
+      // renders nothing for an empty/unresolved list) rather than listing
+      // generic documents under a Teams heading.
+      docProductSlugs: [],
     },
   },
   {
@@ -1641,9 +1647,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           afterLabel: "After cutover",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["migration-readiness-report", "migration-cutover-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): Tenant-to-Tenant
+      // Migration Runbook $1,499 + Identity Modernization Plan $999 (identity
+      // alignment is this page's real design component).
+      docProductSlugs: ["tenant-to-tenant-migration-runbook", "identity-modernization-plan"],
     },
   },
   {
@@ -1870,9 +1877,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
           note: "Write-back remediation runs only where configured and enabled for your tenant; everything else comes back as a ranked, specific fix",
         },
       ],
-      // Best-guess slugs (no in-repo doc-product seed) — unresolved slugs hide
-      // silently; Shane confirms against the live catalog.
-      docProductSlugs: ["m365-health-report", "m365-tenant-roadmap-plan"],
+      // Verified against the LIVE public catalog (2026-07-21): Full Readiness
+      // Report $399 (the composite read) + License Optimization Report $199
+      // (this page's waste claim) + Executive Summary $149 (the Executive-tab
+      // framing above).
+      docProductSlugs: ["full-readiness-report", "license-optimization-report", "exec-summary-report"],
     },
   },
 ];
