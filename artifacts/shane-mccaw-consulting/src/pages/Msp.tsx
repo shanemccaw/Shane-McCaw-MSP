@@ -26,7 +26,7 @@ interface MspTier {
   slug: string;
   name: string;
   tagline: string | null;
-  price: number;
+  price: number | null;
   billingType: string | null;
   tenantAllowance: number | null;
   aiCreditAllowance: number | null;
@@ -49,7 +49,8 @@ function normalizeTierCapabilities(
     .map(([key]) => key);
 }
 
-function formatPrice(dollars: number, billingType: string | null): string {
+function formatPrice(dollars: number | null, billingType: string | null): string {
+  if (dollars === null || dollars === undefined) return "Contact for pricing";
   const formatted = dollars % 1 === 0
     ? `$${dollars.toLocaleString()}`
     : `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
