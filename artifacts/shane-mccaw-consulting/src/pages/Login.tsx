@@ -41,7 +41,16 @@ export default function Login() {
         return;
       }
       const data = (await res.json()) as GateResult;
-      setResult(data);
+      // Only the redirect state carries a usable portal URL; treat anything else
+      // (redirect with an empty/missing portalUrl, or an unexpected shape) as
+      // "proceed" so the user always gets feedback. Without this, an empty
+      // portalUrl set `result` — hiding the form — while matching none of the
+      // render branches, leaving a blank, feedback-less screen on submit.
+      if (data.action === "redirect" && data.portalUrl) {
+        setResult(data);
+      } else {
+        setResult({ action: "proceed" });
+      }
     } catch {
       setErrorMsg("Network error. Please check your connection and try again.");
     } finally {

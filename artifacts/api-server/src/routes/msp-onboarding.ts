@@ -39,6 +39,7 @@ import { eq, and, isNull, gte, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
+import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 import { z } from "zod";
@@ -269,9 +270,16 @@ router.post(
     }
 
     if (mspUser.mspStatus === "active" || mspUser.mspStatus === "trial") {
+      // Reseller MSPs redirect to their own portal domain; the direct-business
+      // MSP (mspDomain typically null) falls back to the platform's canonical
+      // portal URL. Use getPortalBaseUrl() — NOT a raw process.env.PORTAL_BASE_URL
+      // read — so a deployed environment that sets REPLIT_DOMAINS instead of an
+      // explicit PORTAL_BASE_URL still resolves to a real URL. A bare env read
+      // returns "" there, which the /login gate consumer renders as a blank,
+      // feedback-less screen.
       const portalUrl = mspUser.mspDomain
         ? `https://${mspUser.mspDomain}`
-        : process.env.PORTAL_BASE_URL ?? "";
+        : getPortalBaseUrl();
 
       res.json({
         action: "redirect",
