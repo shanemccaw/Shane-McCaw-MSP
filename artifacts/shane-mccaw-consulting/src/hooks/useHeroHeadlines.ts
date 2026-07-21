@@ -19,7 +19,11 @@ const PAUSE_MS = 2500;
  * one character at a time. Falls back to a single static headline if the API
  * returns nothing (e.g. pre-migration empty table) or fails.
  */
-export function useTypewriterHeadline(): { leadDisplayed: string; gradientDisplayed: string } {
+export function useTypewriterHeadline(): {
+  leadDisplayed: string;
+  gradientDisplayed: string;
+  headlines: HeroHeadline[];
+} {
   const [headlines, setHeadlines] = useState<HeroHeadline[]>([FALLBACK_HEADLINE]);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const [charCount, setCharCount] = useState(0);
@@ -70,5 +74,6 @@ export function useTypewriterHeadline(): { leadDisplayed: string; gradientDispla
   return {
     leadDisplayed: typed.slice(0, current.leadText.length),
     gradientDisplayed: typed.slice(current.leadText.length),
+    headlines,
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useLayoutEffect } from "react";
 import { Link } from "wouter";
 import {
   ShieldCheck,
@@ -289,7 +289,40 @@ export default function Home() {
 
   const [activeCatalogTab, setActiveCatalogTab] = useState<"monitoring" | "assessments" | "retainers">("monitoring");
   const [seatCount, setSeatCount] = useState<number>(25);
-  const { leadDisplayed, gradientDisplayed } = useTypewriterHeadline();
+  const { leadDisplayed, gradientDisplayed, headlines } = useTypewriterHeadline();
+
+  // Measures every candidate headline's actual rendered height (off-screen, visibility:hidden
+  // so layout is still computed) and reserves that max as the h1's min-height, instead of a
+  // guessed Tailwind min-h that can't account for every headline wrapping differently per
+  // viewport width. Re-measures on resize since wrap points shift with width. Runs in
+  // useLayoutEffect (before paint) so the reserved space is in place before typing starts.
+  const heroMeasureRef = useRef<HTMLDivElement>(null);
+  const [heroMinHeight, setHeroMinHeight] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const container = heroMeasureRef.current;
+      if (!container) return;
+      const max = Array.from(container.children).reduce(
+        (tallest, el) => Math.max(tallest, (el as HTMLElement).offsetHeight),
+        0,
+      );
+      if (max > 0) setHeroMinHeight(max);
+    };
+
+    measure();
+
+    let resizeTimeout: ReturnType<typeof setTimeout>;
+    const onResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(measure, 150);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, [headlines]);
 
   const assessments = services.filter((s) => s.serviceType === "assessment");
   const retainers = services.filter((s) => s.serviceType === "retainer");
@@ -710,7 +743,24 @@ export default function Home() {
             Built by a Former NASA M365 Architect
           </div>
 
-          <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6 min-h-[1.2em] sm:min-h-[2.4em]">
+          <div
+            ref={heroMeasureRef}
+            aria-hidden="true"
+            className="font-display text-4xl sm:text-6xl font-bold tracking-tight leading-tight max-w-4xl mx-auto invisible"
+            style={{ height: 0, overflow: "hidden" }}
+          >
+            {headlines.map((h, i) => (
+              <div key={i}>
+                {h.leadText}
+                {h.gradientText}
+              </div>
+            ))}
+          </div>
+
+          <h1
+            className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mx-auto mb-6 min-h-[1.2em] sm:min-h-[2.4em]"
+            style={heroMinHeight ? { minHeight: `${heroMinHeight}px` } : undefined}
+          >
             {leadDisplayed}
             <GradientText>{gradientDisplayed}</GradientText>
             <span
