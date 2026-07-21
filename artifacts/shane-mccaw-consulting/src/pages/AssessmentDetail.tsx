@@ -1,4 +1,4 @@
-import { useSearch, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, Building2, Shield,
   Zap, Star, Award, Rocket, DollarSign, AlertTriangle, Target,
@@ -143,9 +143,11 @@ const WHY_SHANE_CARDS = [
 ];
 
 export default function AssessmentDetail() {
-  const search = useSearch();
-  const params = new URLSearchParams(search);
-  const slug = params.get("product") || "";
+  // Route is /assessments/:slug (path-based) — read the path param, not a
+  // ?product= query string. The checkout-path migration (475fd697) updated the
+  // outbound checkout link here but left this inbound read on the old query-string
+  // format, so every /assessments/:slug URL resolved to an empty slug → NotFound.
+  const { slug = "" } = useParams<{ slug: string }>();
 
   const { assessmentOffers, loading, error } = useCatalog();
 
@@ -180,7 +182,7 @@ export default function AssessmentDetail() {
           description: service.description ?? undefined,
           price: service.basePrice ?? service.price ?? "",
           priceCurrency: "USD",
-          url: `https://shanemccawconsulting.com/assessment/details?product=${slug}`,
+          url: `https://shanemccawconsulting.com/assessments/${slug}`,
           seller: { "@type": "Person", name: "Shane McCaw", jobTitle: "Lead Microsoft 365 Architect" },
           itemOffered: { "@type": "Service", name: service.name, description: service.description ?? undefined },
         }}

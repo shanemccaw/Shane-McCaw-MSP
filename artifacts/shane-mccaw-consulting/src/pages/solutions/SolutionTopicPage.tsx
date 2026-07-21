@@ -20,6 +20,7 @@ import { PersonalizedContent } from "@/components/PersonalizedContent";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useHealthPillars, useLatestPresentation, usePortalUrl, useQuizOfferData } from "@/hooks/usePersonalizationData";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
+import { useCatalog } from "@/hooks/useCatalog";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import { trackEvent } from "@/lib/analytics";
 import NotFound from "@/pages/not-found";
@@ -177,9 +178,10 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
  * Real document products for a flagship topic, resolved live from the catalog by slug
  * (name, price, and description all come from the API response — never hardcoded, per
  * the no-hardcoding rule). A priced listing, deliberately with NO per-card checkout
- * link: Checkout.tsx resolves slugs against monitoring/retainer/msp/assessment tiers
- * only (useCatalog), so a /checkout/<doc-product-slug> link would dead-end at its
- * not-found step. Renders nothing while loading or when no listed slug resolves to a
+ * link: Checkout.tsx resolves slugs against monitoring/retainer/msp/config_pack/
+ * assessment tiers only (useCatalog) — document_product is NOT among them, so a
+ * /checkout/<doc-product-slug> link would dead-end at its not-found step. Renders
+ * nothing while loading or when no listed slug resolves to a
  * live catalog row: no empty state, no fabricated products.
  */
 function FlagshipDocProducts({ slugs, heading }: { slugs: string[]; heading: FlagshipHeading }) {
@@ -234,7 +236,15 @@ export default function SolutionTopicPage() {
   const { score: overallHealthScore, pillars } = useHealthPillars();
   const { presentation } = useLatestPresentation();
   const { portalUrl } = usePortalUrl();
-  const { services: assessmentServices } = useServices({ type: "assessment" });
+  // Source assessments from the canonical public catalog (/api/catalog/assessments,
+  // filtered on isPublic=true) — the SAME source the Assessments page and the
+  // /assessments/:slug detail page (AssessmentDetail) resolve against. The generic
+  // /api/services?type=assessment feed used previously filters on a DIFFERENT column
+  // (visibility='public', independent of isPublic), so when those diverge it returned
+  // no assessment rows here, leaving matchedAssessment null and dead-ending the topic's
+  // "Get a Real Assessment" CTA on the generic /assessment list instead of the specific
+  // assessment page it links to.
+  const { assessmentOffers: assessmentServices } = useCatalog();
 
   // Real, topic-relevant Assessment for the funnel-explainer CTA (Real Projects +
   // Assessments CTAs on Topic Pages task) — matched by the same keyword approach

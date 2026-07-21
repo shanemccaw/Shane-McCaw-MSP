@@ -32,12 +32,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier, type AssessmentOffer } from "@/hooks/useCatalog";
+import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier, type ConfigPackTier, type AssessmentOffer } from "@/hooks/useCatalog";
 import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
-type AnyTier = MonitoringTier | RetainerTier | MspTier | AssessmentOffer;
+type AnyTier = MonitoringTier | RetainerTier | MspTier | ConfigPackTier | AssessmentOffer;
 
 function tierToService(t: AnyTier) {
   const isFree = "isFree" in t ? t.isFree : false;
@@ -243,8 +243,8 @@ export default function Checkout() {
   const sessionParam = params.get("session");
   const seats = Math.max(1, parseInt(params.get("seats") ?? "1", 10) || 1);
 
-  // Catalog data (all four service types)
-  const { monitoringTiers, retainerTiers, mspTiers, assessmentOffers, loading: catalogLoading, error: catalogError } = useCatalog();
+  // Catalog data (all purchasable service types)
+  const { monitoringTiers, retainerTiers, mspTiers, configPackTiers, assessmentOffers, loading: catalogLoading, error: catalogError } = useCatalog();
 
   const [step, setStep] = useState<Step>("loading");
   const [service, setService] = useState<ReturnType<typeof tierToService> | null>(null);
@@ -281,7 +281,7 @@ export default function Checkout() {
       return;
     }
 
-    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...mspTiers, ...assessmentOffers];
+    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...mspTiers, ...configPackTiers, ...assessmentOffers];
     const found = allTiers.find((t) => t.slug === slug);
 
     if (!found) {
@@ -361,7 +361,7 @@ export default function Checkout() {
     setStep("guest-info");
   // checkoutStatus and sessionParam deliberately excluded so we only evaluate once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers, assessmentOffers]);
+  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers, configPackTiers, assessmentOffers]);
 
   // Fetch (or refetch) the admin-consent URL whenever the sessionId changes.
   // This ensures the URL carries the correct `state` parameter even when
