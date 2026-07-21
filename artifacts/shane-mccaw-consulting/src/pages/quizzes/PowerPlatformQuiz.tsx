@@ -1,14 +1,18 @@
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
+import { StatPanel } from "@/components/design-system/StatPanel";
 import {
   CheckCircle, Cpu, AlertTriangle, ShieldCheck, Users,
-  Building2, ArrowRight, FileText, BarChart3, Award, Layers,
+  Building2, ArrowRight, FileText, BarChart3, Layers,
   GitBranch, Lock, BookOpen, Zap, ClipboardList, Target,
   Star, Download, TrendingUp, Settings2,
 } from "lucide-react";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 const config: QuizConfig = {
   quizType: "power-platform",
@@ -158,58 +162,49 @@ export default function PowerPlatformQuiz() {
       />
 
       {/* ── 1. Hero ── */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540] pt-[130px] pb-[110px]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
-        />
-
-        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
-            <Cpu className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Power Platform Maturity Assessment</span>
+      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-4xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <Cpu className="w-4 h-4" />
+            Power Platform Maturity Assessment
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
-            Your Power Platform Is{" "}
-            <span className="text-[#00B4D8]">Creating Value</span>
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
+            Your Power Platform Is <GradientText>Creating Value</GradientText>
             <br className="hidden md:block" /> or Creating Risk.
           </h1>
 
-          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+          <p className="text-text-secondary text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
             Ungoverned Power Platform environments accumulate shadow IT, broken flows, and unmanaged data connections — often without anyone realising until it becomes a governance failure or a compliance exposure.
           </p>
-          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same diagnostic framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your practice stands across five maturity dimensions before Copilot Studio, AI Builder, or an enterprise-scale rollout begins.
+          <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your practice stands across five maturity dimensions before Copilot Studio, AI Builder, or an enterprise-scale rollout begins.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
             {[
               { value: "10", label: "targeted questions" },
               { value: "5", label: "maturity dimensions" },
               { value: "Free", label: "personalised PDF report" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
-                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
-              </div>
+              <StatPanel key={stat.label} label={stat.label} value={stat.value} className="min-w-[170px] text-left" />
             ))}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-6">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+              data-track="cta"
+              className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
             >
               Take the Free Assessment
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
               href="/book"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
+              data-track="cta"
+              className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary font-semibold text-sm border border-glass-border px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
             >
               Book a Discovery Call
             </a>
@@ -217,8 +212,8 @@ export default function PowerPlatformQuiz() {
 
           <div className="flex flex-wrap justify-center gap-6">
             {["5 minutes", "Free PDF report", "No account required", "No sales call"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-white/40 text-sm">
-                <CheckCircle className="w-4 h-4 text-[#0078D4]" />
+              <div key={item} className="flex items-center gap-2 text-text-tertiary text-sm">
+                <CheckCircle className="w-4 h-4 text-accent-blue" />
                 {item}
               </div>
             ))}
@@ -227,50 +222,46 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 2. Why This Assessment Exists ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most Power Platform environments are ungoverned. Most organisations don't know it until something breaks.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Microsoft's low-code platform is powerful and accessible — which is exactly why it creates problems at scale. When any employee can build an app or flow without governance guardrails, the result is app sprawl, data exposure, and automation that fails silently in production.
           </p>
           <div className="grid md:grid-cols-2 gap-6">
             {[
               {
                 icon: AlertTriangle,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "App sprawl accumulates faster than governance frameworks can keep up",
                 body: "Hundreds of undocumented solutions running on production data — with no owner, no monitoring, and no remediation path. Shadow development flourishes when any user can build with no IT visibility and no security review. The result is a catalogue of technical debt, not a governed practice.",
               },
               {
                 icon: Lock,
-                colour: "bg-orange-500/10 text-orange-600",
                 title: "DLP gaps leave sensitive connectors exposed to unmanaged makers",
                 body: "DLP policies that only cover the default environment, or that were configured once and never reviewed, leave sensitive data connectors open to any maker who finds them. The gap is invisible in the admin centre — until a data exposure incident surfaces it.",
               },
               {
                 icon: Settings2,
-                colour: "bg-violet-500/10 text-violet-600",
                 title: "ALM absence means production critical flows have no recovery path",
                 body: "When makers build directly in the default environment and promote without a test cycle, version control is absent and rollback is manual. A broken flow in production has no documented fix path — and may have been built by someone who has since left the organisation.",
               },
               {
                 icon: Zap,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "Ungoverned Power Platform becomes an AI readiness blocker",
                 body: "Copilot Studio and AI Builder deployments require a governed, monitored Power Platform foundation. App sprawl, absent ALM, and unmanaged connectors are not just current risks — they are blockers to the AI automation investments your organisation is planning.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -279,13 +270,13 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 3. Who This Is For ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where Power Platform governance is falling behind adoption.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             If your organisation is in any of these categories, you need this assessment before your next Power Platform initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -302,7 +293,7 @@ export default function PowerPlatformQuiz() {
               },
               {
                 icon: Target,
-                title: "Regulated industries",
+                title: "Compliance-driven environments",
                 body: "Healthcare and financial services environments where Power Platform governance is a compliance requirement — and where maker permissions and data residency controls must be documented and defensible.",
               },
               {
@@ -323,12 +314,12 @@ export default function PowerPlatformQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                <div key={i} className="bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -337,12 +328,12 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 4. How It Works ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to maturity report in under five minutes.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            Ten questions. Five maturity dimensions. A NASA-grade scoring model. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">How It Works</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">From first question to maturity report in under five minutes.</h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five maturity dimensions. A scoring model built by the M365 Architect at NASA. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
@@ -358,8 +349,8 @@ export default function PowerPlatformQuiz() {
               },
               {
                 icon: Star,
-                title: "NASA-grade scoring model",
-                desc: "Your answers are weighted and scored using the same diagnostic framework applied at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
+                title: "Scoring built by a NASA architect",
+                desc: "Your answers are weighted and scored using the same diagnostic framework Shane applies as M365 Architect at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
               },
               {
                 icon: FileText,
@@ -380,12 +371,12 @@ export default function PowerPlatformQuiz() {
               const Icon = item.icon;
               return (
                 <div key={i} className="flex gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                    <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.desc}</p>
                   </div>
                 </div>
               );
@@ -394,7 +385,8 @@ export default function PowerPlatformQuiz() {
           <div className="mt-14 text-center">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+              data-track="cta"
+              className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
               Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -403,65 +395,68 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 5. Five Maturity Dimensions ── */}
-      <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Maturity Dimensions</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Maturity Dimensions</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
+            What the assessment <GradientText>measures</GradientText> — and why it matters.
+          </h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Power Platform practice is governed, scalable, and AI-ready — or carrying technical debt and compliance risk that compounds with every new app and flow added.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {DIMENSIONS.map((dim) => (
-              <div key={dim.title} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <div key={dim.title} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-2 h-10 rounded-full ${dim.colour}`} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dim.label}</p>
-                    <h3 className="font-extrabold text-lg text-[#0A2540]">{dim.title}</h3>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">{dim.label}</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">{dim.title}</h3>
                   </div>
                 </div>
                 <ul className="space-y-2">
                   {dim.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-slate-500 leading-relaxed">
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <li key={i} className="flex gap-2 text-sm text-text-secondary leading-relaxed">
+                      <CheckCircle className="w-4 h-4 text-accent-blue flex-shrink-0 mt-0.5" />
                       {b}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <div className="bg-[#0A2540] rounded-2xl border border-[#0A2540] p-6 flex flex-col justify-between">
+            <GlassPanel className="p-6 flex flex-col justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-2 h-10 rounded-full bg-primary" />
+                  <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-white/40">Your Output</p>
-                    <h3 className="font-extrabold text-lg text-white">Your Report</h3>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
                   </div>
                 </div>
-                <p className="text-white/60 text-sm leading-relaxed">
+                <p className="text-text-secondary text-sm leading-relaxed">
                   All five dimensions scored, ranked by maturity risk, and mapped to a tailored service recommendation. Personalised PDF delivered to your inbox the moment you finish.
                 </p>
               </div>
               <button
                 onClick={() => setModalOpen(true)}
-                className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
+                data-track="cta"
+                className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
                 Start Assessment <ArrowRight className="w-4 h-4" />
               </button>
-            </div>
+            </GlassPanel>
           </div>
         </div>
       </section>
 
       {/* ── 6. What You Receive ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">What You Receive</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A personalised Power Platform maturity report. Free. Instant.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14 text-lg">
             Not a generic score. Not a newsletter signup. A real diagnostic report — built on the same framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -509,13 +504,13 @@ export default function PowerPlatformQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                <div key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl border border-white/[0.06] p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                    <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                   </div>
                 </div>
               );
@@ -525,13 +520,13 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 7. Inside Your PDF Report ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Inside Your PDF Report</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Inside Your PDF Report</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A structured maturity diagnostic — not a marketing brochure.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             Your PDF is structured as a professional diagnostic document — designed to be shared with IT leadership, a procurement committee, or an executive sponsor, not just filed in a personal inbox.
           </p>
           <div className="grid md:grid-cols-2 gap-4">
@@ -567,11 +562,11 @@ export default function PowerPlatformQuiz() {
                 desc: "Matched service recommendations — Power Platform Quick-Start, Governance Foundations, or Copilot Readiness — based on your exact maturity tier and gap profile.",
               },
             ].map((item) => (
-              <div key={item.num} className="flex gap-4 bg-white/5 border border-white/10 rounded-2xl p-5">
-                <div className="text-4xl font-black text-primary/20 leading-none flex-shrink-0 w-10">{item.num}</div>
+              <div key={item.num} className="flex gap-4 bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                <div className="font-numeric text-4xl font-bold text-white/10 leading-none flex-shrink-0 w-12">{item.num}</div>
                 <div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -581,7 +576,7 @@ export default function PowerPlatformQuiz() {
               href="/power-platform-assessment-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-glass-border px-6 py-2.5 text-sm font-semibold text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
             >
               <Download className="w-4 h-4" />
               View Sample Report (PDF)
@@ -591,56 +586,51 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 8. Why Shane ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why Shane McCaw</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why Shane McCaw</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             This framework was built from 30 years of doing this work — not reading about it.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Shane McCaw is not a generalist consultant who added Power Platform to a service catalogue. He has spent three decades building and governing Microsoft automation environments for some of the most demanding and regulated organisations in the world.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
                 icon: Star,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "Lead M365 Architect at NASA",
-                body: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants — a 60,000-user environment operating under some of the federal government's strictest security requirements.",
+                body: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants — a 60,000-user environment where citizen development runs at enterprise scale.",
               },
               {
                 icon: TrendingUp,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "30-year Microsoft ecosystem veteran",
                 body: "Three decades across every generation of the Microsoft stack — from on-premises SharePoint to modern Power Platform, Copilot Studio, and Dataverse at enterprise scale.",
               },
               {
                 icon: Users,
-                colour: "bg-violet-500/10 text-violet-600",
                 title: "Senior-only delivery",
                 body: "No juniors, no project managers as intermediaries. Every assessment and engagement is delivered personally by Shane — the same expert you read about on this page.",
               },
               {
                 icon: ShieldCheck,
-                colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
                 body: "Deep experience in healthcare and financial services environments where Power Platform governance, compliance, and audit-readiness are non-negotiable requirements.",
               },
               {
                 icon: ClipboardList,
-                colour: "bg-green-500/10 text-green-600",
                 title: "Architecture-first methodology",
                 body: "Shane's approach starts with the platform architecture, not the tooling. Every recommendation is grounded in sustainable governance design, not quick fixes or generic best practices.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -649,22 +639,27 @@ export default function PowerPlatformQuiz() {
       </section>
 
       {/* ── 9. CTA Reinforcement ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Your Power Platform maturity determines your automation reliability, your compliance posture, and your AI readiness.
+      <section className="border-t border-white/[0.06] py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            Your Power Platform maturity determines your automation reliability, your compliance posture, and your <GradientText>AI readiness</GradientText>.
           </h2>
-          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-3 leading-relaxed">
             Most organisations discover their Power Platform problems when they try to scale — when Copilot Studio deployment begins, when a compliance audit starts, or when a critical flow fails in production and nobody knows how to fix it.
           </p>
-          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-10 leading-relaxed">
             This assessment takes five minutes. The PDF report is free. The maturity gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
-          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
+          <button
+            onClick={() => setModalOpen(true)}
+            data-track="cta"
+            className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+            style={GRADIENT_BG}
+          >
             Take the Free Assessment Now
-          </CTAButton>
-          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
+          </button>
+          <p className="text-text-tertiary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 

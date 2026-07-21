@@ -1,13 +1,17 @@
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
+import { StatPanel } from "@/components/design-system/StatPanel";
 import {
   CheckCircle, Shield, Building2, Users, AlertTriangle, FileText,
   BarChart3, Award, Lock, ClipboardList, Target, ShieldCheck,
   Download, ArrowRight, Layers, Star, TrendingUp, Settings2, Network,
 } from "lucide-react";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 const config: QuizConfig = {
   quizType: "governance",
@@ -156,58 +160,49 @@ export default function GovernanceQuiz() {
       />
 
       {/* ── 1. Hero ── */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540] pt-[130px] pb-[110px]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
-        />
-
-        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
-            <Shield className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Governance Maturity Assessment</span>
+      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-4xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <Shield className="w-4 h-4" />
+            Governance Maturity Assessment
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
-            Your M365 Governance Is{" "}
-            <span className="text-[#00B4D8]">Drifting.</span>
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
+            Your M365 Governance Is <GradientText>Drifting.</GradientText>
             <br className="hidden md:block" /> Most Don't Know It.
           </h1>
 
-          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+          <p className="text-text-secondary text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
             Governance drift is silent. It accumulates over years of organic growth — Teams channels created without owners, SharePoint sites with no lifecycle policy, guest accounts that never expire, and DLP rules that were configured once and never reviewed again.
           </p>
-          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same governance and compliance framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your governance framework stands across five dimensions before an auditor or a Copilot deployment makes the gaps impossible to ignore.
+          <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same governance and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your governance framework stands across five dimensions before an auditor or a Copilot deployment makes the gaps impossible to ignore.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
             {[
               { value: "10", label: "targeted questions" },
               { value: "5", label: "governance dimensions" },
               { value: "Free", label: "personalised PDF report" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
-                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
-              </div>
+              <StatPanel key={stat.label} label={stat.label} value={stat.value} className="min-w-[170px] text-left" />
             ))}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-6">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+              data-track="cta"
+              className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
             >
               Take the Free Assessment
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
               href="/book"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
+              data-track="cta"
+              className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary font-semibold text-sm border border-glass-border px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
             >
               Book a Discovery Call
             </a>
@@ -215,8 +210,8 @@ export default function GovernanceQuiz() {
 
           <div className="flex flex-wrap justify-center gap-6">
             {["5 minutes", "Free PDF report", "No account required", "No sales call"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-white/40 text-sm">
-                <CheckCircle className="w-4 h-4 text-[#0078D4]" />
+              <div key={item} className="flex items-center gap-2 text-text-tertiary text-sm">
+                <CheckCircle className="w-4 h-4 text-accent-blue" />
                 {item}
               </div>
             ))}
@@ -225,50 +220,46 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 2. Why This Assessment Exists ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most organisations discover their governance gaps during an audit — not before it.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Microsoft 365 defaults are not governance. A tenant with default settings passes none of the tests that HIPAA, CMMC, SOC 2, or FedRAMP require. Sensitivity labels aren't applied. Retention policies aren't configured. Admin access isn't scoped. Compliance Manager shows a score, but nobody's looking at it.
           </p>
           <div className="grid md:grid-cols-2 gap-6">
             {[
               {
                 icon: Network,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "Governance drift accumulates silently across every tenant",
                 body: "Teams channels created without owners, SharePoint sites with no lifecycle policy, guest accounts that never expire, and DLP rules that were configured once and never reviewed. None of it looks broken — until an auditor, a breach, or a Copilot deployment makes it impossible to ignore.",
               },
               {
                 icon: AlertTriangle,
-                colour: "bg-orange-500/10 text-orange-600",
                 title: "Teams and SharePoint sprawl are governance problems — not productivity problems",
                 body: "When ownership is undefined, lifecycle policies don't exist, and identity isn't tightly managed, sensitive data moves freely across a tenant that was never designed to contain it. Sprawl is the visible symptom. Absent governance is the cause.",
               },
               {
                 icon: Settings2,
-                colour: "bg-violet-500/10 text-violet-600",
                 title: "Paper governance fails when technical enforcement is absent",
                 body: "A governance policy document that is not backed by Conditional Access, DLP enforcement, and automated lifecycle controls is not governance — it is aspiration. Auditors and breach investigations do not accept policy documents as evidence of controls that were never implemented.",
               },
               {
                 icon: TrendingUp,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "Governance is the foundation for every M365 initiative that follows",
                 body: "Security posture, audit readiness, Copilot adoption — all of it depends on governance controls being in place and actively enforced. Organisations that skip governance foundations discover the cost when the next initiative cannot proceed safely without fixing what was skipped.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -277,13 +268,13 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 3. Who This Is For ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where governance risk is real — not theoretical.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             If your organisation is in any of these categories, you need this assessment before your next audit, Copilot deployment, or major M365 initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -300,7 +291,7 @@ export default function GovernanceQuiz() {
               },
               {
                 icon: Lock,
-                title: "Regulated industries",
+                title: "Evidence-driven compliance teams",
                 body: "Healthcare and financial services organisations who need defensible, documented governance evidence for HIPAA, SOC 2, or similar audits — not just policy documents.",
               },
               {
@@ -321,12 +312,12 @@ export default function GovernanceQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                <div key={i} className="bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -335,12 +326,12 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 4. How It Works ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to governance report in under five minutes.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            Ten questions. Five governance dimensions. A NASA-grade scoring model. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">How It Works</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">From first question to governance report in under five minutes.</h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five governance dimensions. A scoring model built by the M365 Architect at NASA. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
@@ -356,8 +347,8 @@ export default function GovernanceQuiz() {
               },
               {
                 icon: Star,
-                title: "NASA-grade scoring model",
-                desc: "Your answers are weighted and scored using the same governance framework applied at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
+                title: "Scoring built by a NASA architect",
+                desc: "Your answers are weighted and scored using the same governance framework Shane applies as M365 Architect at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
               },
               {
                 icon: FileText,
@@ -378,12 +369,12 @@ export default function GovernanceQuiz() {
               const Icon = item.icon;
               return (
                 <div key={i} className="flex gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                    <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.desc}</p>
                   </div>
                 </div>
               );
@@ -392,7 +383,8 @@ export default function GovernanceQuiz() {
           <div className="mt-14 text-center">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+              data-track="cta"
+              className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
               Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -401,65 +393,68 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 5. Five Governance Dimensions ── */}
-      <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Governance Dimensions</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Governance Dimensions</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
+            What the assessment <GradientText>measures</GradientText> — and why it matters.
+          </h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Microsoft 365 governance framework is audit-ready, breach-resistant, and positioned for Copilot adoption — or carrying silent gaps that compound with every new workload added.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {DIMENSIONS.map((dim) => (
-              <div key={dim.title} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+              <div key={dim.title} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-2 h-10 rounded-full ${dim.colour}`} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dim.label}</p>
-                    <h3 className="font-extrabold text-lg text-[#0A2540]">{dim.title}</h3>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">{dim.label}</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">{dim.title}</h3>
                   </div>
                 </div>
                 <ul className="space-y-2">
                   {dim.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-slate-500 leading-relaxed">
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <li key={i} className="flex gap-2 text-sm text-text-secondary leading-relaxed">
+                      <CheckCircle className="w-4 h-4 text-accent-blue flex-shrink-0 mt-0.5" />
                       {b}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            <div className="bg-[#0A2540] rounded-2xl border border-[#0A2540] p-6 flex flex-col justify-between">
+            <GlassPanel className="p-6 flex flex-col justify-between">
               <div>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-2 h-10 rounded-full bg-primary" />
+                  <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-white/40">Your Output</p>
-                    <h3 className="font-extrabold text-lg text-white">Your Report</h3>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
                   </div>
                 </div>
-                <p className="text-white/60 text-sm leading-relaxed">
+                <p className="text-text-secondary text-sm leading-relaxed">
                   All five dimensions scored, ranked by governance risk, and mapped to a tailored service recommendation. Personalised PDF delivered to your inbox the moment you finish.
                 </p>
               </div>
               <button
                 onClick={() => setModalOpen(true)}
-                className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
+                data-track="cta"
+                className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
                 Start Assessment <ArrowRight className="w-4 h-4" />
               </button>
-            </div>
+            </GlassPanel>
           </div>
         </div>
       </section>
 
       {/* ── 6. What You Receive ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">What You Receive</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A personalised governance maturity report. Free. Instant.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14 text-lg">
             Not a generic score. Not a newsletter signup. A real diagnostic report — built on the same framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -507,13 +502,13 @@ export default function GovernanceQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                <div key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl border border-white/[0.06] p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                    <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                   </div>
                 </div>
               );
@@ -523,13 +518,13 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 7. Inside Your PDF Report ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Inside Your PDF Report</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Inside Your PDF Report</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A structured governance diagnostic — not a marketing brochure.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             Your PDF is structured as a professional governance maturity document — designed to be shared with your CISO, CTO, board, or compliance team, not just filed in a personal inbox.
           </p>
           <div className="grid md:grid-cols-2 gap-4">
@@ -565,11 +560,11 @@ export default function GovernanceQuiz() {
                 desc: "Targeted service recommendations drawn from the Governance Foundations Package, Tenant Health Audit, and SharePoint IA Rebuild — mapped directly to your identified gaps.",
               },
             ].map((item) => (
-              <div key={item.num} className="flex gap-4 bg-white/5 border border-white/10 rounded-2xl p-5">
-                <div className="text-4xl font-black text-primary/20 leading-none flex-shrink-0 w-10">{item.num}</div>
+              <div key={item.num} className="flex gap-4 bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                <div className="font-numeric text-4xl font-bold text-white/10 leading-none flex-shrink-0 w-12">{item.num}</div>
                 <div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -579,7 +574,7 @@ export default function GovernanceQuiz() {
               href="/governance-maturity-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-glass-border px-6 py-2.5 text-sm font-semibold text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
             >
               <Download className="w-4 h-4" />
               View Sample Report (PDF)
@@ -589,56 +584,51 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 8. Why Shane ── */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why Shane McCaw</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why Shane McCaw</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             This framework was built from 30 years of doing this work — not reading about it.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Shane McCaw is not a generalist consultant who added Microsoft 365 governance to a service catalogue. He has spent three decades designing, implementing, and auditing governance frameworks for some of the most demanding organisations in the world.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
                 icon: Star,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "Lead M365 Architect at NASA",
-                desc: "Shane designed and implemented the governance framework for one of the world's most security-sensitive Microsoft 365 tenants — a 60,000-user environment operating under some of the federal government's strictest security requirements.",
+                desc: "Shane designed and implemented the governance framework for one of the world's most security-sensitive Microsoft 365 tenants — a 60,000-user environment where governance failure is never an option.",
               },
               {
                 icon: TrendingUp,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "30 years in the Microsoft ecosystem",
                 desc: "From early SharePoint deployments through Entra ID, Purview, and Copilot — Shane has navigated every major shift in the M365 governance landscape and knows where organisations consistently fall short.",
               },
               {
                 icon: Users,
-                colour: "bg-violet-500/10 text-violet-600",
                 title: "Senior-only delivery",
                 desc: "Every engagement is delivered by Shane directly. No juniors handed a checklist. You get the expertise you are paying for on every call, in every document, and in every recommendation.",
               },
               {
                 icon: ShieldCheck,
-                colour: "bg-orange-500/10 text-orange-600",
                 title: "Regulated industry expertise",
-                desc: "Shane brings governance discipline from one of the most demanding M365 environments in the federal government to financial services and healthcare clients — industries where governance failures carry regulatory, legal, and reputational consequences.",
+                desc: "Shane brings governance discipline from one of the most demanding Microsoft 365 environments in the world to financial services and healthcare clients — industries where governance failures carry regulatory, legal, and reputational consequences.",
               },
               {
                 icon: Award,
-                colour: "bg-green-500/10 text-green-600",
                 title: "Governance-first methodology",
                 desc: "Shane's approach treats governance as the foundation for everything — security, compliance, Copilot adoption, and audit readiness. Governance done right makes every other initiative easier and safer.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.desc}</p>
                 </div>
               );
             })}
@@ -647,22 +637,27 @@ export default function GovernanceQuiz() {
       </section>
 
       {/* ── 9. CTA Reinforcement ── */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Your governance maturity determines your audit readiness, your compliance posture, and your Copilot success.
+      <section className="border-t border-white/[0.06] py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            Your governance maturity determines your audit readiness, your compliance posture, and your <GradientText>Copilot success</GradientText>.
           </h2>
-          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-3 leading-relaxed">
             Don't find out where your governance gaps are during an audit. Take the free assessment now — get your personalised PDF governance maturity report in five minutes, with no account required and no sales call attached.
           </p>
-          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-10 leading-relaxed">
             This assessment takes five minutes. The PDF report is free. The governance gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
-          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
+          <button
+            onClick={() => setModalOpen(true)}
+            data-track="cta"
+            className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+            style={GRADIENT_BG}
+          >
             Take the Free Assessment Now
-          </CTAButton>
-          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
+          </button>
+          <p className="text-text-tertiary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 

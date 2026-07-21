@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
+import { StatPanel } from "@/components/design-system/StatPanel";
+import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import {
   ShieldCheck,
   CheckCircle,
@@ -20,7 +23,8 @@ import {
   Zap,
   Download,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 const config: QuizConfig = {
   quizType: "security-compliance",
@@ -94,6 +98,54 @@ const config: QuizConfig = {
   introFeatureLabels: ["5 security dimensions", "Risk tier rating", "PDF report emailed"],
 };
 
+const DIMENSIONS = [
+  {
+    colour: "bg-blue-500",
+    label: "Dimension 1",
+    title: "Identity & Access Control",
+    measures: "MFA enforcement across all users including admins and contractors, Conditional Access policy coverage, Privileged Identity Management deployment, admin role hygiene, and whether standing privileged access exists.",
+    matters: "Identity is the primary attack vector in Microsoft 365. Overprivileged admins, absent MFA, and weak Conditional Access policies are the most common causes of tenant compromise — and the most preventable.",
+    fail: "MFA not enforced for all users; Global Admins with persistent access; no PIM; contractors and shared accounts excluded from baseline controls.",
+    ready: "MFA enforced for all users, PIM deployed for privileged roles, Conditional Access covering all apps, device compliance baseline in place.",
+  },
+  {
+    colour: "bg-teal-500",
+    label: "Dimension 2",
+    title: "Data Protection",
+    measures: "Microsoft Purview sensitivity label coverage and enforcement, DLP policy maturity across Exchange, SharePoint, Teams, and OneDrive, automatic labelling rules, and external sharing controls.",
+    matters: "Without classification and DLP enforcement, sensitive data is one misconfigured sharing link away from external exposure. This gap is invisible until it's exploited — or until Copilot surfaces it to the wrong user.",
+    fail: "No sensitivity labels deployed or inconsistently applied; DLP policies absent or set to audit-only; no auto-labelling for regulated content.",
+    ready: "Labels applied across tenant, DLP policies enforced in block mode for key workloads, auto-labelling active for regulated content types.",
+  },
+  {
+    colour: "bg-violet-500",
+    label: "Dimension 3",
+    title: "Insider Risk & Compliance",
+    measures: "Microsoft Purview Insider Risk Management policies, Communication Compliance configuration, retention and deletion policy coverage, and whether high-risk user activity scenarios are actively monitored.",
+    matters: "Insider threats — data theft, policy violations, departing employee exfiltration — are often undetected because organisations have never configured the tooling to surface them. The risk is already present.",
+    fail: "No Insider Risk Management policies; Communication Compliance not deployed; no documented retention or deletion policies.",
+    ready: "Insider Risk policies active for high-risk scenarios, Communication Compliance monitoring regulated communications, retention policies documented and enforced.",
+  },
+  {
+    colour: "bg-orange-500",
+    label: "Dimension 4",
+    title: "Audit & eDiscovery",
+    measures: "Unified Audit Log enablement and retention, Audit Premium licensing, eDiscovery case readiness, Content Search coverage, and litigation hold capability.",
+    matters: "When a breach, legal hold, or regulatory investigation occurs, audit logs are your only verifiable record. Organisations without active audit log retention have no defence and no evidence trail.",
+    fail: "Audit logs not enabled or retained below 90 days; no Audit Premium licensing; eDiscovery has never been tested; no litigation hold process.",
+    ready: "Audit logs enabled for all workloads, retained 12+ months, Audit Premium active, eDiscovery tested end-to-end, litigation hold process documented.",
+  },
+  {
+    colour: "bg-green-500",
+    label: "Dimension 5",
+    title: "Regulatory Readiness",
+    measures: "Compliance Manager score and assessment coverage, framework mapping (HIPAA, CMMC, FedRAMP, SOX, GDPR, NIST), Purview compliance controls configuration, and audit-readiness posture.",
+    matters: "Regulatory compliance is not a one-time project — it requires continuous control monitoring. Organisations without an active compliance posture face audit exposure every quarter.",
+    fail: "Compliance Manager score never reviewed; no framework assessments configured; compliance controls undocumented; no evidence collection process.",
+    ready: "Compliance Manager assessments active for applicable frameworks, controls documented and assigned, improvement actions tracked and prioritised.",
+  },
+];
+
 export default function SecurityQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -106,72 +158,63 @@ export default function SecurityQuiz() {
         ogUrl="https://shanemccaw.com/security-compliance-quiz"
       />
 
-      {/* Hero */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540] pt-[130px] pb-[110px]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
-        />
-
-        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
-            <ShieldCheck className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Free Security Assessment</span>
+      {/* ── 1. Hero ── */}
+      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-4xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <ShieldCheck className="w-4 h-4" />
+            Free Security Assessment
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
-            Most M365 Security Gaps{" "}
-            <span className="text-[#00B4D8]">Are Silent.</span>
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
+            Most M365 Security Gaps <GradientText>Are Silent.</GradientText>
             <br className="hidden md:block" /> Until They're Exploited.
           </h1>
 
-          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+          <p className="text-text-secondary text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
             Misconfigured Conditional Access, overprivileged admins, absent DLP policies, and unmonitored insider risk are found and exploited every day in Microsoft 365 tenants that assume they're secure.
           </p>
-          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same Zero Trust and compliance framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your security posture is exposed before an auditor or attacker does.
+          <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same Zero Trust and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your security posture is exposed before an auditor or attacker does.
           </p>
 
-          <p className="text-white/50 text-sm font-medium mb-10 max-w-xl mx-auto">
+          <p className="text-text-tertiary text-sm font-medium mb-10 max-w-xl mx-auto">
             Built for mid-market organisations and regulated industries where a security gap is never just a technical problem.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
             {[
               { value: "10", label: "targeted questions" },
               { value: "5", label: "security dimensions" },
               { value: "Free", label: "personalised PDF report" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
-                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
-              </div>
+              <StatPanel key={stat.label} label={stat.label} value={stat.value} className="min-w-[170px] text-left" />
             ))}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-6">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+              data-track="cta"
+              className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
             >
               Take the Free Assessment
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
               href="/book"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold border border-white/20 px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
+              data-track="cta"
+              className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary font-semibold text-sm border border-glass-border px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
             >
               Book a Discovery Call
             </a>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-2">
+          <div className="flex flex-wrap justify-center gap-6">
             {["5 minutes", "Free PDF report", "No sales call required"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-white/40 text-sm">
-                <CheckCircle className="w-4 h-4 text-[#0078D4]" />
+              <div key={item} className="flex items-center gap-2 text-text-tertiary text-sm">
+                <CheckCircle className="w-4 h-4 text-accent-blue" />
                 {item}
               </div>
             ))}
@@ -179,45 +222,42 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* Why This Assessment Exists */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      {/* ── 2. Why This Assessment Exists ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Microsoft 365 security gaps are invisible — until they're catastrophic.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Most M365 breaches don't come from sophisticated attacks. They come from misconfiguration: MFA gaps, overprivileged admins, absent DLP, and inactive audit logging. These gaps exist silently in the majority of tenants — and surface only when an auditor finds them, or an attacker does it first.
           </p>
           <div className="grid md:grid-cols-3 gap-6">
             {[
               {
                 icon: Lock,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "Identity drift accumulates over time",
                 body: "Admin roles proliferate, MFA exemptions multiply, and Conditional Access policies go untested. What started as a controlled environment develops exploitable gaps year over year — without anyone noticing.",
               },
               {
                 icon: AlertTriangle,
-                colour: "bg-red-500/10 text-red-600",
                 title: "Misconfiguration is the leading cause of breach",
                 body: "Absent DLP policies, overpermissioned SharePoint sites, unreviewed external sharing, and uninvestigated audit events are responsible for the majority of M365 data exposure incidents. They're not sophisticated attacks — they're overlooked defaults.",
               },
               {
                 icon: ShieldCheck,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "Security posture must be verified before Copilot or migrations",
                 body: "Copilot surfaces data from across your tenant based on the permissions already in place. A weak security posture before deployment becomes a data governance liability at scale. The same applies to SharePoint migrations and governance initiatives.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
-                  <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center mb-4", item.colour)}>
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -225,14 +265,14 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* Who This Is For */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      {/* ── 3. Who This Is For ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where a security gap has real consequences.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             If you're in any of these groups, you need this assessment before your next audit, deployment, or migration.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -249,7 +289,7 @@ export default function SecurityQuiz() {
               },
               {
                 icon: Globe,
-                title: "Regulated industries",
+                title: "Contractually obligated compliance teams",
                 body: "Healthcare and financial services organizations subject to HIPAA, SOC 2, or similar requirements where M365 security posture is part of a contractual or audit obligation.",
               },
               {
@@ -270,12 +310,12 @@ export default function SecurityQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                <div key={i} className="bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -283,43 +323,37 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to PDF in under five minutes.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
-            Ten questions. Five security dimensions. A NASA-grade scoring model. An instant risk score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+      {/* ── 4. How It Works ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">How It Works</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">From first question to PDF in under five minutes.</h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five security dimensions. A scoring model built by the M365 Architect at NASA. An instant risk score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
           </p>
-          <div className="grid md:grid-cols-3 gap-10">
-            {[
-              {
-                step: "01",
-                title: "Answer 10 targeted security questions",
-                desc: "Each question maps to one of five security dimensions. These are the same diagnostic questions Shane uses in a paid security assessment engagement, compressed into a 5-minute format designed for IT leads and compliance officers.",
-              },
-              {
-                step: "02",
-                title: "Receive an instant risk score across 5 dimensions",
-                desc: "Your answers are scored across all five dimensions using a structured scoring model. You receive a total risk score, a maturity tier (Critical / At Risk / Developing / Secure), and a per-dimension breakdown showing exactly where you're exposed.",
-              },
-              {
-                step: "03",
-                title: "Get a personalised PDF security report delivered to your inbox",
-                desc: "A branded, personalised PDF lands in your inbox immediately. It includes your score, gap analysis, the specific security risks identified in your environment, and Shane's recommended next step — no sales call required.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="relative">
-                <div className="text-7xl font-black text-primary/8 mb-4 leading-none">{item.step}</div>
-                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">{item.title}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
+          <div className="max-w-2xl mx-auto">
+            <WorkflowSteps
+              steps={[
+                {
+                  title: "Answer 10 targeted security questions",
+                  description: "Each question maps to one of five security dimensions. These are the same diagnostic questions Shane uses in a paid security assessment engagement, compressed into a 5-minute format designed for IT leads and compliance officers.",
+                },
+                {
+                  title: "Receive an instant risk score across 5 dimensions",
+                  description: "Your answers are scored across all five dimensions using a structured scoring model. You receive a total risk score, a maturity tier (Critical / At Risk / Developing / Secure), and a per-dimension breakdown showing exactly where you're exposed.",
+                },
+                {
+                  title: "Get a personalised PDF security report delivered to your inbox",
+                  description: "A branded, personalised PDF lands in your inbox immediately. It includes your score, gap analysis, the specific security risks identified in your environment, and Shane's recommended next step — no sales call required.",
+                },
+              ]}
+            />
           </div>
           <div className="mt-14 text-center">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+              data-track="cta"
+              className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
               Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
@@ -327,138 +361,81 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* The Five Security & Compliance Dimensions */}
-      <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Security & Compliance Dimensions</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+      {/* ── 5. The Five Security & Compliance Dimensions ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Security & Compliance Dimensions</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
+            What the assessment <GradientText>measures</GradientText> — and why it matters.
+          </h2>
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Microsoft 365 environment is genuinely secure or quietly exposed. Each is scored independently so you know exactly where to focus your remediation effort.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              {
-                colour: "bg-blue-500",
-                label: "Dimension 1",
-                title: "Identity & Access Control",
-                measures: "MFA enforcement across all users including admins and contractors, Conditional Access policy coverage, Privileged Identity Management deployment, admin role hygiene, and whether standing privileged access exists.",
-                matters: "Identity is the primary attack vector in Microsoft 365. Overprivileged admins, absent MFA, and weak Conditional Access policies are the most common causes of tenant compromise — and the most preventable.",
-                fail: "MFA not enforced for all users; Global Admins with persistent access; no PIM; contractors and shared accounts excluded from baseline controls.",
-                ready: "MFA enforced for all users, PIM deployed for privileged roles, Conditional Access covering all apps, device compliance baseline in place.",
-              },
-              {
-                colour: "bg-teal-500",
-                label: "Dimension 2",
-                title: "Data Protection",
-                measures: "Microsoft Purview sensitivity label coverage and enforcement, DLP policy maturity across Exchange, SharePoint, Teams, and OneDrive, automatic labelling rules, and external sharing controls.",
-                matters: "Without classification and DLP enforcement, sensitive data is one misconfigured sharing link away from external exposure. This gap is invisible until it's exploited — or until Copilot surfaces it to the wrong user.",
-                fail: "No sensitivity labels deployed or inconsistently applied; DLP policies absent or set to audit-only; no auto-labelling for regulated content.",
-                ready: "Labels applied across tenant, DLP policies enforced in block mode for key workloads, auto-labelling active for regulated content types.",
-              },
-              {
-                colour: "bg-violet-500",
-                label: "Dimension 3",
-                title: "Insider Risk & Compliance",
-                measures: "Microsoft Purview Insider Risk Management policies, Communication Compliance configuration, retention and deletion policy coverage, and whether high-risk user activity scenarios are actively monitored.",
-                matters: "Insider threats — data theft, policy violations, departing employee exfiltration — are often undetected because organisations have never configured the tooling to surface them. The risk is already present.",
-                fail: "No Insider Risk Management policies; Communication Compliance not deployed; no documented retention or deletion policies.",
-                ready: "Insider Risk policies active for high-risk scenarios, Communication Compliance monitoring regulated communications, retention policies documented and enforced.",
-              },
-              {
-                colour: "bg-orange-500",
-                label: "Dimension 4",
-                title: "Audit & eDiscovery",
-                measures: "Unified Audit Log enablement and retention, Audit Premium licensing, eDiscovery case readiness, Content Search coverage, and litigation hold capability.",
-                matters: "When a breach, legal hold, or regulatory investigation occurs, audit logs are your only verifiable record. Organisations without active audit log retention have no defence and no evidence trail.",
-                fail: "Audit logs not enabled or retained below 90 days; no Audit Premium licensing; eDiscovery has never been tested; no litigation hold process.",
-                ready: "Audit logs enabled for all workloads, retained 12+ months, Audit Premium active, eDiscovery tested end-to-end, litigation hold process documented.",
-              },
-              {
-                colour: "bg-green-500",
-                label: "Dimension 5",
-                title: "Regulatory Readiness",
-                measures: "Compliance Manager score and assessment coverage, framework mapping (HIPAA, CMMC, FedRAMP, SOX, GDPR, NIST), Purview compliance controls configuration, and audit-readiness posture.",
-                matters: "Regulatory compliance is not a one-time project — it requires continuous control monitoring. Organisations without an active compliance posture face audit exposure every quarter.",
-                fail: "Compliance Manager score never reviewed; no framework assessments configured; compliance controls undocumented; no evidence collection process.",
-                ready: "Compliance Manager assessments active for applicable frameworks, controls documented and assigned, improvement actions tracked and prioritised.",
-              },
-              {
-                colour: "bg-primary",
-                label: "Your Output",
-                title: "Your Report",
-                measures: "",
-                matters: "",
-                fail: "",
-                ready: "",
-                cta: true,
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className={cn(
-                  "rounded-2xl p-6 border",
-                  (item as { cta?: boolean }).cta
-                    ? "bg-[#0A2540] border-[#0A2540] flex flex-col justify-between"
-                    : "bg-white border-slate-100 shadow-sm"
-                )}
-              >
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={cn("w-2 h-10 rounded-full", item.colour)} />
-                    <div>
-                      <p className={cn("text-xs font-bold uppercase tracking-wide", (item as { cta?: boolean }).cta ? "text-white/40" : "text-muted-foreground")}>{item.label}</p>
-                      <h3 className={cn("font-extrabold text-lg", (item as { cta?: boolean }).cta ? "text-white" : "text-[#0A2540]")}>{item.title}</h3>
+            {DIMENSIONS.map((item) => (
+              <div key={item.title} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-2 h-10 rounded-full ${item.colour}`} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">{item.label}</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">{item.title}</h3>
+                  </div>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-text-primary text-xs uppercase tracking-wide mb-1">What it measures</p>
+                    <p className="text-text-secondary leading-relaxed">{item.measures}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-text-primary text-xs uppercase tracking-wide mb-1">Why it matters</p>
+                    <p className="text-text-secondary leading-relaxed">{item.matters}</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                      <p className="text-xs font-bold text-red-400 uppercase tracking-wide mb-1">Failure looks like</p>
+                      <p className="text-xs text-text-secondary leading-relaxed">{item.fail}</p>
+                    </div>
+                    <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                      <p className="text-xs font-bold text-emerald-400 uppercase tracking-wide mb-1">Readiness looks like</p>
+                      <p className="text-xs text-text-secondary leading-relaxed">{item.ready}</p>
                     </div>
                   </div>
-                  {(item as { cta?: boolean }).cta ? (
-                    <p className="text-white/60 text-sm leading-relaxed">
-                      All five dimensions scored, ranked by risk level, and mapped to a tailored service recommendation. Personalised PDF security report delivered to your inbox the moment you finish.
-                    </p>
-                  ) : (
-                    <div className="space-y-3 text-sm">
-                      <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">What it measures</p>
-                        <p className="text-slate-500 leading-relaxed">{item.measures}</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">Why it matters</p>
-                        <p className="text-slate-500 leading-relaxed">{item.matters}</p>
-                      </div>
-                      <div className="flex gap-3">
-                        <div className="flex-1 bg-red-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Failure looks like</p>
-                          <p className="text-xs text-slate-600 leading-relaxed">{item.fail}</p>
-                        </div>
-                        <div className="flex-1 bg-emerald-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1">Readiness looks like</p>
-                          <p className="text-xs text-slate-600 leading-relaxed">{item.ready}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
-                {(item as { cta?: boolean }).cta && (
-                  <button
-                    onClick={() => setModalOpen(true)}
-                    className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
-                  >
-                    Start Assessment <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
               </div>
             ))}
+            <GlassPanel className="p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
+                  </div>
+                </div>
+                <p className="text-text-secondary text-sm leading-relaxed">
+                  All five dimensions scored, ranked by risk level, and mapped to a tailored service recommendation. Personalised PDF security report delivered to your inbox the moment you finish.
+                </p>
+              </div>
+              <button
+                onClick={() => setModalOpen(true)}
+                data-track="cta"
+                className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
+              >
+                Start Assessment <ArrowRight className="w-4 h-4" />
+              </button>
+            </GlassPanel>
           </div>
         </div>
       </section>
 
-      {/* What You Receive */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+      {/* ── 6. What You Receive ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">What You Receive</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A personalised security risk report. Free. Instant.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14 text-lg">
             Not a generic score. Not a newsletter signup. A real report — the same diagnostic framework Shane applies in paid security assessment engagements — delivered to your inbox the moment you finish.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -496,13 +473,13 @@ export default function SecurityQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                <div key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl border border-white/[0.06] p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                    <h3 className="font-display font-bold text-text-primary mb-1">{item.title}</h3>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                   </div>
                 </div>
               );
@@ -511,16 +488,16 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* Inside Your PDF Report */}
-      <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1100px] mx-auto px-6">
+      {/* ── 7. Inside Your PDF Report ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-16 items-start">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Inside Your PDF Report</p>
-              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Inside Your PDF Report</p>
+              <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
                 A structured security report your leadership team can act on.
               </h2>
-              <p className="text-slate-500 text-lg leading-relaxed">
+              <p className="text-text-secondary text-lg leading-relaxed">
                 This isn't a score card with generic advice. The PDF report is structured to be shared — with your IT team, your compliance officer, or your executive sponsor — and includes everything needed to prioritise remediation without a follow-up engagement.
               </p>
             </div>
@@ -562,11 +539,11 @@ export default function SecurityQuiz() {
                   desc: "A 30/60/90-day remediation timeline aligned to your compliance framework obligations and audit schedule.",
                 },
               ].map((item) => (
-                <div key={item.n} className="flex items-start gap-4 bg-white rounded-xl border border-border p-4">
-                  <span className="text-2xl font-black text-primary/20 leading-none mt-0.5 w-8 flex-shrink-0">{item.n}</span>
+                <div key={item.n} className="flex items-start gap-4 bg-charcoal-1 border border-white/[0.06] rounded-xl p-4">
+                  <span className="font-numeric text-2xl font-bold text-white/10 leading-none mt-0.5 w-8 flex-shrink-0">{item.n}</span>
                   <div>
-                    <p className="font-extrabold text-[#0A2540] text-sm">{item.title}</p>
-                    <p className="text-slate-500 text-sm leading-relaxed mt-0.5">{item.desc}</p>
+                    <p className="font-display font-bold text-text-primary text-sm">{item.title}</p>
+                    <p className="text-text-secondary text-sm leading-relaxed mt-0.5">{item.desc}</p>
                   </div>
                 </div>
               ))}
@@ -577,7 +554,7 @@ export default function SecurityQuiz() {
               href="/security-compliance-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#0078D4]/30 px-6 py-2.5 text-sm font-semibold text-[#0078D4] hover:bg-[#0078D4]/5 hover:border-[#0078D4] transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-glass-border px-6 py-2.5 text-sm font-semibold text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
             >
               <Download className="w-4 h-4" />
               View Sample Report (PDF)
@@ -586,22 +563,22 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* Why Shane */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Why Shane McCaw</p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+      {/* ── 8. Why Shane ── */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why Shane McCaw</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Security assessments delivered by someone who has done this at the highest level.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
-            Not every Microsoft consultant has secured a NASA tenant. Shane has — and the same methodology that passed government security review informs every assessment he delivers.
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
+            Not every Microsoft consultant has secured a NASA tenant. Shane has — and that same discipline informs every assessment he delivers.
           </p>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
                 icon: ShieldCheck,
                 title: "Lead M365 Architect at NASA",
-                body: "Designed and delivered Zero Trust and compliance architecture for one of the world's most security-sensitive Microsoft 365 tenants. The assessment methodology you're using was built in that environment.",
+                body: "Shane designs and delivers Zero Trust and compliance architecture for one of the world's most security-sensitive Microsoft 365 tenants. That discipline is the standard behind every assessment he delivers.",
               },
               {
                 icon: Award,
@@ -631,12 +608,12 @@ export default function SecurityQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
+                    <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
-                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                  <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                  <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                 </div>
               );
             })}
@@ -644,25 +621,30 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* Bottom CTA */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Your security posture determines your audit readiness, compliance maturity, and Copilot safety.
+      {/* ── 9. Bottom CTA ── */}
+      <section className="border-t border-white/[0.06] py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            Your security posture determines your audit readiness, compliance maturity, and <GradientText>Copilot safety</GradientText>.
           </h2>
-          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-3 leading-relaxed">
             Most Microsoft 365 security failures come from misconfiguration, not sophisticated attacks. MFA gaps, overprivileged admins, and absent DLP policies are found and exploited every day in tenants that believe they're secure.
           </p>
-          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-10 leading-relaxed">
             This assessment takes five minutes. The PDF report is free. The gaps it surfaces could cost you far more to ignore.
           </p>
-          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
+          <button
+            onClick={() => setModalOpen(true)}
+            data-track="cta"
+            className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+            style={GRADIENT_BG}
+          >
             Take the Free Assessment
-          </CTAButton>
-          <p className="text-white/30 text-sm mt-4">5 minutes · Instant results · No sales call</p>
+          </button>
+          <p className="text-text-tertiary text-sm mt-4">5 minutes · Instant results · No sales call</p>
           <div className="mt-6">
-            <a href="/book" className="text-white/50 hover:text-white text-sm font-medium transition-colors">
+            <a href="/book" data-track="cta" className="text-text-secondary hover:text-text-primary text-sm font-medium transition-colors">
               Prefer to talk first? Book a Discovery Call →
             </a>
           </div>

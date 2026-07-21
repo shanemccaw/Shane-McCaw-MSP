@@ -3,7 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
+import { StatPanel } from "@/components/design-system/StatPanel";
+import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import {
   Brain,
   X,
@@ -801,6 +804,8 @@ function QuizModal({ onClose }: { onClose: () => void }) {
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
+
 export default function CopilotQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -818,85 +823,62 @@ export default function CopilotQuiz() {
   return (
     <Layout>
       {/* Hero */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, #ffffff 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-          }}
-        />
-
-        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
-            <Brain className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-semibold uppercase tracking-wide">
-              Copilot AI Readiness Assessment
-            </span>
+      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-4xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+            <Brain className="w-4 h-4" />
+            Copilot AI Readiness Assessment
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
-            Most Copilot Deployments{" "}
-            <span className="text-[#00B4D8]">Fail.</span>
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
+            Most Copilot Deployments <GradientText>Fail.</GradientText>
             <br className="hidden md:block" /> Yours Doesn't Have To.
           </h1>
 
-          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
-            Copilot underperforms when governance, data classification,
-            identity, and change management aren't ready. Most organizations
-            skip the pre-deployment assessment and pay for it in adoption
-            failures and compliance exposure.
+          <p className="text-text-secondary text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+            Copilot underperforms when governance, data classification, identity, and change management aren't ready. Most organizations skip the pre-deployment assessment and pay for it in adoption failures and compliance exposure.
           </p>
-          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same readiness framework
-            Shane applied as Lead M365 Architect at NASA — identifies exactly
-            where your deployment will break before it does.
+          <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same readiness framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your deployment will break before it does.
           </p>
 
-          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
             {[
               { value: "10", label: "targeted questions" },
               { value: "5", label: "readiness dimensions" },
               { value: "Free", label: "personalized PDF report" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl font-extrabold text-[#00B4D8]">
-                  {stat.value}
-                </p>
-                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
-              </div>
+              <StatPanel key={stat.label} label={stat.label} value={stat.value} className="min-w-[170px] text-left" />
             ))}
           </div>
 
           <button
             onClick={() => setModalOpen(true)}
-            className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+            data-track="cta"
+            className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+            style={GRADIENT_BG}
           >
             Take the Free Assessment
-            <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <p className="text-white/30 text-sm mt-4">
+          <p className="text-text-tertiary text-sm mt-4">
             No account required · Results and PDF delivered instantly
           </p>
         </div>
       </section>
 
       {/* Why This Quiz Exists */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
             Why This Assessment Exists
           </p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Copilot readiness isn't optional — it's what separates a successful
             deployment from an expensive failure.
           </h2>
-          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+          <p className="text-text-secondary text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
             Microsoft Copilot doesn't run on intention. It runs on
             infrastructure. Organizations that skip pre-deployment readiness
             work consistently see the same outcome: low adoption, high support
@@ -907,41 +889,30 @@ export default function CopilotQuiz() {
             {[
               {
                 icon: ShieldCheck,
-                colour: "bg-blue-500/10 text-blue-600",
                 title: "Governance must come first",
                 body: "Copilot surfaces data from across your tenant. Without sensitivity labels, DLP policies, and information barriers, it surfaces the wrong data to the wrong people. Every time.",
               },
               {
                 icon: Lock,
-                colour: "bg-violet-500/10 text-violet-600",
                 title: "Identity and security must be in place",
                 body: "MFA enforcement, device compliance, and Entra ID health directly affect what Copilot can access. Gaps in identity posture become Copilot vulnerabilities at scale.",
               },
               {
                 icon: Users,
-                colour: "bg-teal-500/10 text-teal-600",
                 title: "Change management determines adoption",
                 body: "AI tools fail when change management is treated as an afterthought. Executive buy-in, training programmes, and pilot readiness predict success more reliably than any technical factor.",
               },
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div
-                  key={i}
-                  className="bg-[#F7F9FC] rounded-2xl border border-border p-6"
-                >
-                  <div
-                    className={cn(
-                      "w-11 h-11 rounded-xl flex items-center justify-center mb-4",
-                      item.colour,
-                    )}
-                  >
+                <div key={i} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
                     <Icon className="w-5 h-5" />
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] mb-2">
+                  <h3 className="font-display font-bold text-text-primary mb-2">
                     {item.title}
                   </h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
+                  <p className="text-text-secondary text-sm leading-relaxed">
                     {item.body}
                   </p>
                 </div>
@@ -952,16 +923,16 @@ export default function CopilotQuiz() {
       </section>
 
       {/* Who This Is For */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
             Who This Assessment Is For
           </p>
-          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organizations where a failed Copilot deployment is not an
             option.
           </h2>
-          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
             If you're in any of these groups, you need this assessment before
             your deployment begins.
           </p>
@@ -1000,17 +971,14 @@ export default function CopilotQuiz() {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div
-                  key={i}
-                  className="bg-white/5 border border-white/10 rounded-2xl p-5"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                <div key={i} className="bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
-                  <h3 className="font-extrabold text-white mb-1">
+                  <h3 className="font-display font-bold text-text-primary mb-1">
                     {item.title}
                   </h3>
-                  <p className="text-white/50 text-sm leading-relaxed">
+                  <p className="text-text-secondary text-sm leading-relaxed">
                     {item.body}
                   </p>
                 </div>
@@ -1021,55 +989,43 @@ export default function CopilotQuiz() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
             How It Works
           </p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             From first question to PDF in under five minutes.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             Ten questions. Five readiness dimensions. A scoring model built
             from Shane's own Copilot deployment experience. An instant
             readiness score, a personalized PDF report, and a recommended next
             step — delivered to your inbox the moment you finish.
           </p>
-          <div className="grid md:grid-cols-3 gap-10">
-            {[
-              {
-                step: "01",
-                title: "Answer 10 targeted questions",
-                desc: "Each question maps to one of five readiness dimensions. No generic questionnaire — these are the same diagnostics Shane uses in a paid Copilot Readiness Assessment engagement, compressed into a 5-minute format.",
-              },
-              {
-                step: "02",
-                title: "Receive an instant readiness score",
-                desc: "Your answers are scored across all five dimensions using a 0–50 scoring model built from Shane's real Copilot deployment experience. You receive a total score, a maturity tier (Early / Developing / Ready / Advanced), and a per-dimension breakdown.",
-              },
-              {
-                step: "03",
-                title: "Get your personalized PDF report",
-                desc: "A branded, personalized PDF lands in your inbox immediately. It includes your score, dimension analysis, the deployment risks specific to your environment, and Shane's recommended next step — no sales call required.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="relative">
-                <div className="text-7xl font-black text-primary/8 mb-4 leading-none">
-                  {item.step}
-                </div>
-                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">
-                  {item.title}
-                </h3>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                  {item.desc}
-                </p>
-              </div>
-            ))}
+          <div className="max-w-2xl mx-auto">
+            <WorkflowSteps
+              steps={[
+                {
+                  title: "Answer 10 targeted questions",
+                  description: "Each question maps to one of five readiness dimensions. No generic questionnaire — these are the same diagnostics Shane uses in a paid Copilot Readiness Assessment engagement, compressed into a 5-minute format.",
+                },
+                {
+                  title: "Receive an instant readiness score",
+                  description: "Your answers are scored across all five dimensions using a 0–50 scoring model built from Shane's real Copilot deployment experience. You receive a total score, a maturity tier (Early / Developing / Ready / Advanced), and a per-dimension breakdown.",
+                },
+                {
+                  title: "Get your personalized PDF report",
+                  description: "A branded, personalized PDF lands in your inbox immediately. It includes your score, dimension analysis, the deployment risks specific to your environment, and Shane's recommended next step — no sales call required.",
+                },
+              ]}
+            />
           </div>
           <div className="mt-14 text-center">
             <button
               onClick={() => setModalOpen(true)}
-              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+              data-track="cta"
+              className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
               Start the assessment now{" "}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -1079,15 +1035,15 @@ export default function CopilotQuiz() {
       </section>
 
       {/* The Five Dimensions */}
-      <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
             The Five Readiness Dimensions
           </p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
-            What the assessment measures — and why it matters.
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
+            What the assessment <GradientText>measures</GradientText> — and why it matters.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether a Copilot deployment
             delivers value or creates liability. Each is scored independently so
             you know exactly where to focus before deployment begins.
@@ -1096,7 +1052,6 @@ export default function CopilotQuiz() {
             {[
               {
                 colour: "bg-blue-500",
-                accent: "text-blue-600",
                 label: "Dimension 1",
                 title: "Infrastructure & Identity",
                 measures:
@@ -1109,7 +1064,6 @@ export default function CopilotQuiz() {
               },
               {
                 colour: "bg-teal-500",
-                accent: "text-teal-600",
                 label: "Dimension 2",
                 title: "Data & Compliance",
                 measures:
@@ -1122,7 +1076,6 @@ export default function CopilotQuiz() {
               },
               {
                 colour: "bg-violet-500",
-                accent: "text-violet-600",
                 label: "Dimension 3",
                 title: "AI Literacy",
                 measures:
@@ -1135,7 +1088,6 @@ export default function CopilotQuiz() {
               },
               {
                 colour: "bg-orange-500",
-                accent: "text-orange-600",
                 label: "Dimension 4",
                 title: "Change Management",
                 measures:
@@ -1148,7 +1100,6 @@ export default function CopilotQuiz() {
               },
               {
                 colour: "bg-green-500",
-                accent: "text-green-600",
                 label: "Dimension 5",
                 title: "Business Process",
                 measures:
@@ -1159,118 +1110,94 @@ export default function CopilotQuiz() {
                 ready:
                   "Three or more priority use cases defined; success metrics agreed; ROI baseline established; named owner per use case.",
               },
-              {
-                colour: "bg-primary",
-                accent: "text-white/80",
-                label: "Your Output",
-                title: "Your Report",
-                measures: "",
-                matters: "",
-                fail: "",
-                ready: "",
-                cta: true,
-              },
             ].map((item) => (
-              <div
-                key={item.title}
-                className={cn(
-                  "rounded-2xl p-6 border",
-                  item.cta
-                    ? "bg-[#0A2540] border-[#0A2540] flex flex-col justify-between"
-                    : "bg-white border-slate-100 shadow-sm",
-                )}
-              >
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className={cn("w-2 h-10 rounded-full", item.colour)} />
-                    <div>
-                      <p
-                        className={cn(
-                          "text-xs font-bold uppercase tracking-wide",
-                          item.cta ? "text-white/40" : "text-muted-foreground",
-                        )}
-                      >
-                        {item.label}
+              <div key={item.title} className="bg-charcoal-1 rounded-2xl border border-white/[0.06] p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-2 h-10 rounded-full ${item.colour}`} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">
+                      {item.label}
+                    </p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">
+                      {item.title}
+                    </h3>
+                  </div>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-text-primary text-xs uppercase tracking-wide mb-1">
+                      What it measures
+                    </p>
+                    <p className="text-text-secondary leading-relaxed">
+                      {item.measures}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-text-primary text-xs uppercase tracking-wide mb-1">
+                      Why it matters
+                    </p>
+                    <p className="text-text-secondary leading-relaxed">
+                      {item.matters}
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                      <p className="text-xs font-bold text-red-400 uppercase tracking-wide mb-1">
+                        Failure looks like
                       </p>
-                      <h3
-                        className={cn(
-                          "font-extrabold text-lg",
-                          item.cta ? "text-white" : "text-[#0A2540]",
-                        )}
-                      >
-                        {item.title}
-                      </h3>
+                      <p className="text-xs text-text-secondary leading-relaxed">
+                        {item.fail}
+                      </p>
+                    </div>
+                    <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                      <p className="text-xs font-bold text-emerald-400 uppercase tracking-wide mb-1">
+                        Readiness looks like
+                      </p>
+                      <p className="text-xs text-text-secondary leading-relaxed">
+                        {item.ready}
+                      </p>
                     </div>
                   </div>
-                  {item.cta ? (
-                    <p className="text-white/60 text-sm leading-relaxed">
-                      All five dimensions scored, ranked by risk level, and
-                      mapped to a tailored service recommendation. Personalized
-                      PDF delivered to your inbox the moment you finish.
-                    </p>
-                  ) : (
-                    <div className="space-y-3 text-sm">
-                      <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">
-                          What it measures
-                        </p>
-                        <p className="text-slate-500 leading-relaxed">
-                          {item.measures}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">
-                          Why it matters
-                        </p>
-                        <p className="text-slate-500 leading-relaxed">
-                          {item.matters}
-                        </p>
-                      </div>
-                      <div className="flex gap-3">
-                        <div className="flex-1 bg-red-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">
-                            Failure looks like
-                          </p>
-                          <p className="text-xs text-slate-600 leading-relaxed">
-                            {item.fail}
-                          </p>
-                        </div>
-                        <div className="flex-1 bg-emerald-50 rounded-lg p-3">
-                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1">
-                            Readiness looks like
-                          </p>
-                          <p className="text-xs text-slate-600 leading-relaxed">
-                            {item.ready}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
-                {item.cta && (
-                  <button
-                    onClick={() => setModalOpen(true)}
-                    className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
-                  >
-                    Start Assessment <ChevronRight className="w-4 h-4" />
-                  </button>
-                )}
               </div>
             ))}
+            <GlassPanel className="p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-2 h-10 rounded-full" style={GRADIENT_BG} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-text-tertiary">Your Output</p>
+                    <h3 className="font-display font-bold text-lg text-text-primary">Your Report</h3>
+                  </div>
+                </div>
+                <p className="text-text-secondary text-sm leading-relaxed">
+                  All five dimensions scored, ranked by risk level, and
+                  mapped to a tailored service recommendation. Personalized
+                  PDF delivered to your inbox the moment you finish.
+                </p>
+              </div>
+              <button
+                onClick={() => setModalOpen(true)}
+                data-track="cta"
+                className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
+              >
+                Start Assessment <ArrowRight className="w-4 h-4" />
+              </button>
+            </GlassPanel>
           </div>
         </div>
       </section>
 
       {/* What You Receive */}
-      <section className="py-20 bg-white">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
             What You Receive
           </p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             A personalized deployment risk report. Free. Instant.
           </h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+          <p className="text-text-secondary text-center max-w-xl mx-auto mb-14 text-lg">
             Not a generic score. Not a newsletter signup. A real report — the
             same diagnostic framework Shane applies in paid engagements —
             delivered to your inbox the moment you finish.
@@ -1312,16 +1239,16 @@ export default function CopilotQuiz() {
               return (
                 <div
                   key={i}
-                  className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5"
+                  className="flex items-start gap-4 bg-charcoal-1 rounded-2xl border border-white/[0.06] p-5"
                 >
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-accent-blue" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-[#0A2540] mb-1">
+                    <h3 className="font-display font-bold text-text-primary mb-1">
                       {item.title}
                     </h3>
-                    <p className="text-slate-500 text-sm leading-relaxed">
+                    <p className="text-text-secondary text-sm leading-relaxed">
                       {item.body}
                     </p>
                   </div>
@@ -1333,30 +1260,32 @@ export default function CopilotQuiz() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="py-20 bg-[#0A2540]">
-        <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">
+      <section className="border-t border-white/[0.06] py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">
             Don't Deploy Blind
           </p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Know your deployment risk before you spend your Copilot budget.
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
+            Know your deployment risk before you spend your <GradientText>Copilot budget</GradientText>.
           </h2>
-          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-3 leading-relaxed">
             Most organizations discover their readiness gaps after deployment —
             when adoption is low, support burden is high, and the business case
             is already under scrutiny.
           </p>
-          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+          <p className="text-text-secondary text-lg mb-10 leading-relaxed">
             This assessment takes five minutes. The PDF report is free. The gaps
             it surfaces are not.
           </p>
-          <CTAButton
+          <button
             onClick={() => setModalOpen(true)}
-            className="text-base px-8 py-4"
+            data-track="cta"
+            className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
+            style={GRADIENT_BG}
           >
             Take the Free Assessment Now
-          </CTAButton>
-          <p className="text-white/30 text-sm mt-4">
+          </button>
+          <p className="text-text-tertiary text-sm mt-4">
             No account required · No sales follow-up · Results delivered
             instantly
           </p>
