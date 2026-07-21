@@ -244,14 +244,14 @@ function TenantScanPreview() {
                   />
                   <div className={`flex-1 min-w-0 ${state === 'queued' ? 'opacity-50' : ''}`}>
                     <div className="text-xs text-text-secondary">{row.label}</div>
-                    <div className="text-[11px] text-text-secondary opacity-60 leading-snug mt-0.5">
+                    <div className="text-[11px] text-text-secondary leading-snug mt-0.5">
                       {row.detail}
                     </div>
                   </div>
                   {state === 'done' ? (
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
                   ) : (
-                    <span className="text-[10px] uppercase tracking-wider text-text-secondary opacity-60 shrink-0 mt-0.5">
+                    <span className="text-[10px] uppercase tracking-wider text-text-secondary shrink-0 mt-0.5">
                       {state === 'scanning' ? 'Scanning…' : 'Queued'}
                     </span>
                   )}
@@ -780,7 +780,7 @@ export default function Assessments() {
               </p>
 
               {/* Zone switcher — wrapping chips, never a horizontal scroller. */}
-              <div className="flex flex-wrap gap-2 mb-10">
+              <div className="flex flex-wrap gap-2.5 mb-10">
                 {ZONES.map((z) => {
                   const isActive = z.key === zone.key;
                   return (
@@ -790,14 +790,21 @@ export default function Assessments() {
                         if (!isActive) openZone(z.key);
                       }}
                       aria-current={isActive ? 'page' : undefined}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                      className={`inline-flex items-center gap-2 pl-4 pr-2 py-2 rounded-full text-xs font-semibold border transition-all duration-200 ${
                         isActive
-                          ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/40'
-                          : 'text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]'
+                          ? 'text-white border-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.06)]'
+                          : 'text-text-secondary bg-white/[0.03] border-white/[0.08] hover:text-text-primary hover:bg-white/[0.06] hover:border-white/[0.16]'
                       }`}
+                      style={isActive ? GRADIENT_BG : undefined}
                     >
                       {z.label}
-                      <span className="font-numeric opacity-70">{servicesByZone[z.key].length}</span>
+                      <span
+                        className={`font-numeric text-[10px] px-1.5 py-0.5 rounded-full leading-none ${
+                          isActive ? 'bg-white/20 text-white' : 'bg-white/[0.06] text-text-secondary'
+                        }`}
+                      >
+                        {servicesByZone[z.key].length}
+                      </span>
                     </button>
                   );
                 })}

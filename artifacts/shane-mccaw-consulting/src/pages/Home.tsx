@@ -1044,7 +1044,7 @@ export default function Home() {
               <ul className="space-y-3">
                 {TELEMETRY_COMPARISON.them.map((line) => (
                   <li key={line} className="flex items-start gap-2.5 text-sm text-text-secondary">
-                    <AlertTriangle className="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
+                    <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
                     <span>{line}</span>
                   </li>
                 ))}
@@ -1058,7 +1058,7 @@ export default function Home() {
               <ul className="space-y-3">
                 {TELEMETRY_COMPARISON.us.map((line) => (
                   <li key={line} className="flex items-start gap-2.5 text-sm text-text-secondary">
-                    <CheckCircle2 className="w-4 h-4 text-accent-blue mt-0.5 shrink-0" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
                     <span>{line}</span>
                   </li>
                 ))}
