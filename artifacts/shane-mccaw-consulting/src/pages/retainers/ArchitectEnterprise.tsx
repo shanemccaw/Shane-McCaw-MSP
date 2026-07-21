@@ -4,7 +4,10 @@ import { useServices, formatPrice } from "@/hooks/useServices";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
-import { CTAButton } from "@/components/CTAButton";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 const FEATURES = [
   "50 hours of senior consulting per month",
@@ -164,56 +167,61 @@ export default function ArchitectEnterprise() {
       />
 
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-border">
-        <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/retainers" className="hover:text-[#0078D4] transition-colors">Retainer Plans</Link>
+      <div className="border-b border-white/[0.06] pt-20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-tertiary">
+          <Link href="/retainers" className="hover:text-accent-blue transition-colors">Retainer Plans</Link>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-[#0A2540] font-medium">Architect Enterprise</span>
+          <span className="text-text-primary font-medium">Architect Enterprise</span>
         </div>
       </div>
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-[130px] pb-20 px-6">
-        <div className="max-w-[900px] mx-auto text-center">
+      <section className="pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
           <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-            <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-              <Clock className="w-3.5 h-3.5 text-[#00B4D8]" />
+            <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
+              <Clock className="w-3.5 h-3.5 text-accent-blue" />
               50 hours / month
             </div>
-            <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-              <Shield className="w-3.5 h-3.5 text-[#00B4D8]" />
+            <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
+              <Shield className="w-3.5 h-3.5 text-accent-blue" />
               Same-day response
             </div>
-            <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
+            <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
               Current NASA Lead M365 Architect
             </div>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 leading-tight">
-            Enterprise-Grade M365 Architecture,<br className="hidden md:block" /> Delivered by NASA's Lead Architect
+          <h1 className="font-display text-4xl md:text-5xl font-bold text-text-primary mb-4 leading-tight">
+            Enterprise-Grade M365 Architecture,<br className="hidden md:block" /> <GradientText>Delivered by NASA's Lead Architect</GradientText>
           </h1>
 
-          <p className="text-white/60 text-sm uppercase tracking-widest font-bold mb-6">
+          <p className="text-text-tertiary text-sm uppercase tracking-widest font-bold mb-6">
             Architect Enterprise Retainer
           </p>
 
-          <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">{displayPrice}</p>
-          <p className="text-white/50 mb-8 text-lg">/month · cancel anytime</p>
+          <p className="font-numeric text-5xl font-bold mb-2 text-text-primary">{displayPrice}</p>
+          <p className="text-text-tertiary mb-8 text-lg">/month · cancel anytime</p>
 
-          <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-4">
+          <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-4">
             For regulated, complex, and high-risk organizations where M365 is not just infrastructure — it's the operational backbone your compliance posture, security model, and enterprise productivity depend on.
           </p>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-10">
+          <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-10">
             Architect Enterprise gives you 50 hours per month of senior-only M365 consulting from the architect who designed governance, security, and architecture at NASA. Weekly leadership sessions, same-day response, governance builds, Copilot deployment leadership, and a written architecture summary every month. One architect. Full accountability. No delegation.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/checkout?product=architect-enterprise" className="px-8 py-4 text-base">
+            <a
+              href="/checkout?product=architect-enterprise"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
               Get Started
-            </CTAButton>
+            </a>
             <Link
               href="/contact"
-              className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-medium text-base transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
             </Link>
@@ -222,31 +230,32 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Plan comparison strip */}
-      <section className="bg-white border-b border-border py-8 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground mb-6">Compare all retainer tiers</p>
+      <section className="border-y border-white/[0.06] py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-tertiary mb-6">Compare all retainer tiers</p>
           <div className="grid grid-cols-3 gap-3">
             {tiersLoading
               ? [0, 1, 2].map((i) => (
-                  <div key={i} className="rounded-xl border p-4 text-center bg-[#F7F9FC] animate-pulse">
-                    <div className="h-3 bg-gray-200 rounded mb-2 mx-auto w-16" />
-                    <div className="h-5 bg-gray-300 rounded mb-1 mx-auto w-28" />
-                    <div className="h-4 bg-gray-200 rounded mx-auto w-20" />
+                  <div key={i} className="rounded-2xl border border-white/[0.06] p-4 text-center bg-charcoal-1 animate-pulse">
+                    <div className="h-3 bg-white/[0.08] rounded mb-2 mx-auto w-16" />
+                    <div className="h-5 bg-white/[0.1] rounded mb-1 mx-auto w-28" />
+                    <div className="h-4 bg-white/[0.08] rounded mx-auto w-20" />
                   </div>
                 ))
               : tiers.map((tier) => (
                   <Link
                     key={tier.href}
                     href={tier.href}
-                    className={`rounded-xl border p-4 text-center transition-all ${
+                    className={`rounded-2xl border p-4 text-center transition-all ${
                       tier.current
-                        ? "bg-[#0078D4] border-[#0078D4] text-white shadow-md"
-                        : "bg-[#F7F9FC] border-border text-[#0A2540] hover:border-[#0078D4]/50 hover:shadow-sm"
+                        ? "border-accent-blue/50 text-white shadow-md"
+                        : "bg-charcoal-1 border-white/[0.06] text-text-primary hover:border-accent-blue/30"
                     }`}
+                    style={tier.current ? GRADIENT_BG : undefined}
                   >
-                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-muted-foreground"}`}>{tier.hours}</p>
-                    <p className={`font-extrabold text-lg mb-0.5 ${tier.current ? "text-white" : "text-[#0A2540]"}`}>{tier.name}</p>
-                    <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-[#0078D4]"}`}>{tier.price}/mo</p>
+                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-text-tertiary"}`}>{tier.hours}</p>
+                    <p className="font-display font-bold text-lg mb-0.5 text-text-primary">{tier.name}</p>
+                    <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-accent-blue"}`}>{tier.price}/mo</p>
                   </Link>
                 ))}
           </div>
@@ -254,18 +263,18 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What you get */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">What's Included</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">What you get every month</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">What's Included</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What you get every month</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Every Architect Enterprise engagement includes the following, applied consistently across every calendar month.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {FEATURES.map((f, i) => (
-              <div key={i} className="flex items-start gap-3 bg-[#F7F9FC] rounded-xl p-5 border border-border">
-                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span className="text-[#0A2540] font-medium">{f}</span>
+              <div key={i} className="flex items-start gap-3 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                <CheckCircle className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
+                <span className="text-text-primary font-medium">{f}</span>
               </div>
             ))}
           </div>
@@ -273,18 +282,18 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What's Included in the Hours */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">Hour Categories</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">What's included in the 50 hours</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Hour Categories</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What's included in the 50 hours</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Your 50 hours per month are applied across the following work categories — prioritized each month based on your current architectural needs.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {HOURS_INCLUDED.map((item, i) => (
-              <div key={i} className="flex items-start gap-3 bg-white rounded-xl p-5 border border-border">
-                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span className="text-[#0A2540] font-medium">{item}</span>
+              <div key={i} className="flex items-start gap-3 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                <CheckCircle className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
+                <span className="text-text-primary font-medium">{item}</span>
               </div>
             ))}
           </div>
@@ -292,19 +301,19 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What Is NOT Included */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <div className="bg-[#0A2540] rounded-2xl p-8 md:p-10">
-            <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-wider mb-3">Scope Boundaries</p>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-4">What is NOT included</h2>
-            <p className="text-white/60 mb-8 max-w-xl leading-relaxed">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 md:p-10">
+            <p className="text-accent-violet text-xs font-bold uppercase tracking-wider mb-3">Scope Boundaries</p>
+            <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4">What is NOT included</h2>
+            <p className="text-text-secondary mb-8 max-w-xl leading-relaxed">
               Architect Enterprise is a senior architectural advisory engagement. The following are explicitly out of scope — not because they aren't valuable, but because clarity on boundaries protects both sides.
             </p>
             <ul className="space-y-4">
               {NOT_INCLUDED.map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-white/80 font-medium">{item}</span>
+                  <span className="text-text-secondary font-medium">{item}</span>
                 </li>
               ))}
             </ul>
@@ -313,24 +322,24 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Who it's for */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">Ideal Fit</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">Who this plan is for</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Ideal Fit</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Who this plan is for</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Architect Enterprise is the right engagement if any of these describe your organization:
           </p>
           <ul className="space-y-4">
             {WHO_ITS_FOR.map((item, i) => {
               const Icon = item.icon;
               return (
-                <li key={i} className="flex items-start gap-4 bg-white rounded-xl p-5 border border-border shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                <li key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5 text-accent-blue">
+                    <Icon className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-[#0A2540] mb-1">{item.title}</p>
-                    <p className="text-muted-foreground text-sm leading-relaxed">{item.body}</p>
+                    <p className="font-semibold text-text-primary mb-1">{item.title}</p>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                   </div>
                 </li>
               );
@@ -340,19 +349,19 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Typical month */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">Monthly Structure</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">What a typical month looks like</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Monthly Structure</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What a typical month looks like</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Here's exactly how Shane structures your 50 hours across a calendar month — from day one.
           </p>
-          <div className="relative pl-6 border-l-2 border-[#0078D4]/20 space-y-8">
+          <div className="relative pl-6 border-l-2 border-accent-blue/20 space-y-8">
             {TYPICAL_MONTH.map((item, i) => (
               <div key={i} className="relative">
-                <div className="absolute -left-[25px] w-4 h-4 rounded-full bg-[#0078D4] border-2 border-white shadow" />
-                <p className="text-[#0078D4] text-xs font-bold uppercase tracking-wider mb-1">{item.week}</p>
-                <p className="text-foreground leading-relaxed">{item.activity}</p>
+                <div className="absolute -left-[25px] w-4 h-4 rounded-full bg-accent-blue border-2 border-charcoal-0 shadow" />
+                <p className="text-accent-blue text-xs font-bold uppercase tracking-wider mb-1">{item.week}</p>
+                <p className="text-text-secondary leading-relaxed">{item.activity}</p>
               </div>
             ))}
           </div>
@@ -360,20 +369,20 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Why This Plan Exists */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">The Case for Enterprise</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">Why this plan exists</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-2xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">The Case for Enterprise</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Why this plan exists</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
             Architect Enterprise was built for organizations where the cost of architectural failure — a compliance breach, a failed Copilot rollout, uncontrolled configuration drift — dwarfs the cost of the engagement itself.
           </p>
           <ul className="space-y-3">
             {WHY_EXISTS.map((item, i) => (
-              <li key={i} className="flex items-start gap-4 bg-white rounded-xl p-5 border border-border">
-                <div className="w-8 h-8 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-[#0078D4] text-sm font-bold">{i + 1}</span>
+              <li key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-accent-blue text-sm font-bold">{i + 1}</span>
                 </div>
-                <p className="text-foreground leading-relaxed">{item}</p>
+                <p className="text-text-secondary leading-relaxed">{item}</p>
               </li>
             ))}
           </ul>
@@ -381,18 +390,18 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Why Shane */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">The Architect</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">Why Shane</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-2xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">The Architect</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Why Shane</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-2xl mx-auto">
             There's no shortage of M365 consultants. There is a shortage of principal architects who hold themselves to the same accountability Shane does at NASA every day, with 30 years of depth and no delegation.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {WHY_SHANE.map((item, i) => (
-              <div key={i} className="flex items-start gap-3 bg-[#F7F9FC] rounded-xl p-5 border border-border">
-                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span className="text-[#0A2540] font-medium leading-relaxed">{item}</span>
+              <div key={i} className="flex items-start gap-3 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                <CheckCircle className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
+                <span className="text-text-primary font-medium leading-relaxed">{item}</span>
               </div>
             ))}
           </div>
@@ -400,19 +409,19 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Tier nudge */}
-      <section className="bg-[#F7F9FC] py-14 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <div className="bg-white rounded-2xl border border-border p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+      <section className="py-14 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Smaller scope?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth</h3>
-              <p className="text-muted-foreground text-sm max-w-md">
+              <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-1">Smaller scope?</p>
+              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Architect Growth</h3>
+              <p className="text-text-secondary text-sm max-w-md">
                 25 hours/month with priority 4-hour response, two strategy calls, and proactive tenant health monitoring. Most popular for organizations actively modernizing who aren't yet at enterprise scale.
               </p>
             </div>
             <Link
               href="/retainers/architect-growth"
-              className="inline-flex items-center gap-2 text-[#0078D4] font-semibold whitespace-nowrap hover:text-[#005A9E] transition-colors flex-shrink-0"
+              className="inline-flex items-center gap-2 text-accent-blue font-semibold whitespace-nowrap hover:text-accent-violet transition-colors flex-shrink-0"
             >
               See Architect Growth <ArrowRight className="w-4 h-4" />
             </Link>
@@ -421,47 +430,53 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Not sure? CTA */}
-      <section className="bg-[#F7F9FC] py-12 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <div className="bg-white border border-[#0078D4]/20 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left shadow-sm">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <GlassPanel className="p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Not sure which plan is right?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Find your best-fit retainer in 2 minutes</h3>
-              <p className="text-muted-foreground text-sm max-w-md">
+              <p className="text-xs font-bold uppercase tracking-wider text-accent-blue mb-1">Not sure which plan is right?</p>
+              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Find your best-fit retainer in 2 minutes</h3>
+              <p className="text-text-secondary text-sm max-w-md">
                 Answer 10 questions about your M365 environment and support needs — get an instant recommendation for Essentials, Growth, or Enterprise.
               </p>
             </div>
             <Link
               href="/retainer-quiz"
-              className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0066B8] text-white font-semibold px-6 py-3 rounded-xl transition-colors whitespace-nowrap flex-shrink-0 text-sm"
+              className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3 rounded-xl transition-opacity hover:opacity-90 whitespace-nowrap flex-shrink-0 text-sm"
+              style={GRADIENT_BG}
             >
               Take the Retainer Quiz <ArrowRight className="w-4 h-4" />
             </Link>
-          </div>
+          </GlassPanel>
         </div>
       </section>
 
       <TestimonialDiscountCallout />
       {/* Bottom CTA */}
-      <section className="bg-[#0A2540] py-20 px-6 text-center">
-        <div className="max-w-[700px] mx-auto">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+        <div className="max-w-2xl mx-auto">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
             Enterprise M365 architecture. Senior-only. Shane's personal accountability.
           </h2>
-          <p className="text-white/60 mb-2 text-lg leading-relaxed">
+          <p className="text-text-secondary mb-2 text-lg leading-relaxed">
             Speak directly with Shane. No salespeople. No pressure.
           </p>
-          <p className="text-white/60 mb-8 text-lg leading-relaxed">
+          <p className="text-text-secondary mb-8 text-lg leading-relaxed">
             Shane will review your environment, agree on the first month's priorities, and have your dedicated channel active within 24 hours of engagement start.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/book?plan=architect-enterprise" className="px-8 py-4 text-base">
+            <a
+              href="/book?plan=architect-enterprise"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
               Start Architect Enterprise
-            </CTAButton>
+            </a>
             <Link
               href="/contact"
-              className="inline-flex items-center justify-center gap-2 text-white/70 hover:text-white font-medium text-base transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
             </Link>

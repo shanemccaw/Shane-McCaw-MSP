@@ -3,8 +3,11 @@ import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCall
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
-import { CTAButton } from "@/components/CTAButton";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
 import { useServices, formatPrice } from "@/hooks/useServices";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 const FALLBACK_HOURS = "10";
 
@@ -69,7 +72,7 @@ const TYPICAL_MONTH = [
 ];
 
 function SkeletonBlock({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-white/10 rounded ${className ?? ""}`} />;
+  return <div className={`animate-pulse bg-white/[0.08] rounded ${className ?? ""}`} />;
 }
 
 export default function ArchitectEssentials() {
@@ -142,59 +145,64 @@ export default function ArchitectEssentials() {
       />
 
       {/* Breadcrumb */}
-      <div className="bg-white border-b border-border">
-        <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/retainers" className="hover:text-[#0078D4] transition-colors">Retainer Plans</Link>
+      <div className="border-b border-white/[0.06] pt-20">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-tertiary">
+          <Link href="/retainers" className="hover:text-accent-blue transition-colors">Retainer Plans</Link>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-[#0A2540] font-medium">Architect Essentials</span>
+          <span className="text-text-primary font-medium">Architect Essentials</span>
         </div>
       </div>
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-[130px] pb-20 px-6">
-        <div className="max-w-[900px] mx-auto text-center">
+      <section className="pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
           <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
-            <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-              <Clock className="w-3.5 h-3.5 text-[#00B4D8]" />
+            <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
+              <Clock className="w-3.5 h-3.5 text-accent-blue" />
               {loading ? <SkeletonBlock className="w-20 h-3" /> : <span>{displayHours} hours / month</span>}
             </div>
-            <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#00B4D8]" />
+            <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
+              <ShieldCheck className="w-3.5 h-3.5 text-accent-blue" />
               Current NASA Lead M365 Architect
             </div>
           </div>
 
-          <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 leading-tight">
+          <h1 className="font-display text-4xl md:text-5xl font-bold text-text-primary mb-4 leading-tight">
             Fractional M365 Architecture<br className="hidden md:block" /> for Mid-Market and Regulated Organizations
           </h1>
 
-          <p className="text-white/60 text-sm uppercase tracking-widest font-bold mb-6">
+          <p className="text-text-tertiary text-sm uppercase tracking-widest font-bold mb-6">
             Architect Essentials Retainer
           </p>
 
           {loading ? (
             <div className="flex justify-center mb-2"><SkeletonBlock className="w-36 h-14" /></div>
           ) : displayPrice ? (
-            <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">${displayPrice}</p>
+            <p className="font-numeric text-5xl font-bold mb-2"><GradientText>${displayPrice}</GradientText></p>
           ) : (
-            <p className="text-[#00B4D8] text-2xl font-extrabold mb-2">Contact for pricing</p>
+            <p className="font-numeric text-2xl font-bold mb-2 text-text-primary">Contact for pricing</p>
           )}
-          <p className="text-white/50 mb-8 text-lg">/month · cancel with 30 days' notice</p>
+          <p className="text-text-tertiary mb-8 text-lg">/month · cancel with 30 days' notice</p>
 
-          <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-4">
+          <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-4">
             Most organizations don't need a full-time M365 architect. They need one available — consistently, predictably, without a scoping call, without a proposal, without a retainer lock-in.
           </p>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-10">
+          <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-10">
             Architect Essentials delivers {displayHours} hours of senior Microsoft 365 expertise every month: a strategy call to set direction, async support when questions surface, and a written summary of everything accomplished. The same architect. Every month. No surprises.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/checkout?product=architect-essentials" className="px-8 py-4 text-base">
+            <a
+              href="/checkout?product=architect-essentials"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
               Get Started
-            </CTAButton>
+            </a>
             <Link
               href="/contact"
-              className="inline-flex items-center justify-center gap-2 text-white/80 hover:text-white font-medium text-base transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
             </Link>
@@ -203,31 +211,32 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Plan comparison strip */}
-      <section className="bg-white border-b border-border py-8 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground mb-6">Compare all retainer tiers</p>
+      <section className="border-y border-white/[0.06] py-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-tertiary mb-6">Compare all retainer tiers</p>
           <div className="grid grid-cols-3 gap-3">
             {loading
               ? [0, 1, 2].map((i) => (
-                  <div key={i} className="rounded-xl border p-4 text-center bg-[#F7F9FC] animate-pulse">
-                    <div className="h-3 bg-gray-200 rounded mb-2 mx-auto w-16" />
-                    <div className="h-5 bg-gray-300 rounded mb-1 mx-auto w-28" />
-                    <div className="h-4 bg-gray-200 rounded mx-auto w-20" />
+                  <div key={i} className="rounded-2xl border border-white/[0.06] p-4 text-center bg-charcoal-1 animate-pulse">
+                    <div className="h-3 bg-white/[0.08] rounded mb-2 mx-auto w-16" />
+                    <div className="h-5 bg-white/[0.1] rounded mb-1 mx-auto w-28" />
+                    <div className="h-4 bg-white/[0.08] rounded mx-auto w-20" />
                   </div>
                 ))
               : tiers.map((tier) => (
                   <Link
                     key={tier.href}
                     href={tier.href}
-                    className={`rounded-xl border p-4 text-center transition-all ${
+                    className={`rounded-2xl border p-4 text-center transition-all ${
                       tier.current
-                        ? "bg-[#0078D4] border-[#0078D4] text-white shadow-md"
-                        : "bg-[#F7F9FC] border-border text-[#0A2540] hover:border-[#0078D4]/50 hover:shadow-sm"
+                        ? "border-accent-blue/50 text-white shadow-md"
+                        : "bg-charcoal-1 border-white/[0.06] text-text-primary hover:border-accent-blue/30"
                     }`}
+                    style={tier.current ? GRADIENT_BG : undefined}
                   >
-                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-muted-foreground"}`}>{tier.hours}</p>
-                    <p className={`font-extrabold text-lg mb-0.5 ${tier.current ? "text-white" : "text-[#0A2540]"}`}>{tier.name}</p>
-                    <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-[#0078D4]"}`}>{tier.price}/mo</p>
+                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-text-tertiary"}`}>{tier.hours}</p>
+                    <p className="font-display font-bold text-lg mb-0.5 text-text-primary">{tier.name}</p>
+                    <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-accent-blue"}`}>{tier.price}/mo</p>
                   </Link>
                 ))}
           </div>
@@ -235,13 +244,13 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Why Essentials Exists */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">Why This Plan Exists</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Why This Plan Exists</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             Predictable access. No proposals. No scoping delays.
           </h2>
-          <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-text-secondary text-center mb-12 max-w-2xl mx-auto">
             Most consulting arrangements start with a discovery call, a proposal, a statement of work, and a signed contract — before a single question gets answered. Architect Essentials eliminates that entirely.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -259,12 +268,12 @@ export default function ArchitectEssentials() {
                 body: "Every month ends with a written summary: what was done, what was flagged, what is recommended next. A permanent record of expert input applied to your environment — not a conversation that disappears.",
               },
             ].map((item, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-border p-6">
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mb-4">
-                  <CheckCircle className="w-5 h-5 text-[#0078D4]" />
+              <div key={i} className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
+                <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4 text-accent-blue">
+                  <CheckCircle className="w-5 h-5" />
                 </div>
-                <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.body}</p>
+                <h3 className="font-display font-bold text-text-primary mb-2">{item.title}</h3>
+                <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
               </div>
             ))}
           </div>
@@ -272,13 +281,13 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Value Proposition */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-3">The Value Shift</p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">The Value Shift</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             What changes when a senior M365 architect is in your corner
           </h2>
-          <p className="text-muted-foreground text-center mb-12 max-w-2xl mx-auto">
+          <p className="text-text-secondary text-center mb-12 max-w-2xl mx-auto">
             Shane spent 30 years in the Microsoft ecosystem and was Lead M365 Architect at NASA — responsible for the governance, security, and architecture of one of the most complex Microsoft 365 deployments in the US federal space. That expertise, applied to your environment every month.
           </p>
 
@@ -301,14 +310,14 @@ export default function ArchitectEssentials() {
                 after: "A 30-year Microsoft veteran is one message away — answers in hours, not days",
               },
             ].map((item, i) => (
-              <div key={i} className="rounded-2xl border border-border overflow-hidden">
-                <div className="bg-red-50 px-5 py-4 border-b border-border">
-                  <p className="text-xs font-bold uppercase tracking-wide text-red-500 mb-1">Without Essentials</p>
-                  <p className="text-sm text-[#0A2540] leading-relaxed">{item.before}</p>
+              <div key={i} className="rounded-2xl border border-white/[0.06] overflow-hidden">
+                <div className="bg-red-500/10 px-5 py-4 border-b border-white/[0.06]">
+                  <p className="text-xs font-bold uppercase tracking-wide text-red-400 mb-1">Without Essentials</p>
+                  <p className="text-sm text-text-primary leading-relaxed">{item.before}</p>
                 </div>
-                <div className="bg-[#F0FFF8] px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-600 mb-1">With Essentials</p>
-                  <p className="text-sm text-[#0A2540] leading-relaxed">{item.after}</p>
+                <div className="bg-emerald-500/10 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-400 mb-1">With Essentials</p>
+                  <p className="text-sm text-text-primary leading-relaxed">{item.after}</p>
                 </div>
               </div>
             ))}
@@ -317,27 +326,27 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* What You Get */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">What you get every month</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What you get every month</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Every Architect Essentials engagement includes the following, applied consistently across every calendar month.
           </p>
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-start gap-3 bg-white rounded-xl p-5 border border-border">
-                  <div className="animate-pulse bg-[#0078D4]/20 rounded-full w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <div className="animate-pulse bg-[#0A2540]/10 rounded h-4 w-3/4" />
+                <div key={i} className="flex items-start gap-3 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                  <div className="animate-pulse bg-accent-blue/20 rounded-full w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div className="animate-pulse bg-white/[0.08] rounded h-4 w-3/4" />
                 </div>
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {displayDeliverables.map((item, i) => (
-                <div key={i} className="flex items-start gap-3 bg-white rounded-xl p-5 border border-border">
-                  <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                  <span className="text-[#0A2540] font-medium">{item}</span>
+                <div key={i} className="flex items-start gap-3 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                  <CheckCircle className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
+                  <span className="text-text-primary font-medium">{item}</span>
                 </div>
               ))}
             </div>
@@ -346,23 +355,23 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Who It's For */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">Who this plan is for</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Who this plan is for</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Architect Essentials is the right entry point for any of these organizations:
           </p>
           <ul className="space-y-4">
             {WHO_ITS_FOR.map((item, i) => {
               const Icon = item.icon;
               return (
-                <li key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-xl p-5 border border-border">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                <li key={i} className="flex items-start gap-4 bg-charcoal-1 rounded-2xl p-5 border border-white/[0.06]">
+                  <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 mt-0.5 text-accent-blue">
+                    <Icon className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-[#0A2540] mb-1">{item.title}</p>
-                    <p className="text-muted-foreground text-sm leading-relaxed">{item.body}</p>
+                    <p className="font-semibold text-text-primary mb-1">{item.title}</p>
+                    <p className="text-text-secondary text-sm leading-relaxed">{item.body}</p>
                   </div>
                 </li>
               );
@@ -372,18 +381,18 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Typical Month */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 text-center">What a typical month looks like</h2>
-          <p className="text-muted-foreground text-center mb-10 max-w-xl mx-auto">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What a typical month looks like</h2>
+          <p className="text-text-secondary text-center mb-10 max-w-xl mx-auto">
             Here's exactly how Shane structures your {displayHours} hours across a calendar month — from day one.
           </p>
-          <div className="relative pl-6 border-l-2 border-[#0078D4]/20 space-y-8">
+          <div className="relative pl-6 border-l-2 border-accent-blue/20 space-y-8">
             {TYPICAL_MONTH.map((item, i) => (
               <div key={i} className="relative">
-                <div className="absolute -left-[25px] w-4 h-4 rounded-full bg-[#0078D4] border-2 border-white shadow" />
-                <p className="text-[#0078D4] text-xs font-bold uppercase tracking-wider mb-1">{item.week}</p>
-                <p className="text-foreground leading-relaxed">{item.activity}</p>
+                <div className="absolute -left-[25px] w-4 h-4 rounded-full bg-accent-blue border-2 border-charcoal-0 shadow" />
+                <p className="text-accent-blue text-xs font-bold uppercase tracking-wider mb-1">{item.week}</p>
+                <p className="text-text-secondary leading-relaxed">{item.activity}</p>
               </div>
             ))}
           </div>
@@ -391,19 +400,19 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Tier Nudge */}
-      <section className="bg-white py-14 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <div className="bg-[#F7F9FC] rounded-2xl border border-border p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <section className="py-14 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-4xl mx-auto">
+          <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Actively modernizing?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth</h3>
-              <p className="text-muted-foreground text-sm max-w-md">
+              <p className="text-xs font-bold uppercase tracking-wider text-accent-blue mb-1">Actively modernizing?</p>
+              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Architect Growth</h3>
+              <p className="text-text-secondary text-sm max-w-md">
                 25 hours/month with priority 4-hour response, two strategy calls per month, and proactive tenant health monitoring. Built for organizations mid-stream on a Copilot rollout, SharePoint migration, or governance overhaul who need more hands-on delivery hours every week.
               </p>
             </div>
             <Link
               href="/retainers/architect-growth"
-              className="inline-flex items-center gap-2 text-[#0078D4] font-semibold whitespace-nowrap hover:text-[#005A9E] transition-colors flex-shrink-0"
+              className="inline-flex items-center gap-2 text-accent-blue font-semibold whitespace-nowrap hover:text-accent-violet transition-colors flex-shrink-0"
             >
               See Architect Growth <ArrowRight className="w-4 h-4" />
             </Link>
@@ -412,44 +421,50 @@ export default function ArchitectEssentials() {
       </section>
 
       {/* Not sure? CTA */}
-      <section className="bg-[#F7F9FC] py-12 px-6">
-        <div className="max-w-[900px] mx-auto">
-          <div className="bg-white border border-[#0078D4]/20 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left shadow-sm">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <GlassPanel className="p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Not sure which plan is right?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Find your best-fit retainer in 2 minutes</h3>
-              <p className="text-muted-foreground text-sm max-w-md">
+              <p className="text-xs font-bold uppercase tracking-wider text-accent-blue mb-1">Not sure which plan is right?</p>
+              <h3 className="font-display text-xl font-bold text-text-primary mb-2">Find your best-fit retainer in 2 minutes</h3>
+              <p className="text-text-secondary text-sm max-w-md">
                 Answer 10 questions about your M365 environment and support needs — get an instant recommendation for Essentials, Growth, or Enterprise.
               </p>
             </div>
             <Link
               href="/retainer-quiz"
-              className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0066B8] text-white font-semibold px-6 py-3 rounded-xl transition-colors whitespace-nowrap flex-shrink-0 text-sm"
+              className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3 rounded-xl transition-opacity hover:opacity-90 whitespace-nowrap flex-shrink-0 text-sm"
+              style={GRADIENT_BG}
             >
               Take the Retainer Quiz <ArrowRight className="w-4 h-4" />
             </Link>
-          </div>
+          </GlassPanel>
         </div>
       </section>
 
       <TestimonialDiscountCallout />
       {/* Bottom CTA */}
-      <section className="bg-[#0A2540] py-20 px-6 text-center">
-        <div className="max-w-[700px] mx-auto">
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+        <div className="max-w-2xl mx-auto">
+          <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">
             Senior M365 expertise. In your corner. Every month.
           </h2>
-          <p className="text-white/60 mb-8 text-lg leading-relaxed">
+          <p className="text-text-secondary mb-8 text-lg leading-relaxed">
             Start your onboarding. Shane will confirm your environment, agree on the first month's priorities, and have your first strategy call on the calendar within five business days.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/checkout?product=architect-essentials" className="px-8 py-4 text-base">
+            <a
+              href="/checkout?product=architect-essentials"
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
               {displayPrice ? `Get Started — $${displayPrice}/mo` : "Get Started"}
-            </CTAButton>
+            </a>
             <Link
               href="/contact"
-              className="inline-flex items-center justify-center gap-2 text-white/70 hover:text-white font-medium text-base transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
             </Link>
