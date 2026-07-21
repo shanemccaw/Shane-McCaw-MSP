@@ -140,15 +140,18 @@ async function ensureClientAccount(email: string, name?: string): Promise<{ id: 
  *      (e.g. from a retried/duplicate purchase attempt), reuse it.
  *   3. Else create a new msp_customers row under the MSP flagged isDirectBusiness=true.
  *
+ * Returns the resolved/created msp_customers.id, or null only in the genuine
+ * no-isDirectBusiness-MSP-configured case (nothing to attach to).
+ *
  * Must be called BEFORE ensureClientMspUser so its own tenantId lookup finds this row.
  */
-async function ensureDirectCustomerRecord(userId: number, tenantId?: string | null): Promise<void> {
+async function ensureDirectCustomerRecord(userId: number, tenantId?: string | null): Promise<number | null> {
   const [existingLink] = await db
     .select({ customerId: mspUsersTable.customerId })
     .from(mspUsersTable)
     .where(eq(mspUsersTable.userId, userId))
     .limit(1);
-  if (existingLink?.customerId != null) return;
+  if (existingLink?.customerId != null) return existingLink.customerId;
 
   if (tenantId) {
     const [existingByTenant] = await db
@@ -156,7 +159,7 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
       .from(mspCustomersTable)
       .where(eq(mspCustomersTable.tenantId, tenantId))
       .limit(1);
-    if (existingByTenant) return;
+    if (existingByTenant) return existingByTenant.id;
   }
 
   const [directMsp] = await db
@@ -164,7 +167,7 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
     .from(mspsTable)
     .where(eq(mspsTable.isDirectBusiness, true))
     .limit(1);
-  if (!directMsp) return; // no MSP flagged isDirectBusiness=true — nothing to attach to
+  if (!directMsp) return null; // no MSP flagged isDirectBusiness=true — nothing to attach to
 
   const [buyer] = await db
     .select({ name: usersTable.name, company: usersTable.company })
@@ -172,13 +175,15 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  await db.insert(mspCustomersTable).values({
+  const [created] = await db.insert(mspCustomersTable).values({
     mspId: directMsp.id,
     name: buyer?.company?.trim() || buyer?.name?.trim() || "Direct Customer",
     tenantId: tenantId ?? undefined,
     status: "active",
     ownerType: "customer",
-  });
+  }).returning({ id: mspCustomersTable.id });
+
+  return created.id;
 }
 
 /**
@@ -186,9 +191,11 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * Idempotent — if a row already exists for this userId, does nothing.
  *
  * mspId resolution order:
- *   1. If tenantId is provided and an msp_customers row matches it, use that
+ *   1. If explicitCustomerId is provided, use it directly (and look up its real
+ *      owning mspId) — takes precedence over tenantId-based resolution.
+ *   2. Else if tenantId is provided and an msp_customers row matches it, use that
  *      customer's mspId and customerId.
- *   2. Otherwise default to mspId=1 (Shane's own MSP) with no customerId.
+ *   3. Otherwise default to mspId=1 (Shane's own MSP) with no customerId.
  *
  * Should be called AFTER provisionOnboardingProject so that the msp_customers
  * row created during provisioning is available for the tenantId lookup.
@@ -196,11 +203,22 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
 export async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
+  explicitCustomerId?: number | null,
 ): Promise<void> {
-  // Resolve target mspId + customerId from the tenantId if supplied
+  // Resolve target mspId + customerId — explicitCustomerId takes precedence over tenantId.
   let mspId = 1; // default: Shane's own MSP
   let customerId: number | undefined = undefined;
-  if (tenantId) {
+  if (explicitCustomerId != null) {
+    const [customer] = await db
+      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.id, explicitCustomerId))
+      .limit(1);
+    if (customer) {
+      mspId = customer.mspId;
+      customerId = customer.id;
+    }
+  } else if (tenantId) {
     const [customer] = await db
       .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
       .from(mspCustomersTable)
@@ -6774,10 +6792,11 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     entityLabel: client.name ?? client.email,
   });
 
-  // Ensure the manually-created client account has an msp_users row (mspId=1 default).
+  // Ensure the manually-created client account has an msp_users row, linked to the
+  // direct-business msp_customers row so customer-scoped routes work immediately.
   try {
-    await ensureDirectCustomerRecord(client.id);
-    await ensureClientMspUser(client.id);
+    const directCustomerId = await ensureDirectCustomerRecord(client.id);
+    await ensureClientMspUser(client.id, undefined, directCustomerId);
   } catch (mspErr) {
     req.log.warn({ err: mspErr, clientId: client.id }, "admin-create-client: ensureClientMspUser failed (non-fatal)");
   }
