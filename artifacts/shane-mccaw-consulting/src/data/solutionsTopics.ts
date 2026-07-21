@@ -1,5 +1,6 @@
 import {
-  Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity, type LucideIcon,
+  Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity,
+  RefreshCw, ClipboardList, Key, Layers, MessageSquare, type LucideIcon,
 } from "lucide-react";
 
 // Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
@@ -94,7 +95,46 @@ export interface SolutionTopicFlagship {
     metrics: { label: string; count: number }[];
     trendNote: string;
     caption: string;
+    /**
+     * Small category rings beside the primary ring — the Portal's real Mission
+     * Control layout (one large ring + a grid of 48px pillar rings). Labels MUST
+     * be the 7 real Architecture Health Engine pillar names (HEALTH_PILLAR_LABELS
+     * below / MissionControl.tsx PILLAR_LABELS); values are illustrative and live
+     * inside the panel's "Illustrative Example" badge + caption.
+     */
+    pillarBreakdown?: { label: string; value: number }[];
+    /**
+     * Small trend line depicting the real Drift Engine output shape (score +
+     * trendDirection per scheduled evaluation, drift-engine.ts) — x labels are
+     * relative scheduled evaluations, never fabricated calendar dates, and the
+     * counts are illustrative under the same badge. seriesLabel names what the
+     * line counts in the hover tooltip.
+     */
+    driftTrend?: { seriesLabel: string; points: { label: string; value: number }[] };
   };
+  /**
+   * Icon-led strip for the "What It Does" section naming the real surfaces the
+   * scan reads — icons + real M365 terminology only, no data values, so no
+   * illustrative badge is needed. Labels must stay grounded in the topic's real
+   * coverage claims (the `coverage` array), not invent new capabilities.
+   */
+  scanSurfaces?: { icon: LucideIcon; label: string; sublabel: string }[];
+  /**
+   * Per-risk M365 concept icon + tag for RiskList, index-aligned with `risks`
+   * (same order, same length) — grounds each risk card in the real surface it
+   * describes (SharePoint sites, Teams naming, …) instead of a uniform warning
+   * triangle. Purely iconographic: no severity scores, no fabricated data.
+   */
+  riskDetails?: { icon: LucideIcon; tag: string }[];
+  /**
+   * Radar (spider) chart for the modules section's multi-dimensional claim —
+   * the topic's real coverage surfaces scored in relation to each other on one
+   * web. Axis labels must map 1:1 to the real `coverage` surfaces; values are
+   * illustrative (no per-surface scoring exists in code — see the dashboard
+   * comment below) and the block carries the same "Illustrative Example" badge
+   * + caption convention as the Portal preview.
+   */
+  surfaceRadar?: { axes: { label: string; value: number }[]; caption: string };
   /**
    * Real document_product catalog slugs to list for this topic. Resolved live via
    * useServices({ type: "document_product" }) — name/price/description all come from
@@ -376,6 +416,82 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         ],
         trendNote: "Drift Engine: trend rising since last scheduled evaluation",
         caption: "Example data — not your real score",
+        // The 7 real Architecture Health Engine pillar names (health-engine.ts
+        // HEALTH_PILLARS + the Security Engine's security pillar; labels match
+        // HEALTH_PILLAR_LABELS / MissionControl.tsx PILLAR_LABELS). Values are
+        // illustrative, inside the panel's badge; governance deliberately equals
+        // the primary ring's 74 so the breakdown reads as one coherent scenario.
+        pillarBreakdown: [
+          { label: "Governance", value: 74 },
+          { label: "Compliance", value: 81 },
+          { label: "Adoption", value: 88 },
+          { label: "Copilot Readiness", value: 66 },
+          { label: "Architecture", value: 79 },
+          { label: "Licensing", value: 91 },
+          { label: "Security", value: 58 },
+        ],
+        // Real Drift Engine output shape (score + trendDirection per scheduled
+        // evaluation, drift-engine.ts) — a rising series matching the trendNote
+        // language above. Relative-evaluation x labels, no fabricated dates;
+        // counts illustrative under the same badge.
+        driftTrend: {
+          seriesLabel: "Open baseline deviations",
+          points: [
+            { label: "5 evals ago", value: 3 },
+            { label: "4 evals ago", value: 4 },
+            { label: "3 evals ago", value: 4 },
+            { label: "2 evals ago", value: 6 },
+            { label: "1 eval ago", value: 7 },
+            { label: "Latest", value: 9 },
+          ],
+        },
+      },
+      // The same four real coverage surfaces as `coverage` above, in the site's
+      // established icon vocabulary (ClipboardList = policy/ownership and Layers =
+      // baseline drift per the quiz pages; Key = privileged access per the legacy
+      // governance service page). No values — iconography + real terminology only.
+      scanSurfaces: [
+        {
+          icon: RefreshCw,
+          label: "Teams & Group lifecycle",
+          sublabel: "Every Team and Microsoft 365 Group, creation to expiry, against your real policy",
+        },
+        {
+          icon: ClipboardList,
+          label: "Naming & ownership",
+          sublabel: "Naming convention exceptions and groups without a current accountable owner",
+        },
+        {
+          icon: Key,
+          label: "Admin role assignments",
+          sublabel: "Who actually holds Global Admin and every other privileged role",
+        },
+        {
+          icon: Layers,
+          label: "Configuration baseline",
+          sublabel: "Your live tenant configuration compared against the last approved state",
+        },
+      ],
+      // Index-aligned with `risks` above — each tag names the real M365 surface
+      // that risk describes, icons per the site's vocabulary (Share2 = SharePoint,
+      // MessageSquare = Teams, Users = people/groups, Key = privileged access).
+      riskDetails: [
+        { icon: Share2, tag: "SharePoint sites" },
+        { icon: MessageSquare, tag: "Teams naming" },
+        { icon: Users, tag: "Microsoft 365 Groups" },
+        { icon: Key, tag: "Admin roles" },
+      ],
+      // The four coverage surfaces on one web — sub-scores are illustrative (no
+      // per-surface scoring exists in code; the caption + badge say so) and
+      // average to ~74, consistent with the dashboard's Governance pillar ring.
+      surfaceRadar: {
+        axes: [
+          { label: "Lifecycle policy", value: 68 },
+          { label: "Naming compliance", value: 76 },
+          { label: "Baseline integrity", value: 62 },
+          { label: "Admin role hygiene", value: 88 },
+        ],
+        caption: "The four surfaces, scored in relation to each other — example data, not your tenant",
       },
       docProductSlugs: ["governance-maturity-report", "governance-framework-plan"],
     },

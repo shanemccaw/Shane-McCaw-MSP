@@ -9,6 +9,11 @@ import { StatPanel } from "@/components/design-system/StatPanel";
 import { RiskList } from "@/components/design-system/RiskList";
 import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import { DeliverablesList } from "@/components/design-system/DeliverablesList";
+import { PillarScoreRing } from "@/components/design-system/PillarScoreRing";
+import { CategoryBreakdownGrid } from "@/components/design-system/CategoryBreakdownGrid";
+import { TrendLineChart } from "@/components/design-system/TrendLineChart";
+import { SurfaceRadarChart } from "@/components/design-system/SurfaceRadarChart";
+import { ScanSurfaceStrip } from "@/components/design-system/ScanSurfaceStrip";
 import {
   getSolutionTopic,
   HEALTH_PILLAR_LABELS,
@@ -78,14 +83,31 @@ function FlagshipHeadingText({ h }: { h: FlagshipHeading }) {
 }
 
 /**
- * Portal-style dashboard preview for a flagship topic's "What You Get" section — the
- * same visual language as Home.tsx's Mission Control preview (conic-gradient health
- * ring, metric rows, flat-amber-means-attention), applied to the topic's real,
- * code-verified metric names with clearly-badged illustrative values. Bars sweep in
- * from zero on first scroll into view using the site's established width-transition
- * pattern (QuizResultsPage.tsx); the sweep is skipped for prefers-reduced-motion.
- * Metric semantics are the real product's target-0 semantics: count 0 = healthy
- * (empty track, quiet value), count > 0 = flat amber bar scaled to the largest count.
+ * The site's illustrative-data disclosure badge (Home.tsx Mission Control preview
+ * convention) — pinned to the top-right of any panel whose numbers are example
+ * data rather than the visitor's real tenant.
+ */
+function IllustrativeBadge() {
+  return (
+    <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
+      Illustrative Example
+    </span>
+  );
+}
+
+/**
+ * Portal-style dashboard preview for a flagship topic's "What You Get" section,
+ * rebuilt on the Portal's REAL ring pattern (msp-portal score-ring.tsx geometry via
+ * PillarScoreRing: SVG dasharray sweep, threshold-colored) instead of the earlier
+ * conic-gradient approximation — one large primary ring, an optional Mission
+ * Control-style grid of small pillar rings (CategoryBreakdownGrid), the topic's
+ * real, code-verified metric names as bars, and an optional Drift Engine trend
+ * line (TrendLineChart) matching the panel's trendNote language. All values are
+ * clearly-badged illustrative. Ring + bars sweep in from zero on first scroll into
+ * view using the site's established width-transition pattern (QuizResultsPage.tsx);
+ * the sweep is skipped for prefers-reduced-motion. Metric semantics are the real
+ * product's target-0 semantics: count 0 = healthy (empty track, quiet value),
+ * count > 0 = flat amber bar scaled to the largest count.
  */
 function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -116,32 +138,32 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
 
   return (
     <GlassPanel ref={panelRef} className="p-6 sm:p-8 relative">
-      <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
-        Illustrative Example
-      </span>
+      <IllustrativeBadge />
       <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6">
         {dashboard.panelLabel}
       </h3>
 
       <div className="flex items-center gap-6 mb-7">
-        <div
-          className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-full"
-          style={{
-            background: `conic-gradient(var(--accent-blue) 0deg, var(--accent-violet) ${dashboard.ringValue * 3.6}deg, rgba(255,255,255,0.08) ${dashboard.ringValue * 3.6}deg 360deg)`,
-          }}
-          aria-hidden="true"
-        >
-          <div className="absolute inset-[7px] rounded-full bg-charcoal-1 flex items-center justify-center">
-            <span className="gradient-text font-numeric text-2xl font-semibold">
-              {dashboard.ringValue}
-            </span>
-          </div>
+        <div aria-hidden="true" className="shrink-0">
+          <PillarScoreRing value={dashboard.ringValue} size={112} strokeWidth={9} revealed={revealed} />
         </div>
         <div>
           <div className="text-sm font-semibold text-text-primary">{dashboard.ringLabel}</div>
           <div className="text-xs text-text-secondary mt-1">{dashboard.caption}</div>
         </div>
       </div>
+
+      {/* No aria-hidden on this wrapper: PillarScoreRing's svg-level aria-hidden
+          already keeps the illustrative values out of the accessibility tree, while
+          the mini-heading and the 7 real pillar names stay readable to AT. */}
+      {dashboard.pillarBreakdown && (
+        <div className="mb-7">
+          <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-3">
+            Architecture Health Engine — all 7 pillars
+          </div>
+          <CategoryBreakdownGrid items={dashboard.pillarBreakdown} revealed={revealed} />
+        </div>
+      )}
 
       <div className="space-y-3">
         {dashboard.metrics.map((m, i) => (
@@ -165,6 +187,19 @@ function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship
           </div>
         ))}
       </div>
+
+      {dashboard.driftTrend && (
+        <div className="mt-5 pt-4 border-t border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-text-tertiary mb-1">
+            Drift Engine — scheduled evaluations
+          </div>
+          <TrendLineChart
+            data={dashboard.driftTrend.points}
+            seriesLabel={dashboard.driftTrend.seriesLabel}
+            height={120}
+          />
+        </div>
+      )}
 
       <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -460,6 +495,9 @@ export default function SolutionTopicPage() {
                 {flagship ? <FlagshipHeadingText h={flagship.headings.whatItDoes} /> : "What This Solution Actually Does"}
               </h2>
               <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
+              {/* The real surfaces the scan reads, as icon-led cards (flagship only) —
+                  pure iconography of the prose enumeration above, no data values. */}
+              {flagship?.scanSurfaces && <ScanSurfaceStrip items={flagship.scanSurfaces} className="mt-8" />}
             </div>
           </section>
 
@@ -488,7 +526,7 @@ export default function SolutionTopicPage() {
                 {flagship ? <FlagshipHeadingText h={flagship.headings.whyItMatters} /> : "Why This Solution Matters"}
               </h2>
               <p className="text-text-secondary leading-relaxed mb-6">{topic.whyItMattersIntro}</p>
-              <RiskList items={topic.risks} />
+              <RiskList items={topic.risks} details={flagship?.riskDetails} />
             </div>
           </section>
 
@@ -534,6 +572,29 @@ export default function SolutionTopicPage() {
                     <DeliverablesList items={topic.coverage} />
                   </div>
                 </div>
+                {/* The modules claim ("four real surfaces, one accountable baseline") as one
+                    web — a radar of the same four coverage surfaces, centered below the
+                    checklist pair so neither grid column regains the height imbalance the
+                    earlier diagonal-split fix removed. Sub-scores are illustrative, badged
+                    with the same convention as the Portal preview above. */}
+                {flagship.surfaceRadar && (
+                  <div className="mt-10 max-w-2xl mx-auto">
+                    <div className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+                      <IllustrativeBadge />
+                      <div aria-hidden="true">
+                        <SurfaceRadarChart
+                          axes={flagship.surfaceRadar.axes}
+                          seriesLabel="Illustrative sub-score"
+                          height={260}
+                          className="mt-4"
+                        />
+                      </div>
+                      <p className="text-xs text-text-secondary text-center mt-3">
+                        {flagship.surfaceRadar.caption}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <FlagshipDocProducts
                   slugs={flagship.docProductSlugs}
                   heading={flagship.headings.docProducts}
