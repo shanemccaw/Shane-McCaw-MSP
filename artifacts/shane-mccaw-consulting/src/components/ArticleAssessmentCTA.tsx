@@ -86,13 +86,13 @@ export function ArticleAssessmentCTA({ category, title }: ArticleAssessmentCTAPr
   if (!assessment) return null;
 
   return (
-    <div className="mt-10 mb-2 rounded-xl border-l-4 border-[#0078D4] bg-[#00B4D8]/8 px-6 py-6">
-      <p className="text-sm font-semibold text-[#0A2540] mb-2">
+    <div className="mt-10 mb-2 rounded-xl border-l-4 border-accent-blue bg-accent-blue/[0.08] px-6 py-6">
+      <p className="text-sm font-semibold text-text-primary mb-2">
         Ready to see where you stand?
       </p>
       <Link
         href={assessment.href}
-        className="inline-flex items-center gap-1.5 text-[#0078D4] font-bold hover:underline text-base"
+        className="inline-flex items-center gap-1.5 text-accent-blue font-bold hover:underline text-base"
       >
         → {assessment.label}
       </Link>

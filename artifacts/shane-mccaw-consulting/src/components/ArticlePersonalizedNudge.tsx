@@ -52,14 +52,14 @@ export function ArticlePersonalizedNudge({ category, title }: ArticlePersonalize
 
   if (tier === "assessment" && worstRelevantPillar) {
     return (
-      <div className="mt-6 mb-2 rounded-xl border-l-4 border-[#0078D4] bg-[#00B4D8]/8 px-6 py-6">
-        <p className="text-sm font-semibold text-[#0A2540] mb-2">
+      <div className="mt-6 mb-2 rounded-xl border-l-4 border-accent-blue bg-accent-blue/[0.08] px-6 py-6">
+        <p className="text-sm font-semibold text-text-primary mb-2">
           Your real {HEALTH_PILLAR_LABELS[worstRelevantPillar.pillar] ?? worstRelevantPillar.pillar} score:{" "}
           {Math.round(worstRelevantPillar.score)}
         </p>
         <Link
           href={`/solutions/${topic.slug}`}
-          className="inline-flex items-center gap-1.5 text-[#0078D4] font-bold hover:underline text-base"
+          className="inline-flex items-center gap-1.5 text-accent-blue font-bold hover:underline text-base"
           data-track="cta"
           onClick={() =>
             trackEvent("personalization_nudge_click", { tier: "assessment", surface: "article_nudge", topic: topic.slug })
@@ -73,17 +73,17 @@ export function ArticlePersonalizedNudge({ category, title }: ArticlePersonalize
 
   if (tier === "quiz" && relevantQuizSignal) {
     return (
-      <div className="mt-6 mb-2 rounded-xl border-l-4 border-[#0078D4] bg-[#00B4D8]/8 px-6 py-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[#0078D4] mb-2">
+      <div className="mt-6 mb-2 rounded-xl border-l-4 border-accent-blue bg-accent-blue/[0.08] px-6 py-6">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent-blue mb-2">
           Based on what you told us
         </p>
-        <p className="text-sm text-[#0A2540] mb-3">
+        <p className="text-sm text-text-primary mb-3">
           Your quiz answers point to a gap in {topic.title.toLowerCase()} — worth confirming with a
           free, Graph-based Assessment.
         </p>
         <Link
           href={`/solutions/${topic.slug}`}
-          className="inline-flex items-center gap-1.5 text-[#0078D4] font-bold hover:underline text-base"
+          className="inline-flex items-center gap-1.5 text-accent-blue font-bold hover:underline text-base"
           data-track="cta"
           onClick={() =>
             trackEvent("personalization_nudge_click", { tier: "quiz", surface: "article_nudge", topic: topic.slug })
