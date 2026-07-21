@@ -1169,14 +1169,14 @@ export default function Home() {
             <div className="pt-12 border-t border-white/[0.06]">
               <div className="mb-8">
                 <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
-                  For Existing Customers
+                  Ongoing Advisory
                 </span>
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
                   Advisory <GradientText>Retainers</GradientText>
                 </h3>
                 <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
-                  Fractional M365 architecture guidance for tenants already under monitoring —
-                  the upgrade path, not a cold-start engagement.
+                  Fractional M365 architecture guidance, best paired with tenants already under
+                  monitoring — but open to anyone ready to start.
                 </p>
               </div>
               {renderProductGrid(retainers)}
