@@ -272,3 +272,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ⏳ IN FLIGHT | Monitoring Page: Cadence + Remediation + Value Props | |
 | 2026-07-21 | ⏳ IN FLIGHT | Retainer Page: URL + Reorder | |
 | 2026-07-21 | ⏳ IN FLIGHT — Resources Page: Full Rebuild | |
+| 2026-07-21 | ⏳ IN FLIGHT — Remove Prominent 'Book a Call' CTA | |
