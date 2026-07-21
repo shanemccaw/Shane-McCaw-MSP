@@ -2,8 +2,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
 import { cn } from "@/lib/utils";
 import { CheckCircle, Loader2, AlertTriangle, ArrowRight, Link2, Check } from "lucide-react";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CategoryConfig { key: string; label: string; }
@@ -16,6 +20,9 @@ interface QuizResultsData {
   categoryScores: Record<string, number>;
   categoryConfig: CategoryConfig[];
   recommendedService: string | null;
+  // Real, catalog-backed slug of the matched service (from the Lead Offer Engine).
+  // Null when there was no strong match — the CTA then falls back to a generic assessment.
+  recommendedServiceSlug?: string | null;
   reportName: string;
   whatThisMeans: string;
   whyThisFits: string;
@@ -32,12 +39,12 @@ interface MonitoringTierRow {
   typeAttributes: Record<string, unknown> | null;
 }
 
-// ─── Tier colours ─────────────────────────────────────────────────────────────
+// ─── Tier colours (semantic status) ───────────────────────────────────────────
 const TIER_COLOURS: Record<string, string> = {
   Beginner: "bg-red-500",
   Developing: "bg-orange-500",
   Emerging: "bg-yellow-500",
-  Advanced: "bg-blue-500",
+  Advanced: "bg-accent-blue",
   Ready: "bg-teal-500",
 };
 
@@ -70,15 +77,14 @@ function resolveMonitoringHref(detectedSeats: number, tiers: MonitoringTierRow[]
 // ─── Score bar ────────────────────────────────────────────────────────────────
 function ScoreBar({ score, label }: { score: number; label: string }) {
   const pct = (score / 10) * 100;
-  const colour = score >= 7 ? "bg-teal-400" : score >= 4 ? "bg-[#0078D4]" : "bg-red-400";
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-sm">
-        <span className="text-white/80">{label}</span>
-        <span className="text-white font-semibold">{score}/10</span>
+        <span className="text-text-secondary">{label}</span>
+        <span className="text-text-primary font-semibold">{score}/10</span>
       </div>
       <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-700", colour)} style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, ...GRADIENT_BG }} />
       </div>
     </div>
   );
@@ -152,7 +158,20 @@ export default function QuizResultsPage() {
     });
   }
 
-  const tierColour = data ? (TIER_COLOURS[data.tier] ?? "bg-blue-500") : "bg-blue-500";
+  const tierColour = data ? (TIER_COLOURS[data.tier] ?? "bg-accent-blue") : "bg-accent-blue";
+
+  // Grounded recommendation CTA. When the Lead Offer Engine matched a real catalog
+  // service we link straight to its checkout; otherwise we present an honest generic
+  // assessment next step — we never fabricate a service name or slug.
+  const hasMatch = Boolean(data?.recommendedServiceSlug);
+  const primaryHref = hasMatch
+    ? `/checkout/${encodeURIComponent(data!.recommendedServiceSlug!)}`
+    : "/assessments";
+  const recTitle = data?.recommendedService && hasMatch
+    ? data.recommendedService
+    : "Book a Microsoft 365 Assessment";
+  const primaryLabel = hasMatch ? `Explore ${data!.recommendedService}` : "Explore Microsoft 365 Assessments";
+  const showMonitoringCta = data?.quizType === "m365-health" && monitoringHref !== "/monitoring";
 
   return (
     <Layout>
@@ -161,14 +180,14 @@ export default function QuizResultsPage() {
         description="View your Microsoft 365 maturity assessment results from Shane McCaw Consulting."
       />
 
-      <div className="min-h-screen bg-[#0A2540] pt-[130px] pb-16">
+      <div className="min-h-screen bg-charcoal-0 pt-[130px] pb-16">
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
 
           {/* Loading */}
           {loading && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4">
-              <Loader2 className="w-10 h-10 text-[#0078D4] animate-spin" />
-              <p className="text-white/60 text-sm">Loading your results…</p>
+              <Loader2 className="w-10 h-10 text-accent-blue animate-spin" />
+              <p className="text-text-tertiary text-sm">Loading your results…</p>
             </div>
           )}
 
@@ -176,11 +195,12 @@ export default function QuizResultsPage() {
           {!loading && error && (
             <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
               <AlertTriangle className="w-10 h-10 text-red-400" />
-              <h1 className="text-white font-bold text-xl">Results Unavailable</h1>
-              <p className="text-white/60 text-sm max-w-md">{error}</p>
+              <h1 className="text-text-primary font-bold text-xl">Results Unavailable</h1>
+              <p className="text-text-secondary text-sm max-w-md">{error}</p>
               <a
                 href="/contact"
-                className="mt-4 px-5 py-2.5 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="mt-4 px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-opacity hover:opacity-90"
+                style={GRADIENT_BG}
               >
                 Contact Shane
               </a>
@@ -194,9 +214,11 @@ export default function QuizResultsPage() {
               {/* Header */}
               <div className="text-center space-y-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto" />
-                <h1 className="text-2xl font-bold text-white">{data.reportName}</h1>
-                <p className="text-white/50 text-sm">
-                  Results for <span className="text-white font-medium">{data.name}</span>
+                <h1 className="text-2xl font-bold text-text-primary">
+                  <GradientText>{data.reportName}</GradientText>
+                </h1>
+                <p className="text-text-tertiary text-sm">
+                  Results for <span className="text-text-primary font-medium">{data.name}</span>
                   {data.createdAt && (
                     <> &middot; {new Date(data.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</>
                   )}
@@ -211,7 +233,7 @@ export default function QuizResultsPage() {
                     "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border",
                     copied
                       ? "bg-teal-500/10 border-teal-500/30 text-teal-400"
-                      : "bg-white/5 border-white/20 text-white/70 hover:bg-white/10 hover:text-white"
+                      : "bg-glass-fill border-glass-border text-text-secondary hover:text-text-primary hover:border-white/25"
                   )}
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
@@ -220,22 +242,22 @@ export default function QuizResultsPage() {
               </div>
 
               {/* Score overview */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-5">
+              <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6 space-y-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
-                    <p className="text-white font-bold text-3xl">
-                      {data.totalScore}<span className="text-white/40 text-lg font-normal">/50</span>
+                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Total Score</p>
+                    <p className="text-text-primary font-bold text-3xl">
+                      {data.totalScore}<span className="text-text-tertiary text-lg font-normal">/50</span>
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
+                    <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1">Maturity Tier</p>
                     <span className={cn("inline-block text-white text-sm font-bold px-3 py-1.5 rounded-full", tierColour)}>
                       {data.tier}
                     </span>
                   </div>
                 </div>
-                <div className="space-y-3 pt-3 border-t border-white/10">
+                <div className="space-y-3 pt-3 border-t border-glass-border">
                   {data.categoryConfig.map((cat) => (
                     <ScoreBar
                       key={cat.key}
@@ -248,52 +270,59 @@ export default function QuizResultsPage() {
 
               {/* What this means */}
               {data.whatThisMeans && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-2">
-                  <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
-                  <p className="text-white/80 text-sm leading-relaxed">{data.whatThisMeans}</p>
+                <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6 space-y-2">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">What This Means For You</p>
+                  <p className="text-text-secondary text-sm leading-relaxed">{data.whatThisMeans}</p>
                 </div>
               )}
 
-              {/* Recommended service / why it fits */}
-              {data.recommendedService && (
-                <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-2xl p-6 space-y-3">
-                  <p className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
-                  <p className="text-white font-bold text-base">{data.recommendedService}</p>
-                  {data.whyThisFits && (
-                    <p className="text-white/70 text-sm leading-relaxed">{data.whyThisFits}</p>
-                  )}
-                  <p className="text-white/50 text-xs italic">
-                    This snapshot reflects your environment at the time of the assessment. Your results may change as your M365 configuration evolves.
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
-                    <a
-                      href={monitoringHref}
-                      className="flex-1 py-2.5 px-4 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      Keep this current — Start Monitoring <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
-                    <a
-                      href="/contact"
-                      className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      Discuss my results
-                    </a>
-                  </div>
+              {/* Recommended next step — glass panel (key conversion moment) */}
+              <GlassPanel className="p-6 space-y-3">
+                <p className="text-accent-blue text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
+                <p className="text-text-primary font-bold text-base">{recTitle}</p>
+                {data.whyThisFits && (
+                  <p className="text-text-secondary text-sm leading-relaxed">{data.whyThisFits}</p>
+                )}
+                <p className="text-text-tertiary text-xs italic">
+                  This snapshot reflects your environment at the time of the assessment. Your results may change as your M365 configuration evolves.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <a
+                    href={primaryHref}
+                    className="flex-1 py-2.5 px-4 text-white font-semibold rounded-lg text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-1.5"
+                    style={GRADIENT_BG}
+                  >
+                    {primaryLabel} <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href="/contact"
+                    className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    Discuss my results
+                  </a>
                 </div>
-              )}
+                {showMonitoringCta && (
+                  <a
+                    href={monitoringHref}
+                    className="block text-center pt-1 text-accent-blue hover:text-accent-violet text-sm font-medium transition-colors"
+                  >
+                    Keep this current — Start Monitoring →
+                  </a>
+                )}
+              </GlassPanel>
 
               {/* ROI projection */}
               {data.roiProjection && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-                  <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
-                  <p className="text-white/80 text-sm leading-relaxed">{data.roiProjection}</p>
+                <div className="bg-charcoal-1 border border-glass-border rounded-2xl p-6">
+                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">ROI Projection</p>
+                  <p className="text-text-secondary text-sm leading-relaxed">{data.roiProjection}</p>
                 </div>
               )}
 
               {/* Footer attribution */}
-              <p className="text-center text-white/30 text-xs pt-2">
+              <p className="text-center text-text-tertiary text-xs pt-2">
                 Powered by{" "}
-                <a href="/" className="text-white/50 hover:text-white transition-colors underline underline-offset-2">
+                <a href="/" className="text-text-secondary hover:text-text-primary transition-colors underline underline-offset-2">
                   Shane McCaw Consulting
                 </a>{" "}
                 &middot; Report link expires after 7 days

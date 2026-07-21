@@ -1102,6 +1102,7 @@ export const quizLeadsTable = pgTable("quiz_leads", {
     candidates: {
       serviceId: number;
       serviceName: string;
+      slug: string | null;
       title: string;
       rationale: string;
       basePriceCents: number;

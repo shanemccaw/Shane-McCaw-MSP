@@ -41,7 +41,7 @@ interface QuizResults {
   resendToken: string | null;
   totalScore: number;
   tier: string;
-  recommendedService: string;
+  recommendedService: string | null;
   serviceDescription: string;
   categoryScores: Record<string, number>;
   whatThisMeans: string;
@@ -715,20 +715,23 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
-              {/* Recommended service */}
-              <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-4">
-                <p className="text-accent-blue text-xs font-semibold uppercase tracking-wider mb-1">
-                  Recommended Next Step
-                </p>
-                <p className="text-text-primary font-bold text-base">
-                  {results.recommendedService}
-                </p>
-                {results.serviceDescription && (
-                  <p className="text-text-secondary text-sm mt-1">
-                    {results.serviceDescription}
+              {/* Recommended service — only shown when the Lead Offer Engine matched a
+                  real catalog service (grounded); hidden on a no-match to avoid an empty box. */}
+              {results.recommendedService && (
+                <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-4">
+                  <p className="text-accent-blue text-xs font-semibold uppercase tracking-wider mb-1">
+                    Recommended Next Step
                   </p>
-                )}
-              </div>
+                  <p className="text-text-primary font-bold text-base">
+                    {results.recommendedService}
+                  </p>
+                  {results.serviceDescription && (
+                    <p className="text-text-secondary text-sm mt-1">
+                      {results.serviceDescription}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Upsell: tier-personalised offer */}
               {(() => {

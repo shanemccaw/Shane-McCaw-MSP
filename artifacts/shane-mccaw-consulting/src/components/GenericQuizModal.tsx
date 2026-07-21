@@ -19,7 +19,7 @@ interface QuizResults {
   resendToken: string | null;
   totalScore: number;
   tier: string;
-  recommendedService: string;
+  recommendedService: string | null;
   serviceDescription: string;
   categoryScores: Record<string, number>;
   whatThisMeans: string;

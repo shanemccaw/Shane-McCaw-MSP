@@ -206,58 +206,15 @@ interface ScoringConfig {
   categories: string;
   categoryKeys: string;
   categoryConfig: Array<{ key: string; label: string }>;
-  services: string;
-  defaultService: string;
   reportName: string;
   pdfFilename: string;
 }
 
-// ─── Service descriptions per quiz type ───────────────────────────────────────
-// Used to populate serviceDescription in the submit response for all quiz types.
-const SERVICE_DESCRIPTIONS: Record<string, Record<string, string>> = {
-  copilot: {
-    "Microsoft 365 Essentials Audit": "A comprehensive tenant audit revealing quick wins and critical gaps in your M365 environment.",
-    "Copilot AI Readiness & Deployment": "End-to-end Copilot enablement: licensing, data governance, training, and governed rollout.",
-    "Microsoft 365 Governance Setup": "Establish DLP policies, sensitivity labels, and compliance controls that protect your data.",
-    "AI Adoption & Change Management": "Drive Copilot adoption through executive alignment, champion networks, and structured change management.",
-    "SharePoint & Teams Modernisation": "Redesign your intranet and collaboration spaces so Copilot has clean, well-structured data to work with.",
-  },
-  "m365-health": {
-    "M365 Tenant Health Audit": "A structured end-to-end audit of your Microsoft 365 tenant covering security posture, identity controls, collaboration governance, admin role hygiene, and data protection readiness.",
-    "Copilot for M365 Readiness Assessment": "A focused evaluation of your tenant's readiness to deploy Microsoft Copilot — licensing, data governance, security controls, and adoption planning.",
-    "Governance Foundations Package": "A full governance framework build-out: DLP policies, sensitivity labels, lifecycle management, and compliance controls tailored to your regulatory environment.",
-  },
-  sharepoint: {
-    "M365 Tenant Health Audit": "A comprehensive review of your Microsoft 365 tenant to resolve the underlying configuration and governance issues limiting your SharePoint environment.",
-    "Governance Foundations Package": "Naming conventions, lifecycle policies, permission models, and hub site architecture — everything needed to bring order and scalability to your SharePoint environment.",
-    "Copilot for M365 Readiness Assessment": "Evaluate your readiness to deploy Microsoft Copilot, which relies on well-governed, well-structured SharePoint content to deliver accurate AI-generated results.",
-  },
-  "power-platform": {
-    "Power Platform Quick-Start": "A focused 4-week sprint to stand up your Power Platform governance framework, deploy the CoE Toolkit, and deliver one production-ready app or flow as a repeatable template.",
-    "Governance Foundations Package": "Enterprise-scale governance across your full Microsoft 365 environment, including Power Platform DLP policies, environment strategy, and maker lifecycle management.",
-    "Copilot for M365 Readiness Assessment": "Assess your readiness to add AI to your Power Platform practice — including AI Builder, Copilot Studio, and Copilot-powered app and flow generation.",
-  },
-  "security-compliance": {
-    "Governance Foundations Package": "A complete M365 security and governance build-out: Conditional Access policies, sensitivity labels, DLP rules, retention schedules, and compliance framework alignment.",
-    "M365 Tenant Health Audit": "A comprehensive tenant audit that surfaces every security misconfiguration, licensing gap, and governance deficiency creating risk in your environment.",
-    "Copilot for M365 Readiness Assessment": "Validate that your security and compliance controls are strong enough to deploy Microsoft Copilot safely — including data classification, DLP, and information barriers.",
-  },
-  teams: {
-    "M365 Tenant Health Audit": "A full Microsoft 365 tenant audit to resolve the underlying configuration gaps that are limiting your Teams environment's governance and performance.",
-    "Governance Foundations Package": "Teams lifecycle policies, naming conventions, guest access governance, and channel structure standards — everything needed to make your Teams environment auditable and manageable.",
-    "Copilot for M365 Readiness Assessment": "Assess your readiness to deploy Copilot for Microsoft Teams — meeting summaries, chat drafting, intelligent recaps, and AI-powered channel assistance.",
-  },
-  migration: {
-    "Migration Readiness Assessment": "A structured pre-migration assessment that evaluates your source environment complexity, identity readiness, governance posture, and stakeholder alignment — producing a formal go/no-go recommendation.",
-    "Governance Foundations Package": "Establish the DLP policies, sensitivity labels, retention schedules, and lifecycle controls that should be in place in your Microsoft 365 tenant before or alongside migration execution.",
-    "M365 Tenant Health Audit": "A post-migration tenant health audit to validate that your newly migrated Microsoft 365 environment is correctly configured, secured, and governed.",
-  },
-  governance: {
-    "Governance Foundations Package": "A complete Microsoft 365 governance framework: acceptable use policies, data classification standards, DLP enforcement, retention schedules, lifecycle management, and compliance framework alignment.",
-    "Copilot for M365 Readiness Assessment": "With strong governance in place, evaluate your full Microsoft Copilot readiness — ensuring the data governance controls Copilot relies on are already operational.",
-    "M365 Tenant Health Audit": "A comprehensive tenant audit that validates your governance controls are correctly implemented and identifies gaps between your policies and the technical configuration.",
-  },
-};
+// NOTE: There is deliberately NO hardcoded service-name list or default-service
+// field here. Service recommendations are grounded exclusively by the real,
+// catalog-backed Lead Offer Engine (lead-offer-engine.ts) — see /quiz/submit
+// below. The AI scoring call scores categories and writes explanatory prose only;
+// it never names a product/service (that was a hallucination surface).
 
 const SCORING_CONFIGS: Record<string, ScoringConfig> = {
   copilot: {
@@ -274,12 +231,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "changeManagement", label: "Change Management" },
       { key: "businessProcess", label: "Business Process" },
     ],
-    services: `- "Microsoft 365 Essentials Audit" — best for early-stage orgs with licensing/infrastructure gaps
-- "Copilot AI Readiness & Deployment" — best for orgs ready to deploy but needing guided rollout
-- "Microsoft 365 Governance Setup" — best for orgs with data/compliance gaps
-- "AI Adoption & Change Management" — best for orgs with technical readiness but culture/change gaps
-- "SharePoint & Teams Modernisation" — best for orgs needing clean data foundations first`,
-    defaultService: "Copilot AI Readiness & Deployment",
     reportName: "Microsoft Copilot Readiness Assessment",
     pdfFilename: "copilot-readiness-report.pdf",
   },
@@ -297,10 +248,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "adminRolesShadowIT", label: "Admin Roles & Shadow IT" },
       { key: "dlpSensitivityLabels", label: "DLP & Sensitivity Labels" },
     ],
-    services: `- "M365 Tenant Health Audit" — comprehensive audit for tenants with configuration gaps, security issues, or governance debt
-- "Copilot for M365 Readiness Assessment" — for mature tenants ready to evaluate Copilot deployment
-- "Governance Foundations Package" — for tenants that need formal governance after addressing health issues`,
-    defaultService: "M365 Tenant Health Audit",
     reportName: "Microsoft 365 Tenant Health Assessment",
     pdfFilename: "m365-health-report.pdf",
   },
@@ -318,10 +265,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "governanceGaps", label: "Governance Gaps" },
       { key: "migrationReadiness", label: "Migration Readiness" },
     ],
-    services: `- "M365 Tenant Health Audit" — for environments with significant configuration and governance debt
-- "Governance Foundations Package" — for environments needing formal governance, naming conventions, and lifecycle policies
-- "Copilot for M365 Readiness Assessment" — for mature environments ready to deploy Copilot on clean SharePoint foundations`,
-    defaultService: "Governance Foundations Package",
     reportName: "SharePoint Architecture Assessment",
     pdfFilename: "sharepoint-assessment-report.pdf",
   },
@@ -339,10 +282,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "monitoringCompliance", label: "Monitoring & Compliance" },
       { key: "governanceReadiness", label: "Governance Readiness" },
     ],
-    services: `- "Power Platform Quick-Start" — for organisations with limited governance or early-stage maker practices
-- "Governance Foundations Package" — for organisations with mature Power Platform usage needing broader M365 governance
-- "Copilot for M365 Readiness Assessment" — for mature organisations ready to add AI to their Power Platform practice`,
-    defaultService: "Power Platform Quick-Start",
     reportName: "Power Platform Maturity Assessment",
     pdfFilename: "power-platform-assessment-report.pdf",
   },
@@ -360,10 +299,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "auditEDiscovery", label: "Audit & eDiscovery" },
       { key: "regulatoryReadiness", label: "Regulatory Readiness" },
     ],
-    services: `- "Governance Foundations Package" — for organisations with significant security and compliance gaps requiring a full governance framework
-- "M365 Tenant Health Audit" — for organisations needing a comprehensive tenant-wide security and configuration review
-- "Copilot for M365 Readiness Assessment" — for mature, secure environments ready to deploy Copilot safely`,
-    defaultService: "Governance Foundations Package",
     reportName: "Microsoft 365 Security Posture Assessment",
     pdfFilename: "m365-security-assessment-report.pdf",
   },
@@ -381,10 +316,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "appGovernance", label: "App Usage Governance" },
       { key: "collaborationGovernance", label: "Collaboration Governance" },
     ],
-    services: `- "M365 Tenant Health Audit" — for tenants with broad configuration issues underlying Teams problems
-- "Governance Foundations Package" — for Teams environments needing formal governance and lifecycle management
-- "Copilot for M365 Readiness Assessment" — for well-governed Teams environments ready for Copilot meeting summaries and chat assistance`,
-    defaultService: "Governance Foundations Package",
     reportName: "Microsoft Teams Health Assessment",
     pdfFilename: "teams-assessment-report.pdf",
   },
@@ -402,10 +333,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "timelineRealism", label: "Timeline Realism" },
       { key: "migrationGovernance", label: "Migration Governance" },
     ],
-    services: `- "Migration Readiness Assessment" — for organisations planning a migration that need a formal readiness report and go/no-go recommendation
-- "Governance Foundations Package" — for organisations that need governance controls in place before or alongside migration execution
-- "M365 Tenant Health Audit" — for organisations that have already migrated and want to assess the health of their new M365 tenant`,
-    defaultService: "Migration Readiness Assessment",
     reportName: "Cloud Migration Readiness Assessment",
     pdfFilename: "migration-readiness-report.pdf",
   },
@@ -423,10 +350,6 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
       { key: "monitoringReporting", label: "Monitoring & Reporting" },
       { key: "adoptionAccountability", label: "Adoption & Accountability" },
     ],
-    services: `- "Governance Foundations Package" — for organisations with significant governance gaps requiring a full framework build-out
-- "Copilot for M365 Readiness Assessment" — for organisations with mature governance ready to deploy Copilot safely
-- "M365 Tenant Health Audit" — for organisations that want a broader tenant review alongside their governance assessment`,
-    defaultService: "Governance Foundations Package",
     reportName: "Microsoft 365 Governance Maturity Assessment",
     pdfFilename: "governance-maturity-report.pdf",
   },
@@ -498,7 +421,10 @@ router.post("/quiz/submit", submitLimiter, async (req, res) => {
     .map((m) => `${m.role === "assistant" ? "Quiz" : "Respondent"}: ${m.content}`)
     .join("\n\n");
 
-  const scoringPrompt = `You are scoring a ${cfg.reportName}. Below is the full quiz conversation. Score the respondent across 5 categories (0–10 each) based on their answers. Also select the most appropriate service recommendation.
+  // The AI scores categories and writes explanatory prose ONLY. It must never
+  // name, invent, or recommend a specific product/service — the actual service
+  // recommendation is grounded downstream by the catalog-backed Lead Offer Engine.
+  const scoringPrompt = `You are scoring a ${cfg.reportName}. Below is the full quiz conversation. Score the respondent across 5 categories (0–10 each) based on their answers.
 
 CONVERSATION:
 ${conversationText}
@@ -506,19 +432,15 @@ ${conversationText}
 Categories to score (0–10 each):
 ${cfg.categories}
 
-Service options (pick exactly one):
-${cfg.services}
-
 Also write:
 - whatThisMeans: 2–3 sentence plain-English summary of what the scores mean for this organisation
-- whyThisFits: 2–3 sentences explaining why the recommended service is the right fit
+- whyThisFits: 2–3 sentences explaining, in plain language, why the organisation should prioritise closing its lowest-scoring gaps and what a focused engagement would address. Do NOT name, invent, or reference any specific product, service, or package by name — describe the type of work only.
 - roiProjection: 2–3 sentences projecting realistic ROI/value if they address the identified gaps${quizType === "m365-health" ? `
 - detectedSeats: integer — if the respondent mentioned a specific number of users, seats, licences, employees, or staff at any point in the conversation, extract that number; otherwise use null` : ""}
 
 Respond ONLY with valid JSON in this exact shape:
 {
   "categoryScores": { ${cfg.categoryKeys.split(", ").map(k => `"${k}": 5`).join(", ")} },
-  "recommendedService": "${cfg.defaultService}",
   "whatThisMeans": "...",
   "whyThisFits": "...",
   "roiProjection": "..."${quizType === "m365-health" ? `,
@@ -530,11 +452,17 @@ Respond ONLY with valid JSON in this exact shape:
   );
 
   let scores: Record<string, number> = { ...defaultCategoryScores };
-  let recommendedService = cfg.defaultService;
   let whatThisMeans = "Your organisation has a solid foundation with some areas to strengthen.";
-  let whyThisFits = "This service will address your key gaps and set you up for success.";
+  let whyThisFits = "Focusing on your lowest-scoring categories first will close the gaps that carry the most risk and set you up for success.";
   let roiProjection = "Organisations at your maturity level typically achieve significant productivity and compliance gains within 6 months of a structured engagement.";
   let detectedSeats: number | null = null;
+
+  // Grounded, catalog-backed recommendation — resolved from the Lead Offer Engine
+  // below, NEVER from AI free text. Null means the engine found no strong match
+  // (handled as an honest "generic assessment" fallback by every consumer).
+  let recommendedService: string | null = null;
+  let recommendedServiceSlug: string | null = null;
+  let recommendedServiceDescription = "";
 
   try {
     const scoringResponse = await anthropic.messages.create({
@@ -549,7 +477,6 @@ Respond ONLY with valid JSON in this exact shape:
       const jsonStr = raw.startsWith("{") ? raw : raw.replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
       const parsedScores = JSON.parse(jsonStr);
       if (parsedScores.categoryScores) scores = parsedScores.categoryScores as Record<string, number>;
-      if (parsedScores.recommendedService) recommendedService = parsedScores.recommendedService as string;
       if (parsedScores.whatThisMeans) whatThisMeans = parsedScores.whatThisMeans as string;
       if (parsedScores.whyThisFits) whyThisFits = parsedScores.whyThisFits as string;
       if (parsedScores.roiProjection) roiProjection = parsedScores.roiProjection as string;
@@ -600,8 +527,9 @@ Respond ONLY with valid JSON in this exact shape:
       if (inferredSignals.size > 0) {
         const ruleGroups = await db.select().from(leadOfferRuleGroupsTable).where(eq(leadOfferRuleGroupsTable.isActive, true));
         const services = await db
-          .select({ id: servicesTable.id, name: servicesTable.name, price: servicesTable.price, basePrice: servicesTable.basePrice })
+          .select({ id: servicesTable.id, name: servicesTable.name, slug: servicesTable.slug, price: servicesTable.price, basePrice: servicesTable.basePrice })
           .from(servicesTable);
+        const slugById = new Map(services.map(s => [s.id, s.slug ?? null]));
 
         const offerResult = await computeLeadOfferEngine(
           leadId,
@@ -613,13 +541,23 @@ Respond ONLY with valid JSON in this exact shape:
         );
 
         if (offerResult.candidates.length > 0) {
+          // Ground the recommendation on the top real, catalog-backed candidate —
+          // real service name + real slug. This is the ONLY source of the
+          // recommendedService value; the AI never names a product.
+          const top = offerResult.candidates[0];
+          recommendedService = top.serviceName;
+          recommendedServiceSlug = slugById.get(top.serviceId) ?? null;
+          recommendedServiceDescription = top.rationale;
+
           await db.update(quizLeadsTable)
             .set({
+              recommendedService,
               leadOfferResult: {
                 inferredSignals: offerResult.inferredSignals,
                 candidates: offerResult.candidates.map(c => ({
                   serviceId: c.serviceId,
                   serviceName: c.serviceName,
+                  slug: slugById.get(c.serviceId) ?? null,
                   title: c.title,
                   rationale: c.rationale,
                   basePriceCents: c.basePriceCents,
@@ -632,11 +570,15 @@ Respond ONLY with valid JSON in this exact shape:
               },
             })
             .where(eq(quizLeadsTable.id, leadId));
-          log.info({ leadId, candidateCount: offerResult.candidates.length }, "quiz/submit: lead offer generated");
+          log.info({ leadId, candidateCount: offerResult.candidates.length, recommendedServiceSlug }, "quiz/submit: lead offer generated, recommendation grounded");
+        } else {
+          log.info({ leadId }, "quiz/submit: lead offer engine returned no candidates — honest no-match fallback (no recommended service)");
         }
+      } else {
+        log.info({ leadId }, "quiz/submit: no inferred signals from quiz scores — honest no-match fallback (no recommended service)");
       }
     } catch (err) {
-      log.warn({ err, leadId }, "quiz/submit: lead offer generation failed (non-fatal) — quiz submission still succeeds");
+      log.warn({ err, leadId }, "quiz/submit: lead offer generation failed (non-fatal) — quiz submission still succeeds, no recommended service");
     }
   }
 
@@ -701,7 +643,7 @@ Respond ONLY with valid JSON in this exact shape:
           company: company ?? "",
           totalScore: String(totalScore),
           tier,
-          recommendedService,
+          recommendedService: recommendedService ?? "(no strong catalog match)",
           whatThisMeans,
           whyThisFits,
           roiProjection,
@@ -709,7 +651,7 @@ Respond ONLY with valid JSON in this exact shape:
           resultsUrl,
         },
         `New quiz lead: ${name} (${cfg.reportName} — ${tier} — ${totalScore}/50)`,
-        quizLeadNotificationEmail({ name, email, company, totalScore, tier, recommendedService }),
+        quizLeadNotificationEmail({ name, email, company, totalScore, tier, recommendedService: recommendedService ?? "(no strong catalog match)" }),
       );
     }
   })();
@@ -726,7 +668,7 @@ Respond ONLY with valid JSON in this exact shape:
         <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${totalScore} / 50</td></tr>
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${tier}</td></tr>
-          <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${recommendedService}</td></tr>
+          ${recommendedService ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${recommendedService}</td></tr>` : ""}
           ${categoryScoresRows}
         </table>
         ${whatThisMeans ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means For You</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${whatThisMeans}</p>` : ""}
@@ -746,7 +688,7 @@ Respond ONLY with valid JSON in this exact shape:
           reportName: cfg.reportName,
           totalScore: String(totalScore),
           tier,
-          recommendedService,
+          recommendedService: recommendedService ?? "",
           whatThisMeans,
           whyThisFits,
           roiProjection,
@@ -774,8 +716,9 @@ Respond ONLY with valid JSON in this exact shape:
     totalScore,
     tier,
     recommendedService,
+    recommendedServiceSlug,
     categoryScores: scores,
-    serviceDescription: SERVICE_DESCRIPTIONS[quizType]?.[recommendedService ?? ""] ?? "",
+    serviceDescription: recommendedServiceDescription,
     whatThisMeans,
     whyThisFits,
     roiProjection,
@@ -815,7 +758,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       company: lead.company ?? undefined,
       totalScore: lead.totalScore,
       tier: lead.tier,
-      recommendedService: lead.recommendedService ?? "",
+      recommendedService: lead.recommendedService,
       categoryScores: leadCategoryScores,
       whatThisMeans: analysis.whatThisMeans,
       whyThisFits: analysis.whyThisFits,
@@ -831,7 +774,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
         <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${lead.totalScore} / 50</td></tr>
         <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${lead.tier}</td></tr>
-        <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${lead.recommendedService ?? ""}</td></tr>
+        ${lead.recommendedService ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${lead.recommendedService}</td></tr>` : ""}
         ${resendCategoryScoresRows}
       </table>
       ${analysis.whatThisMeans ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means For You</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${analysis.whatThisMeans}</p>` : ""}
@@ -909,6 +852,7 @@ router.get("/quiz/results/:leadId", resultsLimiter, async (req, res) => {
     categoryScores: lead.categoryScores as Record<string, number>,
     categoryConfig: cfg.categoryConfig,
     recommendedService: lead.recommendedService ?? null,
+    recommendedServiceSlug: lead.leadOfferResult?.candidates?.[0]?.slug ?? null,
     reportName: cfg.reportName,
     whatThisMeans: analysis.whatThisMeans ?? "",
     whyThisFits: analysis.whyThisFits ?? "",

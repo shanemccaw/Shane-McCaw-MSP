@@ -14,7 +14,9 @@ export interface QuizPdfData {
   company?: string;
   totalScore: number;
   tier: string;
-  recommendedService: string;
+  /** Real, catalog-grounded service name, or null when the Lead Offer Engine found no
+   *  strong match (rendered as a generic assessment next step — never AI-invented text). */
+  recommendedService: string | null;
   categoryScores: Record<string, number>;
   whatThisMeans: string;
   whyThisFits: string;
@@ -149,11 +151,15 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
 
   let p2Y = height - 110;
 
-  // Recommended Service
-  page2.drawText("Recommended Service", { x: 36, y: p2Y, size: 14, font: helveticaBold, color: DARK_TEXT });
+  // Recommended Next Step — grounded catalog service, or a generic assessment
+  // when the Lead Offer Engine returned no strong match (never AI-invented text).
+  const recServiceLabel = data.recommendedService && data.recommendedService.trim()
+    ? data.recommendedService
+    : "Microsoft 365 Assessment";
+  page2.drawText("Recommended Next Step", { x: 36, y: p2Y, size: 14, font: helveticaBold, color: DARK_TEXT });
   p2Y -= 24;
   page2.drawRectangle({ x: 36, y: p2Y - 20, width: width - 72, height: 36, color: BLUE });
-  page2.drawText(data.recommendedService, { x: 48, y: p2Y - 8, size: 13, font: helveticaBold, color: WHITE });
+  page2.drawText(recServiceLabel, { x: 48, y: p2Y - 8, size: 13, font: helveticaBold, color: WHITE });
   p2Y -= 50;
 
   // Why This Fits
