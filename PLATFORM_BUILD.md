@@ -214,3 +214,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-20 | ⏳ IN FLIGHT | Teams Topic Page: Standard SaaS Section Structure | |
 | 2026-07-20 | ⏳ IN FLIGHT | SharePoint Topic Page: Standard SaaS Section Structure | |
 | 2026-07-20 | ⏳ IN FLIGHT | Migration Topic Page: Standard SaaS Section Structure | |
+| 2026-07-20 | ⏳ IN FLIGHT | Security & Compliance Topic Page: Standard SaaS Section Structure | |
