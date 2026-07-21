@@ -187,6 +187,7 @@ export async function buildTenantProfile(customerId: number): Promise<{
 
     for (const row of monitorRows) {
       const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
+      Object.assign(mergedProfile, props);
       mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
     }
   } else {
