@@ -421,7 +421,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
   // 1. Resolve mspId, customerId, tenantId, and customerName
   let mspId: number;
   let customerId: number | null;
-  let resolvedTenantId: string;
+  let resolvedTenantId: string | null;
   let customerName: string;
 
   if (opts.customerId != null) {
@@ -440,7 +440,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     if (!customer) throw new Error(`Customer ${opts.customerId} not found`);
     mspId = customer.mspId;
     customerId = customer.id;
-    resolvedTenantId = customer.tenantId ?? opts.tenantId ?? String(opts.customerId);
+    // No fallback to opts.customerId here — a bare customer-id string is not a
+    // real tenant GUID and would reach Graph's OAuth endpoint as garbage (see
+    // the null-tenantId pre-flight check below, which fails the run instead).
+    resolvedTenantId = customer.tenantId ?? opts.tenantId ?? null;
     customerName = customer.name;
   } else {
     // Consent / self-serve path — look up by tenantId
@@ -501,6 +504,16 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     .where(eq(mspDiagnosticRunsTable.runId, runId));
 
   try {
+    // Pre-flight: a missing tenantId is a known, resolvable-in-advance state
+    // (consent never completed), not a per-check failure. Fail the whole run
+    // now with one clear message instead of letting every check independently
+    // send this bogus value to Microsoft's OAuth endpoint as a tenant GUID.
+    if (!resolvedTenantId) {
+      throw new Error(
+        "No M365 tenant connected for this customer — consent has not been completed"
+      );
+    }
+
     // 3. Execute monitoring package
     const triggerId = `diag-run-${runId}`;
 
