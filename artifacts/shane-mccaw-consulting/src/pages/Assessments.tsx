@@ -8,12 +8,9 @@ import {
   ChevronLeft,
   CheckCircle2,
   KeyRound,
-  ClipboardCheck,
   ClipboardList,
-  Database,
   Sparkles,
   DollarSign,
-  Compass,
   Share2,
   FileText,
   Activity,
@@ -31,70 +28,9 @@ import { GlassPanel } from '@/components/design-system/GlassPanel';
 import { IllustrativeBadge } from '@/components/design-system/IllustrativeBadge';
 import { WorkflowSteps } from '@/components/design-system/WorkflowSteps';
 import { useServices, type PublicService } from '@/hooks/useServices';
+import { ZONES, type ZoneKey, type ZoneDef, getZoneForService } from '@/lib/assessmentZones';
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
-
-type ZoneKey = 'identity' | 'compliance' | 'data' | 'copilot' | 'cost' | 'bigpicture';
-
-interface ZoneDef {
-  key: ZoneKey;
-  label: string;
-  blurb: string;
-  icon: typeof KeyRound;
-}
-
-// 6 zones, real assignment confirmed against all 21 real assessment rows
-// (services.id 13-33, see lib/db/migrations/manual/2026-07-20-assessment-detail-content.sql).
-// Matched by exact service name — do not re-derive or guess a different grouping.
-const ZONES: ZoneDef[] = [
-  { key: 'identity', label: 'Identity & Access', blurb: 'Who has access, and whether it’s actually controlled.', icon: KeyRound },
-  { key: 'compliance', label: 'Compliance', blurb: 'Map your tenant against SOC 2, NIST CSF, ISO 27001, or CMMC.', icon: ClipboardCheck },
-  { key: 'data', label: 'Data & Collaboration', blurb: 'SharePoint, Teams, Exchange, and how openly data is shared.', icon: Database },
-  { key: 'copilot', label: 'Copilot Readiness', blurb: 'Whether your tenant is actually ready for Copilot.', icon: Sparkles },
-  { key: 'cost', label: 'Cost & Licensing', blurb: 'What you’re paying for versus what’s actually being used.', icon: DollarSign },
-  { key: 'bigpicture', label: 'Big Picture', blurb: 'The whole tenant, ranked and prioritized, fast.', icon: Compass },
-];
-
-const ZONE_ASSIGNMENTS: Record<ZoneKey, string[]> = {
-  identity: [
-    'Security Posture Assessment',
-    'Conditional Access Assessment',
-    'Entra ID / Identity Assessment',
-    'Intune / Device Management Assessment',
-  ],
-  compliance: [
-    'Compliance Framework Mapping Audit — SOC 2',
-    'Compliance Framework Mapping Audit — NIST CSF',
-    'Compliance Framework Mapping Audit — ISO 27001',
-    'Compliance Framework Mapping Audit — CMMC Level 1-2',
-  ],
-  data: [
-    'Data Governance Assessment',
-    'Copilot Data Exposure Assessment',
-    'SharePoint Assessment',
-    'Teams Assessment',
-    'Exchange Online Assessment',
-  ],
-  copilot: ['Copilot Readiness Snapshot', 'Copilot Readiness Assessment'],
-  cost: ['License Waste Audit', 'License & Cost Optimization Assessment'],
-  bigpicture: [
-    'Tenant Governance Snapshot',
-    'M365 Tenant Health Audit',
-    'Migration Readiness Assessment',
-    'Adoption & Change Management Maturity Assessment',
-  ],
-};
-
-const NAME_TO_ZONE: Record<string, ZoneKey> = {};
-for (const [zoneKey, names] of Object.entries(ZONE_ASSIGNMENTS) as [ZoneKey, string[]][]) {
-  for (const name of names) {
-    NAME_TO_ZONE[name.trim().toLowerCase()] = zoneKey;
-  }
-}
-
-function getZoneForService(service: PublicService): ZoneKey | null {
-  return NAME_TO_ZONE[service.name.trim().toLowerCase()] ?? null;
-}
 
 interface WizardOption {
   text: string;
@@ -626,6 +562,21 @@ export default function Assessments() {
                   </li>
                 ))}
               </ul>
+            )}
+            {service.associatedDocuments.length > 0 && (
+              <div className="mb-5">
+                <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
+                  Documents you&rsquo;ll receive
+                </div>
+                <ul className="space-y-2">
+                  {service.associatedDocuments.map((doc) => (
+                    <li key={doc.title} className="flex items-start gap-2">
+                      <FileText className="w-4 h-4 text-accent-violet flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-text-secondary leading-relaxed">{doc.title}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {service.durationDays && (
               <p className="flex items-center gap-1 text-xs text-text-secondary mb-4">
@@ -1183,6 +1134,21 @@ export default function Assessments() {
                   </div>
                 ))}
               </div>
+
+              {/* "The documents themselves" isn't one generic write-up — the real
+                  document catalog behind every assessment runs 40 deliverables deep,
+                  spanning tactical single-finding reports up through executive
+                  briefings. Grounded in the live document catalog; do not add
+                  specific document names or prices beyond what's confirmed here. */}
+              <p className="text-sm text-text-secondary leading-relaxed text-center max-w-3xl mx-auto mt-8">
+                That last item spans real range — from $199 tactical single-finding
+                write-ups (a DLP incident list, a risky-users report, an MFA coverage
+                gap) up to a $549 Board/Leadership Briefing Deck, across a 40-document
+                catalog. Deeper planning documents — a Remediation Plan, Deployment
+                Plan, Governance Framework, Security Hardening Plan, Copilot
+                Enablement Plan, or Identity Modernization Plan — are scoped into a
+                project engagement rather than sold as standalone reports.
+              </p>
             </div>
           </section>
 

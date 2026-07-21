@@ -27,6 +27,7 @@ import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useHealthPillars } from "@/hooks/usePersonalizationData";
 import { HEALTH_PILLAR_LABELS, PILLAR_TO_TOPIC_SLUG } from "@/data/solutionsTopics";
 import { trackEvent } from "@/lib/analytics";
+import { ZONES, type ZoneKey, getZoneForService } from "@/lib/assessmentZones";
 
 interface MonitoringTypeAttributes {
   seatMin?: number;
@@ -360,6 +361,10 @@ export default function Home() {
   const { services, loading: servicesLoading, error: servicesError } = useServices();
 
   const [seatCount, setSeatCount] = useState<number>(25);
+  // Narrows the "Go deeper — paid assessments" grid by the same 6-zone taxonomy
+  // Assessments.tsx uses for its full zone browsing — null = show every paid
+  // assessment, unfiltered.
+  const [paidAssessmentZone, setPaidAssessmentZone] = useState<ZoneKey | null>(null);
   const { leadDisplayed, gradientDisplayed, headlines } = useTypewriterHeadline();
 
   // Measures every candidate headline's actual rendered height (off-screen, visibility:hidden
@@ -624,6 +629,17 @@ export default function Home() {
     const freeAssessments = assessments.filter((a) => a.isFreeOffering);
     const paidAssessments = assessments.filter((a) => !a.isFreeOffering);
 
+    // Zones actually represented among the paid catalog, in the same fixed
+    // ZONES order — a zone with zero paid assessments doesn't get a chip.
+    const paidZoneCounts = ZONES.map((zone) => ({
+      zone,
+      count: paidAssessments.filter((a) => getZoneForService(a) === zone.key).length,
+    })).filter((z) => z.count > 0);
+
+    const visiblePaidAssessments = paidAssessmentZone
+      ? paidAssessments.filter((a) => getZoneForService(a) === paidAssessmentZone)
+      : paidAssessments;
+
     return (
       <div className="w-full space-y-12">
         {freeAssessments.length > 0 && (
@@ -638,11 +654,42 @@ export default function Home() {
         )}
         {paidAssessments.length > 0 && (
           <div>
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
-              Go deeper — paid assessments
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <p className="text-xs uppercase tracking-widest text-text-secondary">
+                Go deeper — paid assessments
+              </p>
+              {paidZoneCounts.length > 1 && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setPaidAssessmentZone(null)}
+                    aria-pressed={paidAssessmentZone === null}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                      paidAssessmentZone === null
+                        ? "bg-accent-blue/15 text-accent-blue border-accent-blue/40"
+                        : "text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]"
+                    }`}
+                  >
+                    All
+                  </button>
+                  {paidZoneCounts.map(({ zone, count }) => (
+                    <button
+                      key={zone.key}
+                      onClick={() => setPaidAssessmentZone(zone.key)}
+                      aria-pressed={paidAssessmentZone === zone.key}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                        paidAssessmentZone === zone.key
+                          ? "bg-accent-blue/15 text-accent-blue border-accent-blue/40"
+                          : "text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]"
+                      }`}
+                    >
+                      {zone.label} <span className="opacity-70">{count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paidAssessments.map((item) => renderAssessmentCard(item, true))}
+              {visiblePaidAssessments.map((item) => renderAssessmentCard(item, true))}
             </div>
           </div>
         )}

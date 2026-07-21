@@ -34,6 +34,15 @@ export interface PublicService {
   workflowSummary: { title: string; description: string | null }[];
   isFreeOffering?: boolean | null;
   typeAttributes: Record<string, unknown> | null;
+  /** Pre-filtered to customerVisible entries only — see public-services.ts. */
+  associatedDocuments: PublicAssociatedDocument[];
+}
+
+/** A real document this service's assessment workflow will generate for the
+ *  customer (never includes internal-only, non-customerVisible entries). */
+export interface PublicAssociatedDocument {
+  title: string;
+  category: "report" | "consulting";
 }
 
 export function formatPrice(price: string | null): string | null {

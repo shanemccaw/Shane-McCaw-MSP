@@ -4,12 +4,27 @@ import {
   servicesTable,
   workflowTemplateStepsTable,
   checkoutSessionsTable,
+  type ServiceAssociatedDocument,
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
 
 const router: IRouter = Router();
+
+// Strips associatedDocuments down to only the customer-visible entries, and to
+// only the fields a public response needs (title + category) — docType is an
+// internal generator key and customerVisible is redundant once filtered.
+// customerVisible === false entries ground the SOW's accuracy but are never
+// meant for customers; they must never reach a public route's response.
+function toPublicAssociatedDocuments(
+  docs: ServiceAssociatedDocument[] | null,
+): { title: string; category: "report" | "consulting" }[] {
+  if (!docs) return [];
+  return docs
+    .filter((d) => d.customerVisible === true)
+    .map((d) => ({ title: d.title, category: d.category }));
+}
 
 router.get("/services", async (req: Request, res: Response) => {
   try {
@@ -24,10 +39,13 @@ router.get("/services", async (req: Request, res: Response) => {
     // Explicit column list (mirrors /catalog/assessments below) rather than a
     // bare .select() — a bare select pulls every column declared on
     // servicesTable, including admin-only columns added via a manual/ SQL
-    // migration that may not have been run against this DB yet (e.g.
-    // associatedDocuments). This public storefront route has no business
-    // reading those fields anyway, and shouldn't 500 the entire catalogue
-    // when one of them is pending a manual migration.
+    // migration that may not have been run against this DB yet. This public
+    // storefront route shouldn't 500 the entire catalogue when one of those
+    // columns is pending a manual migration. associatedDocuments IS safe to
+    // include here (its migration has landed) but every entry is filtered to
+    // customerVisible below before the response is sent — the rest are
+    // internal-only (they exist to ground the SOW's accuracy) and must never
+    // reach this public route's response.
     const services = await db
       .select({
         id: servicesTable.id,
@@ -64,6 +82,7 @@ router.get("/services", async (req: Request, res: Response) => {
         fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
         isFreeOffering: servicesTable.isFreeOffering,
         typeAttributes: servicesTable.typeAttributes,
+        associatedDocuments: servicesTable.associatedDocuments,
       })
       .from(servicesTable)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -109,6 +128,7 @@ router.get("/services", async (req: Request, res: Response) => {
           hasPdf: s.overviewPdfKey != null,
           workflowTasks: wfSteps,
           workflowSummary: wfSteps.map(({ title, description }) => ({ title, description })),
+          associatedDocuments: toPublicAssociatedDocuments(s.associatedDocuments),
           ...resolveCatalogPricing({
             priceCents: s.priceCents ?? 0,
             internalCostCents: s.internalCostCents,
@@ -265,6 +285,7 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
         isFreeOffering: servicesTable.isFreeOffering,
         priceCents: servicesTable.priceCents,
         internalCostCents: servicesTable.internalCostCents,
+        associatedDocuments: servicesTable.associatedDocuments,
       })
       .from(servicesTable)
       .where(
@@ -281,6 +302,7 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
       return {
         ...r,
         isFree,
+        associatedDocuments: toPublicAssociatedDocuments(r.associatedDocuments),
         ...resolveCatalogPricing({
           priceCents: r.priceCents ?? 0,
           internalCostCents: r.internalCostCents,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchServices, type PublicService } from "./useServices";
+import { fetchServices, type PublicService, type PublicAssociatedDocument } from "./useServices";
 
 export type { PublicService };
 
@@ -116,6 +116,8 @@ export interface AssessmentOffer {
   fulfillmentTypeKey: string | null;
   isPublic: boolean;
   isFree: boolean;
+  /** Pre-filtered to customerVisible entries only — see public-services.ts. */
+  associatedDocuments: PublicAssociatedDocument[];
 }
 
 export interface CatalogState {
