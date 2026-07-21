@@ -92,6 +92,14 @@ export interface SolutionTopicFlagship {
     panelLabel: string;
     ringLabel: string;
     ringValue: number;
+    /**
+     * Optional "after remediation" companion to ringValue for the How It Works
+     * animated sequence's Remediate stage (HowItWorksShowcase.tsx) — a
+     * conceptual before/after of the mechanism, both values illustrative under
+     * the same badge + caption. Author it at/above 85 so the after-state lands
+     * in the healthy tier (PillarScoreRing scoreTone: ≥85 green).
+     */
+    remediatedRingValue?: number;
     metrics: { label: string; count: number }[];
     trendNote: string;
     caption: string;
@@ -408,6 +416,12 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         panelLabel: "Portal preview — Compliance & Governance",
         ringLabel: "Governance pillar",
         ringValue: 74,
+        // How It Works Remediate stage's after-remediation value: 85 = the
+        // healthy-tier floor (scoreTone ≥85 green), so the before/after reads
+        // amber 74 → green 85 while staying inside the page's one coherent
+        // illustrative scenario (74 everywhere else). Conceptual mechanism
+        // demo under the same badge — not any real customer's improvement.
+        remediatedRingValue: 85,
         metrics: [
           { label: "Orphaned Teams", count: 14 },
           { label: "Orphaned SharePoint Sites", count: 23 },

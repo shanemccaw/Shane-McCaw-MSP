@@ -10,6 +10,8 @@ import { RiskList } from "@/components/design-system/RiskList";
 import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import { DeliverablesList } from "@/components/design-system/DeliverablesList";
 import { PillarScoreRing } from "@/components/design-system/PillarScoreRing";
+import { IllustrativeBadge } from "@/components/design-system/IllustrativeBadge";
+import { HowItWorksShowcase } from "@/components/design-system/HowItWorksShowcase";
 import { CategoryBreakdownGrid } from "@/components/design-system/CategoryBreakdownGrid";
 import { TrendLineChart } from "@/components/design-system/TrendLineChart";
 import { SurfaceRadarChart } from "@/components/design-system/SurfaceRadarChart";
@@ -79,19 +81,6 @@ function FlagshipHeadingText({ h }: { h: FlagshipHeading }) {
       {h.gradient && <GradientText>{h.gradient}</GradientText>}
       {h.post}
     </>
-  );
-}
-
-/**
- * The site's illustrative-data disclosure badge (Home.tsx Mission Control preview
- * convention) — pinned to the top-right of any panel whose numbers are example
- * data rather than the visitor's real tenant.
- */
-function IllustrativeBadge() {
-  return (
-    <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
-      Illustrative Example
-    </span>
   );
 }
 
@@ -168,52 +157,6 @@ function FlagshipScoreCard({ dashboard }: { dashboard: SolutionTopicFlagship["da
           <CategoryBreakdownGrid items={dashboard.pillarBreakdown} revealed={revealed} />
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * Real, code-verified metric bars — paired with the "How It Works" section's
- * "Findings" step ("Every lifecycle policy exception, naming violation, ownerless
- * Group, and baseline deviation is logged as a real, inspectable finding"), the
- * exact prose these counts represent. Target-0 semantics: count 0 = healthy (empty
- * track, quiet value), count > 0 = flat amber bar scaled to the largest count.
- */
-function FlagshipFindingsPanel({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
-  const [ref, revealed] = useRevealOnScroll<HTMLDivElement>();
-  const maxCount = Math.max(...dashboard.metrics.map((m) => m.count), 1);
-
-  return (
-    <div
-      ref={ref}
-      className="relative rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8 h-full flex flex-col justify-center"
-    >
-      <IllustrativeBadge />
-      <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6 pr-28">
-        {dashboard.panelLabel}
-      </h3>
-      <div className="space-y-3">
-        {dashboard.metrics.map((m, i) => (
-          <div key={m.label} className="flex items-center gap-3">
-            <span className="text-xs text-text-secondary w-40 shrink-0">{m.label}</span>
-            <div className="flex-1 h-2 rounded-full bg-white/[0.08] overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: revealed ? `${(m.count / maxCount) * 100}%` : "0%",
-                  background: "#f59e0b",
-                  transitionDelay: `${i * 120}ms`,
-                }}
-              />
-            </div>
-            <span
-              className={`font-numeric text-xs w-7 text-right ${m.count > 0 ? "text-amber-400" : "text-text-secondary"}`}
-            >
-              {m.count}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -594,26 +537,23 @@ export default function SolutionTopicPage() {
             </div>
           </section>
 
-          {/* How This Product Works — flagship pairs the steps with the real finding
-              counts, since the "Findings" step is literally what these bars represent
-              ("Every lifecycle policy exception, naming violation, ownerless Group, and
-              baseline deviation is logged as a real, inspectable finding"). */}
+          {/* How This Product Works — flagship pairs the 5 real steps with an
+              animated per-step visual sequence (HowItWorksShowcase: auto-advancing,
+              hover/click-synced; the Findings stage carries the real metric bars
+              that used to be this section's single static panel, the Score and
+              Remediate stages the established illustrative pillar ring). Heading
+              stays hoisted above the grid per the Header Span fix (105a3310). */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             {flagship ? (
               <div className="max-w-5xl mx-auto">
                 <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                   <FlagshipHeadingText h={flagship.headings.howItWorks} />
                 </h2>
-                {/* items-stretch (not items-start): the findings card has far less
-                    content than the 5-step workflow list, so stretching it to match
-                    column height and vertically centering its bars avoids a tall
-                    empty gap beside a short floating card. */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
-                  <div>
-                    <WorkflowSteps steps={topic.howItWorks ?? []} />
-                  </div>
-                  <FlagshipFindingsPanel dashboard={flagship.dashboard} />
-                </div>
+                <HowItWorksShowcase
+                  steps={topic.howItWorks ?? []}
+                  dashboard={flagship.dashboard}
+                  scanSurfaces={flagship.scanSurfaces ?? []}
+                />
               </div>
             ) : (
               <div className="max-w-3xl mx-auto">

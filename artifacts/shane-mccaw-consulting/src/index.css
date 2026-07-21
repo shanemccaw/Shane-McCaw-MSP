@@ -371,3 +371,17 @@ input:-webkit-autofill {
     background: transparent;
   }
 }
+
+/* How It Works animated showcase (HowItWorksShowcase.tsx, Connect stage) — a
+   marching dashed connection line and a traveling pulse dot between the tenant
+   and scan-engine nodes. Both are applied via inline animation styles only while
+   the stage is active and prefers-reduced-motion is not set. */
+@keyframes hiwDashMarch {
+  to { background-position: 12px 0; }
+}
+@keyframes hiwTravelDot {
+  0% { left: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { left: calc(100% - 6px); opacity: 0; }
+}
