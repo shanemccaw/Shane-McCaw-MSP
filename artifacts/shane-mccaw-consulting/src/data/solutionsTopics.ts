@@ -59,7 +59,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       "Copilot answers with whatever your permission model already exposes — this scans that exact surface before a rollout finds out the hard way.",
     quizHref: "/copilot-quiz",
     stats: [
-      { label: "Copilot readiness pillar", value: "Scored" },
+      { label: "Copilot readiness", value: "Scored" },
       { label: "Oversharing check", value: "Graph-based" },
       { label: "Licensing fit", value: "Per-seat" },
     ],
