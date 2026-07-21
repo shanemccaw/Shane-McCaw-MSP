@@ -594,9 +594,9 @@ export default function SolutionTopicPage() {
                   <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                     <FlagshipHeadingText h={flagship.headings.modules} />
                   </h2>
+                  <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
                     <div>
-                      <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
                       <DeliverablesList items={topic.coverage} />
                     </div>
                     {/* The modules claim ("four real surfaces, one accountable baseline") as

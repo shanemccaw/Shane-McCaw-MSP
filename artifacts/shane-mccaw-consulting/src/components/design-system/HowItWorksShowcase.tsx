@@ -426,10 +426,12 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
   };
 
   // The Connect stage's dash/dot loops are the only INFINITE animations, so
-  // they respect every pause flag, not just reduced motion (WCAG 2.2.2); the
-  // other stages' sweeps are single sub-5s runs.
+  // they respect every pause flag AND `inView` — not just reduced motion
+  // (WCAG 2.2.2) — so the loop never starts before it's scrolled into view
+  // and stops the moment it scrolls back out; the other stages' sweeps are
+  // single sub-5s runs.
   const allStageCells: ((revealed: boolean) => ReactNode)[] = [
-    () => <ConnectStage animate={active === 0 && !reduced && !anyPause} />,
+    () => <ConnectStage animate={active === 0 && !reduced && !anyPause && inView} />,
     (revealed) => (
       <ScanStage active={active === 1} revealed={revealed} reduced={reduced} surfaces={scanSurfaces} />
     ),
