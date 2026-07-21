@@ -43,6 +43,66 @@ export interface SolutionTopic {
   whatYouGet?: string[];
   modulesIntro?: string;
   finalCtaBody?: string;
+  /**
+   * Flagship content-quality + visual layer — a PILOT populated for the "governance"
+   * topic only (Governance Topic Page: Flagship Rebuild task). Explicitly NOT rolled
+   * out to the other topics until Shane approves this one page; a follow-up task
+   * applies the pattern site-wide. When present, SolutionTopicPage.tsx overrides the
+   * expanded-structure section headings (every heading a specific claim/hook matching
+   * the GovernanceQuiz.tsx content bar, never a bare category label), renders a
+   * Portal-style dashboard preview inside "What You Get", merges What You Get +
+   * Modules into a two-column layout, and lists the topic's real document products.
+   */
+  flagship?: SolutionTopicFlagship;
+}
+
+/**
+ * One flagship section heading, optionally with a gradient-emphasized phrase
+ * (rendered via GradientText — keep total gradient usage within the design
+ * system's 2-3-per-page restraint rule when authoring these).
+ */
+export interface FlagshipHeading {
+  pre?: string;
+  gradient?: string;
+  post?: string;
+}
+
+export interface SolutionTopicFlagship {
+  headings: {
+    whatItDoes: FlagshipHeading;
+    credibility: FlagshipHeading;
+    whyItMatters: FlagshipHeading;
+    howItWorks: FlagshipHeading;
+    whatYouGet: FlagshipHeading;
+    modules: FlagshipHeading;
+    docProducts: FlagshipHeading;
+    finalCta: FlagshipHeading;
+  };
+  /**
+   * Illustrative Portal-preview panel (reuses Home.tsx's Mission Control preview
+   * visual language: conic-gradient ring, metric bars, flat-amber-means-attention).
+   * Metric labels MUST be real, code-verified metric names from the platform's
+   * dashboard registry (lib/dashboard-registry/src/metrics.ts) — values are
+   * illustrative and the panel carries the same "Illustrative Example" badge as
+   * Home's preview. These are target-0 count metrics in the real product: count 0
+   * renders as healthy (empty track), count > 0 renders a flat amber bar.
+   */
+  dashboard: {
+    panelLabel: string;
+    ringLabel: string;
+    ringValue: number;
+    metrics: { label: string; count: number }[];
+    trendNote: string;
+    caption: string;
+  };
+  /**
+   * Real document_product catalog slugs to list for this topic. Resolved live via
+   * useServices({ type: "document_product" }) — name/price/description all come from
+   * the API response, never hardcoded (no-hardcoding rule). Slugs that don't resolve
+   * to a live catalog row are silently skipped; if none resolve, the block hides
+   * entirely rather than showing an empty state.
+   */
+  docProductSlugs: string[];
 }
 
 export const SOLUTIONS_TOPICS: SolutionTopic[] = [
@@ -196,9 +256,9 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     shortLabel: "Governance",
     icon: Shield,
     pillar: "Governance",
-    gradientPhrase: "Accountable to a Baseline",
-    headlinePrefix: "Every Team, Group, and Admin Role — ",
-    headlineSuffix: "Accountable to a Baseline.",
+    gradientPhrase: "The cleanup invoice does.",
+    headlinePrefix: "Sprawl doesn't announce itself. ",
+    headlineSuffix: "The cleanup invoice does.",
     subhead:
       "Lifecycle policy, naming discipline, and admin role assignments enforced against a real approved baseline — checked on a real schedule, not assumed compliant because nobody complained.",
     quizHref: "/governance-quiz",
@@ -214,8 +274,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       "Admin role assignment sprawl (who actually has Global Admin, and why)",
     ],
     risks: [
-      "Nobody being able to answer \"who owns this Team\" six months after it was created",
-      "Every admin change happening ad hoc, with no baseline to compare against",
+      "SharePoint sprawl that ends as a paid cleanup project — hundreds of orphaned sites nobody can safely delete, scoped in consultant-weeks, because the ownership answers left with the people who had them",
+      "Four Teams all named some variant of \"Marketing\" and no way to tell which one is real — misfiled documents, misrouted requests, and a manual rationalization effort that costs more every quarter it's deferred",
+      "Microsoft 365 Groups sprawl quietly filling the Global Address List — every dead and duplicate group another chance for a confidential message to reach the wrong audience, until someone budgets a project just to make the address book usable again",
+      "An audit stalled for days at \"who has Global Admin, and why\" — billable hours burned reconstructing role assignments that were granted ad hoc across three reorgs and documented nowhere",
     ],
     relatedEngine: {
       name: "Drift Engine",
@@ -228,7 +290,7 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     credibilityBody:
       "I'm the Microsoft 365 Architect at NASA, where I wrote the agency's M365 Copilot governance framework. The same lifecycle, naming, and admin-role discipline this page scans for is one I enforce inside NASA's own tenant every day — not a case study I read about. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same governance discipline that keeps a tenant defensible at NASA's scale is what's engineered into this scan.",
     whyItMattersIntro:
-      "Governance debt doesn't fail all at once — it fails the day someone asks who owns a Team, why a Global Admin role was granted three reorgs ago, or why a configuration change nobody approved has been sitting in production since last quarter, and the honest answer is nobody's actually sure.",
+      "Governance debt doesn't fail all at once — it fails the day someone asks who owns a Team, why a Global Admin role was granted three reorgs ago, or why a configuration change nobody approved has been sitting in production since last quarter. Each of those questions eventually stops being awkward and starts being expensive. These are the bills an ungoverned tenant eventually pays:",
     howItWorks: [
       {
         title: "Connect",
@@ -261,6 +323,62 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     modulesIntro: "Governance checks four real surfaces before sprawl and ad hoc admin changes become the norm:",
     finalCtaBody:
       "Start a free Assessment and get your real Governance pillar score — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
+    flagship: {
+      headings: {
+        whatItDoes: {
+          pre: "A live read of the tenant you actually have — not the one your policy document describes.",
+        },
+        credibility: {
+          pre: "Built by the ",
+          gradient: "Microsoft 365 Architect at NASA",
+          post: " — practiced daily, not read about.",
+        },
+        whyItMatters: {
+          pre: "Governance debt always gets paid. The only question is on whose schedule.",
+        },
+        howItWorks: {
+          pre: "From read-only connection to accountable baseline — five steps, on a schedule you can see.",
+        },
+        whatYouGet: {
+          pre: "Your governance posture as a live score — not a policy binder nobody reopens.",
+        },
+        modules: {
+          pre: "Four real surfaces. One accountable baseline.",
+        },
+        docProducts: {
+          pre: "Priced in the open: the governance documents this platform actually generates.",
+        },
+        finalCta: {
+          pre: "Your governance baseline is either enforced, or assumed. ",
+          gradient: "Find out which — free.",
+        },
+      },
+      // Every metric label below is a real, code-verified metric (lib/dashboard-registry/
+      // src/metrics.ts: compliance.orphanedTeamCount, compliance.orphanedSiteCount,
+      // governance.overdueAccessReviewCount, governance.orphanedAccessPackageCount) and
+      // all four sit on the seeded "Compliance & Governance" customer dashboard tab
+      // layout (2026-07-19-customer-dashboard-category-tabs.sql). The trend note
+      // reflects the real Drift Engine output shape (score + trendDirection,
+      // drift-engine.ts). The counts themselves are illustrative — the panel carries
+      // the same "Illustrative Example" badge and caption as Home's Mission Control
+      // preview. Deliberately NOT depicted, because no such checks exist in code:
+      // guest-expiry metrics, a Global Admin roster widget, per-Team lifecycle
+      // compliance percentages.
+      dashboard: {
+        panelLabel: "Portal preview — Compliance & Governance",
+        ringLabel: "Governance pillar",
+        ringValue: 74,
+        metrics: [
+          { label: "Orphaned Teams", count: 14 },
+          { label: "Orphaned SharePoint Sites", count: 23 },
+          { label: "Overdue Access Reviews", count: 6 },
+          { label: "Orphaned Access Packages", count: 0 },
+        ],
+        trendNote: "Drift Engine: trend rising since last scheduled evaluation",
+        caption: "Example data — not your real score",
+      },
+      docProductSlugs: ["governance-maturity-report", "governance-framework-plan"],
+    },
   },
   {
     slug: "sharepoint",

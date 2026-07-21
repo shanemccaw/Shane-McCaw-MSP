@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowRight, CheckCircle2, AlertTriangle, ClipboardCheck, Sparkles, FolderKanban } from "lucide-react";
 import { Layout } from "@/components/Layout";
@@ -9,11 +9,17 @@ import { StatPanel } from "@/components/design-system/StatPanel";
 import { RiskList } from "@/components/design-system/RiskList";
 import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
 import { DeliverablesList } from "@/components/design-system/DeliverablesList";
-import { getSolutionTopic, HEALTH_PILLAR_LABELS, topicMatchesKeywordText } from "@/data/solutionsTopics";
+import {
+  getSolutionTopic,
+  HEALTH_PILLAR_LABELS,
+  topicMatchesKeywordText,
+  type FlagshipHeading,
+  type SolutionTopicFlagship,
+} from "@/data/solutionsTopics";
 import { PersonalizedContent } from "@/components/PersonalizedContent";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useHealthPillars, useLatestPresentation, usePortalUrl, useQuizOfferData } from "@/hooks/usePersonalizationData";
-import { useServices } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import { trackEvent } from "@/lib/analytics";
 import NotFound from "@/pages/not-found";
@@ -55,6 +61,160 @@ function FunnelStep({
       >
         {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
       </Link>
+    </div>
+  );
+}
+
+/** One flagship section heading — plain text with an optional gradient-emphasized phrase. */
+function FlagshipHeadingText({ h }: { h: FlagshipHeading }) {
+  return (
+    <>
+      {h.pre}
+      {h.gradient && <GradientText>{h.gradient}</GradientText>}
+      {h.post}
+    </>
+  );
+}
+
+/**
+ * Portal-style dashboard preview for a flagship topic's "What You Get" section — the
+ * same visual language as Home.tsx's Mission Control preview (conic-gradient health
+ * ring, metric rows, flat-amber-means-attention), applied to the topic's real,
+ * code-verified metric names with clearly-badged illustrative values. Bars sweep in
+ * from zero on first scroll into view using the site's established width-transition
+ * pattern (QuizResultsPage.tsx); the sweep is skipped for prefers-reduced-motion.
+ * Metric semantics are the real product's target-0 semantics: count 0 = healthy
+ * (empty track, quiet value), count > 0 = flat amber bar scaled to the largest count.
+ */
+function FlagshipPortalPreview({ dashboard }: { dashboard: SolutionTopicFlagship["dashboard"] }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Lazy-initialized so reduced-motion users are "revealed" before first paint —
+  // a post-paint setState here would still play the width transition.
+  const [revealed, setRevealed] = useState(
+    () => typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  useEffect(() => {
+    if (revealed) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setRevealed(true);
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.35 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [revealed]);
+
+  const maxCount = Math.max(...dashboard.metrics.map((m) => m.count), 1);
+
+  return (
+    <GlassPanel ref={panelRef} className="p-6 sm:p-8 relative">
+      <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
+        Illustrative Example
+      </span>
+      <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6">
+        {dashboard.panelLabel}
+      </h3>
+
+      <div className="flex items-center gap-6 mb-7">
+        <div
+          className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-full"
+          style={{
+            background: `conic-gradient(var(--accent-blue) 0deg, var(--accent-violet) ${dashboard.ringValue * 3.6}deg, rgba(255,255,255,0.08) ${dashboard.ringValue * 3.6}deg 360deg)`,
+          }}
+          aria-hidden="true"
+        >
+          <div className="absolute inset-[7px] rounded-full bg-charcoal-1 flex items-center justify-center">
+            <span className="gradient-text font-numeric text-2xl font-semibold">
+              {dashboard.ringValue}
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-text-primary">{dashboard.ringLabel}</div>
+          <div className="text-xs text-text-secondary mt-1">{dashboard.caption}</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {dashboard.metrics.map((m, i) => (
+          <div key={m.label} className="flex items-center gap-3">
+            <span className="text-xs text-text-secondary w-40 shrink-0">{m.label}</span>
+            <div className="flex-1 h-2 rounded-full bg-white/[0.08] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: revealed ? `${(m.count / maxCount) * 100}%` : "0%",
+                  background: "#f59e0b",
+                  transitionDelay: `${i * 120}ms`,
+                }}
+              />
+            </div>
+            <span
+              className={`font-numeric text-xs w-7 text-right ${m.count > 0 ? "text-amber-400" : "text-text-secondary"}`}
+            >
+              {m.count}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center gap-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+        <span className="text-xs text-text-secondary">{dashboard.trendNote}</span>
+      </div>
+    </GlassPanel>
+  );
+}
+
+/**
+ * Real document products for a flagship topic, resolved live from the catalog by slug
+ * (name, price, and description all come from the API response — never hardcoded, per
+ * the no-hardcoding rule). A priced listing, deliberately with NO per-card checkout
+ * link: Checkout.tsx resolves slugs against monitoring/retainer/msp/assessment tiers
+ * only (useCatalog), so a /checkout/<doc-product-slug> link would dead-end at its
+ * not-found step. Renders nothing while loading or when no listed slug resolves to a
+ * live catalog row: no empty state, no fabricated products.
+ */
+function FlagshipDocProducts({ slugs, heading }: { slugs: string[]; heading: FlagshipHeading }) {
+  const { services, loading } = useServices({ type: "document_product" });
+  const matched = slugs
+    .map((slug) => services.find((s) => s.slug === slug))
+    .filter((s): s is PublicService => Boolean(s));
+
+  if (loading || matched.length === 0) return null;
+
+  return (
+    <div className="mt-12">
+      <h3 className="font-display text-xl font-bold text-text-primary mb-6">
+        <FlagshipHeadingText h={heading} />
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {matched.map((p) => (
+          <div
+            key={p.id}
+            className="p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] flex flex-col"
+          >
+            <div className="flex items-start justify-between gap-4 mb-2">
+              <h4 className="font-display font-semibold text-text-primary">{p.name}</h4>
+              <span className="font-numeric text-lg text-text-primary shrink-0">
+                {formatPriceDisplay(p)}
+              </span>
+            </div>
+            {p.description && (
+              <p className="text-sm text-text-secondary leading-relaxed flex-grow">
+                {p.description}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -129,6 +289,11 @@ export default function SolutionTopicPage() {
   // scoped to the topic that has the extra content fields populated, so the other 7
   // Solutions/Topic pages keep rendering the original template below, unchanged.
   const useExpandedStructure = Boolean(topic.productOverview);
+
+  // Flagship pilot layer (currently governance only — see SolutionTopic.flagship):
+  // hook-quality heading overrides + Portal-preview visuals on top of the expanded
+  // structure. Topics without it keep the standard expanded headings unchanged.
+  const flagship = topic.flagship;
 
   const Icon = topic.icon;
 
@@ -282,7 +447,7 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                What This Product Actually Does
+                {flagship ? <FlagshipHeadingText h={flagship.headings.whatItDoes} /> : "What This Solution Actually Does"}
               </h2>
               <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
             </div>
@@ -293,7 +458,13 @@ export default function SolutionTopicPage() {
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10">
                 <h2 className="font-display text-2xl font-bold text-text-primary mb-4">
-                  Built by the <GradientText>Microsoft 365 Architect</GradientText> for NASA
+                  {flagship ? (
+                    <FlagshipHeadingText h={flagship.headings.credibility} />
+                  ) : (
+                    <>
+                      Built by the <GradientText>Microsoft 365 Architect</GradientText> for NASA
+                    </>
+                  )}
                 </h2>
                 <p className="text-text-secondary leading-relaxed">{topic.credibilityBody}</p>
               </GlassPanel>
@@ -304,7 +475,7 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                Why This Product Matters
+                {flagship ? <FlagshipHeadingText h={flagship.headings.whyItMatters} /> : "Why This Solution Matters"}
               </h2>
               <p className="text-text-secondary leading-relaxed mb-6">{topic.whyItMattersIntro}</p>
               <RiskList items={topic.risks} />
@@ -315,38 +486,80 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                How This Product Works
+                {flagship ? <FlagshipHeadingText h={flagship.headings.howItWorks} /> : "How This Solution Works"}
               </h2>
               <WorkflowSteps steps={topic.howItWorks ?? []} />
             </div>
           </section>
 
-          {/* What You Get */}
-          <section className="py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
-              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                What You Get
-              </h2>
-              <DeliverablesList items={topic.whatYouGet ?? []} />
-            </div>
-          </section>
+          {flagship ? (
+            /* What You Get + Product Modules / Features — flagship two-column layout:
+               the two content groups sit side by side instead of stacked single-column
+               rows, with the Portal-style dashboard preview replacing the plain
+               checklist as the visual lead of "What You Get", and the topic's real
+               document products (live catalog rows) listed full-width below. */
+            <section className="py-12 px-4 sm:px-6 lg:px-8">
+              <div className="max-w-6xl mx-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                      <FlagshipHeadingText h={flagship.headings.whatYouGet} />
+                    </h2>
+                    <FlagshipPortalPreview dashboard={flagship.dashboard} />
+                    <div className="mt-6">
+                      <DeliverablesList items={topic.whatYouGet ?? []} />
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                      <FlagshipHeadingText h={flagship.headings.modules} />
+                    </h2>
+                    <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
+                    <DeliverablesList items={topic.coverage} />
+                  </div>
+                </div>
+                <FlagshipDocProducts
+                  slugs={flagship.docProductSlugs}
+                  heading={flagship.headings.docProducts}
+                />
+              </div>
+            </section>
+          ) : (
+            <>
+              {/* What You Get */}
+              <section className="py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-3xl mx-auto">
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                    What You Get
+                  </h2>
+                  <DeliverablesList items={topic.whatYouGet ?? []} />
+                </div>
+              </section>
 
-          {/* Product Modules / Features */}
-          <section className="py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto">
-              <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                Product Modules & Features
-              </h2>
-              <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
-              <DeliverablesList items={topic.coverage} />
-            </div>
-          </section>
+              {/* Product Modules / Features */}
+              <section className="py-12 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-3xl mx-auto">
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                    Product Modules & Features
+                  </h2>
+                  <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
+                  <DeliverablesList items={topic.coverage} />
+                </div>
+              </section>
+            </>
+          )}
 
           {/* Begin Mission Readiness */}
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-                Begin <GradientText>Mission Readiness</GradientText>
+                {flagship ? (
+                  <FlagshipHeadingText h={flagship.headings.finalCta} />
+                ) : (
+                  <>
+                    Begin <GradientText>Mission Readiness</GradientText>
+                  </>
+                )}
               </h2>
               <p className="text-text-secondary mb-8 max-w-xl mx-auto">{topic.finalCtaBody}</p>
               <div className="flex flex-col sm:flex-row justify-center gap-4">
