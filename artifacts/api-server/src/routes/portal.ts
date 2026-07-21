@@ -200,11 +200,16 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  *
  * Should be called AFTER provisionOnboardingProject so that the msp_customers
  * row created during provisioning is available for the tenantId lookup.
+ *
+ * desiredRole controls the mspRole assigned to a newly-created row only (existing
+ * rows are never role-patched here) — defaults to "CustomerUser" so every caller
+ * that doesn't pass it keeps the historical behavior.
  */
 export async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
   explicitCustomerId?: number | null,
+  desiredRole?: "CustomerUser" | "Assessment",
 ): Promise<void> {
   // Resolve target mspId + customerId — explicitCustomerId takes precedence over tenantId.
   let mspId = 1; // default: Shane's own MSP
@@ -274,7 +279,7 @@ export async function ensureClientMspUser(
 
   await db
     .insert(mspUsersTable)
-    .values({ userId, mspId, customerId, mspRole: "CustomerUser", isActive: true })
+    .values({ userId, mspId, customerId, mspRole: desiredRole ?? "CustomerUser", isActive: true })
     .onConflictDoNothing(); // race-safe: unique(user_id)
 }
 
@@ -13791,6 +13796,26 @@ async function provisionFreeOnboarding(opts: {
     const { authedUserId, contractIds, serviceIds, log: reqLog } = opts;
     if (serviceIds.length === 0) return { ok: false, status: 400, error: "No service IDs provided" };
 
+    // Fetch and validate services — server-side price guard. Done before user
+    // resolution below so the purchased serviceType is known in time to pick the
+    // correct msp_users role for a newly-provisioned guest account.
+    const fetchedServices = await db.select().from(servicesTable)
+      .where(inArray(servicesTable.id, serviceIds));
+    if (fetchedServices.length === 0) return { ok: false, status: 400, error: "Services not found" };
+    const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
+    const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
+    const totalPrice = orderedServices.reduce((sum, s) => {
+      const priceVal = s.price ?? s.basePrice;
+      return sum + (priceVal ? parseFloat(String(priceVal)) : 0);
+    }, 0);
+    if (totalPrice > 0) {
+      return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
+    }
+    // Real catalog convention (see portal-marketplace.ts ASSESSMENT_SERVICE_TYPES):
+    // serviceType "assessment" is how the Assessment product family is identified.
+    // Only assign the Assessment role when every purchased service is assessment-typed.
+    const isAssessmentOrder = orderedServices.every(s => s.serviceType === "assessment");
+
     // Resolve user: authenticated session or guest email
     let resolvedUserId: number;
     if (authedUserId) {
@@ -13808,25 +13833,11 @@ async function provisionFreeOnboarding(opts: {
       }
       // Ensure the free-checkout client account has an msp_users row (no tenantId available here)
       try {
-        await ensureDirectCustomerRecord(resolvedUserId);
-        await ensureClientMspUser(resolvedUserId);
+        const directCustomerId = await ensureDirectCustomerRecord(resolvedUserId);
+        await ensureClientMspUser(resolvedUserId, undefined, directCustomerId, isAssessmentOrder ? "Assessment" : undefined);
       } catch (mspErr) {
         reqLog.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
       }
-    }
-
-    // Fetch and validate services — server-side price guard
-    const fetchedServices = await db.select().from(servicesTable)
-      .where(inArray(servicesTable.id, serviceIds));
-    if (fetchedServices.length === 0) return { ok: false, status: 400, error: "Services not found" };
-    const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
-    const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
-    const totalPrice = orderedServices.reduce((sum, s) => {
-      const priceVal = s.price ?? s.basePrice;
-      return sum + (priceVal ? parseFloat(String(priceVal)) : 0);
-    }, 0);
-    if (totalPrice > 0) {
-      return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
     }
 
     const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, resolvedUserId)).limit(1);
