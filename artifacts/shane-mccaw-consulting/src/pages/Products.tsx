@@ -185,7 +185,7 @@ export default function Products() {
             <div className="flex flex-col items-center gap-3 py-20 text-center">
               <AlertCircle className="size-8 text-accent-violet" />
               <p className="text-text-secondary">
-                Could not load the product catalog. Please{" "}
+                Could not load the Quick-Start Packs. Please{" "}
                 <Link href="/contact" className="text-accent-blue hover:underline">
                   contact us
                 </Link>{" "}

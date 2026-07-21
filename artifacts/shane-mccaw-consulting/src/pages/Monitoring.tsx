@@ -247,7 +247,7 @@ export default function Monitoring() {
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-10">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              What This Product <GradientText>Actually Does</GradientText>
+              What Monitoring <GradientText>Actually Does</GradientText>
             </h2>
             <p className="text-text-secondary">
               No AI buzzwords, no guesswork — plain mechanics, running against your real tenant.

@@ -1133,7 +1133,7 @@ export default function Home() {
                   style={GRADIENT_BG}
                 >
                   <Sparkles className="w-3 h-3" />
-                  The Core Product
+                  The Recurring Foundation
                 </span>
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
                   Tenant Telemetry &amp; <GradientText>Drift Enforcement</GradientText>

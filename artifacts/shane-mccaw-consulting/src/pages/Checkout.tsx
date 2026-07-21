@@ -618,7 +618,7 @@ export default function Checkout() {
               <h2 className="font-display text-xl font-bold text-text-primary">Service not found</h2>
               <p className="text-text-secondary">
                 We couldn't find a service matching{" "}
-                <strong className="text-text-primary">{slug ?? "the requested product"}</strong>. It may have been removed or
+                <strong className="text-text-primary">{slug ?? "the requested service"}</strong>. It may have been removed or
                 the link may be incorrect.
               </p>
               <Link

@@ -540,7 +540,7 @@ export default function SolutionTopicPage() {
               <section className="py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-3xl mx-auto">
                   <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                    Product Modules & Features
+                    What's Included
                   </h2>
                   <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
                   <DeliverablesList items={topic.coverage} />
