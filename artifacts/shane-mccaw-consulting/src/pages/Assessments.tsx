@@ -423,7 +423,96 @@ export default function Assessments() {
         </div>
       </section>
 
-      {/* 6. Assessment Categories */}
+      {/* 6. Assessment Wizard */}
+      <section id="assessment-wizard" className="py-16 px-4 sm:px-6 lg:px-8">
+        <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
+          Assessment Wizard
+        </h2>
+        <div className="max-w-3xl mx-auto mb-10">
+          <GlassPanel className="p-6 sm:p-8">
+            {!wizardOpen && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+                <div>
+                  <h2 className="font-display text-xl font-bold text-text-primary mb-1">
+                    Not sure where to start?
+                  </h2>
+                  <p className="text-sm text-text-secondary">
+                    3 quick questions — watch the right category light up as you answer.
+                  </p>
+                </div>
+                <button
+                  onClick={handleStartWizard}
+                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+                  style={GRADIENT_BG}
+                  data-track="cta"
+                >
+                  Start
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {wizardOpen && !wizardDone && (
+              <div>
+                <div className="flex items-center justify-center gap-2 mb-6">
+                  {WIZARD_QUESTIONS.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-2 w-2 rounded-full transition-all duration-200 ${
+                        i === questionIndex
+                          ? 'w-6 bg-accent-blue'
+                          : i < questionIndex
+                            ? 'bg-accent-blue/60'
+                            : 'bg-white/[0.12]'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
+                  {WIZARD_QUESTIONS[questionIndex].text}
+                </h3>
+                <div className="space-y-3">
+                  {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
+                    <button
+                      key={option.text}
+                      onClick={() => handleAnswer(option)}
+                      className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
+                    >
+                      {option.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {wizardOpen && wizardDone && (
+              <div className="text-center">
+                <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
+                  Based on your answers
+                </p>
+                <h3 className="font-display text-xl font-bold text-text-primary mb-4">
+                  {bestZones.length > 0 ? (
+                    <>
+                      <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
+                      {bestZones.length > 1 ? 'are' : 'is'} your best match
+                    </>
+                  ) : (
+                    "We couldn't quite pin down a single match — browse the categories below"
+                  )}
+                </h3>
+                <button
+                  onClick={handleRetakeWizard}
+                  className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
+                >
+                  Retake the quiz
+                </button>
+              </div>
+            )}
+          </GlassPanel>
+        </div>
+      </section>
+
+      {/* 7. Assessment Categories */}
       <section id="assessment-categories" className="py-16 px-4 sm:px-6 lg:px-8">
         <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
           Assessment Categories
@@ -559,95 +648,6 @@ export default function Assessments() {
             )}
           </div>
         )}
-      </section>
-
-      {/* 7. Assessment Wizard */}
-      <section id="assessment-wizard" className="py-16 px-4 sm:px-6 lg:px-8">
-        <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
-          Assessment Wizard
-        </h2>
-        <div className="max-w-3xl mx-auto mb-10">
-          <GlassPanel className="p-6 sm:p-8">
-            {!wizardOpen && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
-                <div>
-                  <h2 className="font-display text-xl font-bold text-text-primary mb-1">
-                    Not sure where to start?
-                  </h2>
-                  <p className="text-sm text-text-secondary">
-                    3 quick questions — watch the right category light up as you answer.
-                  </p>
-                </div>
-                <button
-                  onClick={handleStartWizard}
-                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
-                  style={GRADIENT_BG}
-                  data-track="cta"
-                >
-                  Start
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {wizardOpen && !wizardDone && (
-              <div>
-                <div className="flex items-center justify-center gap-2 mb-6">
-                  {WIZARD_QUESTIONS.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-2 w-2 rounded-full transition-all duration-200 ${
-                        i === questionIndex
-                          ? 'w-6 bg-accent-blue'
-                          : i < questionIndex
-                            ? 'bg-accent-blue/60'
-                            : 'bg-white/[0.12]'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
-                  {WIZARD_QUESTIONS[questionIndex].text}
-                </h3>
-                <div className="space-y-3">
-                  {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
-                    <button
-                      key={option.text}
-                      onClick={() => handleAnswer(option)}
-                      className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
-                    >
-                      {option.text}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {wizardOpen && wizardDone && (
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
-                  Based on your answers
-                </p>
-                <h3 className="font-display text-xl font-bold text-text-primary mb-4">
-                  {bestZones.length > 0 ? (
-                    <>
-                      <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
-                      {bestZones.length > 1 ? 'are' : 'is'} your best match
-                    </>
-                  ) : (
-                    "We couldn't quite pin down a single match — browse the categories below"
-                  )}
-                </h3>
-                <button
-                  onClick={handleRetakeWizard}
-                  className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
-                >
-                  Retake the quiz
-                </button>
-              </div>
-            )}
-          </GlassPanel>
-        </div>
       </section>
 
       {/* 8. What's Inside Each Assessment */}
