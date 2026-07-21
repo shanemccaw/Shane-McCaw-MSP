@@ -1,0 +1,107 @@
+-- ============================================================================
+-- Repopulate monitoring_package_checks  (junction: package_key -> check_key)
+-- ============================================================================
+-- CONTEXT
+--   monitoring_package_checks is EMPTY across every package. That table is the
+--   ONLY selector executeMonitoringPackage() uses to decide which checks run
+--   (loaded ORDER BY sort_order; empty => runStatus "no_checks", checks:[]).
+--   diagnostics-runner then reports checks_total = 0. Result: no customer on
+--   any monitoring package gets a real scan. Confirmed live on
+--   core:security-baseline (checks_total: 0).
+--
+--   The 118 monitor_checks themselves are correct and must NOT be touched.
+--   Only their package linkage is missing.
+--
+-- WHY THIS FILE IS A SCAFFOLD, NOT A DROP-IN
+--   There is no reliable, mechanical signal in existing data to derive the
+--   correct mapping (full reasoning in PLATFORM_BUILD.md / session report):
+--     * A package's `engines` and a check's `engines` both mean "which engine
+--       scores to recompute" (per spec: a package is "named groups of Monitor
+--       Checks + which engines to recompute"). They are recompute-routing, NOT
+--       a check-membership or product-tier selector.
+--     * The platform's only intended mechanism is manual admin curation
+--       (PUT /admin/monitoring-packages/:key/checks, ordered checkKeys[]).
+--       No engine/key-convention auto-derivation exists anywhere in the code.
+--     * No prior repo seed ever populated this table; the original mapping was
+--       authored directly in the live DB and is not version-controlled.
+--   core:security-baseline is the entry-tier, customer-facing, security-
+--   relevant product tier — its exact check set is a human curation decision,
+--   not something to guess.
+--
+--   >>> RUN 2026-07-21-monitoring-package-checks-DIAGNOSTIC.sql FIRST. <<<
+--   Its Q4/Q5 preview tells you whether OPTION A below is sane for your data.
+--
+-- Both options are idempotent (ON CONFLICT DO NOTHING) and re-runnable.
+-- Pick EXACTLY ONE. Do not run both.
+-- ============================================================================
+
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- OPTION A — CURATED (recommended for core:security-baseline)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Fill in the real check keys per package (get them from DIAGNOSTIC Q2). This
+-- is the platform-correct approach: an explicit, ordered, human-curated list,
+-- identical to what the admin UI's PUT .../checks writes. sort_order = listed
+-- order. Uncomment and complete.
+--
+-- INSERT INTO monitoring_package_checks (package_key, check_key, sort_order)
+-- VALUES
+--   ('core:security-baseline', '<check_key_1>', 0),
+--   ('core:security-baseline', '<check_key_2>', 1),
+--   ('core:security-baseline', '<check_key_3>', 2)
+--   -- ...one row per check that belongs in the entry-tier baseline...
+-- ON CONFLICT (package_key, check_key) DO NOTHING;
+--
+-- Repeat a block like the above for every other functional package the
+-- DIAGNOSTIC Q1 lists (any non cat-* package). The 10 cat-* dashboard
+-- category-tab containers stay empty by design — do NOT add rows for them.
+
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- OPTION B — MECHANICAL engine-overlap  (STOPGAP ONLY — read the warning)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Attaches a check to a package when their `engines` arrays overlap. This is a
+-- ROUTING-derived approximation, NOT a curated product tier. It is ONLY safe to
+-- run if DIAGNOSTIC Q4/Q5 showed it produces a selective, sensible set per
+-- package (e.g. a ["security"] package pulling ~a dozen security checks). If Q4
+-- shows a package pulling ~all 118 checks, DO NOT use this — it makes the
+-- entry-tier baseline mean "everything", which is wrong for a customer-facing
+-- security product. It also attaches ZERO checks to any package whose engines
+-- is [] (leaving it as broken as today).
+--
+-- Excludes the cat-* dashboard containers. sort_order = alphabetical by key.
+-- Uncomment to use.
+--
+-- INSERT INTO monitoring_package_checks (package_key, check_key, sort_order)
+-- SELECT
+--   mp.key,
+--   c.key,
+--   (row_number() OVER (PARTITION BY mp.key ORDER BY c.key)) - 1 AS sort_order
+-- FROM monitoring_packages mp
+-- JOIN monitor_checks c
+--   ON c.status = 'active'
+--  AND mp.engines ?| ARRAY(SELECT jsonb_array_elements_text(c.engines))
+-- WHERE mp.status = 'active'
+--   AND mp.key NOT LIKE 'cat-%'
+-- ON CONFLICT (package_key, check_key) DO NOTHING;
+
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- POST-RUN VERIFICATION (Deliverable 4)
+-- ────────────────────────────────────────────────────────────────────────────
+-- 1. Confirm rows now exist:
+--      SELECT package_key, count(*) FROM monitoring_package_checks GROUP BY 1 ORDER BY 1;
+-- 2. Trigger the same testbed scan used to find the bug:
+--      POST /api/msp/customers/4/diagnostics/run   body: {"packageKey":"core:security-baseline"}
+-- 3. Confirm checks_total > 0 on the run row:
+--      SELECT run_id, package_key, status, checks_total, checks_ok, checks_error, requires_script
+--      FROM msp_diagnostic_runs ORDER BY created_at DESC LIMIT 1;
+-- 4. Confirm checks actually EXECUTED (real Graph results, not just a nonzero
+--    count of failures) — per-check rows land in tenant_monitor_profiles:
+--      SELECT check_key, status, item_count, severity_matched, error_message
+--      FROM tenant_monitor_profiles
+--      WHERE trigger_id = 'diag-run-<runId from step 3>'
+--      ORDER BY check_key;
+--    Expect a spread of status='ok' with real item_count values (not every row
+--    error/consent_revoked/requires_script).
+-- ============================================================================

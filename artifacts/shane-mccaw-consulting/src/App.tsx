@@ -21,7 +21,7 @@ import MspPartnerTerms from "./pages/legal/MspPartnerTerms";
 import Dpa from "./pages/legal/Dpa";
 import NotFound from "./pages/not-found";
 import { initTracker, trackPageview } from "./lib/analytics";
-import { PersonalizationProvider } from "./hooks/usePersonalizationState";
+import { PersonalizationProvider } from "./hooks/PersonalizationProvider";
 
 // Stage 2 — real sitemap pages replacing Stage 1's StubPage placeholders (website-rebuild-reference-v2.md §7)
 import Solutions from "./pages/Solutions";
