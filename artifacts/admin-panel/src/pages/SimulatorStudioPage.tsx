@@ -21,10 +21,12 @@ import {
   PanelBottom,
   ChevronDown,
   X,
+  Terminal,
 } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../components/ui/resizable";
+import { ApiTesterDialog } from "../components/ApiTesterDialog";
 import { SimulatorLeftTree } from "../components/SimulatorLeftTree";
 import { SimulatorCenterCanvas } from "../components/SimulatorCenterCanvas";
 import { SimulatorPortalSnapshot } from "../components/SimulatorPortalSnapshot";
@@ -285,6 +287,18 @@ function StudioShell() {
               <option value={60}>60×</option>
             </select>
           </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          <ApiTesterDialog>
+            <button
+              className="flex items-center gap-1 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="API Tester — issue an ad-hoc authenticated request"
+            >
+              <Terminal className="h-3.5 w-3.5" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider">API Tester</span>
+            </button>
+          </ApiTesterDialog>
 
           <div className="h-4 w-px bg-border" />
 
