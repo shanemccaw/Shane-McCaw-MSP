@@ -300,89 +300,6 @@ export default function RetainersOverview() {
         </div>
       </section>
 
-      {/* Architect tier cards — catalog-driven */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
-              Architect Retainer Plans
-            </h2>
-            <p className="text-text-secondary max-w-xl mx-auto">
-              A reserved block of Shane's time every month — flat-rate, no scoping, no delays.
-            </p>
-          </div>
-
-          {loading && (
-            <div className="flex justify-center py-12">
-              <Loader2 className="size-8 animate-spin text-accent-blue" />
-            </div>
-          )}
-
-          {error && !loading && (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <AlertCircle className="size-8 text-red-400" />
-              <p className="text-text-secondary">
-                Could not load retainer plans. Please refresh and try again.
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && flatTiers.length === 0 && (
-            <p className="text-center text-text-secondary py-12">Retainer plans coming soon.</p>
-          )}
-
-          {!loading && !error && flatTiers.length > 0 && (
-            <div
-              className={`grid grid-cols-1 gap-6 items-stretch ${
-                flatTiers.length >= 3
-                  ? "md:grid-cols-3"
-                  : flatTiers.length === 2
-                    ? "md:grid-cols-2"
-                    : "max-w-sm mx-auto"
-              }`}
-            >
-              {flatTiers.map((tier) => (
-                <ArchitectCard key={tier.id} tier={tier} loading={loading} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Advisory / range-priced tiers — catalog-driven */}
-      {(loading || rangeTiers.length > 0) && (
-        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
-                Scoped Advisory Services
-              </h2>
-              <p className="text-text-secondary max-w-xl mx-auto">
-                Engagement scope and pricing are finalised in a discovery call — no guesswork, no surprises.
-              </p>
-            </div>
-
-            {loading && (
-              <div className="flex justify-center py-8">
-                <Loader2 className="size-6 animate-spin text-accent-blue" />
-              </div>
-            )}
-
-            {!loading && rangeTiers.length > 0 && (
-              <div
-                className={`grid grid-cols-1 gap-6 ${
-                  rangeTiers.length >= 2 ? "md:grid-cols-2" : "max-w-sm mx-auto"
-                }`}
-              >
-                {rangeTiers.map((tier) => (
-                  <ScopedCard key={tier.id} tier={tier} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
       {/* Why retainers exist */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
@@ -529,6 +446,89 @@ export default function RetainersOverview() {
           </div>
         </div>
       </section>
+
+      {/* Architect tier cards — catalog-driven */}
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
+              Architect Retainer Plans
+            </h2>
+            <p className="text-text-secondary max-w-xl mx-auto">
+              A reserved block of Shane's time every month — flat-rate, no scoping, no delays.
+            </p>
+          </div>
+
+          {loading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="size-8 animate-spin text-accent-blue" />
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <AlertCircle className="size-8 text-red-400" />
+              <p className="text-text-secondary">
+                Could not load retainer plans. Please refresh and try again.
+              </p>
+            </div>
+          )}
+
+          {!loading && !error && flatTiers.length === 0 && (
+            <p className="text-center text-text-secondary py-12">Retainer plans coming soon.</p>
+          )}
+
+          {!loading && !error && flatTiers.length > 0 && (
+            <div
+              className={`grid grid-cols-1 gap-6 items-stretch ${
+                flatTiers.length >= 3
+                  ? "md:grid-cols-3"
+                  : flatTiers.length === 2
+                    ? "md:grid-cols-2"
+                    : "max-w-sm mx-auto"
+              }`}
+            >
+              {flatTiers.map((tier) => (
+                <ArchitectCard key={tier.id} tier={tier} loading={loading} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Advisory / range-priced tiers — catalog-driven */}
+      {(loading || rangeTiers.length > 0) && (
+        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
+                Scoped Advisory Services
+              </h2>
+              <p className="text-text-secondary max-w-xl mx-auto">
+                Engagement scope and pricing are finalised in a discovery call — no guesswork, no surprises.
+              </p>
+            </div>
+
+            {loading && (
+              <div className="flex justify-center py-8">
+                <Loader2 className="size-6 animate-spin text-accent-blue" />
+              </div>
+            )}
+
+            {!loading && rangeTiers.length > 0 && (
+              <div
+                className={`grid grid-cols-1 gap-6 ${
+                  rangeTiers.length >= 2 ? "md:grid-cols-2" : "max-w-sm mx-auto"
+                }`}
+              >
+                {rangeTiers.map((tier) => (
+                  <ScopedCard key={tier.id} tier={tier} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Feature comparison table — fully catalog-driven */}
       {showComparison && (

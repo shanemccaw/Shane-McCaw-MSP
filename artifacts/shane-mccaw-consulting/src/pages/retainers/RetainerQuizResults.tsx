@@ -416,7 +416,7 @@ export default function RetainerQuizResults({ scores = DEFAULT_SCORES, onRetake 
                   See Essentials, Growth, and Enterprise side by side — hours, response times, and features in a single view.
                 </p>
                 <Link
-                  href="/retainers"
+                  href="/platform/retainer"
                   className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                 >
                   View all plans <ArrowRight className="w-3.5 h-3.5" />

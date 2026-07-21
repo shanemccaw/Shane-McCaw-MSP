@@ -128,8 +128,7 @@ export default function App() {
       <Route path="/solutions/:slug" component={SolutionTopicPage} />
       <Route path="/solutions" component={Solutions} />
       <Route path="/products" component={Products} />
-      <Route path="/retainer" component={RetainersOverview} />
-      <Route path="/retainers" component={RetainersOverview} />
+      <Route path="/platform/retainer" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
       <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />

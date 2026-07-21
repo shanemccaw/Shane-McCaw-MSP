@@ -112,6 +112,7 @@ const FUNNEL_STORAGE_KEY = "smc_funnel";
 const FUNNEL_ROUTES: { prefix: string; funnel: string; stage: "landing" | "pricing" }[] = [
   { prefix: "/monitoring", funnel: "monitoring", stage: "pricing" },
   { prefix: "/products", funnel: "products", stage: "pricing" },
+  { prefix: "/platform/retainer", funnel: "retainer", stage: "pricing" },
   { prefix: "/retainers", funnel: "retainer", stage: "pricing" },
   { prefix: "/msp", funnel: "msp", stage: "pricing" },
   { prefix: "/assessments", funnel: "assessment", stage: "landing" },
