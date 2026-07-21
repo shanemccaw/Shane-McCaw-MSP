@@ -943,7 +943,7 @@ export default function Checkout() {
                       <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3">
                         <AlertCircle className="size-5 text-red-400 shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-red-400 text-sm">Payment error</p>
+                          <p className="font-semibold text-red-400 text-sm">{service.isFree ? "Registration error" : "Payment error"}</p>
                           <p className="text-sm text-red-300/80 mt-0.5">{paymentError}</p>
                         </div>
                       </div>

@@ -32,6 +32,7 @@ import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCa
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
+import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { fireWorkflowsForEvent, emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
@@ -13760,25 +13761,43 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
   }
 });
 
-// POST /portal/onboarding/claim-free — finalise a zero-price onboarding without Stripe
-//
-// Idempotency is keyed by FREE-ONB-<userId>-<sortedServiceIds>. All provisioning
-// (project, clientServices, workflow steps, invoices, setup email) happens here so
-// the success page only needs to poll for the project — no separate provision call.
-router.post("/portal/onboarding/claim-free", async (req: Request, res: Response) => {
-  try {
-    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string };
-    const contractIds = (Array.isArray(body.contractIds) ? body.contractIds : []).map(Number).filter(n => !isNaN(n));
-    const serviceIds = (Array.isArray(body.serviceIds) ? body.serviceIds : []).map(Number).filter(n => !isNaN(n));
-    if (serviceIds.length === 0) { res.status(400).json({ error: "No service IDs provided" }); return; }
+/**
+ * FreeOnboardingResult — discriminated result from provisionFreeOnboarding.
+ * ok:false → res.status(status).json({ error }); ok:true → 200 success body.
+ */
+type FreeOnboardingResult =
+  | { ok: true; sentSetupEmail: boolean; alreadyProvisioned: boolean; projectId?: number }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Shared $0 onboarding provisioning — the free-path equivalent of a successful
+ * paid Stripe checkout (processStripeEvent): resolves/creates the client account,
+ * links pre-signed guest contracts, creates the project + client_services (with
+ * workflow-step / kanban seeding), writes $0 invoices, and sends the account-setup
+ * or onboarding-confirmation email via Graph/Exchange. Idempotent via a
+ * deterministic FREE-ONB invoice number.
+ *
+ * Shared by POST /portal/onboarding/claim-free (CRM onboarding) and
+ * POST /portal/checkout/free (public marketing site). Callers own request
+ * parsing, captcha/auth gating, and HTTP translation of the returned result.
+ */
+async function provisionFreeOnboarding(opts: {
+  authedUserId: number | null;
+  guestEmail: string | null;
+  contractIds: number[];
+  serviceIds: number[];
+  log: Request["log"];
+}): Promise<FreeOnboardingResult> {
+    const { authedUserId, contractIds, serviceIds, log: reqLog } = opts;
+    if (serviceIds.length === 0) return { ok: false, status: 400, error: "No service IDs provided" };
 
     // Resolve user: authenticated session or guest email
     let resolvedUserId: number;
-    if (req.user?.id) {
-      resolvedUserId = req.user.id;
+    if (authedUserId) {
+      resolvedUserId = authedUserId;
     } else {
-      const guestEmail = body.guestEmail?.trim();
-      if (!guestEmail) { res.status(401).json({ error: "Authentication required" }); return; }
+      const guestEmail = opts.guestEmail?.trim();
+      if (!guestEmail) return { ok: false, status: 401, error: "Please provide your email address to complete registration." };
       const acct = await ensureClientAccount(guestEmail);
       resolvedUserId = acct.id;
       // Link any pre-signed guest contracts to the newly resolved account
@@ -13792,14 +13811,14 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
         await ensureDirectCustomerRecord(resolvedUserId);
         await ensureClientMspUser(resolvedUserId);
       } catch (mspErr) {
-        req.log.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
+        reqLog.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
       }
     }
 
     // Fetch and validate services — server-side price guard
     const fetchedServices = await db.select().from(servicesTable)
       .where(inArray(servicesTable.id, serviceIds));
-    if (fetchedServices.length === 0) { res.status(400).json({ error: "Services not found" }); return; }
+    if (fetchedServices.length === 0) return { ok: false, status: 400, error: "Services not found" };
     const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
     const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
     const totalPrice = orderedServices.reduce((sum, s) => {
@@ -13807,17 +13826,17 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       return sum + (priceVal ? parseFloat(String(priceVal)) : 0);
     }, 0);
     if (totalPrice > 0) {
-      res.status(400).json({ error: "This order has a non-zero price — use the standard checkout" }); return;
+      return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
     }
 
     const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, resolvedUserId)).limit(1);
-    if (!buyer) { res.status(404).json({ error: "Account not found" }); return; }
+    if (!buyer) return { ok: false, status: 404, error: "Account not found" };
 
     // Idempotency: deterministic invoice number — retry-safe
     const freeInvoiceNumber = `FREE-ONB-${resolvedUserId}-${[...serviceIds].sort().join("-")}`;
     const [existingInvoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
       .where(eq(invoicesTable.invoiceNumber, freeInvoiceNumber)).limit(1);
-    if (existingInvoice) { res.json({ ok: true }); return; }
+    if (existingInvoice) return { ok: true, sentSetupEmail: false, alreadyProvisioned: true };
 
     void ensureLeadForClient(resolvedUserId, buyer.email, buyer.name ?? undefined, buyer.company ?? undefined);
 
@@ -13950,7 +13969,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
           { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
           "Set up your Shane McCaw Consulting portal",
           `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-        ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "account-setup" }, "claim-free: account-setup email failed (non-fatal)"));
+        ).catch((e) => reqLog.warn({ err: e, userId: resolvedUserId, template: "account-setup" }, "claim-free: account-setup email failed (non-fatal)"));
       }
     } else if (hasPassword && buyer.email) {
       void sendEmailFromTemplate(
@@ -13959,7 +13978,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
         { clientName: buyer.name ?? buyer.email, serviceName: serviceNames.join(", "), amountDollars: "0", projectUrl: baseUrl, tenantHealthBlockHtml: await getTenantHealthBlockHtml(buyer.id) },
         "Your project workspace is ready — Shane McCaw Consulting",
         `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceNames.join(", ")}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
-      ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "onboarding-confirmation" }, "claim-free: onboarding-confirmation email failed (non-fatal)"));
+      ).catch((e) => reqLog.warn({ err: e, userId: resolvedUserId, template: "onboarding-confirmation" }, "claim-free: onboarding-confirmation email failed (non-fatal)"));
     }
 
     // Admin alerts (all non-fatal)
@@ -14022,7 +14041,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
         ).catch(() => null);
       }
     } catch (notifyErr) {
-      req.log.warn({ err: notifyErr }, "onboarding claim-free: post-provision notification failed (non-fatal)");
+      reqLog.warn({ err: notifyErr }, "onboarding claim-free: post-provision notification failed (non-fatal)");
     }
 
     void fireWorkflowsForEvent("onboarding.free_claimed", {
@@ -14034,10 +14053,65 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       serviceIds,
     });
 
-    res.json({ ok: true, sentSetupEmail });
+    return { ok: true, sentSetupEmail, alreadyProvisioned: false, projectId: project.id };
+}
+
+// POST /portal/onboarding/claim-free — finalise a zero-price onboarding without Stripe
+router.post("/portal/onboarding/claim-free", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string };
+    const contractIds = (Array.isArray(body.contractIds) ? body.contractIds : []).map(Number).filter(n => !isNaN(n));
+    const serviceIds = (Array.isArray(body.serviceIds) ? body.serviceIds : []).map(Number).filter(n => !isNaN(n));
+
+    const result = await provisionFreeOnboarding({
+      authedUserId: req.user?.id ?? null,
+      guestEmail: body.guestEmail ?? null,
+      contractIds,
+      serviceIds,
+      log: req.log,
+    });
+    if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
+    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail });
   } catch (err) {
     req.log.error({ err }, "portal: failed to process free onboarding claim");
     res.status(500).json({ error: "Failed to claim free onboarding" });
+  }
+});
+
+// POST /portal/checkout/free — public marketing-site free ($0) checkout.
+//
+// The marketing Checkout page (shane-mccaw-consulting/src/pages/Checkout.tsx)
+// branches free ($0) items away from Stripe and POSTs here after signing the
+// contract via /portal/onboarding/contract. This is the free-path twin of
+// /portal/checkout/create-session (paid). Bot-protected with the same Turnstile
+// verification used by the authenticated offer checkout; no Stripe interaction.
+router.post("/portal/checkout/free", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string; captchaToken?: string };
+
+    // CAPTCHA gate — reuses lib/captcha verifyCaptchaToken, which transparently
+    // bypasses when TURNSTILE_SECRET_KEY is unset (dev/preview) and enforces
+    // against Cloudflare when configured. Do not weaken.
+    const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken : "";
+    if (!captchaToken) { res.status(400).json({ error: "CAPTCHA verification is required to complete registration." }); return; }
+    const captchaRes = await verifyCaptchaToken(captchaToken);
+    if (!captchaRes.success) { res.status(403).json({ error: "CAPTCHA verification failed. Please refresh the page and try again." }); return; }
+
+    const contractIds = (Array.isArray(body.contractIds) ? body.contractIds : []).map(Number).filter(n => !isNaN(n));
+    const serviceIds = (Array.isArray(body.serviceIds) ? body.serviceIds : []).map(Number).filter(n => !isNaN(n));
+
+    const result = await provisionFreeOnboarding({
+      authedUserId: req.user?.id ?? null,
+      guestEmail: body.guestEmail ?? null,
+      contractIds,
+      serviceIds,
+      log: req.log,
+    });
+    if (!result.ok) { res.status(result.status).json({ error: result.error }); return; }
+    res.json({ ok: true, sentSetupEmail: result.sentSetupEmail });
+  } catch (err) {
+    req.log.error({ err }, "portal: failed to process free checkout");
+    res.status(500).json({ error: "We couldn't complete your free registration. Please try again in a moment." });
   }
 });
 
