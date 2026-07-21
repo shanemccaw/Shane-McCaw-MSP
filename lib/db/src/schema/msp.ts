@@ -2258,6 +2258,12 @@ export const writeActionCatalogTable = pgTable("write_action_catalog", {
   blockedReason: text("blocked_reason"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // NULL = not execution-ready yet (true for all 123 rows as of 2026-07-20).
+  // Once set, this is the real key into baseline_action_templates.templateId
+  // — replaces the previous broken actionName === templateId assumption.
+  // Column not independently re-verified against information_schema in this
+  // session (no DB access here, same limitation as the rest of this table).
+  templateId: text("template_id"),
 }, (t) => [
   index("write_action_catalog_domain_idx").on(t.domain),
 ]);

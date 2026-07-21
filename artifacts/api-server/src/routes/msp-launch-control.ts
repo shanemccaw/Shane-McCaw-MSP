@@ -166,11 +166,11 @@ router.post(
     const mspId = parseInt(p(req.params["mspId"]), 10);
     if (isNaN(mspId)) { res.status(400).json({ error: "mspId must be a number" }); return; }
 
-    const body = req.body as { templateId?: string; customerId?: number; variables?: Record<string, string> };
-    const templateId = typeof body.templateId === "string" ? body.templateId : "";
+    const body = req.body as { catalogActionId?: number; customerId?: number; variables?: Record<string, string> };
+    const catalogActionId = typeof body.catalogActionId === "number" ? body.catalogActionId : NaN;
     const customerId = typeof body.customerId === "number" ? body.customerId : NaN;
-    if (!templateId || isNaN(customerId)) {
-      res.status(400).json({ error: "templateId and customerId are required" });
+    if (isNaN(catalogActionId) || isNaN(customerId)) {
+      res.status(400).json({ error: "catalogActionId and customerId are required" });
       return;
     }
 
@@ -181,19 +181,24 @@ router.post(
       }
 
       // Re-validate from scratch — never trust a client-supplied availability
-      // label. write_action_catalog has no FK to baseline_action_templates,
-      // so the catalog row is resolved by actionName === templateId (the two
-      // tables share one identifier space; most catalog rows have no
-      // matching baseline_action_templates row yet).
+      // label. The client sends the catalog row's own id (not templateId —
+      // actionName is a human-readable string and templateId is a machine
+      // key, they can never match); write_action_catalog.template_id is the
+      // real, nullable link into baseline_action_templates once promoted.
       const [catalogRow] = await db
         .select()
         .from(writeActionCatalogTable)
-        .where(eq(writeActionCatalogTable.actionName, templateId))
+        .where(eq(writeActionCatalogTable.id, catalogActionId))
         .limit(1);
       if (!catalogRow) {
         res.status(404).json({ error: "Action not found in the write action catalog" });
         return;
       }
+      if (!catalogRow.templateId) {
+        res.status(409).json({ error: "This action isn't wired to a real executable template yet" });
+        return;
+      }
+      const templateId = catalogRow.templateId;
 
       const [tier, customerTier] = await Promise.all([
         loadTier(mspId),
@@ -254,7 +259,7 @@ router.post(
       );
       res.json({ result, tenant: { customerId: customer.id, name: customer.name } });
     } catch (err) {
-      log.error({ err, mspId, templateId, customerId }, "POST /msp/:mspId/launch-control/execute failed");
+      log.error({ err, mspId, catalogActionId, customerId }, "POST /msp/:mspId/launch-control/execute failed");
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to execute action" });
     }
   },
