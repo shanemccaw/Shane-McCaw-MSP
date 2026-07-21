@@ -409,7 +409,7 @@ export default function Home() {
                 )}
               </div>
               <Link
-                href={item.isFreeOffering ? `/contact?service=${item.slug}` : `/checkout?product=${item.slug}`}
+                href={`/checkout?product=${item.slug}`}
                 className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
                 style={GRADIENT_BG}
                 data-track="cta"
@@ -460,7 +460,7 @@ export default function Home() {
             )}
           </div>
           <Link
-            href={item.isFreeOffering ? `/contact?service=${item.slug}` : `/checkout?product=${item.slug}`}
+            href={`/checkout?product=${item.slug}`}
             className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
             style={GRADIENT_BG}
             data-track="cta"
