@@ -1,0 +1,60 @@
+
+  VITE v7.3.3  ready in 5169 ms
+
+  ➜  Local:   http://localhost:5183/
+  ➜  Network: http://192.168.86.94:5183/
+4:05:27 PM [vite] (client) hmr update /src/index.css, /src/components/ConsultationCTA.tsx
+4:09:58 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:04 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:10 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:16 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:24 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:36 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:10:45 PM [vite] (client) hmr update /src/pages/Monitoring.tsx, /src/index.css
+4:21:58 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:22:41 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:22:51 PM [vite] (client) hmr update /src/index.css, /src/pages/QuizResultsPage.tsx, /src/pages/CopilotQuiz.tsx, /src/components/design-system/GlassPanel.tsx, /src/components/design-system/GradientText.tsx, /src/components/PortalSupportHandoff.tsx, /src/components/ui/badge.tsx, /src/components/ui/button.tsx, /src/components/ContactChatWidget.tsx, /src/components/design-system/StatPanel.tsx, /src/components/GenericQuizModal.tsx, /src/components/ui/input.tsx, /src/components/CTAButton.tsx, /src/components/ui/checkbox.tsx, /src/components/ui/form.tsx, /src/components/Header.tsx, /src/components/BackToTop.tsx, /src/components/ui/label.tsx
+4:22:54 PM [vite] (client) hmr update /src/index.css, /src/pages/QuizResultsPage.tsx, /src/pages/CopilotQuiz.tsx, /src/components/design-system/GlassPanel.tsx, /src/components/design-system/GradientText.tsx, /src/components/PortalSupportHandoff.tsx, /src/components/ui/badge.tsx, /src/components/ui/button.tsx, /src/components/ContactChatWidget.tsx, /src/components/design-system/StatPanel.tsx, /src/components/GenericQuizModal.tsx, /src/components/ui/input.tsx, /src/components/CTAButton.tsx, /src/components/ui/checkbox.tsx, /src/components/ui/form.tsx, /src/components/Header.tsx, /src/components/BackToTop.tsx, /src/components/ui/label.tsx
+4:24:03 PM [vite] (client) hmr update /src/index.css, /src/components/ui/button.tsx
+4:24:07 PM [vite] (client) hmr update /src/index.css, /src/components/ui/button.tsx
+4:24:07 PM [vite] (client) hmr update /src/index.css, /src/components/ui/button.tsx
+4:25:09 PM [vite] (client) hmr update /src/App.tsx, /src/hooks/usePersonalizationState.tsx, /src/pages/Contact.tsx, /src/pages/Msp.tsx, /src/pages/QuizResultsPage.tsx, /src/pages/Resources.tsx, /src/pages/CopilotQuiz.tsx, /src/pages/Checkout.tsx, /src/pages/Monitoring.tsx, /src/pages/Home.tsx, /src/pages/solutions/SolutionTopicPage.tsx, /src/pages/Assessments.tsx, /src/components/PortalSupportHandoff.tsx, /src/components/ArticlePersonalizedNudge.tsx, /src/components/PersistentChatBubble.tsx, /src/components/EngagementOfferPanel.tsx, /src/components/ContactChatWidget.tsx, /src/components/GenericQuizModal.tsx, /src/index.css
+4:25:13 PM [vite] (client) hmr update /src/App.tsx, /src/hooks/usePersonalizationState.tsx, /src/pages/Contact.tsx, /src/pages/Msp.tsx, /src/pages/QuizResultsPage.tsx, /src/pages/Resources.tsx, /src/pages/CopilotQuiz.tsx, /src/pages/Checkout.tsx, /src/pages/Monitoring.tsx, /src/pages/Home.tsx, /src/pages/solutions/SolutionTopicPage.tsx, /src/pages/Assessments.tsx, /src/components/PortalSupportHandoff.tsx, /src/components/ArticlePersonalizedNudge.tsx, /src/components/PersistentChatBubble.tsx, /src/components/EngagementOfferPanel.tsx, /src/components/ContactChatWidget.tsx, /src/components/GenericQuizModal.tsx, /src/index.css
+4:25:24 PM [vite] (client) page reload src/main.tsx
+4:25:27 PM [vite] (client) page reload src/main.tsx
+4:28:55 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:29:03 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:33:01 PM [vite] (client) hmr update /src/index.css, /src/components/design-system/HowItWorksShowcase.tsx
+4:34:19 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:39:48 PM [vite] (client) hmr update /src/pages/Assessments.tsx, /src/index.css
+4:39:57 PM [vite] (client) hmr update /src/pages/Assessments.tsx, /src/index.css
+4:40:05 PM [vite] (client) hmr update /src/pages/Assessments.tsx, /src/index.css
+4:40:18 PM [vite] (client) hmr update /src/pages/Assessments.tsx, /src/index.css
+4:41:02 PM [vite] (client) hmr update /src/pages/Assessments.tsx, /src/index.css
+4:42:31 PM [vite] (client) hmr update /src/index.css, /src/components/design-system/HowItWorksShowcase.tsx
+4:42:50 PM [vite] (client) hmr update /src/index.css, /src/components/design-system/HowItWorksShowcase.tsx
+4:42:57 PM [vite] (client) hmr update /src/index.css, /src/components/design-system/HowItWorksShowcase.tsx
+4:43:14 PM [vite] (client) hmr update /src/pages/Home.tsx, /src/index.css
+4:52:57 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:09:59 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:12 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:19 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:25 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:33 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:40 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:10:55 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:06 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:11 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:18 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:29 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:46 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:11:57 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:12:04 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:12:15 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:12:23 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:12:29 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:12:37 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:13:09 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:13:25 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:13:25 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
+5:13:27 PM [vite] (client) hmr update /src/pages/Msp.tsx, /src/index.css
