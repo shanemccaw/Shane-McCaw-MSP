@@ -596,6 +596,63 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
+    name: "Generate Campaign from Current Events",
+    description:
+      "Checks daily for a hot Microsoft 365 / cloud news story and, when one clears the hot-score " +
+      "threshold, auto-builds a draft marketing campaign from it. Uses fetch_news_headlines with " +
+      "autoBuildCampaign enabled — that node fetches real headlines (NewsAPI, RSS fallback), asks " +
+      "Claude to pick the hottest story and write a campaign brief, and inserts the campaigns row " +
+      "itself when isHot is true. The notHot branch is intentionally left unwired — a quiet day " +
+      "produces no campaign and no noise. Edit the topics/hotScoreThreshold on the Fetch News " +
+      "Headlines node to tune what counts as newsworthy.",
+    triggerType: "schedule",
+    cron: "0 7 * * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 80 },
+          data: { nodeType: "start", label: "Every Day 07:00 UTC" },
+        },
+        {
+          id: "fetch_news",
+          type: "fetch_news_headlines",
+          position: { x: 300, y: 220 },
+          data: {
+            nodeType: "fetch_news_headlines",
+            label: "Fetch News Headlines",
+            topics: "Microsoft 365, Copilot AI, SharePoint, Power Platform, Azure, Microsoft Viva, Project Online",
+            maxResults: 10,
+            hotScoreThreshold: 60,
+            autoBuildCampaign: true,
+          },
+        },
+        {
+          id: "log_confirm",
+          type: "report_progress",
+          position: { x: 300, y: 360 },
+          data: {
+            nodeType: "report_progress",
+            label: "Log Campaign Created",
+            message: "Auto-built campaign {{campaignId}} from hot news story \"{{newsTopic}}\" (hotScore {{hotScore}}).",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 500 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "fetch_news" },
+        { id: "e2", source: "fetch_news", target: "log_confirm", sourceHandle: "hot" },
+        { id: "e3", source: "log_confirm", target: "end" },
+      ],
+    },
+  },
+  {
     name: "__system__: Orphan Reconciliation",
     description: "Runs once on server startup to recover kanban cards orphaned by a mid-run restart and detect stalled phases.",
     triggerType: "startup",
