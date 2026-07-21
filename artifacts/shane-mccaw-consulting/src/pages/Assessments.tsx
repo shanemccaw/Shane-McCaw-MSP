@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import {
   ShieldCheck,
   Clock,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   CheckCircle2,
   KeyRound,
   ClipboardCheck,
@@ -18,10 +19,13 @@ import {
   Activity,
   Pause,
   Play,
+  Search,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { SEOMeta } from '@/components/SEOMeta';
+import { trackPageview } from '@/lib/analytics';
 import { GradientText } from '@/components/design-system/GradientText';
 import { GlassPanel } from '@/components/design-system/GlassPanel';
 import { IllustrativeBadge } from '@/components/design-system/IllustrativeBadge';
@@ -218,7 +222,7 @@ function TenantScanPreview() {
   return (
     <div ref={ref} className="relative rounded-2xl glass-panel p-6 sm:p-8">
       <IllustrativeBadge />
-      <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-5 pr-28">
+      <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-5 pr-44">
         What a running assessment looks like
       </div>
 
@@ -410,23 +414,34 @@ const WHY_ZONE_CARDS: WhyZoneCard[] = [
 
 export default function Assessments() {
   const [location, setLocation] = useLocation();
+  const search = useSearch();
 
   // {{db.assessments.list}}
   const { services, loading, error } = useServices({ category: 'assessment' });
 
   // Retained only for backward-compatible link targets (Monitoring.tsx -> /assessments/start);
-  // no longer a visible tab bar — the zone grid + wizard replace that browsing pattern.
+  // no visible tab bar — the filter narrows counts, tiles, search, and zone views alike.
   const tierFilter = location.includes('/start') ? 'free' : location.includes('/premium') ? 'paid' : 'all';
+
+  // The dedicated per-zone view lives at ?zone=<key> — a query param because
+  // every /assessments/* path segment is taken (/assessments/:slug is the
+  // detail page). Same Route match either way, so the component stays mounted
+  // across index ↔ zone swaps and wizard/search state survives them. Invalid
+  // values fall back to the index view.
+  const activeZone = useMemo<ZoneKey | null>(() => {
+    const z = new URLSearchParams(search).get('zone');
+    return ZONES.some((zone) => zone.key === z) ? (z as ZoneKey) : null;
+  }, [search]);
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardDone, setWizardDone] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [scores, setScores] = useState<Record<ZoneKey, number>>(ZERO_SCORES);
-  // "Focused" zone: purely cosmetic (scroll target + highlight ring) — never gates
-  // whether a zone's assessments are visible. All 6 zones always render.
-  const [selectedZone, setSelectedZone] = useState<ZoneKey | null>(null);
   const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set());
-  const zoneSectionRefs = useRef<Partial<Record<ZoneKey, HTMLDivElement | null>>>({});
+  const [query, setQuery] = useState('');
+  // Element id to land on after the next index render ('assessment-wizard' when
+  // the zone view's finder CTA closes the zone); null means top of page.
+  const pendingScrollRef = useRef<string | null>(null);
 
   const maxScore = Math.max(...Object.values(scores));
   const bestZones = maxScore > 0 ? ZONES.filter((z) => scores[z.key] === maxScore).map((z) => z.key) : [];
@@ -437,6 +452,14 @@ export default function Assessments() {
         )
       : [];
 
+  const tierServices = useMemo(
+    () =>
+      services.filter((s) =>
+        tierFilter === 'free' ? !!s.isFreeOffering : tierFilter === 'paid' ? !s.isFreeOffering : true,
+      ),
+    [services, tierFilter],
+  );
+
   const servicesByZone = useMemo(() => {
     const map: Record<ZoneKey, PublicService[]> = {
       identity: [],
@@ -446,18 +469,65 @@ export default function Assessments() {
       cost: [],
       bigpicture: [],
     };
-    for (const service of services) {
-      if (tierFilter === 'free' && !service.isFreeOffering) continue;
-      if (tierFilter === 'paid' && service.isFreeOffering) continue;
+    for (const service of tierServices) {
       const zone = getZoneForService(service);
       if (zone) map[zone].push(service);
     }
     return map;
-  }, [services, tierFilter]);
+  }, [tierServices]);
 
   // Live counts for the hero — derived from the real catalog response, never
   // hardcoded (the 6-zone count is code-defined above, so that one is literal).
-  const freeCount = useMemo(() => services.filter((s) => s.isFreeOffering).length, [services]);
+  // Tier-scoped so the hero agrees with every other count on /assessments/start.
+  const freeCount = useMemo(() => tierServices.filter((s) => s.isFreeOffering).length, [tierServices]);
+
+  // The index's shortcut for people who already know the catalog: live substring
+  // match on name/tagline/description, honoring the tier filter. null = inactive.
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return tierServices.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.tagline ?? '').toLowerCase().includes(q) ||
+        (s.description ?? '').toLowerCase().includes(q),
+    );
+  }, [tierServices, query]);
+
+  // Zone views are page-like destinations (own URL, title, description) that
+  // the app-level AnalyticsBoundary can't see (it keys on pathname only), so
+  // swaps are recorded here. The initial render is skipped — the landing
+  // pageview is already recorded by AnalyticsBoundary.
+  const prevZoneRef = useRef<ZoneKey | null | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevZoneRef.current;
+    prevZoneRef.current = activeZone;
+    if (prev === undefined || prev === activeZone) return;
+    void trackPageview(activeZone ? `${location}?zone=${activeZone}` : location);
+  }, [activeZone, location]);
+
+  // App-level ScrollRestoration only fires on pathname changes; ?zone= swaps
+  // keep the same path, so this page manages its own scroll across them.
+  // Explicitly instant: index.css sets scroll-behavior: smooth globally, and a
+  // view swap should land like a navigation, not glide like an anchor jump.
+  useEffect(() => {
+    if (activeZone) {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      return;
+    }
+    const target = pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    if (target) document.getElementById(target)?.scrollIntoView({ behavior: 'instant' });
+    else window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeZone]);
+
+  function openZone(key: ZoneKey) {
+    setLocation(`${location}?zone=${key}`);
+  }
+
+  function closeZone() {
+    setLocation(location);
+  }
 
   function handleStartWizard() {
     setWizardOpen(true);
@@ -476,11 +546,6 @@ export default function Assessments() {
     const isLast = questionIndex + 1 >= WIZARD_QUESTIONS.length;
     if (isLast) {
       setWizardDone(true);
-      const newMax = Math.max(...Object.values(newScores));
-      if (newMax > 0) {
-        const top = ZONES.filter((z) => newScores[z.key] === newMax).map((z) => z.key);
-        if (top.length === 1) setSelectedZone(top[0]);
-      }
     } else {
       setQuestionIndex((i) => i + 1);
     }
@@ -493,9 +558,11 @@ export default function Assessments() {
     setScores(ZERO_SCORES);
   }
 
-  function focusZone(key: ZoneKey) {
-    setSelectedZone(key);
-    zoneSectionRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // The zone view's escape hatch: back to the index with the finder freshly open.
+  function handleFinderFromZone() {
+    handleStartWizard();
+    pendingScrollRef.current = 'assessment-wizard';
+    closeZone();
   }
 
   function toggleCard(key: string) {
@@ -526,18 +593,19 @@ export default function Assessments() {
       <div key={key} className="rounded-2xl glass-panel overflow-hidden transition-all duration-200">
         <button
           onClick={() => toggleCard(key)}
+          aria-expanded={isExpanded}
           className="w-full flex items-center gap-4 p-5 text-left hover:bg-white/[0.03] transition-colors"
         >
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="font-display text-base font-bold text-text-primary truncate">{service.name}</h4>
+            <div className="flex items-start gap-2 mb-1">
+              <h3 className="font-display text-base font-bold text-text-primary leading-snug">{service.name}</h3>
               {service.isFreeOffering && (
-                <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="flex-shrink-0 mt-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   Free
                 </span>
               )}
             </div>
-            {hook && <p className="text-sm text-text-secondary truncate">{hook}</p>}
+            {hook && <p className="text-sm text-text-secondary line-clamp-1">{hook}</p>}
           </div>
           <div className="flex-shrink-0 flex items-center gap-4">
             <span className="font-numeric text-lg font-medium text-text-primary">{priceDisplay}</span>
@@ -580,101 +648,274 @@ export default function Assessments() {
     );
   };
 
+  /**
+   * The dedicated per-zone view (?zone=<key>): a focused, filtered catalog —
+   * back link, zone header, wrap-only zone switcher, the zone's assessment
+   * cards, and the zone's risk story. Deliberately hero-less and wizard-less:
+   * once a visitor commits to a zone, browsing chrome gets out of the way.
+   */
+  const renderZoneView = (zone: ZoneDef) => {
+    const Icon = zone.icon;
+    const why = WHY_ZONE_CARDS.find((c) => c.zone === zone.key)!;
+    const zoneServices = servicesByZone[zone.key];
+    const freeInZone = zoneServices.filter((s) => s.isFreeOffering).length;
+    const isBest = bestZones.includes(zone.key);
+    const isGood = !isBest && goodZones.includes(zone.key);
+
+    return (
+      <section className="pt-28 sm:pt-32 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <button
+            onClick={closeZone}
+            className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary transition-colors mb-8"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            All assessment zones
+          </button>
+
+          <div className="flex items-start gap-4 mb-3">
+            <span className="shrink-0 w-12 h-12 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
+              <Icon className="w-6 h-6 text-accent-blue" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h1 className="font-display text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
+                  {zone.label}
+                </h1>
+                {isBest && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
+                    Best match
+                  </span>
+                )}
+                {isGood && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                    Good match
+                  </span>
+                )}
+              </div>
+              <p className="text-text-secondary leading-relaxed">{zone.blurb}</p>
+            </div>
+          </div>
+
+          {loading && (
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center my-8">
+              Failed to load assessment catalog. Please refresh or contact support.
+            </div>
+          )}
+
+          {!loading && !error && services.length === 0 && (
+            <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+              No active offerings found in the database. Please contact support.
+            </div>
+          )}
+
+          {/* Counts and chips wait for real data — a cold deep link must never
+              assert "0 assessments" while the catalog is still loading. */}
+          {!loading && !error && services.length > 0 && (
+            <>
+              <p className="text-sm text-text-secondary mb-8 sm:pl-16">
+                <span className="font-numeric text-text-primary">{zoneServices.length}</span> assessment
+                {zoneServices.length === 1 ? '' : 's'} in this zone
+                {freeInZone > 0 && (
+                  <>
+                    {' — '}
+                    <span className="font-numeric text-text-primary">{freeInZone}</span> free to start
+                  </>
+                )}
+                . Nothing runs until you grant scoped, read-only consent.
+              </p>
+
+              {/* Zone switcher — wrapping chips, never a horizontal scroller. */}
+              <div className="flex flex-wrap gap-2 mb-10">
+                {ZONES.map((z) => {
+                  const isActive = z.key === zone.key;
+                  return (
+                    <button
+                      key={z.key}
+                      onClick={() => {
+                        if (!isActive) openZone(z.key);
+                      }}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        isActive
+                          ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/40'
+                          : 'text-text-secondary border-white/[0.1] hover:text-text-primary hover:border-white/[0.2]'
+                      }`}
+                    >
+                      {z.label}
+                      <span className="font-numeric opacity-70">{servicesByZone[z.key].length}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <h2 className="sr-only">Assessments in this zone</h2>
+              {zoneServices.length > 0 ? (
+                <div className="space-y-3">{zoneServices.map((service) => renderAssessmentCard(service))}</div>
+              ) : (
+                <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                  No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this zone yet.
+                </div>
+              )}
+
+              {/* The zone's risk story — same grounded content the index's
+                  "why" grid shows, kept adjacent to the cards it justifies. */}
+              <div className="mt-12 rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 sm:p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="shrink-0 w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-amber-400" />
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
+                    {why.tag}
+                  </span>
+                </div>
+                <h2 className="font-display text-lg font-bold text-text-primary leading-snug mb-2">{why.hook}</h2>
+                <p className="text-sm text-text-secondary leading-relaxed mb-5">{why.body}</p>
+                <div className="pt-4 border-t border-white/[0.06]">
+                  <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
+                    What a scan here turns up
+                  </div>
+                  <ul className="space-y-2">
+                    {why.finds.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        <span className="text-sm text-text-secondary leading-relaxed">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-10 text-center">
+                <p className="text-sm text-text-secondary mb-3">Not sure this is the right zone?</p>
+                <button
+                  onClick={handleFinderFromZone}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+                  style={GRADIENT_BG}
+                  data-track="cta"
+                >
+                  Answer 3 quick questions
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+    );
+  };
+
+  const activeZoneDef = activeZone ? ZONES.find((z) => z.key === activeZone)! : null;
+
   return (
     <Layout>
       <SEOMeta
-        title="Assessments | Shane McCaw Consulting"
-        description="Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan, not a questionnaire, with the same scan depth as our continuous Monitoring service."
+        title={
+          activeZoneDef
+            ? `${activeZoneDef.label} Assessments | Shane McCaw Consulting`
+            : 'Assessments | Shane McCaw Consulting'
+        }
+        description={
+          activeZoneDef
+            ? `${activeZoneDef.blurb} Free and paid Microsoft 365 assessments in the ${activeZoneDef.label} zone — a real, consent-gated Graph API scan, not a questionnaire.`
+            : 'Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan, not a questionnaire, with the same scan depth as our continuous Monitoring service.'
+        }
       />
 
-      {/* 1. Hero — headline + the page's signature visual: an illustrative
-             tenant scan in progress, side by side. */}
-      <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
-          <div className="text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
-              <ShieldCheck className="w-4 h-4" />
-              Built by the M365 Architect at NASA
-            </div>
-            <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-5">
-              A Real Scan of Your Tenant.<br />
-              <GradientText>Not a Guess.</GradientText>
-            </h1>
-            <p className="text-lg text-text-secondary leading-relaxed mb-4">
-              Every assessment connects securely to your live Microsoft 365 tenant and scores your
-              real governance, security, and compliance posture — not a self-reported
-              questionnaire. Start free or go paid; the scan depth is identical either way.
-            </p>
-            <p className="text-sm text-text-secondary mb-8">
-              {services.length > 0 ? (
-                <>
-                  <span className="font-numeric text-text-primary">{services.length}</span> assessments across{' '}
-                  <span className="font-numeric text-text-primary">6</span> zones
-                  {freeCount > 0 && (
+      {activeZoneDef ? (
+        renderZoneView(activeZoneDef)
+      ) : (
+        <>
+          {/* 1. Hero — headline + the page's signature visual: an illustrative
+                 tenant scan in progress, side by side. */}
+          <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+              <div className="text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+                  <ShieldCheck className="w-4 h-4" />
+                  Built by the M365 Architect at NASA
+                </div>
+                <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-5">
+                  A Real Scan of Your Tenant.<br />
+                  <GradientText>Not a Guess.</GradientText>
+                </h1>
+                <p className="text-lg text-text-secondary leading-relaxed mb-4">
+                  Every assessment connects securely to your live Microsoft 365 tenant and scores your
+                  real governance, security, and compliance posture — not a self-reported
+                  questionnaire. Start free or go paid; the scan depth is identical either way.
+                </p>
+                <p className="text-sm text-text-secondary mb-8">
+                  {services.length > 0 ? (
                     <>
-                      {' — '}
-                      <span className="font-numeric text-text-primary">{freeCount}</span> of them free to start
+                      <span className="font-numeric text-text-primary">{services.length}</span> assessments across{' '}
+                      <span className="font-numeric text-text-primary">6</span> zones
+                      {freeCount > 0 && (
+                        <>
+                          {' — '}
+                          <span className="font-numeric text-text-primary">{freeCount}</span> of them free to start
+                        </>
+                      )}
+                      .
                     </>
+                  ) : (
+                    <>Six zones, free and paid, one scan engine.</>
                   )}
-                  .
-                </>
-              ) : (
-                <>Six zones, free and paid, one scan engine.</>
-              )}
-            </p>
-            <div className="flex flex-col sm:flex-row justify-center lg:justify-start items-center gap-4">
-              <a
-                href="#assessment-wizard"
-                className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
-                style={GRADIENT_BG}
-                data-track="cta"
-              >
-                <span>Find Your Assessment</span>
-                <ChevronRight className="w-4 h-4" />
-              </a>
-              <a
-                href="#assessment-categories"
-                className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors text-center"
-                data-track="cta"
-              >
-                Browse All Zones
-              </a>
+                </p>
+                <div className="flex flex-col sm:flex-row justify-center lg:justify-start items-center gap-4">
+                  <a
+                    href="#assessment-wizard"
+                    className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
+                    style={GRADIENT_BG}
+                    data-track="cta"
+                  >
+                    <span>Find Your Assessment</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </a>
+                  <a
+                    href="#assessment-categories"
+                    className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors text-center"
+                    data-track="cta"
+                  >
+                    Browse All Zones
+                  </a>
+                </div>
+              </div>
+              <TenantScanPreview />
             </div>
-          </div>
-          <TenantScanPreview />
-        </div>
-      </section>
+          </section>
 
-      {/* 2. Finder — the page's actual job, directly under the hero: the
-             3-question wizard live-sorting the six zones and their cards.
-             Two-column so the wizard and its live-sorted zone results stay
-             visible together — the wizard sticks in the left column while the
-             right column (zone tiles + card results, reordered live by score)
-             scrolls independently. */}
-      <section id="assessment-wizard" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Six zones. Three questions. <GradientText>One right starting point.</GradientText>
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed">
-              Every assessment lives in one of six zones. Answer three quick questions and watch
-              the right zone rise to the top as you go — or skip the questions and browse
-              straight to the problem you already know you have.
-            </p>
-          </div>
+          {/* 2. Finder — the 3-question wizard as its own lightweight, centered
+                 column block. It shares no scroll or visual space with browsing:
+                 its result hands off to the dedicated zone view (?zone=<key>),
+                 and the zone tiles below live-sort as answers accumulate. */}
+          <section id="assessment-wizard" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
+            <div className="max-w-2xl mx-auto">
+              <div className="text-center mb-10">
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+                  Six zones. Three questions. <GradientText>One right starting point.</GradientText>
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed">
+                  Every assessment lives in one of six zones. Answer three quick questions and
+                  we&rsquo;ll point you straight to the right one — or skip ahead and browse the
+                  zones below.
+                </p>
+              </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-8 items-start">
-            <div className="lg:sticky lg:top-28">
               <GlassPanel className="p-6 sm:p-8">
                 {!wizardOpen && (
-                  <div className="flex flex-col sm:flex-row lg:flex-col items-center justify-between gap-5 lg:items-start lg:text-left text-center sm:text-left">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-5 text-center sm:text-left">
                     <div>
                       <h3 className="font-display text-xl font-bold text-text-primary mb-1">
                         Not sure where to start?
                       </h3>
                       <p className="text-sm text-text-secondary">
-                        3 quick questions — watch the right zone light up as you answer.
+                        3 quick questions — we&rsquo;ll point you straight to the right zone.
                       </p>
                     </div>
                     <button
@@ -691,7 +932,7 @@ export default function Assessments() {
 
                 {wizardOpen && !wizardDone && (
                   <div>
-                    <div className="flex items-center justify-center gap-2 mb-6">
+                    <div aria-hidden="true" className="flex items-center justify-center gap-2 mb-6">
                       {WIZARD_QUESTIONS.map((_, i) => (
                         <span
                           key={i}
@@ -706,6 +947,9 @@ export default function Assessments() {
                       ))}
                     </div>
                     <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
+                      <span className="sr-only">
+                        Question {questionIndex + 1} of {WIZARD_QUESTIONS.length}:{' '}
+                      </span>
                       {WIZARD_QUESTIONS[questionIndex].text}
                     </h3>
                     <div className="space-y-3">
@@ -744,7 +988,7 @@ export default function Assessments() {
                           return (
                             <button
                               key={k}
-                              onClick={() => focusZone(k)}
+                              onClick={() => openZone(k)}
                               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
                               style={GRADIENT_BG}
                               data-track="cta"
@@ -766,8 +1010,45 @@ export default function Assessments() {
                 )}
               </GlassPanel>
             </div>
+          </section>
 
-            <div id="assessment-categories" className="scroll-mt-28">
+          {/* 3. Zone index — the lightweight catalog entry point: a search box
+                 for people who already know what they're after, and six
+                 count-bearing tiles that each open the dedicated zone view.
+                 Nothing renders expanded inline here. */}
+          <section id="assessment-categories" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-28">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center max-w-3xl mx-auto mb-8">
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+                  Browse by zone
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed">
+                  Six zones cover the whole catalog. Pick the problem you already know you have —
+                  or search the assessments directly.
+                </p>
+              </div>
+
+              <div className="relative max-w-md mx-auto mb-10">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary pointer-events-none" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search assessments — try “Copilot” or “SOC 2”"
+                  aria-label="Search assessments"
+                  className="w-full pl-10 pr-10 py-3 rounded-xl bg-white/[0.04] border border-white/[0.1] focus:border-accent-blue/50 focus:outline-none text-sm text-text-primary placeholder:text-text-secondary/60 transition-colors"
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/[0.08] hover:bg-white/[0.16] flex items-center justify-center text-text-secondary"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
               {loading && (
                 <div className="flex justify-center items-center py-20">
                   <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-accent-blue" />
@@ -780,311 +1061,263 @@ export default function Assessments() {
                 </div>
               )}
 
-              {!loading && !error && (
-                <div className="space-y-10">
-                  {services.length === 0 && (
-                    <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
-                      No active offerings found in the database. Please contact support.
-                    </div>
-                  )}
+              {!loading && !error && services.length === 0 && (
+                <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                  No active offerings found in the database. Please contact support.
+                </div>
+              )}
 
-                  {services.length > 0 && (
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3 px-1">
-                        Browse by zone
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {ZONES.map((zone, idx) => {
-                          const Icon = zone.icon;
-                          const zoneServices = servicesByZone[zone.key];
-                          const count = zoneServices.length;
-                          const hasFree = zoneServices.some((s) => s.isFreeOffering);
-                          const isBest = bestZones.includes(zone.key);
-                          const isGood = !isBest && goodZones.includes(zone.key);
-                          const isSelected = selectedZone === zone.key;
-                          const rank = isBest ? 0 : isGood ? 1 : 2;
-
-                          const tile = (
-                            <button
-                              onClick={() => focusZone(zone.key)}
-                              className={`w-full h-full flex flex-col items-start text-left p-5 rounded-2xl transition-all duration-200 ${
-                                isSelected
-                                  ? 'bg-charcoal-1 border border-accent-blue/50'
-                                  : isBest
-                                    ? 'bg-charcoal-1'
-                                    : 'glass-panel hover:border-white/[0.18]'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between w-full mb-3">
-                                <span className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
-                                  <Icon className="w-5 h-5 text-accent-blue" />
-                                </span>
-                                {isBest && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
-                                    Best match
-                                  </span>
-                                )}
-                                {isGood && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
-                                    Good match
-                                  </span>
-                                )}
-                              </div>
-                              <h3 className="font-display text-base font-bold text-text-primary mb-1">{zone.label}</h3>
-                              <p className="text-xs text-text-secondary leading-relaxed mb-3 flex-grow">{zone.blurb}</p>
-                              <span className="flex items-center gap-2 text-[11px] text-text-secondary">
-                                <span>
-                                  <span className="font-numeric">{count}</span> assessment{count === 1 ? '' : 's'}
-                                </span>
-                                {hasFree && (
-                                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                    Free start
-                                  </span>
-                                )}
-                              </span>
-                            </button>
-                          );
-
-                          return (
-                            <div key={zone.key} style={{ order: rank * 10 + idx }}>
-                              {isBest ? (
-                                <div className="rounded-2xl p-[1.5px] h-full" style={GRADIENT_BG}>
-                                  {tile}
-                                </div>
-                              ) : (
-                                tile
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {services.length > 0 && (
-                    <div className="flex flex-col gap-8">
-                      {ZONES.map((zone, idx) => {
-                        const Icon = zone.icon;
-                        const zoneServices = servicesByZone[zone.key];
-                        const isBest = bestZones.includes(zone.key);
-                        const isGood = !isBest && goodZones.includes(zone.key);
-                        const isFocused = selectedZone === zone.key;
-                        const rank = isBest ? 0 : isGood ? 1 : 2;
-                        // Live-scored recede: only kicks in once the wizard has produced a
-                        // score (maxScore > 0), same trigger as the zone tiles above — reacts
-                        // after every answer, not just at wizard completion.
-                        const isDimmed = maxScore > 0 && !isBest && !isGood;
-
-                        return (
-                          <div
-                            key={zone.key}
-                            ref={(el) => {
-                              zoneSectionRefs.current[zone.key] = el;
-                            }}
-                            style={{ order: rank * 10 + idx }}
-                            className={`scroll-mt-28 rounded-2xl transition-all duration-300 ${
-                              isDimmed ? 'opacity-50' : 'opacity-100'
-                            } ${isFocused ? 'ring-1 ring-accent-blue/40' : ''}`}
-                          >
-                            <div className="flex items-center gap-3 mb-1 px-1">
-                              <span className="shrink-0 w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
-                                <Icon className="w-4 h-4 text-accent-blue" />
-                              </span>
-                              <h3 className="font-display text-lg font-bold text-text-primary">{zone.label}</h3>
-                              {isBest && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
-                                  Best match
-                                </span>
-                              )}
-                              {isGood && (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
-                                  Good match
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-text-secondary leading-relaxed mb-4 px-1 sm:pl-[52px]">
-                              {zone.blurb}
-                            </p>
-                            {zoneServices.length > 0 ? (
-                              <div className="space-y-3">{zoneServices.map((service) => renderAssessmentCard(service))}</div>
-                            ) : (
-                              <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
-                                No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this zone yet.
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+              {!loading && !error && services.length > 0 && searchResults !== null && (
+                <div className="max-w-3xl mx-auto">
+                  <div role="status" className="text-xs text-text-secondary mb-4 px-1 break-words">
+                    <span className="font-numeric">{searchResults.length}</span> of{' '}
+                    <span className="font-numeric">{tierServices.length}</span> assessments match &ldquo;
+                    {query.trim()}&rdquo;
+                  </div>
+                  {searchResults.length > 0 ? (
+                    <div className="space-y-3">{searchResults.map((service) => renderAssessmentCard(service))}</div>
+                  ) : (
+                    <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                      Nothing matches that search.{' '}
+                      <button onClick={() => setQuery('')} className="text-accent-blue hover:opacity-80 transition-opacity">
+                        Clear it
+                      </button>{' '}
+                      and browse by zone instead.
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* 3. The shared construct — what every assessment hands back, whichever
-             zone it lives in (consolidates the old "What These Assessments
-             Actually Do" and "What's Inside Each Assessment" prose blocks). */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Every assessment hands back the same three things.
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed">
-              Whichever zone you start in, the mechanism is identical: a consented, read-only
-              Microsoft Graph API connection reads your actual configuration — identity policies,
-              sharing settings, licensing, compliance controls, whatever the zone covers — and
-              evaluates it against real security and governance baselines. What comes back is
-              always the same construct:
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {SHARED_CONSTRUCT.map(({ icon: Icon, title, body }) => (
-              <div key={title} className="rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6">
-                <span className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
-                  <Icon className="w-5 h-5 text-accent-blue" />
-                </span>
-                <h3 className="font-display text-base font-bold text-text-primary mb-2">{title}</h3>
-                <p className="text-sm text-text-secondary leading-relaxed">{body}</p>
+              {!loading && !error && services.length > 0 && searchResults === null && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {ZONES.map((zone, idx) => {
+                    const Icon = zone.icon;
+                    const zoneServices = servicesByZone[zone.key];
+                    const count = zoneServices.length;
+                    const hasFree = zoneServices.some((s) => s.isFreeOffering);
+                    const isBest = bestZones.includes(zone.key);
+                    const isGood = !isBest && goodZones.includes(zone.key);
+                    const rank = isBest ? 0 : isGood ? 1 : 2;
+
+                    const tile = (
+                      <button
+                        onClick={() => openZone(zone.key)}
+                        data-track="cta"
+                        className={`w-full h-full flex flex-col items-start text-left p-5 rounded-2xl transition-all duration-200 ${
+                          isBest ? 'bg-charcoal-1' : 'glass-panel hover:border-white/[0.18]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full mb-3">
+                          <span className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center">
+                            <Icon className="w-5 h-5 text-accent-blue" />
+                          </span>
+                          {isBest && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
+                              Best match
+                            </span>
+                          )}
+                          {isGood && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                              Good match
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-display text-base font-bold text-text-primary mb-1">{zone.label}</h3>
+                        <p className="text-xs text-text-secondary leading-relaxed mb-3 flex-grow">{zone.blurb}</p>
+                        <span className="flex items-center gap-2 w-full text-[11px] text-text-secondary">
+                          <span>
+                            <span className="font-numeric">{count}</span> assessment{count === 1 ? '' : 's'}
+                          </span>
+                          {hasFree && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              Free start
+                            </span>
+                          )}
+                          <ChevronRight className="w-4 h-4 ml-auto" />
+                        </span>
+                      </button>
+                    );
+
+                    return (
+                      <div key={zone.key} style={{ order: rank * 10 + idx }}>
+                        {isBest ? (
+                          <div className="rounded-2xl p-[1.5px] h-full" style={GRADIENT_BG}>
+                            {tile}
+                          </div>
+                        ) : (
+                          tile
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 4. The shared construct — what every assessment hands back, whichever
+                 zone it lives in (consolidates the old "What These Assessments
+                 Actually Do" and "What's Inside Each Assessment" prose blocks). */}
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center max-w-3xl mx-auto mb-10">
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+                  Every assessment hands back the same three things.
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed">
+                  Whichever zone you start in, the mechanism is identical: a consented, read-only
+                  Microsoft Graph API connection reads your actual configuration — identity policies,
+                  sharing settings, licensing, compliance controls, whatever the zone covers — and
+                  evaluates it against real security and governance baselines. What comes back is
+                  always the same construct:
+                </p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Why these assessments matter — one card per zone, two columns:
-             the real risk story plus what a scan there actually turns up,
-             grounded in the catalog's real deliverables. */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Every gap below gets found eventually. The question is who finds it first.
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed">
-              Misconfigured access, unmanaged sharing, and licensing waste don't announce
-              themselves — they compound quietly until an incident, an audit, or a renewal forces
-              the issue on someone else's timeline. Here's what that looks like zone by zone, and
-              what a scan actually turns up while the fix is still cheap.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {WHY_ZONE_CARDS.map((card) => {
-              const zone = ZONES.find((z) => z.key === card.zone)!;
-              const Icon = zone.icon;
-              return (
-                <article key={card.zone} className="rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 flex flex-col">
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="shrink-0 w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-amber-400" />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {SHARED_CONSTRUCT.map(({ icon: Icon, title, body }) => (
+                  <div key={title} className="rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6">
+                    <span className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-4">
+                      <Icon className="w-5 h-5 text-accent-blue" />
                     </span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
-                      {card.tag}
-                    </span>
+                    <h3 className="font-display text-base font-bold text-text-primary mb-2">{title}</h3>
+                    <p className="text-sm text-text-secondary leading-relaxed">{body}</p>
                   </div>
-                  <h3 className="font-display text-base font-bold text-text-primary leading-snug mb-2">
-                    {card.hook}
-                  </h3>
-                  <p className="text-sm text-text-secondary leading-relaxed mb-5">{card.body}</p>
-                  <div className="mt-auto pt-4 border-t border-white/[0.06]">
-                    <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
-                      What a scan here turns up
-                    </div>
-                    <ul className="space-y-2">
-                      {card.finds.map((f) => (
-                        <li key={f} className="flex items-start gap-2.5">
-                          <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                          <span className="text-sm text-text-secondary leading-relaxed">{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => focusZone(card.zone)}
-                      className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
-                      data-track="cta"
-                    >
-                      See {zone.label} assessments
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* 5. How These Assessments Work */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
-            From scoped consent to ranked findings — five steps
-          </h2>
-          <WorkflowSteps
-            steps={[
-              { title: 'Pick a zone', description: "Browse by zone or answer 3 quick questions and we'll point you to the right one." },
-              { title: 'Grant scoped consent', description: 'Nothing runs against your tenant until you explicitly authorize it.' },
-              { title: 'Real Graph-based scan', description: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
-              { title: 'Findings compiled', description: 'Results are ranked by real risk, not a generic severity label.' },
-              { title: 'Portal access', description: 'Create your account and track findings, results, and next steps going forward.' },
-            ]}
-          />
-        </div>
-      </section>
-
-      {/* 6. Built by the CURRENT Microsoft 365 Architect for NASA */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <GlassPanel className="p-8 sm:p-10 text-center">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-blue/10 text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
-              <ShieldCheck className="w-4 h-4" />
-              Personal Credential
+                ))}
+              </div>
             </div>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
-              Built by the CURRENT <GradientText>Microsoft 365 Architect</GradientText> for NASA
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed mb-4">
-              Shane McCaw is the current M365 Architect at NASA, where he built the Copilot
-              governance standard the agency distributes internally. The same engineering
-              discipline — real telemetry, real scoring, no guesswork — is what runs underneath
-              every assessment on this site.
-            </p>
-            <p className="text-text-secondary text-sm leading-relaxed">
-              That NASA role is a personal engineering credential, not a platform capability.
-              These assessments are engineered for commercial Microsoft 365 tenants and do not
-              provide federal compliance scoring, FedRAMP, or GCC alignment of any kind.
-            </p>
-          </GlassPanel>
-        </div>
-      </section>
+          </section>
 
-      {/* 7. Final CTA */}
-      <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-3xl mx-auto">
-          <GlassPanel className="p-8 sm:p-10 text-center">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Your tenant already has the answers.
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed mb-8">
-              Pick a zone, or let three questions point you to the right scan. Nothing runs until
-              you grant scoped, read-only consent — and the free assessments mean finding out
-              where you stand costs nothing.
-            </p>
-            <a
-              href="#assessment-wizard"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
-              style={GRADIENT_BG}
-              data-track="cta"
-            >
-              Find Your Assessment
-              <ChevronRight className="w-4 h-4" />
-            </a>
-          </GlassPanel>
-        </div>
-      </section>
+          {/* 5. Why these assessments matter — one card per zone, two columns:
+                 the real risk story plus what a scan there actually turns up,
+                 grounded in the catalog's real deliverables. */}
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center max-w-3xl mx-auto mb-10">
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+                  Every gap below gets found eventually. The question is who finds it first.
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed">
+                  Misconfigured access, unmanaged sharing, and licensing waste don't announce
+                  themselves — they compound quietly until an incident, an audit, or a renewal forces
+                  the issue on someone else's timeline. Here's what that looks like zone by zone, and
+                  what a scan actually turns up while the fix is still cheap.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {WHY_ZONE_CARDS.map((card) => {
+                  const zone = ZONES.find((z) => z.key === card.zone)!;
+                  const Icon = zone.icon;
+                  return (
+                    <article key={card.zone} className="rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 flex flex-col">
+                      <div className="flex items-center gap-3 mb-4">
+                        <span className="shrink-0 w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                          <Icon className="w-5 h-5 text-amber-400" />
+                        </span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-400/90">
+                          {card.tag}
+                        </span>
+                      </div>
+                      <h3 className="font-display text-base font-bold text-text-primary leading-snug mb-2">
+                        {card.hook}
+                      </h3>
+                      <p className="text-sm text-text-secondary leading-relaxed mb-5">{card.body}</p>
+                      <div className="mt-auto pt-4 border-t border-white/[0.06]">
+                        <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-3">
+                          What a scan here turns up
+                        </div>
+                        <ul className="space-y-2">
+                          {card.finds.map((f) => (
+                            <li key={f} className="flex items-start gap-2.5">
+                              <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                              <span className="text-sm text-text-secondary leading-relaxed">{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          onClick={() => openZone(card.zone)}
+                          className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
+                          data-track="cta"
+                        >
+                          See {zone.label} assessments
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+
+          {/* 6. How These Assessments Work */}
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-2xl mx-auto">
+              <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
+                From scoped consent to ranked findings — five steps
+              </h2>
+              <WorkflowSteps
+                steps={[
+                  { title: 'Pick a zone', description: "Browse by zone or answer 3 quick questions and we'll point you to the right one." },
+                  { title: 'Grant scoped consent', description: 'Nothing runs against your tenant until you explicitly authorize it.' },
+                  { title: 'Real Graph-based scan', description: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
+                  { title: 'Findings compiled', description: 'Results are ranked by real risk, not a generic severity label.' },
+                  { title: 'Portal access', description: 'Create your account and track findings, results, and next steps going forward.' },
+                ]}
+              />
+            </div>
+          </section>
+
+          {/* 7. Built by the CURRENT Microsoft 365 Architect for NASA */}
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <GlassPanel className="p-8 sm:p-10 text-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-blue/10 text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+                  <ShieldCheck className="w-4 h-4" />
+                  Personal Credential
+                </div>
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+                  Built by the CURRENT <GradientText>Microsoft 365 Architect</GradientText> for NASA
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed mb-4">
+                  Shane McCaw is the current M365 Architect at NASA, where he built the Copilot
+                  governance standard the agency distributes internally. The same engineering
+                  discipline — real telemetry, real scoring, no guesswork — is what runs underneath
+                  every assessment on this site.
+                </p>
+                <p className="text-text-secondary text-sm leading-relaxed">
+                  That NASA role is a personal engineering credential, not a platform capability.
+                  These assessments are engineered for commercial Microsoft 365 tenants and do not
+                  provide federal compliance scoring, FedRAMP, or GCC alignment of any kind.
+                </p>
+              </GlassPanel>
+            </div>
+          </section>
+
+          {/* 8. Final CTA */}
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl mx-auto">
+              <GlassPanel className="p-8 sm:p-10 text-center">
+                <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+                  Your tenant already has the answers.
+                </h2>
+                <p className="text-text-secondary text-lg leading-relaxed mb-8">
+                  Pick a zone, or let three questions point you to the right scan. Nothing runs until
+                  you grant scoped, read-only consent — and the free assessments mean finding out
+                  where you stand costs nothing.
+                </p>
+                <a
+                  href="#assessment-wizard"
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+                  style={GRADIENT_BG}
+                  data-track="cta"
+                >
+                  Find Your Assessment
+                  <ChevronRight className="w-4 h-4" />
+                </a>
+              </GlassPanel>
+            </div>
+          </section>
+        </>
+      )}
     </Layout>
   );
 }
