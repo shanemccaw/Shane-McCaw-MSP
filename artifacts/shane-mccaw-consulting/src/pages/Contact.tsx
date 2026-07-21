@@ -104,7 +104,7 @@ function PortalSupportHandoff({ portalUrl }: { portalUrl: string }) {
       >
         Open Portal Support Chat <ArrowRight className="w-4 h-4" />
       </a>
-      <p className="text-xs text-text-tertiary mt-4">
+      <p className="text-xs text-text-secondary mt-4">
         Prefer this form instead?{" "}
         <a href="mailto:info@shanemccaw.com" className="text-accent-blue hover:underline">
           Email Shane directly
@@ -285,7 +285,7 @@ export default function Contact() {
             You're contacting the Lead M365 Architect at NASA — 30 years of Microsoft ecosystem
             experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
           </p>
-          <p className="text-text-tertiary max-w-xl leading-relaxed">
+          <p className="text-text-secondary max-w-xl leading-relaxed">
             Tell me what you're dealing with and you'll get a straight, senior&#8209;level answer on
             whether and how I can help — no fluff, no sales pitch.
           </p>
@@ -295,7 +295,7 @@ export default function Contact() {
       {/* WHO I WORK WITH */}
       <section className="pb-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] pt-16">
         <div className="max-w-5xl mx-auto">
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-6">Who I Work With</p>
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-6">Who I Work With</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { title: "Mid-Market Organizations", desc: "200–2,000 employees ready to modernize their Microsoft 365 environment at scale." },
@@ -307,7 +307,7 @@ export default function Contact() {
                 <div className="w-2 h-2 rounded-full bg-accent-blue mt-1.5 flex-shrink-0" />
                 <div>
                   <p className="font-semibold text-text-primary text-sm">{title}</p>
-                  <p className="text-text-tertiary text-xs mt-1 leading-relaxed">{desc}</p>
+                  <p className="text-text-secondary text-xs mt-1 leading-relaxed">{desc}</p>
                 </div>
               </div>
             ))}
@@ -356,7 +356,7 @@ export default function Contact() {
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold" style={GRADIENT_BG}>AI</div>
                   <div>
                     <p className="text-sm font-semibold text-text-primary">Shane's AI Assistant</p>
-                    <p className="text-xs text-text-tertiary">Here to gather the details so Shane can follow up personally</p>
+                    <p className="text-xs text-text-secondary">Here to gather the details so Shane can follow up personally</p>
                   </div>
                   <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -366,7 +366,7 @@ export default function Contact() {
 
                 <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-6" style={{ maxHeight: "440px" }}>
                   {initError && messages.length === 0 && !isLoading && (
-                    <div className="text-sm text-text-tertiary text-center py-8">
+                    <div className="text-sm text-text-secondary text-center py-8">
                       Couldn't connect to the assistant.{" "}
                       <a href="mailto:info@shanemccaw.com" className="text-accent-blue hover:underline">
                         Email Shane directly
@@ -383,7 +383,7 @@ export default function Contact() {
                 <div className="border-t border-white/[0.06] px-4 py-4">
                   {isSubmitted ? (
                     <div className="text-center py-2">
-                      <p className="text-sm text-text-tertiary">
+                      <p className="text-sm text-text-secondary">
                         Conversation complete.{" "}
                         <a href="/book" className="text-accent-blue hover:underline font-medium">
                           Book a call
@@ -401,7 +401,7 @@ export default function Contact() {
                         onKeyDown={handleKeyDown}
                         disabled={isLoading || isSubmitted}
                         placeholder="Type your reply…"
-                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{ maxHeight: "120px" }}
                         data-testid="chat-input"
                       />
@@ -416,7 +416,7 @@ export default function Contact() {
                       </button>
                     </div>
                   )}
-                  <p className="text-[10px] text-text-tertiary mt-2 text-center">
+                  <p className="text-[10px] text-text-secondary mt-2 text-center">
                     Press <kbd className="font-mono bg-white/[0.06] border border-white/[0.1] rounded px-1">Enter</kbd> to send · Shift+Enter for new line
                   </p>
                 </div>
@@ -490,7 +490,7 @@ export default function Contact() {
               <GlassPanel className="p-6">
                 <h4 className="font-display font-bold text-text-primary mb-2">Prefer to skip the form?</h4>
                 <p className="text-text-secondary text-sm mb-1">Book directly on my calendar.</p>
-                <p className="text-text-tertiary text-xs mb-4">You'll speak directly with me — no junior staff.</p>
+                <p className="text-text-secondary text-xs mb-4">You'll speak directly with me — no junior staff.</p>
                 <a
                   href="/book"
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"

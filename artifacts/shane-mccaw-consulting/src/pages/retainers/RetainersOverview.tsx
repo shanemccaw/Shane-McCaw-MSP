@@ -92,7 +92,7 @@ function ArchitectCard({ tier, loading }: { tier: RetainerTier; loading: boolean
         ) : (
           <p className="font-numeric text-4xl font-medium text-text-primary mb-0.5">{price ?? "—"}</p>
         )}
-        <p className="text-text-tertiary text-sm mb-4">/month · cancel with 30 days' notice</p>
+        <p className="text-text-secondary text-sm mb-4">/month · cancel with 30 days' notice</p>
         {(tier.tagline ?? tier.description) && (
           <p className="text-text-secondary text-sm leading-relaxed">{tier.tagline ?? tier.description}</p>
         )}
@@ -114,7 +114,7 @@ function ArchitectCard({ tier, loading }: { tier: RetainerTier; loading: boolean
           {!tier.fulfillmentTypeKey ? (
             <button
               disabled
-              className="w-full py-2.5 px-4 rounded-lg border border-white/[0.08] text-sm text-text-tertiary bg-white/[0.03] cursor-not-allowed"
+              className="w-full py-2.5 px-4 rounded-lg border border-white/[0.08] text-sm text-text-secondary bg-white/[0.03] cursor-not-allowed"
             >
               Coming soon
             </button>
@@ -139,7 +139,7 @@ function ArchitectCard({ tier, loading }: { tier: RetainerTier; loading: boolean
         </div>
 
         {!hasCheckout && tier.fulfillmentTypeKey === null && tier.slug && (
-          <p className="text-xs text-text-tertiary text-center mt-2">
+          <p className="text-xs text-text-secondary text-center mt-2">
             Not yet available for online purchase
           </p>
         )}
@@ -209,7 +209,7 @@ function ScopedCard({ tier }: { tier: RetainerTier }) {
         >
           <PhoneCall className="w-4 h-4" /> Request Scoping
         </a>
-        <p className="text-xs text-center mt-2 text-text-tertiary">
+        <p className="text-xs text-center mt-2 text-text-secondary">
           Scope and pricing finalised in a discovery call
         </p>
       </div>
@@ -263,7 +263,7 @@ export default function RetainersOverview() {
 
       {/* Breadcrumb */}
       <div className="border-b border-white/[0.06] pt-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-tertiary">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-secondary">
           <Link href="/monitoring" className="hover:text-accent-blue transition-colors">
             Pricing
           </Link>
@@ -286,7 +286,7 @@ export default function RetainersOverview() {
             For mid-market and regulated organizations that need senior-level clarity, governance,
             and modernization — without hiring full-time.
           </p>
-          <div className="flex flex-wrap justify-center gap-6 text-sm text-text-tertiary">
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-text-secondary">
             <span className="flex items-center gap-1.5">
               <CheckCircle className="w-4 h-4 text-accent-blue" /> No minimum term
             </span>
@@ -449,7 +449,7 @@ export default function RetainersOverview() {
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
               What changes when you have an architect
             </h2>
-            <p className="text-text-tertiary max-w-xl mx-auto">
+            <p className="text-text-secondary max-w-xl mx-auto">
               The difference between managing M365 reactively and having a senior architect guiding
               it proactively is measurable.
             </p>
@@ -569,7 +569,7 @@ export default function RetainersOverview() {
                         )}
                         <span
                           className={`block text-xs font-bold uppercase tracking-wider mb-1 ${
-                            tier.highlighted ? "text-accent-blue" : "text-text-tertiary"
+                            tier.highlighted ? "text-accent-blue" : "text-text-secondary"
                           }`}
                         >
                           {tier.name}
@@ -610,7 +610,7 @@ export default function RetainersOverview() {
                     </tr>
                   ))}
                   <tr className="bg-charcoal-0">
-                    <td className="px-6 py-5 text-text-tertiary text-xs italic">
+                    <td className="px-6 py-5 text-text-secondary text-xs italic">
                       All plans: no minimum term · cancel with 30 days' notice
                     </td>
                     {flatTiers.map((tier) => (

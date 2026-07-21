@@ -288,7 +288,7 @@ export default function Assessments() {
               </ul>
             )}
             {service.durationDays && (
-              <p className="flex items-center gap-1 text-xs text-text-tertiary mb-4">
+              <p className="flex items-center gap-1 text-xs text-text-secondary mb-4">
                 <Clock className="w-3.5 h-3.5" />
                 {service.durationDays} Day Turnaround
               </p>
@@ -369,7 +369,7 @@ export default function Assessments() {
               discipline — real telemetry, real scoring, no guesswork — is what runs underneath
               every assessment on this site.
             </p>
-            <p className="text-text-tertiary text-sm leading-relaxed">
+            <p className="text-text-secondary text-sm leading-relaxed">
               That NASA role is a personal engineering credential, not a platform capability.
               These assessments are engineered for commercial Microsoft 365 tenants and do not
               provide federal compliance scoring, FedRAMP, or GCC alignment of any kind.
@@ -502,7 +502,7 @@ export default function Assessments() {
                 </h3>
                 <button
                   onClick={handleRetakeWizard}
-                  className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
+                  className="text-sm text-text-secondary hover:text-text-primary transition-colors"
                 >
                   Retake the quiz
                 </button>
@@ -574,7 +574,7 @@ export default function Assessments() {
                       </div>
                       <h3 className="font-display text-base font-bold text-text-primary mb-1">{zone.label}</h3>
                       <p className="text-xs text-text-secondary leading-relaxed mb-3 flex-grow">{zone.blurb}</p>
-                      <span className="text-[11px] text-text-tertiary">
+                      <span className="text-[11px] text-text-secondary">
                         {count} assessment{count === 1 ? '' : 's'}
                       </span>
                     </button>

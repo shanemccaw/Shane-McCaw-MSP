@@ -471,7 +471,7 @@ export default function Home() {
                 {item.category ? item.category.toUpperCase() : "ENTERPRISE"}
               </span>
               {item.durationDays && (
-                <span className="flex items-center gap-1 text-xs text-text-tertiary">
+                <span className="flex items-center gap-1 text-xs text-text-secondary">
                   <Clock className="w-3.5 h-3.5" />
                   {item.durationDays} Days
                 </span>
@@ -522,7 +522,7 @@ export default function Home() {
             {item.category ? item.category.toUpperCase() : "ENTERPRISE"}
           </span>
           {item.durationDays && (
-            <span className="flex items-center gap-1 text-xs text-text-tertiary">
+            <span className="flex items-center gap-1 text-xs text-text-secondary">
               <Clock className="w-3.5 h-3.5" />
               {item.durationDays} Days
             </span>
@@ -589,7 +589,7 @@ export default function Home() {
       <div className="w-full space-y-12">
         {freeAssessments.length > 0 && (
           <div>
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
               Start here — no cost
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -599,7 +599,7 @@ export default function Home() {
         )}
         {paidAssessments.length > 0 && (
           <div>
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-4">
               Go deeper — paid assessments
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -644,7 +644,7 @@ export default function Home() {
             <span className="gradient-text font-numeric text-5xl sm:text-6xl font-medium tabular-nums">
               {clampedSeatCount.toLocaleString()}
             </span>
-            <div className="text-xs text-text-tertiary mt-1 uppercase tracking-wider">licensed users</div>
+            <div className="text-xs text-text-secondary mt-1 uppercase tracking-wider">licensed users</div>
           </div>
 
           <div className="relative px-1 mb-2 pt-3">
@@ -744,7 +744,7 @@ export default function Home() {
                   ) : (
                     <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
                   )}
-                  <div className="text-xs text-text-tertiary mt-1">For {clampedSeatCount.toLocaleString()} licensed users</div>
+                  <div className="text-xs text-text-secondary mt-1">For {clampedSeatCount.toLocaleString()} licensed users</div>
                 </div>
 
                 {checklist.length > 0 && (
@@ -844,7 +844,7 @@ export default function Home() {
 
           {/* Signature stat panel — verified platform facts only, no fabricated live numbers
               on the cold-visitor hero (personalized real tenant scores are Stage 4, website-rebuild-reference-v2.md §3/§5) */}
-          <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
             Real infrastructure watching your tenant — not marketing numbers
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
@@ -943,7 +943,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="rounded-2xl p-6 sm:p-8 bg-charcoal-1 border border-white/[0.06]">
-              <h3 className="text-xs uppercase tracking-widest text-text-tertiary mb-5">
+              <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-5">
                 {TELEMETRY_COMPARISON.themTitle}
               </h3>
               <ul className="space-y-3">
@@ -1005,10 +1005,10 @@ export default function Home() {
             </div>
 
             <GlassPanel className="p-6 sm:p-8 relative">
-              <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-tertiary border border-white/[0.12]">
+              <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
                 Illustrative Example
               </span>
-              <h3 className="text-xs uppercase tracking-widest text-text-tertiary mb-6">
+              <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6">
                 Mission Control preview
               </h3>
 
@@ -1028,7 +1028,7 @@ export default function Home() {
                 </div>
                 <div>
                   <div className="text-sm font-semibold text-text-primary">Composite tenant health</div>
-                  <div className="text-xs text-text-tertiary mt-1">Example data — not your real score</div>
+                  <div className="text-xs text-text-secondary mt-1">Example data — not your real score</div>
                 </div>
               </div>
 
@@ -1050,7 +1050,7 @@ export default function Home() {
                         }}
                       />
                     </div>
-                    <span className="font-numeric text-xs text-text-tertiary w-7 text-right">{p.goodness}</span>
+                    <span className="font-numeric text-xs text-text-secondary w-7 text-right">{p.goodness}</span>
                   </div>
                 ))}
               </div>

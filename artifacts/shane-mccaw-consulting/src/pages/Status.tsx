@@ -44,7 +44,7 @@ function SeverityBadge({ severity }: { severity: PlatformIncident["severity"] })
       ? "bg-red-500/10 text-red-400 border-red-500/30"
       : severity === "major"
         ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-        : "bg-white/5 text-text-tertiary border-white/10";
+        : "bg-white/5 text-text-secondary border-white/10";
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${cls}`}>
       {severity}
@@ -80,11 +80,11 @@ function PlatformStatusTab({ data, error }: { data: StatusResponse | null; error
       <div>
         <h2 className="font-display text-xl font-semibold text-text-primary mb-4">
           Incident History
-          <span className="text-text-tertiary text-sm font-normal ml-2">(last 90 days)</span>
+          <span className="text-text-secondary text-sm font-normal ml-2">(last 90 days)</span>
         </h2>
 
         {data && data.incidents.length === 0 && !error && (
-          <p className="text-text-tertiary text-sm">No incidents reported in the last 90 days.</p>
+          <p className="text-text-secondary text-sm">No incidents reported in the last 90 days.</p>
         )}
 
         <div className="space-y-3">
@@ -96,7 +96,7 @@ function PlatformStatusTab({ data, error }: { data: StatusResponse | null; error
               <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <SeverityBadge severity={incident.severity} />
                 <StatusPill status={incident.status} />
-                <span className="text-text-tertiary text-xs">
+                <span className="text-text-secondary text-xs">
                   {new Date(incident.startedAt).toLocaleString()}
                   {incident.resolvedAt && ` — resolved ${new Date(incident.resolvedAt).toLocaleString()}`}
                 </span>
@@ -165,7 +165,7 @@ function M365HealthTab({ data, error }: { data: StatusResponse | null; error: st
   return (
     <div className="space-y-3">
       {m365.services.length === 0 && (
-        <p className="text-text-tertiary text-sm">No M365 service health data available.</p>
+        <p className="text-text-secondary text-sm">No M365 service health data available.</p>
       )}
       {m365.services.map((entry) => (
         <div
@@ -231,7 +231,7 @@ export default function Status() {
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === "platform"
                   ? "border-accent-blue text-text-primary"
-                  : "border-transparent text-text-tertiary hover:text-text-secondary"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
               Platform
@@ -241,7 +241,7 @@ export default function Status() {
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === "m365"
                   ? "border-accent-blue text-text-primary"
-                  : "border-transparent text-text-tertiary hover:text-text-secondary"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
               M365 Service Health

@@ -141,7 +141,7 @@ export default function ArchitectGrowth() {
 
       {/* Breadcrumb */}
       <div className="border-b border-white/[0.06] pt-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-tertiary">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-secondary">
           <Link href="/retainers" className="hover:text-accent-blue transition-colors">
             Retainer Plans
           </Link>
@@ -167,7 +167,7 @@ export default function ArchitectGrowth() {
             Senior M365 Architecture.<br className="hidden md:block" /> <GradientText>Built to NASA Standards.</GradientText>
           </h1>
           {displayPrice && <p className="font-numeric text-5xl font-bold mb-2 text-text-primary">{displayPrice}</p>}
-          <p className="text-text-tertiary mb-6 text-lg">{displayPrice ? "/month · cancel with 30 days' notice" : "Cancel with 30 days' notice"}</p>
+          <p className="text-text-secondary mb-6 text-lg">{displayPrice ? "/month · cancel with 30 days' notice" : "Cancel with 30 days' notice"}</p>
           <p className="text-text-secondary text-lg max-w-2xl mx-auto leading-relaxed mb-10">
             The Architect Growth retainer gives mid-market and regulated organisations weekly access to a senior Microsoft 365 architect — no scoping delays, no proposals, no junior handoffs. You get 25 dedicated hours, 2-hour priority response, and a documented roadmap that makes your modernisation programme impossible to stall.
           </p>
@@ -193,7 +193,7 @@ export default function ArchitectGrowth() {
       {/* Plan comparison strip */}
       <section className="border-y border-white/[0.06] py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-tertiary mb-6">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-secondary mb-6">
             Compare all retainer tiers
           </p>
           <div className="grid grid-cols-3 gap-3">
@@ -218,7 +218,7 @@ export default function ArchitectGrowth() {
                   >
                     <p
                       className={`text-xs font-bold uppercase tracking-wide mb-1 ${
-                        tier.current ? "text-white/70" : "text-text-tertiary"
+                        tier.current ? "text-white/70" : "text-text-secondary"
                       }`}
                     >
                       {tier.hours}

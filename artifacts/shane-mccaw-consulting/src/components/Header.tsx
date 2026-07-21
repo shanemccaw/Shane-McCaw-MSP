@@ -147,7 +147,7 @@ export function Header() {
                         </div>
                         <div>
                           <div className="text-sm font-medium text-text-primary group-hover:text-accent-blue transition-colors">{p.label}</div>
-                          <p className="text-xs text-text-tertiary mt-0.5">{p.desc}</p>
+                          <p className="text-xs text-text-secondary mt-0.5">{p.desc}</p>
                         </div>
                       </Link>
                     );
@@ -220,7 +220,7 @@ export function Header() {
 
           <button
             onClick={() => setMobileSection(mobileSection === "solutions" ? null : "solutions")}
-            className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-tertiary tracking-widest"
+            className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-secondary tracking-widest"
           >
             <span>Solutions</span>
             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "solutions" && "rotate-180")} />
@@ -233,7 +233,7 @@ export function Header() {
 
           <button
             onClick={() => setMobileSection(mobileSection === "platform" ? null : "platform")}
-            className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-tertiary tracking-widest"
+            className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase font-bold text-text-secondary tracking-widest"
           >
             <span>Platform</span>
             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", mobileSection === "platform" && "rotate-180")} />

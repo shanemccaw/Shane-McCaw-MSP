@@ -396,12 +396,12 @@ export default function Msp() {
                           </p>
                         )}
                         {tier.aiCreditAllowance !== null && (
-                          <p className="text-xs text-text-tertiary mt-1">
+                          <p className="text-xs text-text-secondary mt-1">
                             {tier.aiCreditAllowance.toLocaleString()} AI credits / month
                           </p>
                         )}
                         {tier.overageRateCents !== null && tier.overageRateCents > 0 && (
-                          <p className="text-[10px] text-text-tertiary uppercase tracking-widest mt-1.5 font-bold">
+                          <p className="text-[10px] text-text-secondary uppercase tracking-widest mt-1.5 font-bold">
                              Overage: {formatOverage(tier.overageRateCents)}
                           </p>
                         )}
@@ -428,7 +428,7 @@ export default function Msp() {
                         </button>
                       ) : (
                         <div className="w-full text-center">
-                          <p className="text-xs mb-3 text-text-tertiary font-semibold">
+                          <p className="text-xs mb-3 text-text-secondary font-semibold">
                             Not yet available for self-service signup
                           </p>
                           <a

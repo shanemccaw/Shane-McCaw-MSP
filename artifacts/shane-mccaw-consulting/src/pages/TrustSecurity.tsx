@@ -96,7 +96,7 @@ export default function TrustSecurity() {
       <section className="pb-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-10 text-center">
-            <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
+            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
               Compliance posture
             </p>
             <p className="text-text-secondary leading-relaxed">

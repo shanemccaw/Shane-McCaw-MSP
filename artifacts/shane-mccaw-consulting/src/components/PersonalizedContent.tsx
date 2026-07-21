@@ -35,7 +35,7 @@ function resolveSlot<TIdentity>(slot: SlotContent<TIdentity>, identity: TIdentit
 function QuizToneFrame({ children }: { children: ReactNode }) {
   return (
     <div data-personalization-tier="quiz">
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-tertiary mb-2">
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">
         Based on what you told us
       </span>
       <div>{children}</div>

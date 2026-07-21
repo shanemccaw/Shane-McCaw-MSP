@@ -205,7 +205,7 @@ export default function AssessmentDetail() {
 
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="flex flex-wrap items-center gap-3 mb-6">
-            <Link href="/assessments" className="text-text-tertiary text-xs uppercase tracking-widest font-semibold hover:text-text-primary transition-colors">
+            <Link href="/assessments" className="text-text-secondary text-xs uppercase tracking-widest font-semibold hover:text-text-primary transition-colors">
               Assessments
             </Link>
             <span className="text-text-tertiary/40">›</span>
@@ -230,7 +230,7 @@ export default function AssessmentDetail() {
               Architect. Flat-fee, clear deliverables, no junior staff.
             </p>
             {service.description && (
-              <p className="text-text-tertiary text-base leading-relaxed mb-6 max-w-2xl">
+              <p className="text-text-secondary text-base leading-relaxed mb-6 max-w-2xl">
                 {service.description}
               </p>
             )}
@@ -247,16 +247,16 @@ export default function AssessmentDetail() {
           <div className="flex flex-wrap items-center gap-8 mb-10">
             {showPrice && (
               <div>
-                <p className="text-text-tertiary text-xs uppercase tracking-widest font-semibold mb-1">Investment</p>
+                <p className="text-text-secondary text-xs uppercase tracking-widest font-semibold mb-1">Investment</p>
                 <p className="font-numeric text-text-primary text-3xl font-medium">{priceDisplay}</p>
-                <p className="text-text-tertiary text-xs mt-1">Flat-rate. Confirmed baseline assessment fee.</p>
+                <p className="text-text-secondary text-xs mt-1">Flat-rate. Confirmed baseline assessment fee.</p>
               </div>
             )}
             {service.turnaround && (
               <GlassPanel className="flex items-center gap-3 px-5 py-3">
                 <Clock className="w-5 h-5 text-accent-blue flex-shrink-0" />
                 <div>
-                  <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider">Delivery</p>
+                  <p className="text-text-secondary text-xs font-semibold uppercase tracking-wider">Delivery</p>
                   <p className="text-text-primary font-bold">{service.turnaround}</p>
                 </div>
               </GlassPanel>

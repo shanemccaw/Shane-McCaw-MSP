@@ -168,7 +168,7 @@ export default function ArchitectEnterprise() {
 
       {/* Breadcrumb */}
       <div className="border-b border-white/[0.06] pt-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-tertiary">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-sm text-text-secondary">
           <Link href="/retainers" className="hover:text-accent-blue transition-colors">Retainer Plans</Link>
           <ChevronRight className="w-4 h-4" />
           <span className="text-text-primary font-medium">Architect Enterprise</span>
@@ -196,7 +196,7 @@ export default function ArchitectEnterprise() {
             Enterprise-Grade M365 Architecture,<br className="hidden md:block" /> <GradientText>Delivered by NASA's Lead Architect</GradientText>
           </h1>
 
-          <p className="text-text-tertiary text-sm uppercase tracking-widest font-bold mb-6">
+          <p className="text-text-secondary text-sm uppercase tracking-widest font-bold mb-6">
             Architect Enterprise Retainer
           </p>
 
@@ -232,7 +232,7 @@ export default function ArchitectEnterprise() {
       {/* Plan comparison strip */}
       <section className="border-y border-white/[0.06] py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-tertiary mb-6">Compare all retainer tiers</p>
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-text-secondary mb-6">Compare all retainer tiers</p>
           <div className="grid grid-cols-3 gap-3">
             {tiersLoading
               ? [0, 1, 2].map((i) => (
@@ -253,7 +253,7 @@ export default function ArchitectEnterprise() {
                     }`}
                     style={tier.current ? GRADIENT_BG : undefined}
                   >
-                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-text-tertiary"}`}>{tier.hours}</p>
+                    <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-text-secondary"}`}>{tier.hours}</p>
                     <p className="font-display font-bold text-lg mb-0.5 text-text-primary">{tier.name}</p>
                     <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-accent-blue"}`}>{tier.price}/mo</p>
                   </Link>

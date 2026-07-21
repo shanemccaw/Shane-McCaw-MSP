@@ -432,7 +432,7 @@ export default function Monitoring() {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-text-tertiary">
+            <p className="text-xs text-text-secondary">
               Write-back remediation is configured per tenant and rolls out where enabled — not
               every finding triggers an automatic fix, and it isn't switched on by default for
               every customer today.
@@ -593,7 +593,7 @@ export default function Monitoring() {
                         ) : (
                           <span className="font-numeric text-2xl font-medium text-text-primary">Custom</span>
                         )}
-                        <div className="text-xs text-text-tertiary mt-1">For {seatCount.toLocaleString()} licensed users</div>
+                        <div className="text-xs text-text-secondary mt-1">For {seatCount.toLocaleString()} licensed users</div>
                       </div>
 
                       {matched.features && matched.features.length > 0 && (

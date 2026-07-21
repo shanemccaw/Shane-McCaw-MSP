@@ -85,7 +85,7 @@ export default function Login() {
                       placeholder="you@yourcompany.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60 transition-colors"
+                      className="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.12] text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60 transition-colors"
                     />
                   </div>
                   {errorMsg && <p className="text-sm text-accent-violet">{errorMsg}</p>}
@@ -129,7 +129,7 @@ export default function Login() {
                 </a>
                 <button
                   onClick={() => setResult(null)}
-                  className="text-xs text-text-tertiary hover:text-text-secondary underline"
+                  className="text-xs text-text-secondary hover:text-text-primary underline"
                 >
                   Use a different email
                 </button>
@@ -153,7 +153,7 @@ export default function Login() {
                 </Link>
                 <button
                   onClick={() => setResult(null)}
-                  className="text-xs text-text-tertiary hover:text-text-secondary underline"
+                  className="text-xs text-text-secondary hover:text-text-primary underline"
                 >
                   Use a different email
                 </button>
@@ -163,7 +163,7 @@ export default function Login() {
             <div className="pt-6 mt-6 border-t border-white/[0.08] text-center">
               <Link
                 href="/"
-                className="inline-flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-secondary transition-colors"
+                className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back home
               </Link>

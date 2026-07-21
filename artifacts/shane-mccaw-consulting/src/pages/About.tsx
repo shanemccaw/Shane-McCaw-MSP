@@ -425,7 +425,7 @@ export default function About() {
                       <Icon className="w-5 h-5" />
                     </div>
                     <div>
-                      <p className="text-text-tertiary text-xs">{stat.label}</p>
+                      <p className="text-text-secondary text-xs">{stat.label}</p>
                       <p className="font-numeric font-semibold text-text-primary text-base">{stat.value}</p>
                     </div>
                   </div>
@@ -447,7 +447,7 @@ export default function About() {
             and never fixed. That's the problem I spend my career solving."
           </blockquote>
           <p className="font-semibold text-text-primary text-base">Shane McCaw</p>
-          <p className="text-text-tertiary text-sm mt-1">Lead M365 Architect & Copilot SME, NASA · Founder, McCawSoft</p>
+          <p className="text-text-secondary text-sm mt-1">Lead M365 Architect & Copilot SME, NASA · Founder, McCawSoft</p>
         </div>
       </section>
 
@@ -585,7 +585,7 @@ export default function About() {
           </GlassPanel>
           <div className="mt-8 text-center">
             <p className="font-semibold text-text-primary text-base">Shane McCaw</p>
-            <p className="text-text-tertiary text-sm mt-1">Lead M365 Architect & Copilot SME, NASA · Founder, McCawSoft</p>
+            <p className="text-text-secondary text-sm mt-1">Lead M365 Architect & Copilot SME, NASA · Founder, McCawSoft</p>
           </div>
         </div>
       </section>
@@ -621,7 +621,7 @@ export default function About() {
                 ].map((item, i) => (
                   <div key={i} className="border-l-2 border-accent-blue/30 pl-4" data-testid={`client-type-${i}`}>
                     <p className="font-semibold text-text-primary text-sm mb-1">{item.label}</p>
-                    <p className="text-text-tertiary text-xs leading-relaxed">{item.desc}</p>
+                    <p className="text-text-secondary text-xs leading-relaxed">{item.desc}</p>
                   </div>
                 ))}
               </div>
@@ -770,7 +770,7 @@ export default function About() {
             ))}
           </div>
           <div className="text-center">
-            <p className="text-text-tertiary text-sm mb-4">Explore all service areas and fixed-price packages</p>
+            <p className="text-text-secondary text-sm mb-4">Explore all service areas and fixed-price packages</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 href="/solutions"
@@ -812,7 +812,7 @@ export default function About() {
             >
               Book a Consultation
             </a>
-            <p className="mt-5 text-text-tertiary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
+            <p className="mt-5 text-text-secondary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
           </GlassPanel>
         </div>
       </section>

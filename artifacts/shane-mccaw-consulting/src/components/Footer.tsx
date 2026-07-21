@@ -83,10 +83,10 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-text-tertiary text-xs">
+          <p className="text-text-secondary text-xs">
             &copy; {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.
           </p>
-          <Link href="/privacy" className="text-text-tertiary text-xs hover:text-text-secondary transition-colors">
+          <Link href="/privacy" className="text-text-secondary text-xs hover:text-text-primary transition-colors">
             Privacy Policy
           </Link>
         </div>

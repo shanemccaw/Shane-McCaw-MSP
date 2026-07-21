@@ -54,7 +54,7 @@ export function EngagementOfferPanel() {
       </button>
 
       {tier === "quiz" && (
-        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-tertiary mb-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">
           Based on what you told us
         </span>
       )}
@@ -78,7 +78,7 @@ export function EngagementOfferPanel() {
             {extraCount > 0 && ` + ${extraCount} more service${extraCount === 1 ? "" : "s"}`} — while you're still here.
           </p>
           {primaryService.priceCents != null && (
-            <p className="text-xs text-text-tertiary mt-1 font-numeric">
+            <p className="text-xs text-text-secondary mt-1 font-numeric">
               {formatUsd(Math.round(primaryService.priceCents * (1 - offer.discountPct / 100)))}{" "}
               <span className="line-through opacity-60">{formatUsd(primaryService.priceCents)}</span>
             </p>

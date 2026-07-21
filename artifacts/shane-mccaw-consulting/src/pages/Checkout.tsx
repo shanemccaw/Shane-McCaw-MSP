@@ -206,7 +206,7 @@ function StepIndicator({ current }: { current: Step }) {
                   ? "text-text-primary"
                   : done
                     ? "text-accent-blue"
-                    : "text-text-tertiary"
+                    : "text-text-secondary"
               }`}
             >
               <span
@@ -674,7 +674,7 @@ export default function Checkout() {
                     {service && (
                       <div className="rounded-xl bg-charcoal-1 border border-white/[0.06] p-4 flex items-center justify-between gap-4">
                         <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-0.5">
+                          <p className="text-xs font-bold uppercase tracking-wider text-text-secondary mb-0.5">
                             Selected service
                           </p>
                           <p className="font-semibold text-text-primary">{service.name}</p>
@@ -697,7 +697,7 @@ export default function Checkout() {
                                 <Input
                                   placeholder="Jane Smith"
                                   autoComplete="name"
-                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-secondary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
                                   {...field}
                                 />
                               </FormControl>
@@ -716,7 +716,7 @@ export default function Checkout() {
                                   type="email"
                                   placeholder="you@yourcompany.com"
                                   autoComplete="email"
-                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-secondary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
                                   {...field}
                                 />
                               </FormControl>
@@ -746,7 +746,7 @@ export default function Checkout() {
                   <div className="space-y-6">
                     <button
                       onClick={() => setStep("guest-info")}
-                      className="flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors"
+                      className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
                     >
                       <ArrowLeft className="size-3.5" /> Back
                     </button>
@@ -822,7 +822,7 @@ export default function Checkout() {
                           setSessionExpired(false);
                           setStep("consent");
                         }}
-                        className="flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors"
+                        className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
                       >
                         <ArrowLeft className="size-3.5" /> Back
                       </button>
@@ -1009,7 +1009,7 @@ export default function Checkout() {
                 )}
               </GlassPanel>
 
-              <p className="text-center text-xs text-text-tertiary mt-6">
+              <p className="text-center text-xs text-text-secondary mt-6">
                 Payments are securely processed by Stripe. Your email and payment information are
                 never stored on our servers.
               </p>

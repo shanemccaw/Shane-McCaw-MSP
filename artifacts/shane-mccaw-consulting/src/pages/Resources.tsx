@@ -104,7 +104,7 @@ export default function Resources() {
             SharePoint architecture — written by a Lead M365 Architect with 30 years in the Microsoft
             ecosystem.
           </p>
-          <p className="text-text-tertiary text-base max-w-2xl mb-6">
+          <p className="text-text-secondary text-base max-w-2xl mb-6">
             Built for IT Directors, M365 Admins, and technology leaders in mid-market and regulated
             environments who need guidance they can trust — not content written for search engines.
           </p>
@@ -324,7 +324,7 @@ export default function Resources() {
               <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.1em] mb-2">Free Download — The M365 Copilot Readiness Checklist</p>
               <h2 className="font-display text-2xl font-bold text-text-primary mb-2">20 Questions Every IT Leader Must Answer Before Deploying Copilot</h2>
               <p className="text-text-secondary mb-3">Know exactly where your organization stands before investing in Copilot licenses — across security, identity, data governance, and change readiness.</p>
-              <p className="text-text-tertiary text-xs mb-6">Instant download · No email marketing spam · No sales call</p>
+              <p className="text-text-secondary text-xs mb-6">Instant download · No email marketing spam · No sales call</p>
               {!submitted ? (
                 <form onSubmit={handleLeadMagnet} className="flex flex-col sm:flex-row gap-3" data-testid="lead-magnet-form">
                   <input
@@ -333,7 +333,7 @@ export default function Resources() {
                     value={leadMagnetName}
                     onChange={e => setLeadMagnetName(e.target.value)}
                     required
-                    className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60"
+                    className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
                     data-testid="lead-magnet-name"
                   />
                   <input
@@ -342,7 +342,7 @@ export default function Resources() {
                     value={leadMagnetEmail}
                     onChange={e => setLeadMagnetEmail(e.target.value)}
                     required
-                    className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent-blue/60"
+                    className="flex-1 bg-white/[0.04] border border-white/[0.1] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-accent-blue/60"
                     data-testid="lead-magnet-email"
                   />
                   <button
@@ -418,11 +418,11 @@ export default function Resources() {
                   <p className="text-text-secondary text-sm leading-relaxed mb-6">{post.summary}</p>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <p className="text-text-tertiary text-xs">{post.date}</p>
+                      <p className="text-text-secondary text-xs">{post.date}</p>
                       <span className="text-text-tertiary text-xs">·</span>
-                      <p className="text-text-tertiary text-xs">{post.readingTime}</p>
+                      <p className="text-text-secondary text-xs">{post.readingTime}</p>
                       {shareCounts[post.slug] > 0 && (
-                        <span className="flex items-center gap-1 text-text-tertiary text-xs" data-testid={`share-count-${i}`}>
+                        <span className="flex items-center gap-1 text-text-secondary text-xs" data-testid={`share-count-${i}`}>
                           <Share2 className="w-3 h-3" />
                           {shareCounts[post.slug]} {shareCounts[post.slug] === 1 ? "share" : "shares"}
                         </span>
@@ -582,7 +582,7 @@ export default function Resources() {
               <MessageSquare className="w-4 h-4" />
               Book a Consultation
             </a>
-            <p className="mt-5 text-text-tertiary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
+            <p className="mt-5 text-text-secondary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
           </GlassPanel>
         </div>
       </section>
