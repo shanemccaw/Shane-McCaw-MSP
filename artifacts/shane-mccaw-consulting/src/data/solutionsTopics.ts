@@ -446,15 +446,15 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     shortLabel: "Migration",
     icon: GitMerge,
     pillar: "Architecture",
-    gradientPhrase: "without the six-month fire drill",
+    gradientPhrase: "without the scope drift that turns a migration into a fire drill",
     headlinePrefix: "Move to Microsoft 365 ",
-    headlineSuffix: "without the six-month fire drill.",
+    headlineSuffix: "without the scope drift that turns a migration into a fire drill.",
     subhead:
-      "On-premises Exchange, file shares, legacy identity — every migration carries the same risk: scope that grows the moment real users start finding what the discovery phase missed. Scope Creep tracking exists for exactly this reason.",
+      "Tenant-to-tenant moves, domain consolidation, identity alignment — planned against your actual source environment, executed against a locked target architecture, and cut over with a validated rollback path, not just crossed fingers.",
     quizHref: "/migration-quiz",
     stats: [
       { label: "Architecture pillar", value: "Scored" },
-      { label: "Scope tracking", value: "Live" },
+      { label: "Scope tracking", value: "Tracked" },
       { label: "Cutover risk", value: "Assessed" },
     ],
     coverage: [
@@ -470,9 +470,47 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     relatedEngine: {
       name: "Scope Creep Engine",
       description:
-        "Checks live engineering work against the signed SOW continuously, catching scope drift before it becomes a budget conversation.",
+        "Checks live engineering work against the signed SOW on every scheduled review, catching scope drift before it becomes a budget conversation.",
     },
     healthPillarKeys: ["architecture"],
+    productOverview:
+      "Migration starts with real discovery against your actual source environment — mailboxes, file shares, and legacy directory objects, not a spreadsheet someone filled out from memory. The target architecture (tenant structure, identity model, licensing) is designed and locked before a single object moves, so tenant-to-tenant transfer, domain consolidation, and identity alignment all execute against a fixed plan instead of a moving target. Cutover runs against a defined rollback strategy, and once workloads land, validation checks the result against the original scope — not against whatever scope quietly grew along the way.",
+    credibilityBody:
+      "I design and execute Microsoft 365 tenant migrations as the M365 Architect at NASA — the same discovery-first, rollback-planned discipline required when a migration touches a mission-critical tenant is what's engineered into this product. This platform doesn't extend any federal compliance posture to your migration — that's not what it's built to do — but the same rigor that prevents a bad cutover at NASA is what prevents one in yours.",
+    whyItMattersIntro:
+      "An ungoverned migration doesn't fail on day one — it fails three weeks in, when identity collisions surface, sharing links break, Teams and SharePoint structure drifts from what was promised, and downtime nobody planned for shows up mid-cutover. Scope discovered only after the migration is underway, and a cutover with no way back, are the two failure modes behind nearly all of it.",
+    howItWorks: [
+      {
+        title: "Discover",
+        description: "Source environment discovery captures mailboxes, file shares, and legacy directory objects before any plan is drafted.",
+      },
+      {
+        title: "Design",
+        description: "Target architecture — tenant structure, identity model, licensing — is designed and locked before a single object moves.",
+      },
+      {
+        title: "Plan the cutover",
+        description: "Cutover sequence and rollback strategy are defined and reviewed before execution starts, not improvised mid-migration.",
+      },
+      {
+        title: "Execute",
+        description: "Tenant-to-tenant transfer, domain consolidation, and identity alignment run against the locked plan.",
+      },
+      {
+        title: "Validate",
+        description: "Post-migration validation checks the result against the original scope, with the Scope Creep Engine confirming nothing drifted from what was signed.",
+      },
+    ],
+    whatYouGet: [
+      "A full source-environment inventory — mailboxes, file shares, and legacy directory objects mapped before migration starts",
+      "A locked target architecture: tenant structure, identity model, and licensing plan, reviewed before cutover",
+      "A defined cutover sequence with a real rollback strategy, not a one-way door",
+      "Post-migration validation against the original scope, plus a Scope Creep Engine check against the signed SOW at each scheduled review, so drift shows up as a flagged violation, not a surprise invoice",
+      "Zero questionnaires. Every deliverable comes from real discovery and validation against your actual environment.",
+    ],
+    modulesIntro: "Migration runs on four real components, each one gating the next:",
+    finalCtaBody:
+      "Start a free Assessment to get real visibility into what a migration would actually touch — or take the migration quiz for a faster, self-reported read first.",
   },
   {
     slug: "m365-health",
