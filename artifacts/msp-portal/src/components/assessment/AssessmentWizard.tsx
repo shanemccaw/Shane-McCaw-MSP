@@ -32,6 +32,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScoreRing, type ScoreRingColor } from "@/components/ui/score-ring";
 import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import { AssessmentSowSelector } from "./AssessmentSowSelector";
@@ -48,6 +49,7 @@ import {
   ScrollText,
   ShieldCheck,
   AlertTriangle,
+  XCircle,
 } from "lucide-react";
 
 // ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
@@ -140,6 +142,8 @@ export function AssessmentWizard() {
   const [mfaJustEnrolled, setMfaJustEnrolled] = useState(false);
   const [selected, setSelected] = useState<number>(1); // default to the scan step
   const [scanProgress, setScanProgress] = useState<{ index: number; total: number; label: string } | null>(null);
+  const [scanLog, setScanLog] = useState<{ checkKey: string; label: string; status: string }[]>([]);
+  const [scanJustFinished, setScanJustFinished] = useState(false);
   const [docProgress, setDocProgress] = useState<{ message: string; step?: number; total?: number } | null>(null);
 
   const prevCurrentRef = useRef<number | null>(null);
@@ -190,7 +194,16 @@ export function AssessmentWizard() {
   }, [fetchWithAuth]);
 
   // ── Derived step completion ────────────────────────────────────────────────
-  const scanComplete = Boolean(status?.scan.everScanned && !status.scan.active);
+  // A "failed" run is neither active nor a real completion — without this
+  // exclusion it would render as "scan complete" with a hollow 0-of-0 result
+  // and silently never unlock reports (which need real check data to generate
+  // from), leaving the customer stuck with no honest explanation why.
+  const scanFailed = Boolean(
+    status?.scan.everScanned && !status.scan.active && status.scan.status === "failed",
+  );
+  const scanComplete = Boolean(
+    status?.scan.everScanned && !status.scan.active && status.scan.status !== "failed",
+  );
   const reportsComplete = Boolean(status?.documents.allReady);
   // The interactive SOW step unlocks once the consolidated SOW has finished
   // generating (it's the last document produced by the same generation run).
@@ -209,8 +222,24 @@ export function AssessmentWizard() {
       status?.documents.workflowStatus === "failed" ||
       status?.documents.workflowStatus === "cancelled");
 
-  // The first incomplete, unlocked step — the flow's "current" position.
-  const currentIndex = !scanComplete ? 1 : !reportsComplete ? 2 : 3;
+  // How long after a scan finishes this still counts as a fresh completion,
+  // for deciding whether to hold the customer on the scan step's completion
+  // reveal instead of auto-advancing them to the reports wait state. Report
+  // generation is genuinely slow (LLM-driven, can run several minutes) — the
+  // scan itself finishes in under a second, so without this window the "scan
+  // complete" reveal (the first real screen a paying customer sees) would be
+  // swapped out for the plainer "generating your reports" screen before the
+  // customer had any real chance to see it.
+  const SCAN_REVEAL_WINDOW_MS = 15 * 60 * 1000;
+  const scanFinishedRecently = Boolean(
+    status?.scan.lastScanAt &&
+      Date.now() - new Date(status.scan.lastScanAt).getTime() < SCAN_REVEAL_WINDOW_MS,
+  );
+
+  // The first incomplete, unlocked step — the flow's "current" position. While
+  // reports are still generating shortly after a fresh scan, stay on the scan
+  // step so its completion reveal is what the customer actually lands on.
+  const currentIndex = !scanComplete ? 1 : !reportsComplete ? (scanFinishedRecently ? 1 : 2) : 3;
 
   // Follow the flow forward when a milestone advances it, but leave the user on
   // whatever step they clicked to between milestones.
@@ -230,13 +259,21 @@ export function AssessmentWizard() {
     const es = new EventSource(
       `${base}/api/msp/customers/${customerId}/diagnostics/runs/${scanRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
     );
+    setScanLog([]);
+    setScanJustFinished(false);
     es.onmessage = (event) => {
       const parsed = JSON.parse(event.data) as DiagnosticsSSEEvent;
       if (parsed.type === "diagnostics_progress") {
         setScanProgress({ index: parsed.index, total: parsed.total, label: parsed.checkLabel });
+        setScanLog((prev) => [...prev, { checkKey: parsed.checkKey, label: parsed.checkLabel, status: parsed.status }]);
       } else if (parsed.type === "diagnostics_complete") {
         es.close();
         setScanProgress(null);
+        // The completion landing needs the poll's authoritative status before it
+        // can render (real checksOk/checksTotal, real document state) — this flag
+        // only bridges the ~800ms gap so the UI reads as "wrapping up" instead of
+        // falling back to a stale "scan in progress" message right after finishing.
+        setScanJustFinished(true);
         setTimeout(() => void loadStatus(), 800);
       } else if (parsed.type === "diagnostics_error") {
         es.close();
@@ -387,12 +424,16 @@ export function AssessmentWizard() {
           stepKey={STEPS[selected].key}
           status={status}
           scanProgress={scanProgress}
+          scanLog={scanLog}
+          scanJustFinished={scanJustFinished}
           docProgress={docProgress}
           scanComplete={scanComplete}
+          scanFailed={scanFailed}
           reportsComplete={reportsComplete}
           reportsFailed={reportsFailed}
           sowReady={sowReady}
           fetchWithAuth={fetchWithAuth}
+          onGoToReports={() => isUnlocked(2) && setSelected(2)}
           onGoToReview={() => isUnlocked(3) && setSelected(3)}
           onGoToSow={() => isUnlocked(4) && setSelected(4)}
           onGoToPayment={() => isUnlocked(5) && setSelected(5)}
@@ -436,16 +477,29 @@ function PanelShell({
   );
 }
 
+/** Icon for a document's real docType, used in the "generating for you" tease. */
+function docTypeIcon(docType: string) {
+  return docType === "consolidated_sow" ? (
+    <FileSignature className="size-3.5 shrink-0 text-primary" />
+  ) : (
+    <FileText className="size-3.5 shrink-0 text-primary" />
+  );
+}
+
 function StepPanel({
   stepKey,
   status,
   scanProgress,
+  scanLog,
+  scanJustFinished,
   docProgress,
   scanComplete,
+  scanFailed,
   reportsComplete,
   reportsFailed,
   sowReady,
   fetchWithAuth,
+  onGoToReports,
   onGoToReview,
   onGoToSow,
   onGoToPayment,
@@ -455,12 +509,16 @@ function StepPanel({
   stepKey: StepKey;
   status: AssessmentStatus | null;
   scanProgress: { index: number; total: number; label: string } | null;
+  scanLog: { checkKey: string; label: string; status: string }[];
+  scanJustFinished: boolean;
   docProgress: { message: string; step?: number; total?: number } | null;
   scanComplete: boolean;
+  scanFailed: boolean;
   reportsComplete: boolean;
   reportsFailed: boolean;
   sowReady: boolean;
   fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
+  onGoToReports: () => void;
   onGoToReview: () => void;
   onGoToSow: () => void;
   onGoToPayment: () => void;
@@ -483,38 +541,151 @@ function StepPanel({
       );
 
     case "scan": {
-      if (scanComplete) {
-        const total = status.scan.checksTotal ?? 0;
-        const ok = status.scan.checksOk ?? 0;
+      // Honest failure — a failed run is never a completion, and there's no
+      // self-serve retry for a real customer. Never leave them reading a "0 of 0
+      // checks passed" success message for a scan that didn't actually finish.
+      if (scanFailed) {
         return (
-          <PanelShell icon={Radar} tone="emerald" title="Deep scan complete">
+          <PanelShell icon={AlertTriangle} tone="muted" title="We hit a snag scanning your tenant">
             <p className="text-sm text-muted-foreground">
-              We finished scanning your tenant{total > 0 ? <> — <span className="font-medium text-foreground">{ok} of {total}</span> checks passed</> : null}.
-              We're now turning the findings into your reports.
+              Something went wrong while reading your Microsoft&nbsp;365 environment, and we
+              couldn't finish the scan automatically. This is on us — nothing you did caused it.
             </p>
-            <div className="mt-4 flex items-center gap-2 text-sm text-emerald-500">
-              <CheckCircle2 className="size-4" /> Scan finished
-            </div>
-            {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only re-trigger button, see file header note */}
-            {status.isTestbed ? (
-              <Button
-                className="mt-4"
-                variant="outline"
-                onClick={() => void debugTriggerScan()}
-                disabled={debugTriggering}
-              >
-                {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
-                [DEBUG] Re-trigger scan
-              </Button>
-            ) : null}
+            <p className="mt-3 text-sm text-muted-foreground">
+              Our team has been notified automatically and will get this sorted. This page keeps
+              checking, so you can leave it open — it'll update the moment your scan finishes.
+            </p>
           </PanelShell>
         );
       }
+
+      if (scanComplete) {
+        const total = status.scan.checksTotal ?? 0;
+        const ok = status.scan.checksOk ?? 0;
+        const pct = total > 0 ? Math.round((ok / total) * 100) : 0;
+        const needsAttention = Math.max(0, total - ok);
+        const ringColor: ScoreRingColor = total === 0 ? "blue" : pct >= 85 ? "green" : pct >= 60 ? "amber" : "red";
+        const docs = status.documents.items;
+
+        return (
+          <div className="space-y-5">
+            <PanelShell icon={Radar} tone="emerald" title="Deep scan complete">
+              {/* ── The reveal — real score as the visual anchor ── */}
+              <div className="flex flex-col items-center gap-5 rounded-2xl border border-border bg-gradient-to-b from-primary/10 via-primary/5 to-transparent p-6 text-center animate-in fade-in zoom-in-95 duration-500 motion-reduce:animate-none sm:flex-row sm:text-left">
+                <ScoreRing value={pct} color={ringColor} size={116} strokeWidth={9} className="shrink-0" />
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-base font-semibold text-foreground sm:text-lg">
+                    We finished reading your Microsoft&nbsp;365 environment
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {total > 0 ? (
+                      <>
+                        <span className="font-mono font-semibold bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent">
+                          {ok}/{total}
+                        </span>{" "}
+                        checks passed
+                        {needsAttention > 0 ? (
+                          <>
+                            {" "}— <span className="font-mono font-semibold text-foreground">{needsAttention}</span>{" "}
+                            item{needsAttention === 1 ? "" : "s"} need your attention
+                          </>
+                        ) : (
+                          ", with nothing urgent found"
+                        )}
+                        .
+                      </>
+                    ) : (
+                      "Your results are being finalized."
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* ── The value tease — what's coming next, so this reads as a real
+                   product reveal rather than a bare stat ── */}
+              <div
+                className="mt-5 grid gap-3 sm:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none"
+                style={{ animationDelay: "150ms" }}
+              >
+                <div className="rounded-xl border border-border bg-card/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Generating for you
+                  </p>
+                  <ul className="mt-3 space-y-2.5">
+                    {docs.length > 0 ? (
+                      docs.map((d) => (
+                        <li key={d.id} className="flex items-center gap-2 text-sm">
+                          {docTypeIcon(d.docType)}
+                          <span className="min-w-0 flex-1 truncate text-foreground">{d.title}</span>
+                          {d.status === "generating" ? (
+                            <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                          ) : (
+                            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                          )}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+                        Your findings reports and tailored Statement of Work are queued to
+                        generate next.
+                      </li>
+                    )}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-border bg-card/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    What's next
+                  </p>
+                  <ol className="mt-3 space-y-2.5 text-sm text-muted-foreground">
+                    <li className="flex items-center gap-2">
+                      <ScrollText className="size-3.5 shrink-0 text-primary" />
+                      Review the findings that matter most
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <FileSignature className="size-3.5 shrink-0 text-primary" />
+                      Tailor your scope in an interactive Statement of Work — priced from
+                      your real scan
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CreditCard className="size-3.5 shrink-0 text-primary" />
+                      Choose a plan and sign
+                    </li>
+                  </ol>
+                </div>
+              </div>
+
+              <Button
+                className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none"
+                style={{ animationDelay: "250ms" }}
+                onClick={onGoToReports}
+              >
+                See what's next <ChevronRight className="ml-1 size-4" />
+              </Button>
+
+              {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only re-trigger button, see file header note */}
+              {status.isTestbed ? (
+                <Button
+                  className="mt-4"
+                  variant="outline"
+                  onClick={() => void debugTriggerScan()}
+                  disabled={debugTriggering}
+                >
+                  {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
+                  [DEBUG] Re-trigger scan
+                </Button>
+              ) : null}
+            </PanelShell>
+          </div>
+        );
+      }
+
       return (
-        <PanelShell icon={Radar} title="Scanning your tenant">
+        <PanelShell icon={Radar} title={scanJustFinished ? "Wrapping up your results…" : "Scanning your tenant"}>
           <p className="text-sm text-muted-foreground">
-            We're reading your Microsoft&nbsp;365 configuration and security posture. This
-            usually takes a couple of minutes — you can watch the progress below.
+            {scanJustFinished
+              ? "Your scan just finished — we're finalizing your results now."
+              : "We're reading your Microsoft 365 configuration and security posture in real time. This usually takes well under a minute."}
           </p>
           {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note */}
           {status.isTestbed && !status.scan.active ? (
@@ -529,25 +700,45 @@ function StepPanel({
             </Button>
           ) : null}
           {scanProgress ? (
-            <div className="mt-6 space-y-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="truncate pr-2">{scanProgress.label}</span>
-                <span className="shrink-0 tabular-nums">
-                  {scanProgress.index}/{scanProgress.total}
-                </span>
+            <div className="mt-6 space-y-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="truncate pr-2">{scanProgress.label}</span>
+                  <span className="shrink-0 tabular-nums font-mono">
+                    {scanProgress.index}/{scanProgress.total}
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    scanProgress.total > 0
+                      ? Math.round((scanProgress.index / scanProgress.total) * 100)
+                      : 0
+                  }
+                />
               </div>
-              <Progress
-                value={
-                  scanProgress.total > 0
-                    ? Math.round((scanProgress.index / scanProgress.total) * 100)
-                    : 0
-                }
-              />
+              {scanLog.length > 0 && (
+                <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3">
+                  {scanLog.map((entry, i) => (
+                    <div key={`${entry.checkKey}-${i}`} className="flex items-center gap-2 text-xs">
+                      {entry.status === "ok" ? (
+                        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                      ) : (
+                        <XCircle className="size-3.5 shrink-0 text-red-500" />
+                      )}
+                      <span className="truncate text-muted-foreground">{entry.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              {status.scan.everScanned ? "Scan in progress…" : "Starting your scan…"}
+              {scanJustFinished
+                ? "Finalizing…"
+                : status.scan.everScanned
+                  ? "Scan in progress…"
+                  : "Starting your scan…"}
             </div>
           )}
         </PanelShell>
