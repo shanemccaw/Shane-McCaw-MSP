@@ -10,7 +10,7 @@ import { StatPanel } from "../components/design-system/StatPanel";
 import {
   ShieldCheck, Activity, Lock, AlertTriangle, ArrowRight, Zap,
   CheckCircle2, Layers, Clock, ChevronRight, Database, Cpu, Radio,
-  BarChart2, RefreshCw, Users, Sparkles, Eye, Wrench, Award,
+  BarChart2, RefreshCw, Users, Sparkles, Eye, Wrench,
 } from "lucide-react";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -307,32 +307,47 @@ export default function Monitoring() {
             </h2>
             <p className="text-text-secondary">
               A one-time scan or a dashboard nobody refreshes misses what happens in between.
-              Scheduled checks run hourly to daily, with critical events on Enhanced/Premium
-              tiers surfacing in roughly five minutes — not an instant, always-on feed, but close
-              enough that drift and exposure don't sit unnoticed for a quarter.
+              Most checks run on a scheduled cadence — hourly to daily depending on your
+              package — while critical changes on Enhanced/Premium tiers are also caught
+              through a live activity feed that reviews your tenant's audit log roughly every
+              five minutes: not an instant feed, but close enough that drift and exposure don't
+              sit unnoticed for a quarter. Either way, anything that crosses a configured
+              severity threshold — including a drop in your Health Engine score — is picked up
+              by the same alert-dispatch sweep that runs every fifteen minutes, so it reaches
+              the right inbox on its own instead of waiting for someone to open the dashboard.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
-                icon: Database,
-                title: "Built for M365, Not Generic BI",
-                desc: "Purpose-built Microsoft Graph scanning for tenant governance — not a repurposed charting tool pointed at a data export.",
+                icon: Layers,
+                title: "Drift Doesn't Get a Quarter to Hide In",
+                desc: "Every scheduled check compares your live configuration against your approved baseline. An unauthorized conditional access change or sharing setting gets flagged the next cycle it runs — not whenever someone happens to go looking.",
               },
               {
-                icon: Wrench,
-                title: "Most Tools Report. This One Can Act",
-                desc: "Automated write-back remediation means qualifying findings can be corrected directly in your tenant where enabled — not just logged for someone to fix by hand.",
+                icon: Users,
+                title: "Access Sprawl Gets Audited, Not Ignored",
+                desc: "Stale guest accounts and over-permissioned OAuth app grants accumulate quietly in every M365 tenant. The Security Engine audits both on a recurring cadence, so sprawl gets caught while it's still a cleanup — not after it's an incident.",
+              },
+              {
+                icon: Clock,
+                title: "Cost Overruns Get Caught Before They're a Dispute",
+                desc: "The SLA Engine surfaces an impending delivery breach before it becomes a contractual failure, and the Scope Creep Engine validates every engineer hour against your actual SOW — so overruns get caught while they're still fixable, not discovered on an invoice.",
+              },
+              {
+                icon: BarChart2,
+                title: "Licensing Waste Becomes a Real Number",
+                desc: "The Health Engine tracks license utilization efficiency, and wasted seats get priced against real per-SKU list costs — not a vague \"you might be overspending,\" an actual monthly dollar figure you can act on before the renewal.",
+              },
+              {
+                icon: Sparkles,
+                title: "The Same Signals Copilot Readiness Depends On",
+                desc: "MFA coverage and SharePoint oversharing exposure are exactly what determines whether an AI rollout is safe to turn on. The Security Engine keeps watching both long after a readiness assessment ends — not just once, at kickoff.",
               },
               {
                 icon: Eye,
-                title: "Every Score Traces to a Real Rule",
-                desc: "No black-box number. Every finding and score traces back to a configurable Signal Rule you can inspect — full transparency, not a mystery percentage.",
-              },
-              {
-                icon: Award,
-                title: "A NASA-Credentialed Architect Behind It",
-                desc: "Built and overseen by the architect who wrote NASA's M365 Copilot governance framework — real human judgment behind the automation, not an unaccountable black box.",
+                title: "You Sleep. This Doesn't.",
+                desc: "Scheduled checks keep running hourly to daily around the clock, and higher monitoring tiers add a five-minute activity feed for critical changes — so the infrastructure your business runs on stays watched during the hours nobody's at a desk.",
               },
             ].map((item) => {
               const Icon = item.icon;
@@ -435,6 +450,55 @@ export default function Monitoring() {
               every customer today.
             </p>
           </GlassPanel>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            <div className="p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
+              <div className="flex items-center gap-2 mb-3">
+                <RefreshCw className="w-4 h-4 text-emerald-400" />
+                <h3 className="font-display text-base font-bold text-text-primary">Fixed Automatically, Where Enabled</h3>
+              </div>
+              <p className="text-sm text-text-secondary leading-relaxed mb-4">
+                Findings that are mechanical and reversible — a setting that drifted, an access
+                grant that should have been revoked — are what write-back is built to correct
+                without waiting on a human.
+              </p>
+              <ul className="space-y-2">
+                {[
+                  "Access hygiene — stale guest accounts and over-permissioned OAuth app grants (Security Engine)",
+                  "Configuration drift — settings corrected back to your approved baseline (Drift Engine)",
+                  "Qualifying Health Engine anomalies with a defined, low-risk correction runbook",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-xs text-text-secondary">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-400" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-4 h-4 text-amber-400" />
+                <h3 className="font-display text-base font-bold text-text-primary">Routed to a Human</h3>
+              </div>
+              <p className="text-sm text-text-secondary leading-relaxed mb-4">
+                Findings that carry a judgment call, a contractual question, or an action Graph
+                itself can't perform are surfaced with full context and routed for review —
+                never silently auto-corrected.
+              </p>
+              <ul className="space-y-2">
+                {[
+                  "SLA and delivery risk — the SLA Engine surfaces an impending breach; resolving it is engineer work",
+                  "Scope Creep findings — validated against your SOW, then reviewed as a billing/contract decision",
+                  "MFA registration gaps — flagged immediately, but enrollment itself has to happen on the user's end",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-xs text-text-secondary">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-400" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
