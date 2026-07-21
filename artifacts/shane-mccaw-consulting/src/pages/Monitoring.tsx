@@ -10,7 +10,7 @@ import { StatPanel } from "../components/design-system/StatPanel";
 import {
   ShieldCheck, Activity, Lock, AlertTriangle, ArrowRight, Zap,
   CheckCircle2, Layers, Clock, ChevronRight, Database, Cpu, Radio,
-  BarChart2, RefreshCw, TrendingUp, Users, Sparkles,
+  BarChart2, RefreshCw, Users, Sparkles, Eye, Wrench, Award,
 } from "lucide-react";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -26,45 +26,17 @@ interface MonitoringTypeAttributes {
 }
 
 // Tenant-facing engines only — the platform's engine registry runs 12 engines total, but
-// several (Pricing, CRM, MSP Portfolio) are internal business-ops engines that don't watch a
-// customer tenant, so this page never states a single "the platform has N engines" total.
+// several (Pricing, CRM, MSP Portfolio, Priority, Forecasting) are internal business-ops/
+// Portal-internal engines that don't belong on customer-facing marketing, so this page never
+// states a single "the platform has N engines" total.
 const ENGINES = [
-  {
-    id: "drift",
-    icon: Layers,
-    name: "Drift Engine",
-    badge: "Configuration Baseline",
-    color: "blue",
-    description:
-      "Continuously compares your live M365 tenant configuration against your approved governance baseline. Every unauthorized administrative change — from conditional access policy tweaks to SharePoint guest settings — triggers a drift alert before it compounds into a security incident.",
-    signals: [
-      "Baseline deviation alerts",
-      "Admin action correlation",
-      "Configuration snapshot deltas",
-      "Unauthorized policy changes",
-    ],
-  },
-  {
-    id: "security",
-    icon: Lock,
-    name: "Security Engine",
-    badge: "Threat Minimization",
-    color: "red",
-    description:
-      "Harvests Microsoft Graph telemetry to identify active security exposures: anonymous sharing links left open, stale external guest accounts with residual permissions, over-privileged OAuth application consents, and missing MFA registration on privileged identities.",
-    signals: [
-      "Anonymous link detection",
-      "Stale guest account audits",
-      "OAuth app permission risk",
-      "MFA coverage analysis",
-    ],
-  },
   {
     id: "health",
     icon: Activity,
     name: "Health Engine",
     badge: "SLA Remediation",
     color: "emerald",
+    benefit: "See tenant health decline before it becomes downtime or a support ticket.",
     description:
       "Calculates a composite real-time tenant health score across licensing utilization, service health anomalies, and operational KPIs. When the score degrades below threshold, automated remediation runbooks execute to correct discovered anomalies — no human queue required.",
     signals: [
@@ -75,11 +47,44 @@ const ENGINES = [
     ],
   },
   {
+    id: "security",
+    icon: Lock,
+    name: "Security Engine",
+    badge: "Threat Minimization",
+    color: "red",
+    benefit: "Close the exposures attackers actually look for — before they're used against you.",
+    description:
+      "Harvests Microsoft Graph telemetry to identify active security exposures: anonymous sharing links left open, stale external guest accounts with residual permissions, over-privileged OAuth application consents, and missing MFA registration on privileged identities.",
+    signals: [
+      "Anonymous link detection",
+      "Stale guest account audits",
+      "OAuth app permission risk",
+      "MFA coverage analysis",
+    ],
+  },
+  {
+    id: "drift",
+    icon: Layers,
+    name: "Drift Engine",
+    badge: "Configuration Baseline",
+    color: "blue",
+    benefit: "Catch unauthorized configuration changes on a real cadence — not whenever someone happens to notice.",
+    description:
+      "Compares your live M365 tenant configuration against your approved governance baseline on every scheduled check. Administrative changes — from conditional access policy tweaks to SharePoint guest settings — are flagged as drift the next time your tenant is evaluated, so unauthorized changes don't sit unnoticed indefinitely.",
+    signals: [
+      "Baseline deviation alerts",
+      "Admin action correlation",
+      "Configuration snapshot deltas",
+      "Unauthorized policy changes",
+    ],
+  },
+  {
     id: "sla",
     icon: Clock,
     name: "SLA Engine",
     badge: "Delivery Performance",
     color: "indigo",
+    benefit: "Catch an SLA breach forming before it becomes a hard conversation with your client.",
     description:
       "Tracks every support delivery obligation — response timelines, milestone execution rates, uptime guarantees, and escalation thresholds. Proactively surfaces impending SLA breaches before they become contractual failures.",
     signals: [
@@ -90,11 +95,28 @@ const ENGINES = [
     ],
   },
   {
+    id: "monitoring",
+    icon: Eye,
+    name: "Monitoring Engine",
+    badge: "Check Execution",
+    color: "violet",
+    benefit: "This is the engine actually running the checks — the real foundation every other score is built on.",
+    description:
+      "Executes the platform's library of Monitor Checks directly against your tenant via Microsoft Graph, on your package's configured schedule, and classifies what it finds by severity. Every score and alert the other engines surface starts as a real, recorded check result here — not an estimate.",
+    signals: [
+      "Scheduled Graph-based checks",
+      "Severity classification",
+      "Full check coverage history",
+      "Feeds every other engine's data",
+    ],
+  },
+  {
     id: "scope-creep",
     icon: AlertTriangle,
     name: "Scope Creep Engine",
     badge: "SOW Auditing",
     color: "amber",
+    benefit: "Keep every hour of work provably tied to what's actually in the SOW — no billing disputes.",
     description:
       "Monitors ongoing engineer workstreams against the legal Statement of Work parameters. Every hour of work is validated against contracted scope to ensure all client operations are correctly accounted for and no undocumented obligations accumulate.",
     signals: [
@@ -102,21 +124,6 @@ const ENGINES = [
       "Engineer workstream audit",
       "Out-of-scope flagging",
       "Billing accuracy enforcement",
-    ],
-  },
-  {
-    id: "sales-offer",
-    icon: TrendingUp,
-    name: "Sales Offer Engine",
-    badge: "Upgrade Optimization",
-    color: "violet",
-    description:
-      "Analyzes tenant telemetry gaps and signal engine findings to dynamically calculate target-focused advisory upgrades and custom monitoring expansions. Turns compliance data into an intelligent upsell engine.",
-    signals: [
-      "Telemetry gap analysis",
-      "Upgrade opportunity scoring",
-      "Package fit recommendations",
-      "Risk-to-revenue mapping",
     ],
   },
 ];
@@ -133,7 +140,7 @@ const colorMap: Record<string, { icon: string; badge: string; border: string; ch
 const PIPELINE = [
   { icon: Database, label: "Microsoft Graph API", desc: "Tenant telemetry harvested via authenticated Graph queries, on each check's configured schedule" },
   { icon: Cpu, label: "Signal Engine Analysis", desc: "Specialized engines evaluate telemetry against governance rule sets" },
-  { icon: Radio, label: "Alert & Prioritization", desc: "Priority Engine scores findings and routes critical alerts to dashboard" },
+  { icon: Radio, label: "Alert & Prioritization", desc: "Findings are severity-scored and routed to your dashboard, with critical items surfaced first" },
   { icon: RefreshCw, label: "Automated Remediation", desc: "Runbook executor resolves qualifying findings without human queue" },
   { icon: BarChart2, label: "Reporting & Insights", desc: "Tenant health score, trend analysis and executive-ready audit reports" },
 ];
@@ -226,9 +233,10 @@ export default function Monitoring() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
             <StatPanel label="Engines shown below" value={ENGINES.length} />
-            <StatPanel label="Check cadence" value="Hourly–Daily" />
+            <StatPanel label="Scheduled checks" value="Hourly–Daily" />
+            <StatPanel label="Critical events (Enhanced/Premium)" value="~5 min" />
             <StatPanel label="Remediation" value="Automated" />
           </div>
         </div>
@@ -284,6 +292,7 @@ export default function Monitoring() {
                   </div>
                   <span className={`text-[10px] uppercase font-bold tracking-wider mb-2 px-2 py-0.5 rounded-full border self-start ${c.badge}`}>{engine.badge}</span>
                   <h3 className="font-display text-lg font-bold text-text-primary mb-2">{engine.name}</h3>
+                  <p className="text-sm font-medium text-text-primary leading-relaxed mb-2">{engine.benefit}</p>
                   <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{engine.description}</p>
                   <ul className="space-y-1.5 border-t border-white/[0.06] pt-4 mt-auto">
                     {engine.signals.map((s) => (
@@ -297,6 +306,50 @@ export default function Monitoring() {
               );
             })}
           </div>
+        </div>
+      </section>
+
+      {/* REMEDIATION / WRITE-BACK — real Graph write-back engine, code-complete but rollout is
+          setup-dependent (website-rebuild-reference-v2.md §2 "to-verify" list) — honest-
+          availability framing only, no "instant/guaranteed for everyone" claim. */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <GlassPanel className="p-8 sm:p-10">
+            <div className="flex flex-col md:flex-row items-start gap-6 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-display text-2xl font-bold text-text-primary mb-2">
+                  We Don't Just Tell You What's Wrong — <GradientText>We Can Fix It.</GradientText>
+                </h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Most monitoring tools stop at the report. Ours can act: qualifying findings can
+                  trigger real automated write-back against Microsoft Graph — the same
+                  remediation mechanism behind our Quick-Start configuration packs — to correct
+                  the issue directly in your tenant instead of leaving it for someone to fix by
+                  hand.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+              {[
+                "Revoke a stale guest account flagged by the Security Engine",
+                "Correct a conditional access policy that drifted from baseline",
+                "Disable an over-permissioned OAuth app grant",
+              ].map((example) => (
+                <div key={example} className="flex items-start gap-2 text-xs text-text-secondary bg-charcoal-1 border border-white/[0.06] rounded-xl p-3">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent-blue" />
+                  {example}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-text-tertiary">
+              Write-back remediation is configured per tenant and rolls out where enabled — not
+              every finding triggers an automatic fix, and it isn't switched on by default for
+              every customer today.
+            </p>
+          </GlassPanel>
         </div>
       </section>
 
@@ -325,6 +378,58 @@ export default function Monitoring() {
                       <ChevronRight className="w-5 h-5" />
                     </div>
                   )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools */}
+      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              Why Not Just <GradientText>Build a Dashboard?</GradientText>
+            </h2>
+            <p className="text-text-secondary">
+              Charts and percentages are easy. Knowing your tenant well enough to act on it isn't.
+              Here's what's actually different.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[
+              {
+                icon: Database,
+                title: "Built for M365, Not Generic BI",
+                desc: "Purpose-built Microsoft Graph scanning for tenant governance — not a repurposed charting tool pointed at a data export.",
+              },
+              {
+                icon: Wrench,
+                title: "Most Tools Report. This One Can Act",
+                desc: "Automated write-back remediation means qualifying findings can be corrected directly in your tenant where enabled — not just logged for someone to fix by hand.",
+              },
+              {
+                icon: Eye,
+                title: "Every Score Traces to a Real Rule",
+                desc: "No black-box number. Every finding and score traces back to a configurable Signal Rule you can inspect — full transparency, not a mystery percentage.",
+              },
+              {
+                icon: Award,
+                title: "A NASA-Credentialed Architect Behind It",
+                desc: "Built and overseen by the architect who wrote NASA's M365 Copilot governance framework — real human judgment behind the automation, not an unaccountable black box.",
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.title} className="flex items-start gap-4 p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
+                  <div className="w-11 h-11 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-base font-bold text-text-primary mb-1.5">{item.title}</h3>
+                    <p className="text-sm text-text-secondary leading-relaxed">{item.desc}</p>
+                  </div>
                 </div>
               );
             })}
