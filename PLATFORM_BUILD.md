@@ -297,3 +297,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ⏳ IN FLIGHT | CRITICAL — Repopulate monitoring_package_checks (Blocks All Real Scans) — the junction table linking monitoring_packages to monitor_checks is empty across every package, so no customer on any monitoring package gets a real scan (test scan on core:security-baseline returned checks_total: 0). Investigating a real derivation signal (monitor_checks.engines jsonb / key naming), enumerating active packages, and writing a manual SQL migration to repopulate the mapping. | (pending) |
 | 2026-07-21 | ⏳ IN FLIGHT | Resequence Assessment Funnel — Lead → Consent-Time Prospect Account → Free/Paid Split |  |
 | 2026-07-21 | ⏳ IN FLIGHT | Assessments Scan-Simulator: Color + Selector Polish + Contrast |  |
+| 2026-07-21 | ⏳ IN FLIGHT — Fix Associated Documents Crash |  |
