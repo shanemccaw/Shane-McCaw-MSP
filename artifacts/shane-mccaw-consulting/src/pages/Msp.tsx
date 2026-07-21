@@ -32,8 +32,8 @@ interface MspTier {
   aiCreditAllowance: number | null;
   overageRateCents: number | null;
   tierCapabilities: string[] | Record<string, boolean> | null;
-  features: string[];
-  inclusions: string[];
+  features: string[] | null;
+  inclusions: string[] | null;
   badge: string | null;
   highlighted: boolean;
   fulfillmentTypeKey: string | null;
@@ -408,9 +408,9 @@ export default function Msp() {
                         )}
                       </div>
 
-                      {tier.features.length > 0 && (
+                      {(tier.features?.length ?? 0) > 0 && (
                         <ul className="space-y-3 mb-8 pt-6 border-t border-white/[0.06] flex-1">
-                          {tier.features.map((f, i) => (
+                          {tier.features!.map((f, i) => (
                             <li key={i} className="flex items-start gap-2.5 text-xs text-text-secondary">
                               <CheckCircle className="w-4 h-4 text-accent-blue shrink-0 mt-0.5" />
                               <span className="leading-relaxed">{f}</span>
