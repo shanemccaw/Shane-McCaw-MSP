@@ -394,7 +394,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                 className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
                 style={GRADIENT_BG}
               >
-                Start the Assessment <ChevronRight className="w-4 h-4" />
+                Start the Quiz <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -447,7 +447,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
             <form onSubmit={handleSubmit(onLeadSubmit)} className="space-y-5">
               <div className="text-center mb-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
-                <h3 className="font-display text-xl font-bold text-text-primary">Assessment Complete!</h3>
+                <h3 className="font-display text-xl font-bold text-text-primary">Quiz Complete!</h3>
                 <p className="text-text-secondary text-sm mt-1">Enter your details to receive your personalised PDF report by email.</p>
               </div>
               {submitError && (

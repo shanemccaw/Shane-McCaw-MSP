@@ -16,7 +16,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "m365-health",
-  title: "M365 Tenant Health Assessment",
+  title: "M365 Tenant Health Quiz",
   introTitle: "How Healthy Is Your Microsoft 365 Tenant?",
   introDescription:
     "Answer 10 AI-powered questions across 5 health dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and service recommendation by email.",
@@ -154,8 +154,8 @@ export default function M365HealthQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Microsoft 365 Health Check | Free Tenant Assessment | Shane McCaw Consulting"
-        description="Take our free M365 tenant health assessment. Score your security posture, identity, governance, and DLP in 5 minutes — and receive a personalised PDF report by email."
+        title="Microsoft 365 Health Check | Free Tenant Quiz | Shane McCaw Consulting"
+        description="Take our free M365 tenant health quiz. Score your security posture, identity, governance, and DLP in 5 minutes — and receive a personalised PDF report by email."
         ogImage="/og-image-m365-health-quiz.png"
         ogUrl="https://shanemccaw.com/m365-health-quiz"
       />
@@ -165,7 +165,7 @@ export default function M365HealthQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Activity className="w-4 h-4" />
-            M365 Tenant Health Assessment
+            M365 Tenant Health Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -177,7 +177,7 @@ export default function M365HealthQuiz() {
             Configuration debt accumulates silently in every Microsoft 365 tenant — MFA gaps, ungoverned sprawl, admin role proliferation, and DLP policies that alert but never block. Most IT teams only see the full picture after a security incident or compliance audit.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your tenant stands across five health dimensions before Copilot, migration, or a compliance review begins.
+            This 10-question quiz — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your tenant stands across five health dimensions before Copilot, migration, or a compliance review begins.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -197,7 +197,7 @@ export default function M365HealthQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -220,10 +220,10 @@ export default function M365HealthQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             M365 configuration debt is invisible — until it becomes a security incident.
           </h2>
@@ -271,12 +271,12 @@ export default function M365HealthQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where M365 tenant health directly affects security, compliance, and AI readiness.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your next Microsoft 365 initiative begins.
+            If your organisation is in any of these categories, you need this quiz before your next Microsoft 365 initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -354,7 +354,7 @@ export default function M365HealthQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your results are generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your results are generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -387,7 +387,7 @@ export default function M365HealthQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -398,7 +398,7 @@ export default function M365HealthQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Tenant Health Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Microsoft 365 tenant is configured to enterprise standard or quietly carrying risk. Each is scored independently so you know exactly where to focus remediation effort.
@@ -441,7 +441,7 @@ export default function M365HealthQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -648,7 +648,7 @@ export default function M365HealthQuiz() {
             Most organisations discover their tenant problems when they try to layer something new on top — Copilot, a migration, or an audit — and find the foundation is not ready.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -656,7 +656,7 @@ export default function M365HealthQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>

@@ -28,7 +28,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "security-compliance",
-  title: "M365 Security Posture Assessment",
+  title: "M365 Security Posture Quiz",
   introTitle: "How Secure Is Your Microsoft 365 Environment?",
   introDescription:
     "Answer 10 AI-powered questions across 5 security dimensions. Takes around 5 minutes. You'll receive a personalised PDF security report by email.",
@@ -93,8 +93,8 @@ const config: QuizConfig = {
       ctaText: "Validate Copilot Readiness",
     },
   },
-  reportTitle: "Microsoft 365 Security Posture Assessment Report",
-  pdfFilename: "m365-security-assessment-report.pdf",
+  reportTitle: "Microsoft 365 Security Posture Quiz Report",
+  pdfFilename: "m365-security-quiz-report.pdf",
   introFeatureLabels: ["5 security dimensions", "Risk tier rating", "PDF report emailed"],
 };
 
@@ -152,7 +152,7 @@ export default function SecurityQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Microsoft 365 Security & Compliance Assessment | Shane McCaw Consulting"
+        title="Microsoft 365 Security & Compliance Quiz | Shane McCaw Consulting"
         description="How secure is your Microsoft 365 environment? Take our free security posture quiz covering Defender, Conditional Access, DLP, and sensitivity labels — with a PDF report included."
         ogImage="/og-image-security-quiz.png"
         ogUrl="https://shanemccaw.com/security-compliance-quiz"
@@ -163,7 +163,7 @@ export default function SecurityQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
-            Free Security Assessment
+            Free Security Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -175,7 +175,7 @@ export default function SecurityQuiz() {
             Misconfigured Conditional Access, overprivileged admins, absent DLP policies, and unmonitored insider risk are found and exploited every day in Microsoft 365 tenants that assume they're secure.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same Zero Trust and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your security posture is exposed before an auditor or attacker does.
+            This 10-question quiz — built on the same Zero Trust and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your security posture is exposed before an auditor or attacker does.
           </p>
 
           <p className="text-text-secondary text-sm font-medium mb-10 max-w-xl mx-auto">
@@ -199,7 +199,7 @@ export default function SecurityQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -222,10 +222,10 @@ export default function SecurityQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Microsoft 365 security gaps are invisible — until they're catastrophic.
           </h2>
@@ -268,12 +268,12 @@ export default function SecurityQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where a security gap has real consequences.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If you're in any of these groups, you need this assessment before your next audit, deployment, or migration.
+            If you're in any of these groups, you need this quiz before your next audit, deployment, or migration.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -300,7 +300,7 @@ export default function SecurityQuiz() {
               {
                 icon: Target,
                 title: "Teams uncertain about identity or DLP posture",
-                body: "IT and security teams who manage M365 day-to-day but have never run a structured assessment across identity, data protection, insider risk, and compliance dimensions end-to-end.",
+                body: "IT and security teams who manage M365 day-to-day but have never run a structured quiz across identity, data protection, insider risk, and compliance dimensions end-to-end.",
               },
               {
                 icon: Database,
@@ -355,7 +355,7 @@ export default function SecurityQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -366,7 +366,7 @@ export default function SecurityQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Security & Compliance Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Microsoft 365 environment is genuinely secure or quietly exposed. Each is scored independently so you know exactly where to focus your remediation effort.
@@ -421,7 +421,7 @@ export default function SecurityQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -632,7 +632,7 @@ export default function SecurityQuiz() {
             Most Microsoft 365 security failures come from misconfiguration, not sophisticated attacks. MFA gaps, overprivileged admins, and absent DLP policies are found and exploited every day in tenants that believe they're secure.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gaps it surfaces could cost you far more to ignore.
+            This quiz takes five minutes. The PDF report is free. The gaps it surfaces could cost you far more to ignore.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -640,7 +640,7 @@ export default function SecurityQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment
+            Take the Free Quiz
           </button>
           <p className="text-text-secondary text-sm mt-4">5 minutes · Instant results · No sales call</p>
           <div className="mt-6">

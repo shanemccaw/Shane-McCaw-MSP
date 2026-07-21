@@ -16,7 +16,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "power-platform",
-  title: "Power Platform Maturity Assessment",
+  title: "Power Platform Maturity Quiz",
   introTitle: "How Mature Is Your Power Platform Practice?",
   introDescription:
     "Answer 10 AI-powered questions across 5 maturity dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
@@ -81,8 +81,8 @@ const config: QuizConfig = {
       ctaText: "Govern at Enterprise Scale",
     },
   },
-  reportTitle: "Power Platform Maturity Assessment Report",
-  pdfFilename: "power-platform-assessment-report.pdf",
+  reportTitle: "Power Platform Maturity Quiz Report",
+  pdfFilename: "power-platform-quiz-report.pdf",
   introFeatureLabels: ["5 maturity dimensions", "Maturity tier rating", "PDF report emailed"],
 };
 
@@ -155,8 +155,8 @@ export default function PowerPlatformQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Power Platform Maturity Assessment | Free Quiz | Shane McCaw Consulting"
-        description="How mature is your Power Platform practice? Take our free assessment and receive a personalised PDF report with a tailored service recommendation from a 30-year Microsoft expert."
+        title="Power Platform Maturity Quiz | Shane McCaw Consulting"
+        description="How mature is your Power Platform practice? Take our free quiz and receive a personalised PDF report with a tailored service recommendation from a 30-year Microsoft expert."
         ogImage="/og-image-power-platform-quiz.png"
         ogUrl="https://shanemccaw.com/power-platform-quiz"
       />
@@ -166,7 +166,7 @@ export default function PowerPlatformQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Cpu className="w-4 h-4" />
-            Power Platform Maturity Assessment
+            Power Platform Maturity Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -178,7 +178,7 @@ export default function PowerPlatformQuiz() {
             Ungoverned Power Platform environments accumulate shadow IT, broken flows, and unmanaged data connections — often without anyone realising until it becomes a governance failure or a compliance exposure.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your practice stands across five maturity dimensions before Copilot Studio, AI Builder, or an enterprise-scale rollout begins.
+            This 10-question quiz — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your practice stands across five maturity dimensions before Copilot Studio, AI Builder, or an enterprise-scale rollout begins.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -198,7 +198,7 @@ export default function PowerPlatformQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -221,10 +221,10 @@ export default function PowerPlatformQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most Power Platform environments are ungoverned. Most organisations don't know it until something breaks.
           </h2>
@@ -272,12 +272,12 @@ export default function PowerPlatformQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where Power Platform governance is falling behind adoption.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your next Power Platform initiative begins.
+            If your organisation is in any of these categories, you need this quiz before your next Power Platform initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -355,7 +355,7 @@ export default function PowerPlatformQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your maturity report is generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your maturity report is generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -388,7 +388,7 @@ export default function PowerPlatformQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -399,7 +399,7 @@ export default function PowerPlatformQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Maturity Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Power Platform practice is governed, scalable, and AI-ready — or carrying technical debt and compliance risk that compounds with every new app and flow added.
@@ -442,7 +442,7 @@ export default function PowerPlatformQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -573,7 +573,7 @@ export default function PowerPlatformQuiz() {
           </div>
           <div className="mt-10 text-center">
             <a
-              href="/power-platform-assessment-report-sample.pdf"
+              href="/power-platform-maturity-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-glass-border px-6 py-2.5 text-sm font-semibold text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
@@ -649,7 +649,7 @@ export default function PowerPlatformQuiz() {
             Most organisations discover their Power Platform problems when they try to scale — when Copilot Studio deployment begins, when a compliance audit starts, or when a critical flow fails in production and nobody knows how to fix it.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The maturity gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The maturity gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -657,7 +657,7 @@ export default function PowerPlatformQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>

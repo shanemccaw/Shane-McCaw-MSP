@@ -177,7 +177,7 @@ export default function QuizResultsPage() {
     <Layout>
       <SEOMeta
         title={data ? `${data.name}'s ${data.reportName} | Shane McCaw Consulting` : "Quiz Results | Shane McCaw Consulting"}
-        description="View your Microsoft 365 maturity assessment results from Shane McCaw Consulting."
+        description="View your Microsoft 365 maturity quiz results from Shane McCaw Consulting."
       />
 
       <div className="min-h-screen bg-charcoal-0 pt-[130px] pb-16">
@@ -284,7 +284,7 @@ export default function QuizResultsPage() {
                   <p className="text-text-secondary text-sm leading-relaxed">{data.whyThisFits}</p>
                 )}
                 <p className="text-text-secondary text-xs italic">
-                  This snapshot reflects your environment at the time of the assessment. Your results may change as your M365 configuration evolves.
+                  This snapshot reflects your environment at the time of the quiz. Your results may change as your M365 configuration evolves.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <a

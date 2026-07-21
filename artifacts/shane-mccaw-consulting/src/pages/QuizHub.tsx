@@ -28,7 +28,7 @@ export default function QuizHub() {
   return (
     <Layout>
       <SEOMeta
-        title="Free Assessment Quizzes | Shane McCaw Consulting"
+        title="Free Readiness Quizzes | Shane McCaw Consulting"
         description="Five-question, self-reported quizzes across Copilot, Security & Compliance, Governance, SharePoint, Power Platform, Teams, Migration, and M365 Health — free, no account required."
       />
 

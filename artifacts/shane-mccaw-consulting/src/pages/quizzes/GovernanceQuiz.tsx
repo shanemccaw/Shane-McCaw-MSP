@@ -15,7 +15,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "governance",
-  title: "M365 Governance Maturity Assessment",
+  title: "M365 Governance Maturity Quiz",
   introTitle: "How Mature Is Your Microsoft 365 Governance Framework?",
   introDescription:
     "Answer 10 AI-powered questions across 5 governance dimensions. Takes around 5 minutes. You'll receive a personalised PDF governance maturity report — delivered instantly to your inbox.",
@@ -80,7 +80,7 @@ const config: QuizConfig = {
       ctaText: "Deploy Copilot on Solid Governance",
     },
   },
-  reportTitle: "Microsoft 365 Governance Maturity Assessment Report",
+  reportTitle: "Microsoft 365 Governance Maturity Quiz Report",
   pdfFilename: "governance-maturity-report.pdf",
   introFeatureLabels: ["5 governance dimensions", "Maturity tier rating", "PDF report emailed"],
 };
@@ -153,8 +153,8 @@ export default function GovernanceQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Microsoft 365 Governance Maturity Assessment | Shane McCaw Consulting"
-        description="How mature is your M365 governance framework? Take our free assessment to benchmark your policies, lifecycle management, and compliance posture — with a personalised PDF report."
+        title="Microsoft 365 Governance Maturity Quiz | Shane McCaw Consulting"
+        description="How mature is your M365 governance framework? Take our free quiz to benchmark your policies, lifecycle management, and compliance posture — with a personalised PDF report."
         ogImage="/og-image-governance-quiz.png"
         ogUrl="https://shanemccaw.com/governance-maturity-quiz"
       />
@@ -164,7 +164,7 @@ export default function GovernanceQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Shield className="w-4 h-4" />
-            Governance Maturity Assessment
+            Governance Maturity Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -176,7 +176,7 @@ export default function GovernanceQuiz() {
             Governance drift is silent. It accumulates over years of organic growth — Teams channels created without owners, SharePoint sites with no lifecycle policy, guest accounts that never expire, and DLP rules that were configured once and never reviewed again.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same governance and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your governance framework stands across five dimensions before an auditor or a Copilot deployment makes the gaps impossible to ignore.
+            This 10-question quiz — built on the same governance and compliance framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your governance framework stands across five dimensions before an auditor or a Copilot deployment makes the gaps impossible to ignore.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -196,7 +196,7 @@ export default function GovernanceQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -219,10 +219,10 @@ export default function GovernanceQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most organisations discover their governance gaps during an audit — not before it.
           </h2>
@@ -270,12 +270,12 @@ export default function GovernanceQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where governance risk is real — not theoretical.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your next audit, Copilot deployment, or major M365 initiative begins.
+            If your organisation is in any of these categories, you need this quiz before your next audit, Copilot deployment, or major M365 initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -353,7 +353,7 @@ export default function GovernanceQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your governance report is generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your governance report is generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -386,7 +386,7 @@ export default function GovernanceQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -397,7 +397,7 @@ export default function GovernanceQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Governance Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your Microsoft 365 governance framework is audit-ready, breach-resistant, and positioned for Copilot adoption — or carrying silent gaps that compound with every new workload added.
@@ -440,7 +440,7 @@ export default function GovernanceQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -644,10 +644,10 @@ export default function GovernanceQuiz() {
             Your governance maturity determines your audit readiness, your compliance posture, and your <GradientText>Copilot success</GradientText>.
           </h2>
           <p className="text-text-secondary text-lg mb-3 leading-relaxed">
-            Don't find out where your governance gaps are during an audit. Take the free assessment now — get your personalised PDF governance maturity report in five minutes, with no account required and no sales call attached.
+            Don't find out where your governance gaps are during an audit. Take the free quiz now — get your personalised PDF governance maturity report in five minutes, with no account required and no sales call attached.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The governance gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The governance gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -655,7 +655,7 @@ export default function GovernanceQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>

@@ -379,7 +379,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-accent-blue" />
             <span className="font-display font-semibold text-text-primary text-sm">
-              Copilot Readiness Assessment
+              Copilot Readiness Quiz
             </span>
           </div>
           {state === "questioning" && (
@@ -443,7 +443,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 className="w-full py-3 px-6 text-white font-semibold rounded-xl transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
                 style={GRADIENT_BG}
               >
-                Start the Assessment <ChevronRight className="w-4 h-4" />
+                Start the Quiz <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           )}
@@ -506,7 +506,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               <div className="text-center mb-2">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
                 <h3 className="font-display text-xl font-bold text-text-primary">
-                  Assessment Complete!
+                  Quiz Complete!
                 </h3>
                 <p className="text-text-secondary text-sm mt-1">
                   Enter your details to receive your personalised PDF report by
@@ -835,7 +835,7 @@ export default function CopilotQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Brain className="w-4 h-4" />
-            Copilot AI Readiness Assessment
+            Copilot AI Readiness Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -847,7 +847,7 @@ export default function CopilotQuiz() {
             Copilot underperforms when governance, data classification, identity, and change management aren't ready. Most organizations skip the pre-deployment assessment and pay for it in adoption failures and compliance exposure.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same readiness framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your deployment will break before it does.
+            This 10-question quiz — built on the same readiness framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your deployment will break before it does.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -866,7 +866,7 @@ export default function CopilotQuiz() {
             className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment
+            Take the Free Quiz
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
@@ -880,7 +880,7 @@ export default function CopilotQuiz() {
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
-            Why This Assessment Exists
+            Why This Quiz Exists
           </p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Copilot readiness isn't optional — it's what separates a successful
@@ -934,14 +934,14 @@ export default function CopilotQuiz() {
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">
-            Who This Assessment Is For
+            Who This Quiz Is For
           </p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organizations where a failed Copilot deployment is not an
             option.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If you're in any of these groups, you need this assessment before
+            If you're in any of these groups, you need this quiz before
             your deployment begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1035,7 +1035,7 @@ export default function CopilotQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now{" "}
+              Start the quiz now{" "}
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
@@ -1049,7 +1049,7 @@ export default function CopilotQuiz() {
             The Five Readiness Dimensions
           </p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether a Copilot deployment
@@ -1189,7 +1189,7 @@ export default function CopilotQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -1282,7 +1282,7 @@ export default function CopilotQuiz() {
             is already under scrutiny.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gaps
+            This quiz takes five minutes. The PDF report is free. The gaps
             it surfaces are not.
           </p>
           <button
@@ -1291,7 +1291,7 @@ export default function CopilotQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">
             No account required · No sales follow-up · Results delivered

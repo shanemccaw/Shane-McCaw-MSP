@@ -16,7 +16,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "sharepoint",
-  title: "SharePoint Architecture Assessment",
+  title: "SharePoint Architecture Quiz",
   introTitle: "How Well-Architected Is Your SharePoint Environment?",
   introDescription:
     "Answer 10 AI-powered questions across 5 architecture dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
@@ -81,8 +81,8 @@ const config: QuizConfig = {
       ctaText: "Deploy Copilot on Strong Foundations",
     },
   },
-  reportTitle: "SharePoint Architecture Assessment Report",
-  pdfFilename: "sharepoint-assessment-report.pdf",
+  reportTitle: "SharePoint Architecture Quiz Report",
+  pdfFilename: "sharepoint-quiz-report.pdf",
   introFeatureLabels: ["5 architecture dimensions", "Maturity tier rating", "PDF report emailed"],
 };
 
@@ -154,7 +154,7 @@ export default function SharePointQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="SharePoint Architecture & IA Assessment | Free Quiz | Shane McCaw Consulting"
+        title="SharePoint Architecture & IA Quiz | Shane McCaw Consulting"
         description="How well-architected is your SharePoint environment? Answer 10 expert questions across 5 dimensions and receive a personalised maturity report from the Lead M365 Architect at NASA."
         ogImage="/og-image-sharepoint-quiz.png"
         ogUrl="https://shanemccaw.com/sharepoint-readiness-quiz"
@@ -165,7 +165,7 @@ export default function SharePointQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <FolderOpen className="w-4 h-4" />
-            SharePoint Architecture Assessment
+            SharePoint Architecture Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -177,7 +177,7 @@ export default function SharePointQuiz() {
             SharePoint environments almost always start with good intentions and end with thousands of ungoverned sites, redundant libraries, broken permissions, and content nobody can find. Sprawl accumulates silently until it becomes a compliance crisis or a migration blocker.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your SharePoint environment stands across five architecture dimensions before Copilot, migration, or governance work begins.
+            This 10-question quiz — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your SharePoint environment stands across five architecture dimensions before Copilot, migration, or governance work begins.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -197,7 +197,7 @@ export default function SharePointQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -220,10 +220,10 @@ export default function SharePointQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most SharePoint environments are architecturally broken — and admins can't see it.
           </h2>
@@ -271,12 +271,12 @@ export default function SharePointQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where SharePoint is a core platform — not an afterthought.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your next SharePoint initiative begins.
+            If your organisation is in any of these categories, you need this quiz before your next SharePoint initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -354,7 +354,7 @@ export default function SharePointQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your architecture report is generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your architecture report is generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -387,7 +387,7 @@ export default function SharePointQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -398,7 +398,7 @@ export default function SharePointQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Architecture Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether your SharePoint environment supports governance, findability, and AI-readiness — or undermines every initiative that depends on it. Each is scored independently so you know exactly where to focus.
@@ -441,7 +441,7 @@ export default function SharePointQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -493,7 +493,7 @@ export default function SharePointQuiz() {
               {
                 icon: FileText,
                 title: "Architecture notes",
-                body: "Specific observations from your assessment responses — structural antipatterns, IA decisions, and improvement considerations.",
+                body: "Specific observations from your quiz responses — structural antipatterns, IA decisions, and improvement considerations.",
               },
               {
                 icon: Target,
@@ -533,7 +533,7 @@ export default function SharePointQuiz() {
               {
                 num: "01",
                 title: "Executive summary",
-                desc: "A plain-English overview of your SharePoint environment's current state — your score, maturity tier, and the top three architectural risks identified by the assessment.",
+                desc: "A plain-English overview of your SharePoint environment's current state — your score, maturity tier, and the top three architectural risks identified by the quiz.",
               },
               {
                 num: "02",
@@ -572,7 +572,7 @@ export default function SharePointQuiz() {
           </div>
           <div className="mt-10 text-center">
             <a
-              href="/sharepoint-assessment-report-sample.pdf"
+              href="/sharepoint-architecture-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-glass-border px-6 py-2.5 text-sm font-semibold text-text-secondary hover:bg-white/[0.06] hover:text-text-primary transition-colors"
@@ -648,7 +648,7 @@ export default function SharePointQuiz() {
             Most organisations discover their SharePoint problems when they try to layer something new on top — Copilot, a migration, or an audit — and find the foundation is not ready.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The architectural gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The architectural gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -656,7 +656,7 @@ export default function SharePointQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>

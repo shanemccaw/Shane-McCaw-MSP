@@ -15,7 +15,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "teams",
-  title: "Microsoft Teams Health Assessment",
+  title: "Microsoft Teams Health Quiz",
   introTitle: "How Well Is Your Organisation Using Microsoft Teams?",
   introDescription:
     "Answer 10 AI-powered questions across 5 Teams health dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
@@ -80,8 +80,8 @@ const config: QuizConfig = {
       ctaText: "Deploy Copilot for Teams",
     },
   },
-  reportTitle: "Microsoft Teams Health Assessment Report",
-  pdfFilename: "teams-assessment-report.pdf",
+  reportTitle: "Microsoft Teams Health Quiz Report",
+  pdfFilename: "teams-quiz-report.pdf",
   introFeatureLabels: ["5 Teams dimensions", "Maturity tier rating", "PDF report emailed"],
 };
 
@@ -154,7 +154,7 @@ export default function TeamsQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Microsoft Teams Maturity Assessment | Free Quiz | Shane McCaw Consulting"
+        title="Microsoft Teams Maturity Quiz | Shane McCaw Consulting"
         description="Is your organisation getting full value from Microsoft Teams? Take our free maturity quiz assessing governance, adoption, and technical configuration — PDF report emailed to you."
         ogImage="/og-image-teams-quiz.png"
         ogUrl="https://shanemccaw.com/teams-maturity-quiz"
@@ -165,7 +165,7 @@ export default function TeamsQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <MessageSquare className="w-4 h-4" />
-            Teams Health Assessment
+            Teams Health Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -177,7 +177,7 @@ export default function TeamsQuiz() {
             Teams sprawl accumulates silently — abandoned teams, ungoverned apps, inconsistent channel structures, and guest access nobody has reviewed in two years. Most IT teams only see the problem after it becomes unmanageable.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your Teams environment stands before Copilot, SharePoint migration, or governance remediation begins.
+            This 10-question quiz — built on the same diagnostic framework Shane applies as Lead M365 Architect at NASA — identifies exactly where your Teams environment stands before Copilot, SharePoint migration, or governance remediation begins.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -197,7 +197,7 @@ export default function TeamsQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -220,10 +220,10 @@ export default function TeamsQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Teams is deployed everywhere. It is governed almost nowhere.
           </h2>
@@ -271,12 +271,12 @@ export default function TeamsQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where Teams health directly affects business outcomes.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your next Microsoft 365 initiative begins.
+            If your organisation is in any of these categories, you need this quiz before your next Microsoft 365 initiative begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -326,7 +326,7 @@ export default function TeamsQuiz() {
         </div>
       </section>
 
-      {/* ── 4. How This Assessment Works ── */}
+      {/* ── 4. How This Quiz Works ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">How It Works</p>
@@ -354,7 +354,7 @@ export default function TeamsQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your results are generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your results are generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -387,7 +387,7 @@ export default function TeamsQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -398,7 +398,7 @@ export default function TeamsQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Teams Health Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether a Teams environment supports governance, productivity, and AI-readiness — or undermines every initiative that depends on it. Each is scored independently so you know exactly where to focus.
@@ -441,7 +441,7 @@ export default function TeamsQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -563,7 +563,7 @@ export default function TeamsQuiz() {
               {
                 num: "07",
                 title: "Senior-only delivery note",
-                desc: "A reminder that all work flowing from this assessment is delivered personally by Shane McCaw — not a junior consultant or offshore delivery team — with a direct booking link included.",
+                desc: "A reminder that all work flowing from this quiz is delivered personally by Shane McCaw — not a junior consultant or offshore delivery team — with a direct booking link included.",
               },
             ].map((item) => (
               <div key={item.num} className="flex gap-4 bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
@@ -653,7 +653,7 @@ export default function TeamsQuiz() {
             Most organisations discover their Teams problems when they try to layer something new on top — Copilot, SharePoint migration, or a security audit — and find the foundation isn't ready.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -661,7 +661,7 @@ export default function TeamsQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment Now
+            Take the Free Quiz Now
           </button>
           <p className="text-text-secondary text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>

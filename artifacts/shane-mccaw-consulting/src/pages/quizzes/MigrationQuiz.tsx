@@ -15,7 +15,7 @@ const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), va
 
 const config: QuizConfig = {
   quizType: "migration",
-  title: "Cloud Migration Readiness Assessment",
+  title: "Cloud Migration Readiness Quiz",
   introTitle: "How Ready Is Your Organisation to Migrate to Microsoft 365?",
   introDescription:
     "Answer 10 AI-powered questions across 5 migration readiness dimensions. Takes around 5 minutes. You'll receive a personalised PDF readiness report by email.",
@@ -80,7 +80,7 @@ const config: QuizConfig = {
       ctaText: "Get Your Go/No-Go Report",
     },
   },
-  reportTitle: "Cloud Migration Readiness Assessment Report",
+  reportTitle: "Cloud Migration Readiness Quiz Report",
   pdfFilename: "migration-readiness-report.pdf",
   introFeatureLabels: ["5 readiness dimensions", "Readiness tier rating", "PDF report emailed"],
 };
@@ -154,7 +154,7 @@ export default function MigrationQuiz() {
   return (
     <Layout>
       <SEOMeta
-        title="Cloud Migration Readiness Assessment | Microsoft 365 | Shane McCaw Consulting"
+        title="Cloud Migration Readiness Quiz | Microsoft 365 | Shane McCaw Consulting"
         description="Is your organisation ready to migrate to Microsoft 365? Take our free readiness quiz and receive a personalised migration roadmap from a 30-year Microsoft ecosystem veteran."
         ogImage="/og-image-migration-quiz.png"
         ogUrl="https://shanemccaw.com/migration-readiness-quiz"
@@ -165,7 +165,7 @@ export default function MigrationQuiz() {
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Server className="w-4 h-4" />
-            Migration Readiness Assessment
+            Migration Readiness Quiz
           </div>
 
           <h1 className="font-display text-4xl sm:text-5xl md:text-6xl font-bold text-text-primary tracking-tight leading-tight mb-6">
@@ -177,7 +177,7 @@ export default function MigrationQuiz() {
             Most Microsoft 365 migrations that fail don't fail during execution. They fail in the planning phase — when ROT volumes are underestimated, permission complexity is ignored, and compliance obligations are discovered mid-project.
           </p>
           <p className="text-text-secondary text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
-            This 10-question assessment — built on the diagnostic framework Shane applies as Lead M365 Architect at NASA — surfaces your readiness gaps before the first mailbox moves, so your migration doesn't become a recovery project.
+            This 10-question quiz — built on the diagnostic framework Shane applies as Lead M365 Architect at NASA — surfaces your readiness gaps before the first mailbox moves, so your migration doesn't become a recovery project.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
@@ -197,7 +197,7 @@ export default function MigrationQuiz() {
               className="group inline-flex items-center gap-3 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
             >
-              Take the Free Assessment
+              Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
             <a
@@ -220,10 +220,10 @@ export default function MigrationQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ── */}
+      {/* ── 2. Why This Quiz Exists ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Assessment Exists</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Why This Quiz Exists</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Most cloud migrations fail at the planning stage — not the execution stage.
           </h2>
@@ -271,12 +271,12 @@ export default function MigrationQuiz() {
       {/* ── 3. Who This Is For ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Assessment Is For</p>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">Who This Quiz Is For</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
             Built for organisations where migration failure carries real business and compliance risk.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-12 text-lg">
-            If your organisation is in any of these categories, you need this assessment before your migration project formally starts.
+            If your organisation is in any of these categories, you need this quiz before your migration project formally starts.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
@@ -326,7 +326,7 @@ export default function MigrationQuiz() {
         </div>
       </section>
 
-      {/* ── 4. How This Assessment Works ── */}
+      {/* ── 4. How This Quiz Works ── */}
       <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">How It Works</p>
@@ -354,7 +354,7 @@ export default function MigrationQuiz() {
               {
                 icon: FileText,
                 title: "Instant PDF report emailed",
-                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your readiness report is generated and delivered immediately.",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the quiz. No waiting, no scheduling — your readiness report is generated and delivered immediately.",
               },
               {
                 icon: CheckCircle,
@@ -387,7 +387,7 @@ export default function MigrationQuiz() {
               data-track="cta"
               className="group inline-flex items-center gap-2 text-accent-blue font-semibold hover:text-accent-violet transition-colors"
             >
-              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Start the quiz now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           </div>
         </div>
@@ -398,7 +398,7 @@ export default function MigrationQuiz() {
         <div className="max-w-6xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-widest text-accent-blue mb-3">The Five Readiness Dimensions</p>
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-4">
-            What the assessment <GradientText>measures</GradientText> — and why it matters.
+            What the quiz <GradientText>measures</GradientText> — and why it matters.
           </h2>
           <p className="text-text-secondary text-center max-w-xl mx-auto mb-14">
             These five dimensions determine whether a cloud migration executes cleanly or unravels mid-project. Each is scored independently so you know exactly where your readiness gaps lie — and what to address before committing to a timeline.
@@ -441,7 +441,7 @@ export default function MigrationQuiz() {
                 data-track="cta"
                 className="mt-6 inline-flex items-center gap-1.5 text-accent-blue text-sm font-semibold hover:gap-2.5 transition-all"
               >
-                Start Assessment <ArrowRight className="w-4 h-4" />
+                Start Quiz <ArrowRight className="w-4 h-4" />
               </button>
             </GlassPanel>
           </div>
@@ -563,7 +563,7 @@ export default function MigrationQuiz() {
               {
                 num: "07",
                 title: "Senior-only delivery note",
-                desc: "A reminder that all work flowing from this assessment is delivered personally by Shane McCaw — not a junior consultant or offshore delivery team — with a direct booking link included.",
+                desc: "A reminder that all work flowing from this quiz is delivered personally by Shane McCaw — not a junior consultant or offshore delivery team — with a direct booking link included.",
               },
             ].map((item) => (
               <div key={item.num} className="flex gap-4 bg-charcoal-1 border border-white/[0.06] rounded-2xl p-5">
@@ -653,7 +653,7 @@ export default function MigrationQuiz() {
             Organisations that skip the readiness phase consistently discover their biggest blockers mid-project — when discovery costs three times as much as it would have upfront, and reversing decisions means business disruption.
           </p>
           <p className="text-text-secondary text-lg mb-10 leading-relaxed">
-            This assessment takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+            This quiz takes five minutes. The PDF report is free. The gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <button
             onClick={() => setModalOpen(true)}
@@ -661,7 +661,7 @@ export default function MigrationQuiz() {
             className="inline-flex items-center justify-center gap-2 text-white font-semibold text-base px-8 py-4 rounded-xl transition-opacity hover:opacity-90"
             style={GRADIENT_BG}
           >
-            Take the Free Assessment
+            Take the Free Quiz
           </button>
           <p className="text-text-secondary text-sm mt-4">5 minutes · Instant results · No sales call</p>
         </div>
