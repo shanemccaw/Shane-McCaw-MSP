@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   ShieldCheck,
@@ -154,8 +154,11 @@ export default function Assessments() {
   const [wizardDone, setWizardDone] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [scores, setScores] = useState<Record<ZoneKey, number>>(ZERO_SCORES);
+  // "Focused" zone: purely cosmetic (scroll target + highlight ring) — never gates
+  // whether a zone's assessments are visible. All 6 zones always render.
   const [selectedZone, setSelectedZone] = useState<ZoneKey | null>(null);
   const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set());
+  const zoneSectionRefs = useRef<Partial<Record<ZoneKey, HTMLDivElement | null>>>({});
 
   const maxScore = Math.max(...Object.values(scores));
   const bestZones = maxScore > 0 ? ZONES.filter((z) => scores[z.key] === maxScore).map((z) => z.key) : [];
@@ -218,8 +221,9 @@ export default function Assessments() {
     setScores(ZERO_SCORES);
   }
 
-  function toggleZone(key: ZoneKey) {
-    setSelectedZone((prev) => (prev === key ? null : key));
+  function focusZone(key: ZoneKey) {
+    setSelectedZone(key);
+    zoneSectionRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function toggleCard(key: string) {
@@ -452,7 +456,7 @@ export default function Assessments() {
 
                   const tile = (
                     <button
-                      onClick={() => toggleZone(zone.key)}
+                      onClick={() => focusZone(zone.key)}
                       className={`w-full h-full flex flex-col items-start text-left p-5 rounded-2xl transition-all duration-200 ${
                         isSelected
                           ? 'bg-charcoal-1 border border-accent-blue/50'
@@ -497,26 +501,55 @@ export default function Assessments() {
               </div>
             )}
 
-            {selectedZone && (
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  {(() => {
-                    const Icon = ZONES.find((z) => z.key === selectedZone)!.icon;
-                    return <Icon className="w-5 h-5 text-accent-blue" />;
-                  })()}
-                  <h3 className="font-display text-lg font-bold text-text-primary">
-                    {ZONES.find((z) => z.key === selectedZone)!.label}
-                  </h3>
-                </div>
-                {servicesByZone[selectedZone].length > 0 ? (
-                  <div className="space-y-3">
-                    {servicesByZone[selectedZone].map((service) => renderAssessmentCard(service))}
-                  </div>
-                ) : (
-                  <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
-                    No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this category yet.
-                  </div>
-                )}
+            {services.length > 0 && (
+              <div className="flex flex-col gap-8">
+                {ZONES.map((zone, idx) => {
+                  const Icon = zone.icon;
+                  const zoneServices = servicesByZone[zone.key];
+                  const isBest = bestZones.includes(zone.key);
+                  const isGood = !isBest && goodZones.includes(zone.key);
+                  const isFocused = selectedZone === zone.key;
+                  const rank = isBest ? 0 : isGood ? 1 : 2;
+                  // Live-scored recede: only kicks in once the wizard has produced a
+                  // score (maxScore > 0), same trigger as the zone tiles above — reacts
+                  // after every answer, not just at wizard completion.
+                  const isDimmed = maxScore > 0 && !isBest && !isGood;
+
+                  return (
+                    <div
+                      key={zone.key}
+                      ref={(el) => {
+                        zoneSectionRefs.current[zone.key] = el;
+                      }}
+                      style={{ order: rank * 10 + idx }}
+                      className={`scroll-mt-28 rounded-2xl transition-all duration-300 ${
+                        isDimmed ? 'opacity-50' : 'opacity-100'
+                      } ${isFocused ? 'ring-1 ring-accent-blue/40' : ''}`}
+                    >
+                      <div className="flex items-center gap-2 mb-4 px-1">
+                        <Icon className="w-5 h-5 text-accent-blue" />
+                        <h3 className="font-display text-lg font-bold text-text-primary">{zone.label}</h3>
+                        {isBest && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={GRADIENT_BG}>
+                            Best match
+                          </span>
+                        )}
+                        {isGood && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-blue/10 text-accent-blue border border-accent-blue/20">
+                            Good match
+                          </span>
+                        )}
+                      </div>
+                      {zoneServices.length > 0 ? (
+                        <div className="space-y-3">{zoneServices.map((service) => renderAssessmentCard(service))}</div>
+                      ) : (
+                        <div className="text-center py-10 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
+                          No {tierFilter === 'all' ? '' : `${tierFilter} `}assessments in this category yet.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
