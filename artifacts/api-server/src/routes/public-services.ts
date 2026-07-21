@@ -9,6 +9,7 @@ import {
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
 import { resolveCatalogPricing } from "../lib/catalog-pricing";
+import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
 
 const router: IRouter = Router();
 
@@ -169,6 +170,13 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
     .insert(checkoutSessionsTable)
     .values({ productSlug, fullName, email, seats, expiresAt })
     .returning({ id: checkoutSessionsTable.id });
+
+  // Top-of-funnel lead capture: the visitor has entered a real name + email. Record
+  // it as a real Lead now, before they proceed to (or bounce from) M365 consent —
+  // a bounced lead is still trackable, remarketable data. Converts to a Prospect
+  // account at consent time (see provisionProspectAccount / convertLeadForClient).
+  // Fire-and-forget, non-fatal — must never block session creation.
+  void ensureAssessmentFunnelLead(email, fullName);
 
   res.json({ sessionId: row.id });
 });

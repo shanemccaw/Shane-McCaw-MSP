@@ -72,6 +72,7 @@ import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generat
 import { getStripeKey } from "../lib/stripe";
 import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
+import { promoteMspUserToCustomer } from "./portal";
 import { randomUUID } from "crypto";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -1433,6 +1434,16 @@ router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Respo
         .set({ status: "paid", paidAt: new Date(), stripeSessionId: session.id, updatedAt: new Date() })
         .where(eq(assessmentSowAgreementsTable.id, agreement.id));
       billingLog.info({ agreementId: agreement.id, sessionId: session.id }, "assessment-webhook: agreement marked paid");
+
+      // Payment confirmed → promote the Prospect from the "Assessment" role up to
+      // "CustomerUser" (unlocks the full portal). Guarded + idempotent inside the
+      // helper (only Assessment/Free rows are touched), so a re-delivered webhook
+      // or an already-promoted user is a safe no-op.
+      const paidUserId = parseInt(session.metadata?.["userId"] ?? "", 10);
+      if (!isNaN(paidUserId)) {
+        await promoteMspUserToCustomer(paidUserId);
+        billingLog.info({ agreementId: agreement.id, userId: paidUserId }, "assessment-webhook: promoted Assessment → CustomerUser on payment");
+      }
     }
 
     // Coupon redemption — idempotent by checkout_session_id, exactly as

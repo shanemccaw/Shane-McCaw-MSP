@@ -24,7 +24,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable, mspCustomersTable, mspsTable } from "@workspace/db";
+import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -276,7 +276,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // into the redirect so ConsentSuccessPage can show the "Continue to payment" CTA.
   let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
   // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
-  let updatedSession: { id: string; email: string; productSlug: string } | undefined;
+  let updatedSession: { id: string; email: string; fullName: string; productSlug: string } | undefined;
 
   if (isCheckoutSession && state) {
     const now = new Date();
@@ -296,6 +296,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .returning({
         id: checkoutSessionsTable.id,
         email: checkoutSessionsTable.email,
+        fullName: checkoutSessionsTable.fullName,
         productSlug: checkoutSessionsTable.productSlug,
       });
 
@@ -316,74 +317,120 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   }
 
-  // ── Emit consent.granted workflow event ─────────────────────────────────────
-  // Runs for both paths (invite-link and checkout-session). Skips emission with
-  // a warning rather than crashing the redirect flow if context is unresolvable.
-  let resolvedPackageKey: string | null = null;
+  // ── Provision the Prospect account + emit consent.granted workflow event ─────
+  // Core structural fix: for the direct-business self-service funnel (checkout-
+  // session path), the real account is created HERE, at consent time — not
+  // deferred to password setup or the later free/paid provisioning. That makes the
+  // account exist and be admin-recoverable (/auth/forgot-password) the instant
+  // consent is granted, gives consent.granted a real clientId to carry (so the
+  // "Run Assessment" scan workflow actually fires for genuinely free orders), and
+  // associates the fresh diagnostics run with the customer directly.
+  //
+  // Runs for both paths (invite-link and checkout-session). Skips emission with a
+  // warning rather than crashing the redirect flow if context is unresolvable.
+  let resolvedPackageKey = "core:security-baseline";
+  let prospectCustomerId: number | null = null;
   try {
-    // clientId: from invite token (invite-link path) or email→users lookup (checkout-session path)
+    // clientId: from invite token (invite-link path) or the Prospect we create below (checkout-session path)
     let clientId: number | null = inviteRecord?.clientUserId ?? null;
+    // packageKey from the ordered product; falls back to the canonical baseline
+    // scan when the product declares none (assessment products typically don't) —
+    // so the consent.granted event ALWAYS carries a real, resolvable package key
+    // rather than being silently skipped (the historical free-order bug).
     let packageKey: string | null = null;
 
     if (isCheckoutSession && state) {
       // Re-fetch the session if the update didn't match (expired/not found) — we still want
-      // packageKey even if updatedSession is null.
+      // packageKey + email even if updatedSession is null.
       let productSlug: string | null = null;
       let sessionEmail: string | null = null;
+      let sessionFullName: string | null = null;
 
       if (updatedSession) {
         productSlug = updatedSession.productSlug;
         sessionEmail = updatedSession.email;
+        sessionFullName = updatedSession.fullName;
       } else {
-        // Session not updated (expired or not found) — try a direct read for the slug
+        // Session not updated (expired or not found) — try a direct read
         const [existing] = await db
-          .select({ productSlug: checkoutSessionsTable.productSlug, email: checkoutSessionsTable.email })
+          .select({
+            productSlug: checkoutSessionsTable.productSlug,
+            email: checkoutSessionsTable.email,
+            fullName: checkoutSessionsTable.fullName,
+          })
           .from(checkoutSessionsTable)
           .where(eq(checkoutSessionsTable.id, state))
           .limit(1);
         productSlug = existing?.productSlug ?? null;
         sessionEmail = existing?.email ?? null;
+        sessionFullName = existing?.fullName ?? null;
       }
 
-      // Resolve packageKey via services.type_attributes->>'packageKey'
+      // Resolve packageKey + serviceType via services.type_attributes->>'packageKey'.
+      // serviceType picks the Prospect's role: assessment products get the low-
+      // privilege "Assessment" role (promoted to CustomerUser on payment); anything
+      // else gets "CustomerUser" directly (a passwordless account can't log in until
+      // setup, so this grants no premature access).
+      let serviceType: string | null = null;
       if (productSlug) {
         const [svcRow] = await db
-          .select({ pk: sql<string>`type_attributes->>'packageKey'` })
+          .select({
+            pk: sql<string>`type_attributes->>'packageKey'`,
+            serviceType: servicesTable.serviceType,
+          })
           .from(servicesTable)
           .where(eq(servicesTable.slug, productSlug))
           .limit(1);
         packageKey = svcRow?.pk ?? null;
+        serviceType = svcRow?.serviceType ?? null;
       }
 
-      // Resolve clientId from email if a user account already exists (may not yet for pre-payment consent)
-      if (clientId == null && sessionEmail) {
-        const [userRow] = await db
-          .select({ id: usersTable.id })
-          .from(usersTable)
-          .where(eq(usersTable.email, sessionEmail))
-          .limit(1);
-        clientId = userRow?.id ?? null;
+      // Create the real Prospect account NOW (users + msp_customers + msp_users),
+      // converting the funnel-entry lead new → converted. Idempotent — the
+      // downstream free-checkout / paid-webhook paths find it already linked.
+      // Dynamic import mirrors the runDiagnostics import below — avoids pulling the
+      // large portal.ts route module into consent.ts's static module graph (and any
+      // circular-load ordering issues).
+      if (sessionEmail) {
+        const { provisionProspectAccount } = await import("./portal.js");
+        const prospect = await provisionProspectAccount({
+          email: sessionEmail,
+          fullName: sessionFullName,
+          tenantId: tenant,
+          role: serviceType === "assessment" ? "Assessment" : "CustomerUser",
+        });
+        if (prospect) {
+          clientId = prospect.userId;
+          prospectCustomerId = prospect.customerId;
+          log.info(
+            { tenant, userId: prospect.userId, customerId: prospect.customerId, serviceType },
+            "consent callback: provisioned Prospect account at consent time",
+          );
+        }
       }
     }
-    // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context)
+    // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context) → baseline fallback
 
-    resolvedPackageKey = packageKey;
+    resolvedPackageKey = packageKey ?? "core:security-baseline";
 
-    if (packageKey == null) {
+    // The "Run Assessment" workflow resolves the client by clientId, so only emit
+    // when we have one (checkout-session path always does now; invite-link path
+    // only when the token carried a clientUserId).
+    if (clientId == null) {
       log.warn(
         { tenant, isCheckoutSession, hasInviteRecord: inviteRecord != null },
-        "consent.granted: packageKey unresolvable — skipping event emission",
+        "consent.granted: no clientId resolved — skipping event emission",
       );
     } else {
       void emitWorkflowEvent("consent.granted", {
         tenantId: tenant,
-        packageKey,
-        ...(clientId != null ? { clientId } : {}),
+        packageKey: resolvedPackageKey,
+        clientId,
       });
-      log.info({ tenant, packageKey, clientId }, "consent.granted: event emitted");
+      log.info({ tenant, packageKey: resolvedPackageKey, clientId }, "consent.granted: event emitted");
     }
   } catch (err) {
-    log.warn({ err, tenant }, "consent.granted: event emission error — non-fatal, redirect proceeds");
+    log.warn({ err, tenant }, "consent.granted: provisioning/emission error — non-fatal, redirect proceeds");
   }
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
@@ -405,14 +452,16 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
       await runDiagnostics({
         tenantId: tenant,
-        // Invite-link path (Assessment/MSP-channel) already has the msp_customers
-        // row — pass its id so the run is associated with the customer directly.
-        // Without it, runDiagnostics resolves the customer by tenantId, which
-        // orphans the run (customerId=null) when msp_customers.tenant_id was not
-        // yet stamped — leaving the Assessment wizard (scoped to the customerId
-        // JWT claim) unable to stream its own scan until the purchase-time
-        // backfill runs, which a pure-assessment customer may never reach.
-        customerId: inviteRecord?.customerId ?? undefined,
+        // Pass the msp_customers id so the run is associated with the customer
+        // directly. Invite-link path (Assessment/MSP-channel) carries it on the
+        // token; checkout-session path now has the Prospect's customerId created
+        // at consent time above. Without it, runDiagnostics resolves the customer
+        // by tenantId, which orphans the run (customerId=null) when
+        // msp_customers.tenant_id was not yet stamped — leaving the Assessment
+        // wizard (scoped to the customerId JWT claim) unable to stream its own
+        // scan until the purchase-time backfill runs, which a pure-assessment
+        // customer may never reach.
+        customerId: inviteRecord?.customerId ?? prospectCustomerId ?? undefined,
         packageKey: resolvedPackageKey ?? undefined,
         triggeredByUserId: undefined,
       });

@@ -30,7 +30,7 @@ import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
 import { isAzureConfigured } from "../lib/azure-automation.ts";
-import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
+import { ensureLeadForClient, convertLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { getPortalBaseUrl, getMspPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
@@ -281,6 +281,76 @@ export async function ensureClientMspUser(
     .insert(mspUsersTable)
     .values({ userId, mspId, customerId, mspRole: desiredRole ?? "CustomerUser", isActive: true })
     .onConflictDoNothing(); // race-safe: unique(user_id)
+}
+
+/**
+ * Provision a real, recoverable "Prospect" account at M365-consent time for the
+ * direct-business self-service funnel — created BEFORE the customer sets a
+ * password and BEFORE the free/paid split, so the account exists (and is
+ * admin-recoverable via /auth/forgot-password) the instant consent is granted.
+ *
+ * Creates, idempotently and in order:
+ *   1. a `users` row (role "client", passwordHash left NULL — no usable password
+ *      yet; the customer sets one via the account-setup / password flow),
+ *   2. an active `msp_customers` row stamped with the consented tenantId, and
+ *   3. an `msp_users` row linking the two with `role` — "Assessment" for the
+ *      assessment funnel (promoted to "CustomerUser" on payment; see
+ *      promoteMspUserToCustomer), else "CustomerUser".
+ * It also converts the funnel-entry lead (name+email capture) new → converted.
+ *
+ * Reuses ensureClientAccount / ensureDirectCustomerRecord / ensureClientMspUser so
+ * the downstream free-checkout (provisionFreeOnboarding) and paid Stripe webhook
+ * paths find this account already linked and their own ensure* calls no-op. The
+ * consent-time cross-MSP guard (consent.ts) has already rejected any tenant owned
+ * by a different MSP before this runs, so the tenantId lookup here is safe.
+ *
+ * Returns { userId, customerId } or null only when email is missing.
+ */
+export async function provisionProspectAccount(opts: {
+  email: string;
+  fullName?: string | null;
+  tenantId?: string | null;
+  role: "Assessment" | "CustomerUser";
+}): Promise<{ userId: number; customerId: number | null } | null> {
+  const email = opts.email?.toLowerCase().trim();
+  if (!email) return null;
+
+  const acct = await ensureClientAccount(email, opts.fullName ?? undefined);
+  const userId = acct.id;
+
+  let customerId: number | null = null;
+  try {
+    customerId = await ensureDirectCustomerRecord(userId, opts.tenantId ?? undefined);
+    await ensureClientMspUser(userId, opts.tenantId ?? undefined, customerId, opts.role);
+  } catch (err) {
+    log.warn({ err, userId }, "provisionProspectAccount: ensure customer/msp_user failed (non-fatal)");
+  }
+
+  // Funnel-entry lead (captured at name+email) transitions new → converted here.
+  void convertLeadForClient(userId, email, opts.fullName ?? undefined);
+
+  return { userId, customerId };
+}
+
+/**
+ * Promote a funnel Prospect from the low-privilege "Assessment"/"Free" role up to
+ * "CustomerUser" once payment is confirmed — this is what unlocks the full portal
+ * (CustomerUser is the floor for the main portal; Assessment/Free sit below it).
+ *
+ * Idempotent and guarded: only rows currently at "Assessment" or "Free" are
+ * touched, so an existing CustomerUser / MSPAdmin / etc. is never downgraded or
+ * re-stamped, and re-delivered webhooks are safe. No-op if the user has no
+ * msp_users row. Non-fatal.
+ */
+export async function promoteMspUserToCustomer(userId: number): Promise<void> {
+  try {
+    await db
+      .update(mspUsersTable)
+      .set({ mspRole: "CustomerUser", updatedAt: new Date() })
+      .where(and(eq(mspUsersTable.userId, userId), inArray(mspUsersTable.mspRole, ["Assessment", "Free"])));
+  } catch (err) {
+    log.warn({ err, userId }, "promoteMspUserToCustomer: role promotion failed (non-fatal)");
+  }
 }
 
 /**
@@ -6088,7 +6158,11 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         try {
           await ensureDirectCustomerRecord(webhookUserIdOverride, purchaseTenantId ?? null);
           await ensureClientMspUser(webhookUserIdOverride, purchaseTenantId ?? null);
-          req.log.info({ userId: webhookUserIdOverride, tenantId: purchaseTenantId }, "onboarding_purchase: ensured msp_users row");
+          // Payment confirmed → promote a funnel Prospect (Assessment/Free) to
+          // CustomerUser. Guarded + idempotent; no-op for users already at
+          // CustomerUser or higher (e.g. a returning customer buying add-ons).
+          await promoteMspUserToCustomer(webhookUserIdOverride);
+          req.log.info({ userId: webhookUserIdOverride, tenantId: purchaseTenantId }, "onboarding_purchase: ensured msp_users row + promoted to CustomerUser");
         } catch (mspErr) {
           req.log.warn({ err: mspErr, userId: webhookUserIdOverride }, "onboarding_purchase: ensureClientMspUser failed (non-fatal)");
         }
