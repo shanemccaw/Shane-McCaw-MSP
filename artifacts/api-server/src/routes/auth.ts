@@ -3,8 +3,8 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspUsersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, type MspRole } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, usersTable, mspUsersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, clientServicesTable, servicesTable, type MspRole } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
@@ -12,6 +12,7 @@ import { signMfaToken } from "./mfa.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import { logger } from "../lib/logger.ts";
 import {
   createSession,
   touchSessionByTokenHash,
@@ -24,6 +25,8 @@ import {
 } from "../lib/session-tracking.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
+
+const log = logger.child({ channel: "auth" });
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -39,6 +42,19 @@ const setupPasswordLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many password setup attempts from this IP. Please try again in 15 minutes." },
+});
+
+// Read-only purchase-context lookup for the account-setup page. Keyed by the
+// same one-time setup token, so it can only ever reflect a link the buyer was
+// actually emailed. A looser cap than setup-password (this is an idempotent GET
+// a page issues once on load, with retries), still tight enough to blunt any
+// attempt to enumerate the 256-bit token space.
+const setupContextLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 400 : 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again in a few minutes." },
 });
 
 // Per-account lockout (distinct from loginLimiter's per-IP throttle above).
@@ -545,6 +561,82 @@ router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, r
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
   res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
+});
+
+// ─── Purchase context for the account-setup page ───────────────────────────────
+// Public, read-only. Given the one-time setup token the buyer was emailed, returns
+// just enough to make the "you're all set — here's what you just bought" moment
+// real: their name and the actual service(s) they purchased (from client_services,
+// the canonical record of what a client owns). No password, no session, no PII
+// beyond the buyer's own name and their own order — all keyed by a token only they
+// received. Returns 404 for a missing/used/expired token; the page then falls back
+// to a warm-but-generic welcome rather than inventing a product name.
+router.get("/auth/setup-context", setupContextLimiter, async (req: Request, res: Response) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+
+  const [record] = await db
+    .select()
+    .from(accountSetupTokensTable)
+    .where(eq(accountSetupTokensTable.token, token))
+    .limit(1);
+
+  if (!record || record.usedAt || record.expiresAt < new Date()) {
+    res.status(404).json({ error: "This setup link is invalid or has expired." });
+    return;
+  }
+
+  const [user] = await db
+    .select({ name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+
+  if (!user) {
+    res.status(404).json({ error: "Account not found." });
+    return;
+  }
+
+  const claims = await getMspClaims(record.userId);
+
+  // The actual services this client owns — the same client_services → services
+  // join the customer dashboard reads. Most recent first; a small cap since the
+  // page only ever headlines the primary purchase.
+  const owned = await db
+    .select({
+      name: servicesTable.name,
+      tagline: servicesTable.tagline,
+      category: servicesTable.category,
+      purchasedAt: clientServicesTable.purchasedAt,
+    })
+    .from(clientServicesTable)
+    .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+    .where(eq(clientServicesTable.clientUserId, record.userId))
+    .orderBy(desc(clientServicesTable.purchasedAt))
+    .limit(4);
+
+  const fullName = user.name?.trim() || null;
+  const firstName = fullName ? fullName.split(/\s+/)[0] : null;
+
+  log.info(
+    { userId: record.userId, productCount: owned.length, role: claims.mspRole },
+    "auth.setup-context resolved",
+  );
+
+  res.json({
+    clientName: fullName,
+    firstName,
+    role: claims.mspRole,
+    slug: claims.mspSlug,
+    products: owned.map((p) => ({
+      name: p.name,
+      tagline: p.tagline ?? null,
+      category: p.category ?? null,
+    })),
+  });
 });
 
 // ─── Forgot password ──────────────────────────────────────────────────────────
