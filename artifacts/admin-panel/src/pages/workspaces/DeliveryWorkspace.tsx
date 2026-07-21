@@ -13,6 +13,7 @@ import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 import MonitorChecksPage from "@/pages/MonitorChecks";
 import MonitoringPackagesPage from "@/pages/MonitoringPackages";
 import BaselineTemplatesPage from "@/pages/BaselineTemplates";
+import EngagementOfferRules from "@/pages/delivery/EngagementOfferRules";
 
 const ENGINE_KEYS = ["priority", "pricing", "health", "security", "drift", "forecasting", "crm", "msp", "sla", "monitoring", "sales_offer", "scope_creep"] as const;
 
@@ -34,6 +35,7 @@ function getContent(section: string): ReactNode {
     case "monitor-checks":       return <MonitorChecksPage />;
     case "monitoring-packages":  return <MonitoringPackagesPage />;
     case "baseline-templates":   return <BaselineTemplatesPage />;
+    case "engagement-offers":    return <EngagementOfferRules />;
     default:                     return <ProjectsPage />;
   }
 }

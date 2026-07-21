@@ -358,12 +358,15 @@ export const WORKSPACES: WorkspaceDef[] = [
       },
       {
         id: "engines", label: "Engines", defaultOpen: false,
-        items: ENGINE_KEYS.map(key => ({
-          id: `del-engine-${key}`,
-          label: ENGINE_LABELS[key],
-          path: `/delivery/engines/${key}`,
-          icon: Zap,
-        })),
+        items: [
+          ...ENGINE_KEYS.map(key => ({
+            id: `del-engine-${key}`,
+            label: ENGINE_LABELS[key],
+            path: `/delivery/engines/${key}`,
+            icon: Zap,
+          })),
+          { id: "delivery-engagement-offers", label: "Engagement Offers", path: "/delivery/engagement-offers", icon: Sparkles },
+        ],
       },
       {
         id: "client-records", label: "Client Records", defaultOpen: false,
