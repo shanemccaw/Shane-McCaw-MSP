@@ -540,11 +540,11 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             {flagship?.dashboard.driftTrend ? (
               <div className="max-w-5xl mx-auto">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  <FlagshipHeadingText h={flagship.headings.whatItDoes} />
+                </h2>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                      <FlagshipHeadingText h={flagship.headings.whatItDoes} />
-                    </h2>
                     <p className="text-text-secondary leading-relaxed">{topic.productOverview}</p>
                   </div>
                   <FlagshipDriftPanel
@@ -601,15 +601,15 @@ export default function SolutionTopicPage() {
           <section className="py-12 px-4 sm:px-6 lg:px-8">
             {flagship ? (
               <div className="max-w-5xl mx-auto">
+                <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                  <FlagshipHeadingText h={flagship.headings.howItWorks} />
+                </h2>
                 {/* items-stretch (not items-start): the findings card has far less
                     content than the 5-step workflow list, so stretching it to match
                     column height and vertically centering its bars avoids a tall
                     empty gap beside a short floating card. */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                      <FlagshipHeadingText h={flagship.headings.howItWorks} />
-                    </h2>
                     <WorkflowSteps steps={topic.howItWorks ?? []} />
                   </div>
                   <FlagshipFindingsPanel dashboard={flagship.dashboard} />
@@ -637,11 +637,11 @@ export default function SolutionTopicPage() {
             <>
               <section className="py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-5xl mx-auto">
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                    <FlagshipHeadingText h={flagship.headings.whatYouGet} />
+                  </h2>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
                     <div>
-                      <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                        <FlagshipHeadingText h={flagship.headings.whatYouGet} />
-                      </h2>
                       <DeliverablesList items={topic.whatYouGet ?? []} />
                     </div>
                     <FlagshipScoreCard dashboard={flagship.dashboard} />
@@ -651,11 +651,11 @@ export default function SolutionTopicPage() {
 
               <section className="py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-5xl mx-auto">
+                  <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
+                    <FlagshipHeadingText h={flagship.headings.modules} />
+                  </h2>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-start">
                     <div>
-                      <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
-                        <FlagshipHeadingText h={flagship.headings.modules} />
-                      </h2>
                       <p className="text-text-secondary leading-relaxed mb-6">{topic.modulesIntro}</p>
                       <DeliverablesList items={topic.coverage} />
                     </div>
