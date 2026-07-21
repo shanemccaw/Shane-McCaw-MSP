@@ -151,7 +151,7 @@ export default function ArchitectGrowth() {
       </div>
 
       {/* Hero */}
-      <section className="pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+      <section className="pt-12 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <div className="flex items-center justify-center gap-3 mb-6">
             <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
@@ -236,7 +236,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* Why This Plan Exists — Value Proposition */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             Why the Architect Growth plan exists
@@ -262,7 +262,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* What You Get */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             What you get every month
@@ -282,7 +282,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* What's Included in the Hours */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             What's included in the hours
@@ -304,7 +304,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* What Is Not Included */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             What is not included
@@ -324,7 +324,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* Who It's For */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             Who this plan is for
@@ -346,7 +346,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* Monthly Workflow */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">
             Your monthly workflow
@@ -367,7 +367,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* Why Shane */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-center mb-4">
             <Shield className="w-8 h-8 text-accent-blue" />
@@ -396,7 +396,7 @@ export default function ArchitectGrowth() {
       </section>
 
       {/* Tier nudges */}
-      <section className="py-14 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-6">
             <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-1">Lighter workload?</p>
@@ -451,7 +451,7 @@ export default function ArchitectGrowth() {
 
       <TestimonialDiscountCallout />
       {/* Bottom CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
         <div className="max-w-2xl mx-auto">
           <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
             Start Architect Growth

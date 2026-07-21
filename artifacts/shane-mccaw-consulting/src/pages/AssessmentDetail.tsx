@@ -31,7 +31,7 @@ function formatPrice(val: string | null): string {
 function OfferSkeleton() {
   return (
     <Layout>
-      <div className="pt-32 sm:pt-40 pb-24 animate-pulse">
+      <div className="pt-32 sm:pt-40 pb-12 animate-pulse">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="h-4 bg-white/[0.06] rounded-full w-32 mb-6" />
           <div className="h-14 bg-white/[0.06] rounded-xl w-3/4 mb-4" />
@@ -187,7 +187,7 @@ export default function AssessmentDetail() {
       />
 
       {/* ── HERO ────────────────────────────────────────────────────────── */}
-      <section className="relative pt-32 sm:pt-40 pb-24 overflow-hidden">
+      <section className="relative pt-32 sm:pt-40 pb-12 overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.07]"
           style={{
@@ -280,7 +280,7 @@ export default function AssessmentDetail() {
       </section>
 
       {/* ── WHY THIS MATTERS ────────────────────────────────────────────── */}
-      <section className="py-20 border-t border-white/[0.06]">
+      <section className="py-12 border-t border-white/[0.06]">
         <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
             <div>
@@ -345,7 +345,7 @@ export default function AssessmentDetail() {
 
       {/* ── WHAT YOU GET ────────────────────────────────────────────────── */}
       {(allDeliverables.length > 0 || features.length > 0) && (
-        <section className="py-20 border-t border-white/[0.06]">
+        <section className="py-12 border-t border-white/[0.06]">
           <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
               <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.12em] mb-3">Deliverables</p>
@@ -402,7 +402,7 @@ export default function AssessmentDetail() {
       )}
 
       {/* ── IDEAL CLIENT PROFILE ────────────────────────────────────────── */}
-      <section className="py-20 border-t border-white/[0.06]">
+      <section className="py-12 border-t border-white/[0.06]">
         <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <p className="text-accent-blue text-sm font-semibold uppercase tracking-[0.12em] mb-3">Target Profile</p>
@@ -444,7 +444,7 @@ export default function AssessmentDetail() {
       </section>
 
       {/* ── SHANE MCCAW VALUE CARD ───────────────────────────────────────── */}
-      <section className="py-20 border-t border-white/[0.06]">
+      <section className="py-12 border-t border-white/[0.06]">
         <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary">

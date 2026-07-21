@@ -200,7 +200,7 @@ export default function Monitoring() {
       />
 
       {/* HERO */}
-      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
+      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
         <div className="max-w-5xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
@@ -243,7 +243,7 @@ export default function Monitoring() {
       </section>
 
       {/* WHAT THIS PRODUCT ACTUALLY DOES */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-10">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -271,7 +271,7 @@ export default function Monitoring() {
       </section>
 
       {/* CREDIBILITY */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <GlassPanel className="p-8 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
             <div className="flex items-center gap-4">
@@ -298,11 +298,8 @@ export default function Monitoring() {
         </div>
       </section>
 
-      {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools.
-          pt-14 (not the usual py-20) trims just this section's top gap, precautionary and NOT
-          independently confirmed via live rendering — see PLATFORM_BUILD.md "Fix Layout Gap:
-          Monitoring Credibility/Engine Grid". Bottom stays py-20-equivalent via pb-20. */}
-      <section className="border-t border-white/[0.06] pt-14 pb-20 px-4 sm:px-6 lg:px-8">
+      {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools. */}
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -356,7 +353,7 @@ export default function Monitoring() {
       </section>
 
       {/* TELEMETRY PIPELINE */}
-      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">How Monitoring Works</h2>
@@ -390,7 +387,7 @@ export default function Monitoring() {
       {/* REMEDIATION / WRITE-BACK — real Graph write-back engine, code-complete but rollout is
           setup-dependent (website-rebuild-reference-v2.md §2 "to-verify" list) — honest-
           availability framing only, no "instant/guaranteed for everyone" claim. */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-10">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -442,7 +439,7 @@ export default function Monitoring() {
       </section>
 
       {/* ENGINE GRID */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
@@ -484,7 +481,7 @@ export default function Monitoring() {
 
       {/* MONITORING PACKAGES — real per-seat pricing: pricePerUserMonth × max(seats, seatCountFloor)
           + flatMonthlySurcharge, read from typeAttributes (website-rebuild-reference-v2.md §2) */}
-      <section id="packages" className="py-20 px-4 sm:px-6 lg:px-8 scroll-mt-24">
+      <section id="packages" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">Monitoring Packages</h2>
@@ -628,7 +625,7 @@ export default function Monitoring() {
       </section>
 
       {/* BOTTOM CTA */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 text-center">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">

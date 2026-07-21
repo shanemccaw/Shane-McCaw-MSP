@@ -277,7 +277,7 @@ function AssessmentHealthOverview() {
   const worstLabel = worst ? (HEALTH_PILLAR_LABELS[worst.pillar] ?? worst.pillar) : null;
 
   return (
-    <section className="py-16 px-4 sm:px-6 lg:px-8">
+    <section className="py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
         <GlassPanel className="p-8 sm:p-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
@@ -786,7 +786,7 @@ export default function Home() {
       />
 
       {/* HERO */}
-      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
+      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
         <div className="max-w-5xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
@@ -859,7 +859,7 @@ export default function Home() {
       <AssessmentHealthOverview />
 
       {/* WHAT WE DO */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">What We Do</p>
@@ -895,7 +895,7 @@ export default function Home() {
       </section>
 
       {/* CREDIBILITY */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-10">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
@@ -929,7 +929,7 @@ export default function Home() {
       </section>
 
       {/* REAL TENANT TELEMETRY */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">The Difference</p>
@@ -975,7 +975,7 @@ export default function Home() {
       </section>
 
       {/* HOW IT WORKS */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
@@ -1046,7 +1046,7 @@ export default function Home() {
       </section>
 
       {/* ENGINE OVERVIEW */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
@@ -1083,7 +1083,7 @@ export default function Home() {
       </section>
 
       {/* CATALOG */}
-      <section id="catalog" className="py-16 px-4 sm:px-6 lg:px-8 scroll-mt-24">
+      <section id="catalog" className="py-12 px-4 sm:px-6 lg:px-8 scroll-mt-24">
         <div className="max-w-6xl mx-auto">
           <div className="mb-10">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
@@ -1178,7 +1178,7 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">

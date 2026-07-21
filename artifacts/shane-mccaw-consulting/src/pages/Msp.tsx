@@ -193,7 +193,7 @@ export default function Msp() {
       />
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 text-center">
+      <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-5xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Shield className="w-4 h-4" />
@@ -227,7 +227,7 @@ export default function Msp() {
       </section>
 
       {/* ── WHY PARTNER ──────────────────────────────────────────────────── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16 max-w-3xl mx-auto">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Differentiate Your Practice</p>
@@ -254,7 +254,7 @@ export default function Msp() {
       </section>
 
       {/* ── ENGINES EXPLANATION (COMPELLING VALUE) ─────────────────────────── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16 max-w-3xl mx-auto">
             <span className="text-[10px] uppercase font-bold tracking-widest text-accent-blue">Automated Signal Technology</span>
@@ -293,7 +293,7 @@ export default function Msp() {
       </section>
 
       {/* ── TIERS / ONBOARDING / CONFIRM ─────────────────────────────────── */}
-      <section id="tiers" className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section id="tiers" className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
 
           {/* ── STEP 1: TIERS ─────────────────────────────────────────────── */}
@@ -615,7 +615,7 @@ export default function Msp() {
 
       {/* ── CAPABILITIES ─────────────────────────────────────────────────── */}
       {step === "tiers" && (
-        <section className="py-24 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16 max-w-3xl mx-auto">
               <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">What Partners Deliver</p>
@@ -646,7 +646,7 @@ export default function Msp() {
 
       {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
       {step === "tiers" && (
-        <section className="py-24 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
+        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
           <div className="max-w-3xl mx-auto">
             <GlassPanel className="p-8 sm:p-12">
               <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Ready to Talk?</p>

@@ -212,7 +212,7 @@ export default function Status() {
         description="Live platform status and incident history for the Shane McCaw Consulting engine."
       />
 
-      <section className="relative pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
+      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center overflow-hidden">
         <div className="max-w-4xl mx-auto">
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight mb-4">
             System <GradientText>Status</GradientText>
@@ -223,7 +223,7 @@ export default function Status() {
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] py-16 px-4 sm:px-6 lg:px-8">
+      <section className="border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <div className="flex gap-2 mb-8 border-b border-white/[0.06]">
             <button

@@ -93,7 +93,7 @@ export default function Resources() {
       />
 
       {/* Hero */}
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
+      <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
           <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4">Resources</p>
           <h1 className="font-display text-4xl sm:text-6xl font-bold text-text-primary tracking-tight leading-tight max-w-4xl mb-6">
@@ -115,7 +115,7 @@ export default function Resources() {
       </section>
 
       {/* Why These Resources Exist */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-8">Why These Resources Exist</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
@@ -168,7 +168,7 @@ export default function Resources() {
       </section>
 
       {/* Resource Library Overview */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">About This Resource Library</h2>
           <p className="text-text-secondary max-w-3xl mb-10 leading-relaxed">
@@ -233,7 +233,7 @@ export default function Resources() {
       </section>
 
       {/* Start Here */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">Start Here</h2>
           <p className="text-text-secondary max-w-2xl mb-10 leading-relaxed">
@@ -314,7 +314,7 @@ export default function Resources() {
       </section>
 
       {/* Lead Magnet */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <GlassPanel className="p-8 md:p-10 flex flex-col md:flex-row gap-8 items-center">
             <div className="flex-shrink-0 w-16 h-16 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-accent-blue">
@@ -373,7 +373,7 @@ export default function Resources() {
       </section>
 
       {/* Blog */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           {/* Category Filter */}
           <div className="flex flex-wrap gap-2 mb-12" data-testid="category-filter">
@@ -482,7 +482,7 @@ export default function Resources() {
       </section>
 
       {/* Free Assessments */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-accent-blue text-xs uppercase tracking-[0.12em] font-semibold mb-3">Free · AI-Powered · 5 Minutes</p>
@@ -564,7 +564,7 @@ export default function Resources() {
       </section>
 
       {/* Closing CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">

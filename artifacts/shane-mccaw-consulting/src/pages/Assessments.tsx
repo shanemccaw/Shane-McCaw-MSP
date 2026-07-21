@@ -316,7 +316,7 @@ export default function Assessments() {
       />
 
       {/* 1. Hero Section */}
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
+      <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="text-center max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
@@ -335,7 +335,7 @@ export default function Assessments() {
       </section>
 
       {/* 2. What These Assessments Actually Do */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
             What These Assessments Actually Do
@@ -353,7 +353,7 @@ export default function Assessments() {
       </section>
 
       {/* 3. Built by the CURRENT Microsoft 365 Architect for NASA */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-10 text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-blue/10 text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
@@ -379,7 +379,7 @@ export default function Assessments() {
       </section>
 
       {/* 4. Why These Assessments Matter */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
             Why These Assessments Matter
@@ -395,7 +395,7 @@ export default function Assessments() {
       </section>
 
       {/* 5. How These Assessments Work */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
             How These Assessments Work
@@ -424,7 +424,7 @@ export default function Assessments() {
       </section>
 
       {/* 6. Assessment Wizard */}
-      <section id="assessment-wizard" className="py-16 px-4 sm:px-6 lg:px-8">
+      <section id="assessment-wizard" className="py-12 px-4 sm:px-6 lg:px-8">
         <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
           Assessment Wizard
         </h2>
@@ -513,7 +513,7 @@ export default function Assessments() {
       </section>
 
       {/* 7. Assessment Categories */}
-      <section id="assessment-categories" className="py-16 px-4 sm:px-6 lg:px-8">
+      <section id="assessment-categories" className="py-12 px-4 sm:px-6 lg:px-8">
         <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
           Assessment Categories
         </h2>
@@ -651,7 +651,7 @@ export default function Assessments() {
       </section>
 
       {/* 8. What's Inside Each Assessment */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
             What's Inside Each Assessment
@@ -668,7 +668,7 @@ export default function Assessments() {
       </section>
 
       {/* 9. Begin Your Assessment */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-10 text-center">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">

@@ -273,7 +273,7 @@ export default function RetainersOverview() {
       </div>
 
       {/* Hero */}
-      <section className="pt-10 pb-20 px-4 sm:px-6 lg:px-8 text-center">
+      <section className="pt-12 pb-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-bold uppercase tracking-wider mb-6">
             <Zap className="w-3.5 h-3.5" />
@@ -301,7 +301,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* Architect tier cards — catalog-driven */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
@@ -351,7 +351,7 @@ export default function RetainersOverview() {
 
       {/* Advisory / range-priced tiers — catalog-driven */}
       {(loading || rangeTiers.length > 0) && (
-        <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
@@ -384,7 +384,7 @@ export default function RetainersOverview() {
       )}
 
       {/* Why retainers exist */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
@@ -443,7 +443,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* What changes when you have an architect */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
@@ -496,7 +496,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* Why Shane? */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">Why Shane?</h2>
@@ -532,7 +532,7 @@ export default function RetainersOverview() {
 
       {/* Feature comparison table — fully catalog-driven */}
       {showComparison && (
-        <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
@@ -642,7 +642,7 @@ export default function RetainersOverview() {
       )}
 
       {/* How we work together */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4">
             How we work together
@@ -698,7 +698,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* FAQ */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto">
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-10 text-center">
             Frequently asked questions
@@ -729,7 +729,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* Bottom CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
         <div className="max-w-2xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">Book a Free Discovery Call</h2>

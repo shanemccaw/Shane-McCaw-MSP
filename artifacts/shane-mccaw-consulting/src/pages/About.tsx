@@ -104,7 +104,7 @@ export default function About() {
         description="Meet Shane McCaw — NASA's Lead Microsoft 365 Architect, 30-year Microsoft veteran, and Copilot SME. Learn why top organizations trust Shane to transform their M365 environments."
       />
       {/* Hero */}
-      <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8 text-center">
+      <section className="pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-pulse" />
@@ -123,7 +123,7 @@ export default function About() {
       </section>
 
       {/* Positioning Callout + Elevator Pitch Intro */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 md:p-10 mb-8">
             <div className="inline-flex items-center gap-2 bg-white/[0.06] border border-white/[0.1] rounded-full px-4 py-1.5 mb-5">
@@ -164,7 +164,7 @@ export default function About() {
       </section>
 
       {/* Who I Help — and Why */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Ideal Clients</p>
@@ -246,7 +246,7 @@ export default function About() {
       </section>
 
       {/* Why NASA Experience Matters */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto">
           <p className="text-xs uppercase tracking-widest text-text-tertiary mb-4 text-center">Compliance Depth</p>
           <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-8 text-center leading-tight">
@@ -298,7 +298,7 @@ export default function About() {
       </section>
 
       {/* Why IT Leaders Bring Me In */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
             <div>
@@ -358,7 +358,7 @@ export default function About() {
       </section>
 
       {/* Narrative */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-16 items-start">
             <div>
@@ -437,7 +437,7 @@ export default function About() {
       </section>
 
       {/* Quote */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06] text-center">
         <div className="max-w-[900px] mx-auto">
           <Star className="w-8 h-8 text-accent-blue mx-auto mb-6" />
           <blockquote className="text-xl md:text-2xl text-text-primary font-light leading-relaxed mb-6 italic">
@@ -452,7 +452,7 @@ export default function About() {
       </section>
 
       {/* NASA section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
             <div>
@@ -497,7 +497,7 @@ export default function About() {
       </section>
 
       {/* Career Timeline */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Career</p>
@@ -559,7 +559,7 @@ export default function About() {
       </section>
 
       {/* Elevator Pitch */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-[860px] mx-auto">
           <p className="text-xs uppercase tracking-widest text-text-tertiary mb-6 text-center">Elevator Pitch</p>
           <GlassPanel className="relative p-10">
@@ -591,7 +591,7 @@ export default function About() {
       </section>
 
       {/* Philosophy */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
@@ -631,7 +631,7 @@ export default function About() {
       </section>
 
       {/* Competencies */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-10">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Technical Expertise</p>
@@ -652,7 +652,7 @@ export default function About() {
       </section>
 
       {/* How Organizations Engage */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Working Together</p>
@@ -706,7 +706,7 @@ export default function About() {
       </section>
 
       {/* How You Can Work With Me */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">Engagements</p>
@@ -793,7 +793,7 @@ export default function About() {
       </section>
 
       {/* Final CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">

@@ -176,7 +176,7 @@ export default function ArchitectEnterprise() {
       </div>
 
       {/* Hero */}
-      <section className="pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+      <section className="pt-12 pb-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto text-center">
           <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
             <div className="inline-flex items-center gap-2 glass-panel text-text-primary text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
@@ -263,7 +263,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What you get */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+      <section className="py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">What's Included</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What you get every month</h2>
@@ -282,7 +282,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What's Included in the Hours */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Hour Categories</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What's included in the 50 hours</h2>
@@ -301,7 +301,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* What Is NOT Included */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 md:p-10">
             <p className="text-accent-violet text-xs font-bold uppercase tracking-wider mb-3">Scope Boundaries</p>
@@ -322,7 +322,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Who it's for */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Ideal Fit</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Who this plan is for</h2>
@@ -349,7 +349,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Typical month */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">Monthly Structure</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">What a typical month looks like</h2>
@@ -369,7 +369,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Why This Plan Exists */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">The Case for Enterprise</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Why this plan exists</h2>
@@ -390,7 +390,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Why Shane */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <p className="text-center text-xs font-bold uppercase tracking-wider text-accent-blue mb-3">The Architect</p>
           <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-4 text-center">Why Shane</h2>
@@ -409,7 +409,7 @@ export default function ArchitectEnterprise() {
       </section>
 
       {/* Tier nudge */}
-      <section className="py-14 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-4xl mx-auto">
           <div className="rounded-2xl bg-charcoal-1 border border-white/[0.06] p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
@@ -453,7 +453,7 @@ export default function ArchitectEnterprise() {
 
       <TestimonialDiscountCallout />
       {/* Bottom CTA */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 text-center border-t border-white/[0.06]">
         <div className="max-w-2xl mx-auto">
           <p className="text-accent-blue text-xs font-bold uppercase tracking-widest mb-4">Ready to get started?</p>
           <h2 className="font-display text-3xl md:text-4xl font-bold text-text-primary mb-4">

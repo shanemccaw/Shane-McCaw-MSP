@@ -147,7 +147,7 @@ export default function SolutionTopicPage() {
       />
 
       {/* Hero */}
-      <section className="relative pt-32 sm:pt-40 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+      <section className="relative pt-32 sm:pt-40 pb-12 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <Icon className="w-4 h-4" />
@@ -279,7 +279,7 @@ export default function SolutionTopicPage() {
       {useExpandedStructure ? (
         <>
           {/* What This Product Actually Does */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 What This Product Actually Does
@@ -289,7 +289,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Built by the Microsoft 365 Architect for NASA */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10">
                 <h2 className="font-display text-2xl font-bold text-text-primary mb-4">
@@ -301,7 +301,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Why This Product Matters */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 Why This Product Matters
@@ -312,7 +312,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* How This Product Works */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 How This Product Works
@@ -322,7 +322,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* What You Get */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 What You Get
@@ -332,7 +332,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Product Modules / Features */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
                 Product Modules & Features
@@ -343,7 +343,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Begin Mission Readiness */}
-          <section className="py-20 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
                 Begin <GradientText>Mission Readiness</GradientText>
@@ -372,7 +372,7 @@ export default function SolutionTopicPage() {
       ) : (
         <>
           {/* What we look at */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div>
                 <h2 className="font-display text-2xl font-bold text-text-primary mb-5">
@@ -405,7 +405,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Related engine */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto">
               <GlassPanel className="p-8 sm:p-10">
                 <p className="text-xs uppercase tracking-widest text-text-tertiary mb-3">
@@ -422,7 +422,7 @@ export default function SolutionTopicPage() {
           </section>
 
           {/* Bottom CTA */}
-          <section className="py-20 px-4 sm:px-6 lg:px-8">
+          <section className="py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-3xl mx-auto text-center">
               <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
                 See where <GradientText>{topic.title}</GradientText> stands in your tenant
@@ -457,7 +457,7 @@ export default function SolutionTopicPage() {
           Topic Pages task) — makes the Quiz → Assessment → Projects relationship explicit
           instead of leaving visitors with disconnected CTAs, per website-rebuild-reference-v2.md
           §1/§2. Shown on every topic page, all tiers — this is orientation, not personalization. */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
         <div className="max-w-3xl mx-auto text-center mb-10">
           <h2 className="font-display text-2xl font-bold text-text-primary mb-4">
             How This Actually Works
