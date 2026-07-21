@@ -50,6 +50,12 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+// ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
+// Mandatory MFA enrollment is a real security requirement — this flag only
+// skips it for active testing. Must be removed/set to false before any real
+// customer reaches this flow. See backlog: [Shane to add ticket].
+const SKIP_MFA_GATE_FOR_TESTING = true;
+
 // ── Status payload (mirrors GET /api/portal/assessment/status) ────────────────
 
 interface AssessmentDocument {
@@ -281,7 +287,7 @@ export function AssessmentWizard() {
 
   // ── Mandatory MFA gate ─────────────────────────────────────────────────────
   // Block the entire flow until the customer enrolls a portal-login second factor.
-  if (loaded && status && !status.mfa.enrolled && !mfaJustEnrolled) {
+  if (!SKIP_MFA_GATE_FOR_TESTING && loaded && status && !status.mfa.enrolled && !mfaJustEnrolled) {
     return (
       <AssessmentMfaEnrollment
         onEnrolled={() => {
