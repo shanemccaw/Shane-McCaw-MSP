@@ -4,7 +4,6 @@ import {
   ArrowRight,
   ChevronRight,
   Zap,
-  Minus,
   Shield,
   TrendingUp,
   Users,
@@ -16,7 +15,6 @@ import {
   AlertCircle,
   Loader2,
   PhoneCall,
-  CheckCircle2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -34,118 +32,8 @@ function fmtPrice(raw: string | null): string | null {
   return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-function PriceSkeleton() {
-  return <span className="inline-block w-20 h-8 bg-white/[0.08] rounded animate-pulse" />;
-}
-
-function HoursSkeleton() {
-  return <span className="inline-block w-28 h-4 bg-white/[0.06] rounded animate-pulse" />;
-}
-
 function isRangePriced(t: RetainerTier): boolean {
   return !!t.basePrice;
-}
-
-function isFlatPriced(t: RetainerTier): boolean {
-  return !t.basePrice && t.price != null;
-}
-
-function ArchitectCard({ tier, loading }: { tier: RetainerTier; loading: boolean }) {
-  const price = fmtPrice(tier.price);
-  const hours = tier.hoursPerMonth ? `${tier.hoursPerMonth} hours / month` : null;
-  const features = tier.features ?? [];
-  const hl = tier.highlighted;
-  const hasCheckout = !!tier.fulfillmentTypeKey && !!tier.slug;
-  const checkoutHref = tier.slug ? `/checkout/${tier.slug}` : null;
-  const detailHref = tier.pageHref ?? (tier.slug ? `/retainers/${tier.slug}` : null);
-
-  return (
-    <div
-      className={`relative flex flex-col rounded-2xl border ${
-        hl
-          ? "border-accent-blue/50 bg-charcoal-1 shadow-xl shadow-accent-blue/10"
-          : "border-white/[0.06] bg-charcoal-1"
-      }`}
-    >
-      {tier.badge && (
-        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-          <span className="text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap" style={GRADIENT_BG}>
-            {tier.badge}
-          </span>
-        </div>
-      )}
-
-      <div className="p-8 pb-6 border-b border-white/[0.06]">
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="w-4 h-4 text-accent-violet" />
-          {loading ? (
-            <HoursSkeleton />
-          ) : (
-            <span className="text-xs font-bold uppercase tracking-wider text-accent-violet">
-              {hours ?? "Hours vary"}
-            </span>
-          )}
-        </div>
-        <h2 className="font-display text-xl font-bold text-text-primary mb-1">{tier.name}</h2>
-        {loading ? (
-          <PriceSkeleton />
-        ) : (
-          <p className="font-numeric text-4xl font-medium text-text-primary mb-0.5">{price ?? "—"}</p>
-        )}
-        <p className="text-text-secondary text-sm mb-4">/month · cancel with 30 days' notice</p>
-        {(tier.tagline ?? tier.description) && (
-          <p className="text-text-secondary text-sm leading-relaxed">{tier.tagline ?? tier.description}</p>
-        )}
-      </div>
-
-      <div className="p-8 flex-1 flex flex-col">
-        {features.length > 0 && (
-          <ul className="space-y-3 flex-1">
-            {features.map((f, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <CheckCircle className="w-4 h-4 text-accent-blue flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-text-secondary">{f}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="mt-8 flex flex-col gap-3">
-          {!tier.fulfillmentTypeKey ? (
-            <button
-              disabled
-              className="w-full py-2.5 px-4 rounded-lg border border-white/[0.08] text-sm text-text-secondary bg-white/[0.03] cursor-not-allowed"
-            >
-              Coming soon
-            </button>
-          ) : (
-            <Link
-              href={checkoutHref ?? "/contact"}
-              className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
-              style={GRADIENT_BG}
-              data-track="cta"
-            >
-              Get Started
-            </Link>
-          )}
-          {detailHref && (
-            <Link
-              href={detailHref}
-              className="flex items-center justify-center gap-1.5 text-sm text-accent-blue font-medium hover:text-accent-violet transition-colors"
-            >
-              See full details <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          )}
-        </div>
-
-        {!hasCheckout && tier.fulfillmentTypeKey === null && tier.slug && (
-          <p className="text-xs text-text-secondary text-center mt-2">
-            Not yet available for online purchase
-          </p>
-        )}
-      </div>
-    </div>
-  );
 }
 
 function ScopedCard({ tier }: { tier: RetainerTier }) {
@@ -217,47 +105,25 @@ function ScopedCard({ tier }: { tier: RetainerTier }) {
   );
 }
 
-/**
- * Build a comparison matrix from catalog features.
- * Rows = union of all feature strings across flat-priced tiers (order preserved).
- */
-function buildComparisonRows(tiers: RetainerTier[]): string[] {
-  const seen = new Set<string>();
-  const order: string[] = [];
-  for (const tier of tiers) {
-    for (const f of tier.features ?? []) {
-      if (!seen.has(f)) {
-        seen.add(f);
-        order.push(f);
-      }
-    }
-  }
-  return order;
-}
-
 export default function RetainersOverview() {
   const { retainerTiers, loading, error } = useCatalog();
 
-  const flatTiers = retainerTiers.filter(isFlatPriced).sort((a, b) => a.sortOrder - b.sortOrder);
   const rangeTiers = retainerTiers.filter(isRangePriced).sort((a, b) => a.sortOrder - b.sortOrder);
-
-  const comparisonRows = buildComparisonRows(flatTiers);
-  const showComparison = !loading && flatTiers.length >= 2 && comparisonRows.length > 0;
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Service",
-    name: "Microsoft 365 Architect Retainer Plans",
+    name: "Microsoft 365 Architect Retainer",
     description:
-      "Monthly retainer plans giving you ongoing access to Shane McCaw, NASA's Lead Microsoft 365 Architect.",
+      "A scoped Microsoft 365 advisory retainer giving you ongoing access to Shane McCaw, NASA's Lead Microsoft 365 Architect.",
     provider: { "@type": "Person", name: "Shane McCaw", jobTitle: "Lead Microsoft 365 Architect" },
   };
 
   return (
     <Layout>
       <SEOMeta
-        title="M365 Architect Retainer Plans | Shane McCaw Consulting"
-        description="Monthly Microsoft 365 retainer plans — senior consulting per month. Strategy calls, async support, proactive monitoring, and full-stack M365 expertise from NASA's Lead Architect."
+        title="M365 Architect Retainer | Shane McCaw Consulting"
+        description="A scoped Microsoft 365 advisory retainer — senior consulting per month. Strategy calls, async support, proactive monitoring, and full-stack M365 expertise from NASA's Lead Architect."
         jsonLd={jsonLd}
       />
 
@@ -268,7 +134,7 @@ export default function RetainersOverview() {
             Pricing
           </Link>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-text-primary font-medium">Retainer Plans</span>
+          <span className="text-text-primary font-medium">Retainer</span>
         </div>
       </div>
 
@@ -447,15 +313,15 @@ export default function RetainersOverview() {
         </div>
       </section>
 
-      {/* Architect tier cards — catalog-driven */}
+      {/* Scoped Advisory Services — the real, single retainer offering, catalog-driven */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
-              Architect Retainer Plans
+              Scoped Advisory Services
             </h2>
             <p className="text-text-secondary max-w-xl mx-auto">
-              A reserved block of Shane's time every month — flat-rate, no scoping, no delays.
+              Engagement scope and pricing are finalised in a discovery call — no guesswork, no surprises.
             </p>
           </div>
 
@@ -469,177 +335,28 @@ export default function RetainersOverview() {
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <AlertCircle className="size-8 text-red-400" />
               <p className="text-text-secondary">
-                Could not load retainer plans. Please refresh and try again.
+                Could not load advisory services. Please refresh and try again.
               </p>
             </div>
           )}
 
-          {!loading && !error && flatTiers.length === 0 && (
-            <p className="text-center text-text-secondary py-12">Retainer plans coming soon.</p>
+          {!loading && !error && rangeTiers.length === 0 && (
+            <p className="text-center text-text-secondary py-12">Advisory engagement details coming soon.</p>
           )}
 
-          {!loading && !error && flatTiers.length > 0 && (
+          {!loading && !error && rangeTiers.length > 0 && (
             <div
-              className={`grid grid-cols-1 gap-6 items-stretch ${
-                flatTiers.length >= 3
-                  ? "md:grid-cols-3"
-                  : flatTiers.length === 2
-                    ? "md:grid-cols-2"
-                    : "max-w-sm mx-auto"
+              className={`grid grid-cols-1 gap-6 ${
+                rangeTiers.length >= 2 ? "md:grid-cols-2" : "max-w-sm mx-auto"
               }`}
             >
-              {flatTiers.map((tier) => (
-                <ArchitectCard key={tier.id} tier={tier} loading={loading} />
+              {rangeTiers.map((tier) => (
+                <ScopedCard key={tier.id} tier={tier} />
               ))}
             </div>
           )}
         </div>
       </section>
-
-      {/* Advisory / range-priced tiers — catalog-driven */}
-      {(loading || rangeTiers.length > 0) && (
-        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
-                Scoped Advisory Services
-              </h2>
-              <p className="text-text-secondary max-w-xl mx-auto">
-                Engagement scope and pricing are finalised in a discovery call — no guesswork, no surprises.
-              </p>
-            </div>
-
-            {loading && (
-              <div className="flex justify-center py-8">
-                <Loader2 className="size-6 animate-spin text-accent-blue" />
-              </div>
-            )}
-
-            {!loading && rangeTiers.length > 0 && (
-              <div
-                className={`grid grid-cols-1 gap-6 ${
-                  rangeTiers.length >= 2 ? "md:grid-cols-2" : "max-w-sm mx-auto"
-                }`}
-              >
-                {rangeTiers.map((tier) => (
-                  <ScopedCard key={tier.id} tier={tier} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Feature comparison table — fully catalog-driven */}
-      {showComparison && (
-        <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mb-3">
-                Compare plans at a glance
-              </h2>
-              <p className="text-text-secondary max-w-xl mx-auto">
-                Every feature, side by side — so you can pick the tier that fits without reading each card twice.
-              </p>
-            </div>
-
-            <div className="overflow-x-auto rounded-2xl border border-white/[0.06]">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr>
-                    <th className="bg-charcoal-1 text-left px-6 py-4 font-semibold text-text-primary border-b border-white/[0.06]">
-                      Feature
-                    </th>
-                    {flatTiers.map((tier) => (
-                      <th
-                        key={tier.id}
-                        className={`text-center px-4 py-4 border-b font-normal ${
-                          tier.highlighted
-                            ? "bg-accent-blue/[0.06] border-accent-blue/30 pt-8 relative"
-                            : "bg-charcoal-1 border-white/[0.06]"
-                        }`}
-                      >
-                        {tier.highlighted && (
-                          <span
-                            className="absolute top-2 left-1/2 -translate-x-1/2 text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap"
-                            style={GRADIENT_BG}
-                          >
-                            {tier.badge ?? "Popular"}
-                          </span>
-                        )}
-                        <span
-                          className={`block text-xs font-bold uppercase tracking-wider mb-1 ${
-                            tier.highlighted ? "text-accent-blue" : "text-text-secondary"
-                          }`}
-                        >
-                          {tier.name}
-                        </span>
-                        <span className="block text-lg font-numeric font-bold text-text-primary">
-                          {fmtPrice(tier.price) ?? "—"}
-                          <span className="text-sm font-normal text-text-secondary">/mo</span>
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {comparisonRows.map((feature, i) => (
-                    <tr key={feature} className={i % 2 === 0 ? "bg-charcoal-0" : "bg-charcoal-1/50"}>
-                      <td className="px-6 py-4 font-medium text-text-primary border-b border-white/[0.05]">
-                        {feature}
-                      </td>
-                      {flatTiers.map((tier) => {
-                        const has = (tier.features ?? []).includes(feature);
-                        return (
-                          <td
-                            key={tier.id}
-                            className={`px-4 py-4 text-center border-b ${
-                              tier.highlighted
-                                ? "bg-accent-blue/[0.04] border-accent-blue/15"
-                                : "border-white/[0.05]"
-                            }`}
-                          >
-                            {has ? (
-                              <CheckCircle2 className="w-5 h-5 text-accent-blue mx-auto" />
-                            ) : (
-                              <Minus className="w-4 h-4 text-text-tertiary/40 mx-auto" />
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  <tr className="bg-charcoal-0">
-                    <td className="px-6 py-5 text-text-secondary text-xs italic">
-                      All plans: no minimum term · cancel with 30 days' notice
-                    </td>
-                    {flatTiers.map((tier) => (
-                      <td
-                        key={tier.id}
-                        className={`px-4 py-5 text-center ${tier.highlighted ? "bg-accent-blue/[0.04]" : ""}`}
-                      >
-                        {tier.slug && tier.fulfillmentTypeKey && (
-                          <Link
-                            href={`/checkout/${tier.slug}`}
-                            className={`inline-flex items-center justify-center gap-1 text-xs font-bold transition-colors ${
-                              tier.highlighted
-                                ? "text-white px-3 py-1.5 rounded-full"
-                                : "text-accent-blue hover:text-accent-violet"
-                            }`}
-                            style={tier.highlighted ? GRADIENT_BG : undefined}
-                          >
-                            Get started <ArrowRight className="w-3 h-3" />
-                          </Link>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* How we work together */}
       <section className="py-12 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
