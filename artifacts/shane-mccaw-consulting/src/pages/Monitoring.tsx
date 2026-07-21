@@ -298,8 +298,11 @@ export default function Monitoring() {
         </div>
       </section>
 
-      {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools */}
-      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
+      {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools.
+          pt-14 (not the usual py-20) trims just this section's top gap, precautionary and NOT
+          independently confirmed via live rendering — see PLATFORM_BUILD.md "Fix Layout Gap:
+          Monitoring Credibility/Engine Grid". Bottom stays py-20-equivalent via pb-20. */}
+      <section className="border-t border-white/[0.06] pt-14 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
