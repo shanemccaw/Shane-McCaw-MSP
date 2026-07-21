@@ -38,7 +38,7 @@ const ENGINES = [
     color: "emerald",
     benefit: "See tenant health decline before it becomes downtime or a support ticket.",
     description:
-      "Calculates a composite real-time tenant health score across licensing utilization, service health anomalies, and operational KPIs. When the score degrades below threshold, automated remediation runbooks execute to correct discovered anomalies — no human queue required.",
+      "Calculates a composite tenant health score on every scheduled check, across licensing utilization, service health anomalies, and operational KPIs. When the score degrades below threshold, automated remediation runbooks can execute to correct qualifying anomalies — where write-back remediation is enabled for that tenant, not guaranteed for every customer today.",
     signals: [
       "Composite health score",
       "License utilization efficiency",
@@ -141,7 +141,7 @@ const PIPELINE = [
   { icon: Database, label: "Microsoft Graph API", desc: "Tenant telemetry harvested via authenticated Graph queries, on each check's configured schedule" },
   { icon: Cpu, label: "Signal Engine Analysis", desc: "Specialized engines evaluate telemetry against governance rule sets" },
   { icon: Radio, label: "Alert & Prioritization", desc: "Findings are severity-scored and routed to your dashboard, with critical items surfaced first" },
-  { icon: RefreshCw, label: "Automated Remediation", desc: "Runbook executor resolves qualifying findings without human queue" },
+  { icon: RefreshCw, label: "Automated Remediation", desc: "Where write-back remediation is enabled, the runbook executor resolves qualifying findings automatically — configured per tenant, not on by default for every customer" },
   { icon: BarChart2, label: "Reporting & Insights", desc: "Tenant health score, trend analysis and executive-ready audit reports" },
 ];
 
@@ -210,9 +210,9 @@ export default function Monitoring() {
             Stop Reacting. <GradientText>Start Governing.</GradientText>
           </h1>
           <p className="text-lg sm:text-xl text-text-secondary max-w-3xl mx-auto leading-relaxed mb-10">
-            Specialized signal engines harvest Microsoft Graph telemetry on a recurring schedule —
-            detecting drift, surfacing security threats, calculating health scores, and enforcing
-            SLA compliance before incidents reach your clients.
+            Six signal engines watch your Microsoft 365 tenant on a recurring Graph-based
+            schedule — catching drift, security exposure, health decline, and SLA risk before
+            they reach your clients.
           </p>
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 max-w-md mx-auto mb-14">
             <a
@@ -242,6 +242,34 @@ export default function Monitoring() {
         </div>
       </section>
 
+      {/* WHAT THIS PRODUCT ACTUALLY DOES */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-10">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              What This Product <GradientText>Actually Does</GradientText>
+            </h2>
+            <p className="text-text-secondary">
+              No AI buzzwords, no guesswork — plain mechanics, running against your real tenant.
+            </p>
+          </div>
+          <GlassPanel className="p-8 sm:p-10">
+            <p className="text-text-secondary leading-relaxed mb-4">
+              A set of specialized signal engines connect to your Microsoft 365 tenant through
+              Microsoft Graph and run a defined library of Monitor Checks on your package's
+              configured schedule. Each check's result is compared against your governance
+              baseline — configuration drift, security exposure, license waste, SLA
+              obligations — and classified by severity the moment it's evaluated.
+            </p>
+            <p className="text-text-secondary leading-relaxed">
+              Nothing here is estimated from a survey or reconstructed after the fact. Every
+              score and every alert traces back to a real, recorded check result pulled directly
+              from your tenant.
+            </p>
+          </GlassPanel>
+        </div>
+      </section>
+
       {/* CREDIBILITY */}
       <section className="py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
@@ -252,11 +280,13 @@ export default function Monitoring() {
               </div>
               <div>
                 <h3 className="font-display font-semibold text-lg text-text-primary">
-                  Built on a Governance Standard Shane Wrote at NASA
+                  Built by the Microsoft 365 Architect at NASA
                 </h3>
                 <p className="text-sm text-text-secondary mt-1">
                   Shane McCaw wrote the M365 Copilot governance framework NASA distributed
-                  agency-wide. This monitoring platform runs on that same discipline.
+                  agency-wide. This monitoring platform runs on that same discipline — a
+                  personal credential, not a claim about this platform's own compliance
+                  posture or government-contracting status.
                 </p>
               </div>
             </div>
@@ -268,133 +298,18 @@ export default function Monitoring() {
         </div>
       </section>
 
-      {/* ENGINE GRID */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              One Platform. <GradientText>Zero Blind Spots.</GradientText>
-            </h2>
-            <p className="text-text-secondary">
-              Each engine is a purpose-built analytical module that operates independently and
-              feeds a unified priority queue — so critical findings surface immediately,
-              automatically.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ENGINES.map((engine) => {
-              const Icon = engine.icon;
-              const c = colorMap[engine.color];
-              return (
-                <div key={engine.id} className="flex flex-col p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] hover:border-white/[0.12] transition-all duration-200 group">
-                  <div className={`w-11 h-11 rounded-xl bg-white/[0.06] border ${c.border} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
-                    <Icon className={`w-5 h-5 ${c.icon}`} />
-                  </div>
-                  <span className={`text-[10px] uppercase font-bold tracking-wider mb-2 px-2 py-0.5 rounded-full border self-start ${c.badge}`}>{engine.badge}</span>
-                  <h3 className="font-display text-lg font-bold text-text-primary mb-2">{engine.name}</h3>
-                  <p className="text-sm font-medium text-text-primary leading-relaxed mb-2">{engine.benefit}</p>
-                  <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{engine.description}</p>
-                  <ul className="space-y-1.5 border-t border-white/[0.06] pt-4 mt-auto">
-                    {engine.signals.map((s) => (
-                      <li key={s} className="flex items-center gap-2 text-xs text-text-secondary">
-                        <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${c.check}`} />
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* REMEDIATION / WRITE-BACK — real Graph write-back engine, code-complete but rollout is
-          setup-dependent (website-rebuild-reference-v2.md §2 "to-verify" list) — honest-
-          availability framing only, no "instant/guaranteed for everyone" claim. */}
-      <section className="py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <GlassPanel className="p-8 sm:p-10">
-            <div className="flex flex-col md:flex-row items-start gap-6 mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
-                <Wrench className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-display text-2xl font-bold text-text-primary mb-2">
-                  We Don't Just Tell You What's Wrong — <GradientText>We Can Fix It.</GradientText>
-                </h3>
-                <p className="text-text-secondary leading-relaxed">
-                  Most monitoring tools stop at the report. Ours can act: qualifying findings can
-                  trigger real automated write-back against Microsoft Graph — the same
-                  remediation mechanism behind our Quick-Start configuration packs — to correct
-                  the issue directly in your tenant instead of leaving it for someone to fix by
-                  hand.
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-              {[
-                "Revoke a stale guest account flagged by the Security Engine",
-                "Correct a conditional access policy that drifted from baseline",
-                "Disable an over-permissioned OAuth app grant",
-              ].map((example) => (
-                <div key={example} className="flex items-start gap-2 text-xs text-text-secondary bg-charcoal-1 border border-white/[0.06] rounded-xl p-3">
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent-blue" />
-                  {example}
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-text-tertiary">
-              Write-back remediation is configured per tenant and rolls out where enabled — not
-              every finding triggers an automatic fix, and it isn't switched on by default for
-              every customer today.
-            </p>
-          </GlassPanel>
-        </div>
-      </section>
-
-      {/* TELEMETRY PIPELINE */}
-      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">How the Intelligence Pipeline Works</h2>
-            <p className="text-text-secondary">From Microsoft Graph API to automated remediation — every step executes without manual intervention.</p>
-          </div>
-          <div className="flex flex-col md:flex-row items-stretch gap-1">
-            {PIPELINE.map((step, i) => {
-              const Icon = step.icon;
-              return (
-                <div key={step.label} className="flex flex-col md:flex-row items-start md:items-stretch flex-1">
-                  <div className="flex flex-col flex-1 p-5 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
-                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-3">
-                      <Icon className="w-4 h-4 text-accent-blue" />
-                    </div>
-                    <div className="text-[10px] font-bold text-accent-blue uppercase tracking-widest mb-1">Step {i + 1}</div>
-                    <div className="text-sm font-bold text-text-primary mb-1.5">{step.label}</div>
-                    <p className="text-xs text-text-secondary leading-relaxed">{step.desc}</p>
-                  </div>
-                  {i < PIPELINE.length - 1 && (
-                    <div className="hidden md:flex items-center px-1 text-text-tertiary">
-                      <ChevronRight className="w-5 h-5" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
       {/* WHY THIS ISN'T JUST A DASHBOARD — real differentiators vs. generic BI/reporting tools */}
       <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              Why Not Just <GradientText>Build a Dashboard?</GradientText>
+              Why <GradientText>Continuous Monitoring</GradientText> Matters
             </h2>
             <p className="text-text-secondary">
-              Charts and percentages are easy. Knowing your tenant well enough to act on it isn't.
-              Here's what's actually different.
+              A one-time scan or a dashboard nobody refreshes misses what happens in between.
+              Scheduled checks run hourly to daily, with critical events on Enhanced/Premium
+              tiers surfacing in roughly five minutes — not an instant, always-on feed, but close
+              enough that drift and exposure don't sit unnoticed for a quarter.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -437,6 +352,133 @@ export default function Monitoring() {
         </div>
       </section>
 
+      {/* TELEMETRY PIPELINE */}
+      <section className="border-t border-white/[0.06] py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-14">
+            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">How Monitoring Works</h2>
+            <p className="text-text-secondary">From Microsoft Graph API to your dashboard — detection, scoring, and alerting run automatically on every scheduled check.</p>
+          </div>
+          <div className="flex flex-col md:flex-row items-stretch gap-1">
+            {PIPELINE.map((step, i) => {
+              const Icon = step.icon;
+              return (
+                <div key={step.label} className="flex flex-col md:flex-row items-start md:items-stretch flex-1">
+                  <div className="flex flex-col flex-1 p-5 rounded-2xl bg-charcoal-1 border border-white/[0.06]">
+                    <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center mb-3">
+                      <Icon className="w-4 h-4 text-accent-blue" />
+                    </div>
+                    <div className="text-[10px] font-bold text-accent-blue uppercase tracking-widest mb-1">Step {i + 1}</div>
+                    <div className="text-sm font-bold text-text-primary mb-1.5">{step.label}</div>
+                    <p className="text-xs text-text-secondary leading-relaxed">{step.desc}</p>
+                  </div>
+                  {i < PIPELINE.length - 1 && (
+                    <div className="hidden md:flex items-center px-1 text-text-tertiary">
+                      <ChevronRight className="w-5 h-5" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* REMEDIATION / WRITE-BACK — real Graph write-back engine, code-complete but rollout is
+          setup-dependent (website-rebuild-reference-v2.md §2 "to-verify" list) — honest-
+          availability framing only, no "instant/guaranteed for everyone" claim. */}
+      <section className="py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-10">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              What <GradientText>You Get</GradientText>
+            </h2>
+            <p className="text-text-secondary">
+              Detection, prioritized alerts, and — where write-back remediation is enabled for
+              your tenant — a direct fix in Microsoft Graph instead of a ticket waiting for
+              someone to get to it.
+            </p>
+          </div>
+          <GlassPanel className="p-8 sm:p-10">
+            <div className="flex flex-col md:flex-row items-start gap-6 mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center shrink-0 text-accent-blue">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-display text-2xl font-bold text-text-primary mb-2">
+                  We Don't Just Tell You What's Wrong — <GradientText>We Can Fix It.</GradientText>
+                </h3>
+                <p className="text-text-secondary leading-relaxed">
+                  Most monitoring tools stop at the report. Ours can act: qualifying findings can
+                  trigger real automated write-back against Microsoft Graph — the same
+                  remediation mechanism behind our Quick-Start configuration packs — to correct
+                  the issue directly in your tenant instead of leaving it for someone to fix by
+                  hand.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+              {[
+                "Revoke a stale guest account flagged by the Security Engine",
+                "Correct a conditional access policy that drifted from baseline",
+                "Disable an over-permissioned OAuth app grant",
+              ].map((example) => (
+                <div key={example} className="flex items-start gap-2 text-xs text-text-secondary bg-charcoal-1 border border-white/[0.06] rounded-xl p-3">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent-blue" />
+                  {example}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-text-tertiary">
+              Write-back remediation is configured per tenant and rolls out where enabled — not
+              every finding triggers an automatic fix, and it isn't switched on by default for
+              every customer today.
+            </p>
+          </GlassPanel>
+        </div>
+      </section>
+
+      {/* ENGINE GRID */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              Six <GradientText>Monitoring Engines.</GradientText>
+            </h2>
+            <p className="text-text-secondary">
+              Six purpose-built signal engines, each scanning a different layer of your tenant
+              via Microsoft Graph and feeding a unified priority queue — so critical findings
+              surface automatically.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {ENGINES.map((engine) => {
+              const Icon = engine.icon;
+              const c = colorMap[engine.color];
+              return (
+                <div key={engine.id} className="flex flex-col p-6 rounded-2xl bg-charcoal-1 border border-white/[0.06] hover:border-white/[0.12] transition-all duration-200 group">
+                  <div className={`w-11 h-11 rounded-xl bg-white/[0.06] border ${c.border} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
+                    <Icon className={`w-5 h-5 ${c.icon}`} />
+                  </div>
+                  <span className={`text-[10px] uppercase font-bold tracking-wider mb-2 px-2 py-0.5 rounded-full border self-start ${c.badge}`}>{engine.badge}</span>
+                  <h3 className="font-display text-lg font-bold text-text-primary mb-2">{engine.name}</h3>
+                  <p className="text-sm font-medium text-text-primary leading-relaxed mb-2">{engine.benefit}</p>
+                  <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{engine.description}</p>
+                  <ul className="space-y-1.5 border-t border-white/[0.06] pt-4 mt-auto">
+                    {engine.signals.map((s) => (
+                      <li key={s} className="flex items-center gap-2 text-xs text-text-secondary">
+                        <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${c.check}`} />
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* MONITORING PACKAGES — real per-seat pricing: pricePerUserMonth × max(seats, seatCountFloor)
           + flatMonthlySurcharge, read from typeAttributes (website-rebuild-reference-v2.md §2) */}
       <section id="packages" className="py-20 px-4 sm:px-6 lg:px-8 scroll-mt-24">
@@ -445,7 +487,7 @@ export default function Monitoring() {
             <h2 className="font-display text-3xl font-bold text-text-primary mb-4">Monitoring Packages</h2>
             <p className="text-text-secondary">
               Tiered packages loaded live from the platform catalog, priced per seat. All packages
-              include full engine coverage and the real-time priority dashboard.
+              include full engine coverage and access to your tenant health dashboard.
             </p>
           </div>
 
@@ -586,7 +628,9 @@ export default function Monitoring() {
       <section className="py-16 px-4 sm:px-6 lg:px-8 text-center">
         <div className="max-w-3xl mx-auto">
           <GlassPanel className="p-8 sm:p-12">
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">Not Sure Where to Start?</h2>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              Begin <GradientText>Mission Readiness</GradientText>
+            </h2>
             <p className="text-text-secondary max-w-xl mx-auto mb-8">
               Run a free tenant diagnostic first. Our signal engines will score your current
               governance posture and recommend the right monitoring tier.
