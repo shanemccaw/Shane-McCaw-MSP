@@ -637,7 +637,7 @@ export default function Checkout() {
                 the link may be incorrect.
               </p>
               <Link
-                href="/products"
+                href="/platform/quick-start"
                 className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
               >
                 View all services

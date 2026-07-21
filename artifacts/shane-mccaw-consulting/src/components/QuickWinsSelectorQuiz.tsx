@@ -32,37 +32,37 @@ const PACKAGES: Record<Slug, { name: string; tagline: string; href: string }> = 
     name: "M365 Tenant Health Audit",
     tagline:
       "A deep-dive audit of your entire tenant — security posture, licensing efficiency, governance gaps, and a prioritised remediation roadmap.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
   "power-platform-quick-start": {
     name: "Power Platform Quick-Start",
     tagline:
       "Get your first Power Automate flow or Power App live in days — automating a real business process with a proven delivery framework.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
   "governance-foundations": {
     name: "Governance Foundations Package",
     tagline:
       "Establish policies, naming conventions, lifecycle rules, and a DLP framework that keeps your tenant compliant and manageable long-term.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
   "migration-readiness-assessment": {
     name: "Migration Readiness Assessment",
     tagline:
       "A structured pre-migration review covering your source environment, data risks, cutover plan, and the blockers most teams miss.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
   "copilot-readiness-assessment": {
     name: "Copilot for M365 Readiness Assessment",
     tagline:
       "Evaluate whether your tenant's data governance, identity, and adoption practices are ready for Copilot AI deployment.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
   "m365-training-enablement": {
     name: "Microsoft 365 Training & Enablement",
     tagline:
       "Targeted end-user and admin training that closes the adoption gap and unlocks the ROI already sitting inside your M365 licences.",
-    href: "/products",
+    href: "/platform/quick-start",
   },
 };
 
@@ -490,7 +490,7 @@ export function QuickWinsSelectorQuiz() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-          <CTAButton href="/products" className="px-7 py-3 text-sm">
+          <CTAButton href="/platform/quick-start" className="px-7 py-3 text-sm">
             View All Quick Wins
           </CTAButton>
           <a

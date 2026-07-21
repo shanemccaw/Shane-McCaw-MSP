@@ -24,7 +24,7 @@ const ACTION_CARDS = [
     icon: <Layers className="w-6 h-6 text-accent-blue" />,
     title: "Explore Quick-Start Packs",
     desc: "Microsoft 365, Copilot AI, SharePoint, Power Platform, Governance, Cloud Migration — all fixed-scope, no surprises.",
-    href: "/products",
+    href: "/platform/quick-start",
     label: "See all Quick-Start Packs →",
   },
   {

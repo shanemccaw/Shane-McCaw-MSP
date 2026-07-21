@@ -52,7 +52,7 @@ export function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Platform</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/products" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Quick-Start Packs</Link></li>
+              <li><Link href="/platform/quick-start" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Quick-Start Packs</Link></li>
               <li><Link href="/platform/retainer" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Fractional Consulting</Link></li>
               <li><Link href="/msp" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">MSP / Partners</Link></li>
               <li><Link href="/trust-security" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Trust & Security</Link></li>

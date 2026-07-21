@@ -21,7 +21,7 @@ const SOLUTIONS = [
 ];
 
 const PLATFORM_LINKS = [
-  { href: "/products", label: "Quick-Start Packs", desc: "Fixed-price tenant configuration packs.", icon: Package },
+  { href: "/platform/quick-start", label: "Quick-Start Packs", desc: "Fixed-price tenant configuration packs.", icon: Package },
   { href: "/platform/retainer", label: "Fractional Consulting", desc: "Ongoing architect-level retainer support.", icon: Compass },
   { href: "/msp", label: "MSP / Partners", desc: "Partner onboarding, white-glove or self-serve.", icon: Users },
   { href: "/trust-security", label: "Trust & Security", desc: "Tenant isolation, audit trail, exception tracking.", icon: ShieldCheck },

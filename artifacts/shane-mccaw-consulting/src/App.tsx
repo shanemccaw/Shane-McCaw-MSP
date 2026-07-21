@@ -127,7 +127,7 @@ export default function App() {
       {/* Stage 2 sitemap pages — real content, replacing Stage 1's StubPage skeleton (website-rebuild-reference-v2.md §5/§7) */}
       <Route path="/solutions/:slug" component={SolutionTopicPage} />
       <Route path="/solutions" component={Solutions} />
-      <Route path="/products" component={Products} />
+      <Route path="/platform/quick-start" component={Products} />
       <Route path="/platform/retainer" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
