@@ -196,11 +196,11 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     shortLabel: "Governance",
     icon: Shield,
     pillar: "Governance",
-    gradientPhrase: "intention, not accumulation",
-    headlinePrefix: "Your tenant should evolve with ",
-    headlineSuffix: "intention, not accumulation.",
+    gradientPhrase: "Accountable to a Baseline",
+    headlinePrefix: "Every Team, Group, and Admin Role — ",
+    headlineSuffix: "Accountable to a Baseline.",
     subhead:
-      "Teams sprawl, ungoverned Microsoft 365 Groups, and lifecycle policies that exist on paper but not in the tenant — governance debt compounds quietly until an audit or a departing employee forces the question.",
+      "Lifecycle policy, naming discipline, and admin role assignments enforced against a real approved baseline — checked on a real schedule, not assumed compliant because nobody complained.",
     quizHref: "/governance-quiz",
     stats: [
       { label: "Governance pillar", value: "Scored" },
@@ -220,9 +220,47 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     relatedEngine: {
       name: "Drift Engine",
       description:
-        "Fingerprints every admin change against your approved baseline the moment it happens.",
+        "Fingerprints every admin change against your approved baseline on your next scheduled evaluation.",
     },
     healthPillarKeys: ["governance"],
+    productOverview:
+      "Governance runs a live, read-only Microsoft Graph API scan against your tenant's actual Teams and Microsoft 365 Group lifecycle state — every naming convention exception, every group without a current accountable owner, every admin role assignment, and your live configuration compared against your approved governance baseline. Baseline drift isn't watched in real time and it doesn't guarantee an alert the instant something changes — deviations are flagged on your next scheduled evaluation, a real cadence you can see, not an assumed constant watch.",
+    credibilityBody:
+      "I'm the Microsoft 365 Architect at NASA, where I wrote the agency's M365 Copilot governance framework. The same lifecycle, naming, and admin-role discipline this page scans for is one I enforce inside NASA's own tenant every day — not a case study I read about. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same governance discipline that keeps a tenant defensible at NASA's scale is what's engineered into this scan.",
+    whyItMattersIntro:
+      "Governance debt doesn't fail all at once — it fails the day someone asks who owns a Team, why a Global Admin role was granted three reorgs ago, or why a configuration change nobody approved has been sitting in production since last quarter, and the honest answer is nobody's actually sure.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only Graph API connection. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine reads your real Teams and Group lifecycle state, naming convention compliance, admin role assignments, and current tenant configuration against your approved baseline.",
+      },
+      {
+        title: "Findings",
+        description: "Every lifecycle policy exception, naming violation, ownerless Group, and baseline deviation is logged as a real, inspectable finding on your next scheduled evaluation — not guaranteed the instant a change happens.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll up into your real Governance pillar score inside the Architecture Health Engine.",
+      },
+      {
+        title: "Remediate",
+        description: "You get the specific fixes, ranked by which one closes the biggest exposure first — and the Drift Engine checks the same baseline again on your next scheduled evaluation.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Governance pillar score, not a self-reported estimate",
+      "A full lifecycle and naming compliance report — every Team and Group checked against your real policy, not a spreadsheet",
+      "A current admin role roster — who actually holds Global Admin and every other privileged role, and why",
+      "Baseline drift findings from your real scheduled evaluations, not a one-time audit",
+      "Zero questionnaires. Every finding comes from a live Graph API scan of your actual tenant.",
+    ],
+    modulesIntro: "Governance checks four real surfaces before sprawl and ad hoc admin changes become the norm:",
+    finalCtaBody:
+      "Start a free Assessment and get your real Governance pillar score — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
   },
   {
     slug: "sharepoint",
@@ -518,14 +556,14 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     shortLabel: "M365 Health",
     icon: Activity,
     pillar: "Overall tenant health",
-    gradientPhrase: "one composite number",
-    headlinePrefix: "Every pillar, rolled into ",
-    headlineSuffix: "one composite number.",
+    gradientPhrase: "into one number you can trust",
+    headlinePrefix: "Seven pillars of tenant health, rolled ",
+    headlineSuffix: "into one number you can trust.",
     subhead:
-      "Governance, compliance, adoption, Copilot readiness, architecture, licensing, and security — each matters on its own, but the real signal is how they move together. That's the number this page is built to show a recognized visitor.",
+      "Governance, compliance, adoption, Copilot readiness, architecture, licensing, and security don't fail one at a time — they drift together, and the only way to see it is a single composite score built from real Graph API scans, not a checklist.",
     quizHref: "/m365-health-quiz",
     stats: [
-      { label: "Composite health", value: "Live" },
+      { label: "Composite health", value: "Scored" },
       { label: "Pillars tracked", value: "7" },
       { label: "Check cadence", value: "Configurable" },
     ],
@@ -542,9 +580,49 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     relatedEngine: {
       name: "Health Engine",
       description:
-        "Calculates a composite real-time tenant health score and fires automated remediation runbooks when it degrades below threshold.",
+        "Calculates your composite tenant health score across all seven Architecture Health Engine pillars on your configured check cadence, and can trigger automated remediation runbooks against qualifying findings where write-back is configured and enabled for your tenant — not switched on by default for every customer today.",
     },
     healthPillarKeys: ["governance", "compliance", "adoption", "copilot", "architecture", "licensing", "security"],
+    productOverview:
+      "M365 Health is the composite version of every other Solutions page here — the same read-only Microsoft Graph API scan, but rolled across all seven Architecture Health Engine pillars (governance, compliance, adoption, Copilot readiness, architecture, licensing, security) into one score instead of a single-domain read. It correlates service health anomalies across pillars rather than surfacing them as isolated alerts, tracks license utilization and waste separately from the health score so waste doesn't hide inside a good number, and can trigger automated remediation runbooks against qualifying findings where write-back is configured and enabled for your tenant.",
+    credibilityBody:
+      "I'm the current Microsoft 365 Architect at NASA, where the same seven pillars — governance, compliance, adoption, Copilot readiness, architecture, licensing, security — are what I'm personally accountable for keeping healthy across a tenant that size, every day. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same discipline that keeps those seven pillars moving together at NASA's scale is what's engineered into this composite score.",
+    whyItMattersIntro:
+      "A tenant doesn't degrade in one place — it degrades in whichever pillar nobody's watching that week, and the first sign is usually a user complaint, not a dashboard. M365 Health exists so regressions, licensing waste, service anomalies, and drift across governance, security, and every other pillar surface as a real number before they turn into a support ticket or a budget conversation.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only Graph API connection. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine runs each pillar's real scan — governance, compliance, adoption, Copilot readiness, architecture, licensing, and security — against your tenant's actual current state.",
+      },
+      {
+        title: "Correlate",
+        description: "Findings are checked against each other across pillars, so a licensing anomaly and a service health flag that share the same root cause don't show up as two unrelated alerts.",
+      },
+      {
+        title: "Score",
+        description: "Every pillar rolls up into your real composite Architecture Health Engine score, refreshed on your configured check cadence — not a continuous real-time feed.",
+      },
+      {
+        title: "Remediate",
+        description: "Where write-back remediation is configured and enabled for your tenant, qualifying findings can be corrected automatically; everything else comes back as a ranked, specific fix.",
+      },
+    ],
+    whatYouGet: [
+      "Your real composite tenant health score across all seven Architecture Health Engine pillars, not a self-reported estimate",
+      "Service health anomalies correlated across pillars instead of surfaced as isolated alerts",
+      "License utilization and waste tracked separately from the health score, so it can't hide inside a good number",
+      "Automated remediation runbooks against qualifying findings where write-back is configured and enabled for your tenant — not a guarantee for every finding or every customer today",
+      "Findings refreshed on your configured check cadence, not a fixed annual audit",
+      "Zero questionnaires. Every finding comes from a live Graph API scan of your actual tenant.",
+    ],
+    modulesIntro:
+      "M365 Health rolls up four real signals into your composite score before a regression in any one pillar becomes the thing a user notices first:",
+    finalCtaBody:
+      "Start a free Assessment and get your real composite health score — scanned across all seven pillars, not guessed — or take the quiz for a faster, self-reported read first.",
   },
 ];
 
