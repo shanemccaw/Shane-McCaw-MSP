@@ -188,8 +188,8 @@ router.post("/admin/baseline-templates", requireAdmin, async (req: Request, res:
     if (!body.templateId || !body.label || !body.category || !body.endpoint || !body.method) {
       return void res.status(400).json({ error: "templateId, label, category, endpoint, and method are required" });
     }
-    if (!["POST", "PATCH", "PUT"].includes(String(body.method))) {
-      return void res.status(400).json({ error: "method must be POST, PATCH, or PUT" });
+    if (!["POST", "PATCH", "PUT", "DELETE"].includes(String(body.method))) {
+      return void res.status(400).json({ error: "method must be POST, PATCH, PUT, or DELETE" });
     }
 
     const [template] = await db
@@ -200,7 +200,7 @@ router.post("/admin/baseline-templates", requireAdmin, async (req: Request, res:
         description: body.description ? String(body.description) : null,
         category: String(body.category),
         endpoint: String(body.endpoint),
-        method: body.method as "POST" | "PATCH" | "PUT",
+        method: body.method as "POST" | "PATCH" | "PUT" | "DELETE",
         bodyTemplate: (body.bodyTemplate as Record<string, unknown>) ?? {},
         requiredVariables: (body.requiredVariables as string[]) ?? [],
         successCriteria: (body.successCriteria as Record<string, unknown>) ?? {},
@@ -235,8 +235,8 @@ router.patch("/admin/baseline-templates/:templateId", requireAdmin, async (req: 
       .limit(1);
     if (!existing) return void res.status(404).json({ error: "Baseline template not found" });
 
-    if (body.method != null && !["POST", "PATCH", "PUT"].includes(String(body.method))) {
-      return void res.status(400).json({ error: "method must be POST, PATCH, or PUT" });
+    if (body.method != null && !["POST", "PATCH", "PUT", "DELETE"].includes(String(body.method))) {
+      return void res.status(400).json({ error: "method must be POST, PATCH, PUT, or DELETE" });
     }
 
     // Increment schema version when endpoint or bodyTemplate changes (mirrors Monitor Check's

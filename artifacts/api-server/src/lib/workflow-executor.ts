@@ -455,7 +455,7 @@ export async function runBaselineTemplateAgainstTenant(
 
   // Resolve the endpoint (may also contain {{variable}} placeholders)
   const endpoint = interp(template.endpoint, payload) ?? template.endpoint;
-  const method = template.method as "POST" | "PATCH" | "PUT";
+  const method = template.method as "POST" | "PATCH" | "PUT" | "DELETE";
 
   const { graphWriteForTenant } = await import("./graph");
   const result = await graphWriteForTenant(tenantId, endpoint, method, body, [200, 201, 204]);

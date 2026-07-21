@@ -406,7 +406,7 @@ export async function graphFetchForTenant(
   return res;
 }
 
-export type GraphWriteMethod = "POST" | "PATCH" | "PUT";
+export type GraphWriteMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
 export interface GraphWriteResult {
   success: boolean;

@@ -37,7 +37,7 @@ interface BaselineTemplate {
   description: string | null;
   category: string;
   endpoint: string;
-  method: "POST" | "PATCH" | "PUT";
+  method: "POST" | "PATCH" | "PUT" | "DELETE";
   bodyTemplate: Record<string, unknown>;
   requiredVariables: string[];
   successCriteria: Record<string, unknown>;
@@ -385,6 +385,7 @@ function TemplatesSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
                           <SelectItem value="POST">POST</SelectItem>
                           <SelectItem value="PATCH">PATCH</SelectItem>
                           <SelectItem value="PUT">PUT</SelectItem>
+                          <SelectItem value="DELETE">DELETE</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
