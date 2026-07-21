@@ -59,6 +59,26 @@ function RedirectToAssessments() {
   return null;
 }
 
+// wouter's client-side navigation doesn't reset scroll position — without this, navigating
+// away from a page scrolled halfway down (e.g. an assessment CTA mid-article) lands the next
+// page at that same scroll offset instead of the top. Takes over from the browser's native
+// scroll restoration so a client-side route change and a real page reload don't fight over it.
+function ScrollRestoration() {
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+
+  return null;
+}
+
 // Fires once on mount (durable cookie session + global capture listeners) and on every
 // route change (pageview + dwell/scroll flush of the previous page) — shared layout
 // instrumentation per website-rebuild-reference-v2.md §4.
@@ -79,6 +99,7 @@ function AnalyticsBoundary() {
 export default function App() {
   return (
     <PersonalizationProvider>
+      <ScrollRestoration />
       <AnalyticsBoundary />
       <Switch>
       {/* Primary Routes */}

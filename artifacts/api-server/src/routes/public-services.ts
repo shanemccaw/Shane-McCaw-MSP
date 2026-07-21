@@ -21,8 +21,50 @@ router.get("/services", async (req: Request, res: Response) => {
     if (category) {
       conditions.push(eq(servicesTable.category, category));
     }
+    // Explicit column list (mirrors /catalog/assessments below) rather than a
+    // bare .select() — a bare select pulls every column declared on
+    // servicesTable, including admin-only columns added via a manual/ SQL
+    // migration that may not have been run against this DB yet (e.g.
+    // associatedDocuments). This public storefront route has no business
+    // reading those fields anyway, and shouldn't 500 the entire catalogue
+    // when one of them is pending a manual migration.
     const services = await db
-      .select()
+      .select({
+        id: servicesTable.id,
+        slug: servicesTable.slug,
+        name: servicesTable.name,
+        description: servicesTable.description,
+        category: servicesTable.category,
+        deliverables: servicesTable.deliverables,
+        price: servicesTable.price,
+        basePrice: servicesTable.basePrice,
+        maxPrice: servicesTable.maxPrice,
+        priceCents: servicesTable.priceCents,
+        internalCostCents: servicesTable.internalCostCents,
+        turnaround: servicesTable.turnaround,
+        durationDays: servicesTable.durationDays,
+        billingType: servicesTable.billingType,
+        serviceType: servicesTable.serviceType,
+        tagline: servicesTable.tagline,
+        targetAudience: servicesTable.targetAudience,
+        inclusions: servicesTable.inclusions,
+        features: servicesTable.features,
+        badge: servicesTable.badge,
+        highlighted: servicesTable.highlighted,
+        hoursPerMonth: servicesTable.hoursPerMonth,
+        iconName: servicesTable.iconName,
+        pageHref: servicesTable.pageHref,
+        pageSlug: servicesTable.pageSlug,
+        sortOrder: servicesTable.sortOrder,
+        tier: servicesTable.tier,
+        workflowTemplateId: servicesTable.workflowTemplateId,
+        overviewPdfKey: servicesTable.overviewPdfKey,
+        bestFor: servicesTable.bestFor,
+        triggers: servicesTable.triggers,
+        fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
+        isFreeOffering: servicesTable.isFreeOffering,
+        typeAttributes: servicesTable.typeAttributes,
+      })
       .from(servicesTable)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.createdAt));

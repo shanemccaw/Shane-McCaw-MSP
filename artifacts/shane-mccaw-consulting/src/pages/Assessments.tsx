@@ -49,11 +49,7 @@ export default function Assessments() {
         : services;
 
   const handleCheckout = (service: PublicService) => {
-    if (service.isFreeOffering) {
-      setLocation(`/contact?service=${encodeURIComponent(service.slug ?? "")}`);
-    } else {
-      setLocation(`/checkout?product=${encodeURIComponent(service.slug ?? "")}`);
-    }
+    setLocation(`/checkout?product=${encodeURIComponent(service.slug ?? "")}`);
   };
 
   return (
