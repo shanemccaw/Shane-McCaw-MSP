@@ -56,6 +56,7 @@ export function Footer() {
               <li><Link href="/retainer" className="hover:text-text-primary transition-colors">Fractional Consulting</Link></li>
               <li><Link href="/msp" className="hover:text-text-primary transition-colors">MSP / Partners</Link></li>
               <li><Link href="/trust-security" className="hover:text-text-primary transition-colors">Trust & Security</Link></li>
+              <li><Link href="/status" className="hover:text-text-primary transition-colors">System Status</Link></li>
               <li><Link href="/resources" className="hover:text-text-primary transition-colors">Resources</Link></li>
             </ul>
 
