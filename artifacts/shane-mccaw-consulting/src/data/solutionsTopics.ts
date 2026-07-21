@@ -415,12 +415,19 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       dashboard: {
         panelLabel: "Portal preview — Compliance & Governance",
         ringLabel: "Governance pillar",
-        ringValue: 74,
+        // 61 = a compelling "before" state (amber tier per PillarScoreRing's
+        // scoreTone: 60-84 amber, <60 red) — deliberately near the bottom of
+        // amber rather than the middle, so the ring plus the How It Works
+        // Remediate stage's before/after read as a real starting point worth
+        // improving from, not an already-healthy score. Shared with the main
+        // "What You Get" score ring elsewhere on this page (one coherent
+        // illustrative scenario).
+        ringValue: 61,
         // How It Works Remediate stage's after-remediation value: 85 = the
         // healthy-tier floor (scoreTone ≥85 green), so the before/after reads
-        // amber 74 → green 85 while staying inside the page's one coherent
-        // illustrative scenario (74 everywhere else). Conceptual mechanism
-        // demo under the same badge — not any real customer's improvement.
+        // amber 61 → green 85 while staying inside the page's one coherent
+        // illustrative scenario. Conceptual mechanism demo under the same
+        // badge — not any real customer's improvement.
         remediatedRingValue: 85,
         metrics: [
           { label: "Orphaned Teams", count: 14 },
@@ -434,9 +441,9 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         // HEALTH_PILLARS + the Security Engine's security pillar; labels match
         // HEALTH_PILLAR_LABELS / MissionControl.tsx PILLAR_LABELS). Values are
         // illustrative, inside the panel's badge; governance deliberately equals
-        // the primary ring's 74 so the breakdown reads as one coherent scenario.
+        // the primary ring's value so the breakdown reads as one coherent scenario.
         pillarBreakdown: [
-          { label: "Governance", value: 74 },
+          { label: "Governance", value: 61 },
           { label: "Compliance", value: 81 },
           { label: "Adoption", value: 88 },
           { label: "Copilot Readiness", value: 66 },
@@ -497,13 +504,15 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       ],
       // The four coverage surfaces on one web — sub-scores are illustrative (no
       // per-surface scoring exists in code; the caption + badge say so) and
-      // average to ~74, consistent with the dashboard's Governance pillar ring.
+      // average to 61, consistent with the dashboard's Governance pillar ring
+      // (same relative spread as before the ring was lowered from 74: baseline
+      // integrity weakest, admin role hygiene strongest).
       surfaceRadar: {
         axes: [
-          { label: "Lifecycle policy", value: 68 },
-          { label: "Naming compliance", value: 76 },
-          { label: "Baseline integrity", value: 62 },
-          { label: "Admin role hygiene", value: 88 },
+          { label: "Lifecycle policy", value: 55 },
+          { label: "Naming compliance", value: 63 },
+          { label: "Baseline integrity", value: 49 },
+          { label: "Admin role hygiene", value: 77 },
         ],
         caption: "The four surfaces, scored in relation to each other — example data, not your tenant",
       },

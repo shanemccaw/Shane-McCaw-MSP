@@ -8,11 +8,13 @@ interface WorkflowStepsProps {
   /**
    * Optional showcase sync (flagship How It Works, HowItWorksShowcase.tsx):
    * highlights the active step's number circle and reports hover/click
-   * selection. When absent, renders exactly as before — every other caller is
-   * a plain static list.
+   * selection — `deliberate` is true for a click/tap (a committed choice the
+   * showcase uses to stop its auto-advance) and false for a passing hover.
+   * When absent, renders exactly as before — every other caller is a plain
+   * static list.
    */
   activeIndex?: number;
-  onStepSelect?: (index: number) => void;
+  onStepSelect?: (index: number, deliberate?: boolean) => void;
 }
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -35,7 +37,7 @@ export function WorkflowSteps({ steps, activeIndex, onStepSelect }: WorkflowStep
           key={step.title}
           className={`relative flex gap-4 pb-8 last:pb-0 ${interactive ? "cursor-pointer" : ""}`}
           onMouseEnter={interactive ? () => onStepSelect(i) : undefined}
-          onClick={interactive ? () => onStepSelect(i) : undefined}
+          onClick={interactive ? () => onStepSelect(i, true) : undefined}
         >
           {i < steps.length - 1 && (
             <span

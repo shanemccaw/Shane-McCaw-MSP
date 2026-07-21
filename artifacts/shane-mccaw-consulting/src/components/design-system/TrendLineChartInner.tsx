@@ -7,7 +7,8 @@ import type { TrendPoint } from "./TrendLineChart";
  * of the main bundle via the React.lazy boundary in TrendLineChart.tsx.
  *
  * Styling: single 2px line in flat amber (#f59e0b, the site's established
- * attention color — same hex as FlagshipFindingsPanel's metric bars), no grid
+ * attention color — same hex as the Findings-stage metric bars, formerly
+ * FlagshipFindingsPanel, now HowItWorksShowcase.tsx), no grid
  * chrome (sparkline treatment inside an already-labeled panel), endpoint dot
  * with a charcoal surface ring plus a direct mono end-label so the latest value
  * reads without hovering, first/last x labels only in text-tertiary.

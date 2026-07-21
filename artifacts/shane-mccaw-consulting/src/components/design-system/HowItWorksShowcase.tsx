@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, CheckCircle2, Building2, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, Building2, Pause, Play, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { WorkflowSteps } from "./WorkflowSteps";
 import { IllustrativeBadge } from "./IllustrativeBadge";
@@ -18,11 +18,14 @@ import { PillarScoreRing } from "./PillarScoreRing";
  * (the site's IntersectionObserver reveal convention), pauses while the visitor
  * hovers the panel or focuses its stage rail, and is directly driven by
  * hovering/clicking a step in the left column (the Assessments wizard's
- * respond-immediately-to-input convention). Under prefers-reduced-motion there
- * is no auto-advance and no animation — stages render complete and are switched
- * manually via the rail.
+ * respond-immediately-to-input convention). Any DELIBERATE choice — clicking a
+ * rail dot or a left-column step — stops the auto-advance for good, and the
+ * rail carries an explicit pause/play toggle (WCAG 2.2.2's persistent pause
+ * mechanism). Under prefers-reduced-motion there is no auto-advance and no
+ * animation — stages render complete and are switched manually via the rail.
  *
- * DATA HONESTY: every number shown (metric counts, 74, the remediated 85) is
+ * DATA HONESTY: every number shown (metric counts, the pre-remediation ring
+ * value, the remediated 85) is
  * illustrative under the panel's "Illustrative Example" badge + the established
  * "Example data" caption; scan status rows are the four REAL scan surfaces
  * passed in from the topic's scanSurfaces data, never invented coverage. The
@@ -32,6 +35,8 @@ import { PillarScoreRing } from "./PillarScoreRing";
 
 const STAGE_MS = 4200;
 const SCAN_MS = 3400;
+/** Crossfade duration between stages — must match the duration-500 on StageCell. */
+const STAGE_FADE_MS = 500;
 
 /** WorkflowSteps' number-circle gradient — the rail echoes the left column. */
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
@@ -70,6 +75,47 @@ function usePrefersReducedMotion() {
     () => typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   return reduced;
+}
+
+/**
+ * True while a stage should DISPLAY as revealed: flips true immediately on
+ * activation, but only flips false after the crossfade has fully hidden the
+ * stage — so an outgoing stage never visibly resets or reverse-animates
+ * mid-fade (its sweeps/bars tear down at opacity 0 instead).
+ */
+function useRevealedWhileFading(isActive: boolean) {
+  const [revealed, setRevealed] = useState(isActive);
+  useEffect(() => {
+    if (isActive) {
+      setRevealed(true);
+      return;
+    }
+    const t = setTimeout(() => setRevealed(false), STAGE_FADE_MS + 100);
+    return () => clearTimeout(t);
+  }, [isActive]);
+  return revealed;
+}
+
+/** One stacked crossfading stage cell; hands its delayed reveal flag to the stage. */
+function StageCell({
+  isActive,
+  reduced,
+  children,
+}: {
+  isActive: boolean;
+  reduced: boolean;
+  children: (revealed: boolean) => ReactNode;
+}) {
+  const revealed = useRevealedWhileFading(isActive) || reduced;
+  return (
+    <div
+      className={`col-start-1 row-start-1 flex flex-col justify-center transition-[opacity,transform] duration-500 motion-reduce:transition-none ${
+        isActive ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1.5 pointer-events-none"
+      }`}
+    >
+      {children(revealed)}
+    </div>
+  );
 }
 
 /** Stage 1 — the scoped, read-only Graph API connection being established. */
@@ -134,10 +180,14 @@ function ConnectStage({ animate }: { animate: boolean }) {
  *  sequentially-advancing status rows (queued → scanning → done). */
 function ScanStage({
   active,
+  revealed,
   reduced,
   surfaces,
 }: {
   active: boolean;
+  /** Delayed reveal (useRevealedWhileFading) — stays true through the fade-out
+   *  so the finished scan doesn't visibly snap back to zero mid-crossfade. */
+  revealed: boolean;
   reduced: boolean;
   surfaces: ScanSurface[];
 }) {
@@ -146,19 +196,21 @@ function ScanStage({
   const [done, setDone] = useState(0);
 
   useEffect(() => {
-    if (!active || reduced || total === 0) {
+    if (reduced || total === 0) return;
+    if (active) {
       setDone(0);
-      return;
+      const id = setInterval(() => {
+        setDone((d) => {
+          if (d + 1 >= total) clearInterval(id);
+          return Math.min(d + 1, total);
+        });
+      }, SCAN_MS / total);
+      return () => clearInterval(id);
     }
-    setDone(0);
-    const id = setInterval(() => {
-      setDone((d) => {
-        if (d + 1 >= total) clearInterval(id);
-        return Math.min(d + 1, total);
-      });
-    }, SCAN_MS / total);
-    return () => clearInterval(id);
-  }, [active, reduced, total]);
+    // Tear down only once the crossfade has fully hidden this stage.
+    if (!revealed) setDone(0);
+    return undefined;
+  }, [active, revealed, reduced, total]);
 
   const shownDone = reduced ? total : done;
   const complete = shownDone >= total && total > 0;
@@ -170,7 +222,7 @@ function ScanStage({
           className="h-full rounded-full"
           style={{
             ...GRADIENT_BG,
-            width: active || reduced ? "100%" : "0%",
+            width: active || revealed || reduced ? "100%" : "0%",
             transition: active && !reduced ? `width ${SCAN_MS}ms linear` : "none",
           }}
         />
@@ -323,7 +375,17 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
   const [active, setActive] = useState(0);
   const [pausedByPanel, setPausedByPanel] = useState(false);
   const [pausedByFocus, setPausedByFocus] = useState(false);
+  // Persistent, user-controlled stop (WCAG 2.2.2): set by the rail's pause
+  // toggle and by any DELIBERATE stage choice (click/tap — not hover), so a
+  // chosen stage is never auto-advanced away and the motion can be stopped
+  // for good while reading the parallel step copy.
+  const [stopped, setStopped] = useState(false);
   const [inView, setInView] = useState(false);
+  // Bumped on every manual selection (hover or click) to restart the
+  // auto-advance countdown from a full stage duration. Kept OUT of the
+  // interval effect's active-tracking so a plain auto-advance tick never
+  // tears down and recreates the interval itself (see the effect below).
+  const [restartToken, setRestartToken] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Track visibility continuously (not disconnect-on-first-reveal like
@@ -338,29 +400,49 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
     return () => obs.disconnect();
   }, [reduced]);
 
-  // Auto-advance. `active` in the deps restarts the countdown after any manual
-  // selection, so a hover/click always gets a full stage duration.
+  // Auto-advance. Deliberately does NOT depend on `active` — the interval's
+  // own tick advances `active` via the functional setActive updater below,
+  // so re-running this effect on every tick would tear down and recreate the
+  // interval on every single stage change, racing against pausedByPanel/
+  // pausedByFocus/inView toggling mid-cycle and occasionally landing the
+  // cycle back on the wrong stage instead of a clean 1→2→3→4→5→1 loop.
+  // `restartToken` (bumped only by a manual hover/click selection, never by
+  // the auto-advance tick itself) is what restarts the countdown from a full
+  // stage duration after a manual retarget.
   useEffect(() => {
-    if (reduced || pausedByPanel || pausedByFocus || !inView || stageCount < 2) return;
+    if (reduced || stopped || pausedByPanel || pausedByFocus || !inView || stageCount < 2) return;
     const id = setInterval(() => setActive((a) => (a + 1) % stageCount), STAGE_MS);
     return () => clearInterval(id);
-  }, [reduced, pausedByPanel, pausedByFocus, inView, stageCount, active]);
+  }, [reduced, stopped, pausedByPanel, pausedByFocus, inView, stageCount, restartToken]);
 
   if (stageCount === 0) return null;
   const activeStep = steps[Math.min(active, stageCount - 1)];
+  const anyPause = stopped || pausedByPanel || pausedByFocus;
 
-  const stagePanels: ReactNode[] = [
-    <ConnectStage key="connect" animate={active === 0 && !reduced} />,
-    <ScanStage key="scan" active={active === 1} reduced={reduced} surfaces={scanSurfaces} />,
-    <FindingsStage key="findings" revealed={active === 2 || reduced} dashboard={dashboard} />,
-    <ScoreStage key="score" revealed={active === 3 || reduced} dashboard={dashboard} />,
-    <RemediateStage key="remediate" revealed={active === 4 || reduced} dashboard={dashboard} />,
-  ].slice(0, stageCount);
+  const handleSelect = (index: number, deliberate = false) => {
+    setActive(index);
+    setRestartToken((t) => t + 1);
+    if (deliberate) setStopped(true);
+  };
+
+  // The Connect stage's dash/dot loops are the only INFINITE animations, so
+  // they respect every pause flag, not just reduced motion (WCAG 2.2.2); the
+  // other stages' sweeps are single sub-5s runs.
+  const allStageCells: ((revealed: boolean) => ReactNode)[] = [
+    () => <ConnectStage animate={active === 0 && !reduced && !anyPause} />,
+    (revealed) => (
+      <ScanStage active={active === 1} revealed={revealed} reduced={reduced} surfaces={scanSurfaces} />
+    ),
+    (revealed) => <FindingsStage revealed={revealed} dashboard={dashboard} />,
+    (revealed) => <ScoreStage revealed={revealed} dashboard={dashboard} />,
+    (revealed) => <RemediateStage revealed={revealed} dashboard={dashboard} />,
+  ];
+  const stageCells = allStageCells.slice(0, stageCount);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-stretch">
       <div>
-        <WorkflowSteps steps={steps} activeIndex={active} onStepSelect={setActive} />
+        <WorkflowSteps steps={steps} activeIndex={active} onStepSelect={handleSelect} />
       </div>
 
       <div
@@ -383,15 +465,10 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
             unit — the real 5-step copy is the left column; the badge above and
             the rail below stay in the accessibility tree. */}
         <div aria-hidden="true" className="grid flex-grow">
-          {stagePanels.map((panel, i) => (
-            <div
-              key={i}
-              className={`col-start-1 row-start-1 flex flex-col justify-center transition-[opacity,transform] duration-500 motion-reduce:transition-none ${
-                i === active ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1.5 pointer-events-none"
-              }`}
-            >
-              {panel}
-            </div>
+          {stageCells.map((render, i) => (
+            <StageCell key={i} isActive={i === active} reduced={reduced}>
+              {render}
+            </StageCell>
           ))}
         </div>
 
@@ -402,7 +479,7 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
             <button
               key={step.title}
               type="button"
-              onClick={() => setActive(i)}
+              onClick={() => handleSelect(i, true)}
               onFocus={() => setPausedByFocus(true)}
               onBlur={() => setPausedByFocus(false)}
               aria-pressed={i === active}
@@ -426,6 +503,23 @@ export function HowItWorksShowcase({ steps, dashboard, scanSurfaces }: HowItWork
               </span>
             </button>
           ))}
+          {/* Persistent pause/stop control (WCAG 2.2.2) — hidden under reduced
+              motion, where there is no auto-advance to stop. */}
+          {/* No onFocus pause here (unlike the step buttons): after clicking
+              Resume the toggle keeps focus, and a focus-pause would silently
+              override the user's explicit resume. The toggle's own state IS
+              the pause mechanism. */}
+          {!reduced && (
+            <button
+              type="button"
+              onClick={() => setStopped((s) => !s)}
+              aria-pressed={stopped}
+              aria-label={stopped ? "Resume the step animation" : "Pause the step animation"}
+              className="shrink-0 w-6 h-6 rounded-full bg-white/[0.08] hover:bg-white/[0.16] flex items-center justify-center text-text-secondary transition-colors duration-300"
+            >
+              {stopped ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            </button>
+          )}
         </div>
       </div>
     </div>
