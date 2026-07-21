@@ -2250,7 +2250,10 @@ export const writeActionCatalogTable = pgTable("write_action_catalog", {
   actionName: text("action_name").notNull(),
   surface: text("surface").notNull(),
   requiredPermission: text("required_permission"),
-  safeOrGated: text("safe_or_gated", { enum: ["safe", "gated"] }).notNull(),
+  // Nullable: the 7 `blocked_no_workaround` rows have no safe/gated
+  // classification (confirmed via live data — 5 Teams policy actions,
+  // 1 SharePoint retention label, 1 legacy MFA toggle).
+  safeOrGated: text("safe_or_gated", { enum: ["safe", "gated"] }),
   minBundledTier: text("min_bundled_tier"),
   requiredCapabilityKey: text("required_capability_key"),
   snapshotNotes: text("snapshot_notes"),

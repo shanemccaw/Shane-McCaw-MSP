@@ -46,7 +46,7 @@ interface LaunchControlAction {
   actionName: string;
   surface: string;
   requiredPermission: string | null;
-  safeOrGated: "safe" | "gated";
+  safeOrGated: "safe" | "gated" | null;
   minBundledTier: string | null;
   requiredCapabilityKey: string | null;
   snapshotNotes: string | null;

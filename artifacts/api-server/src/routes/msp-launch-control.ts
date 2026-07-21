@@ -108,6 +108,12 @@ function computeAvailability(
   tier: Awaited<ReturnType<typeof loadTier>>,
   customerTierRank: number | null,
 ): Availability {
+  // safeOrGated is null for the catalog's `blocked_no_workaround` rows (no
+  // safe/gated classification exists for an action with no real write path).
+  // Never fall through to the "safe" capability check for those — require
+  // the stricter gated capability so an unclassified row can't be treated
+  // as more permissive than a real gated action.
+  if (row.safeOrGated === null) return "a_la_carte";
   const capabilityKey = row.safeOrGated === "gated" ? "launch_control_gated_write" : "launch_control_safe_write";
   if (!tierAllowsFeature(tier, capabilityKey)) return "a_la_carte";
 
