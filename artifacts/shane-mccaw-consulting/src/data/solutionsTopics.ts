@@ -415,17 +415,15 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       dashboard: {
         panelLabel: "Portal preview — Compliance & Governance",
         ringLabel: "Governance pillar",
-        // 61 = a compelling "before" state (amber tier per PillarScoreRing's
-        // scoreTone: 60-84 amber, <60 red) — deliberately near the bottom of
-        // amber rather than the middle, so the ring plus the How It Works
-        // Remediate stage's before/after read as a real starting point worth
+        // 49 = a compelling "before" state (red tier per PillarScoreRing's
+        // scoreTone: 60-84 amber, <60 red) — a real starting point worth
         // improving from, not an already-healthy score. Shared with the main
         // "What You Get" score ring elsewhere on this page (one coherent
         // illustrative scenario).
-        ringValue: 61,
+        ringValue: 49,
         // How It Works Remediate stage's after-remediation value: 85 = the
         // healthy-tier floor (scoreTone ≥85 green), so the before/after reads
-        // amber 61 → green 85 while staying inside the page's one coherent
+        // red 49 → green 85 while staying inside the page's one coherent
         // illustrative scenario. Conceptual mechanism demo under the same
         // badge — not any real customer's improvement.
         remediatedRingValue: 85,

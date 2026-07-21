@@ -20,7 +20,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
-import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
+import { HowItWorksShowcase } from "@/components/design-system/HowItWorksShowcase";
 import { useServices, type PublicService } from "@/hooks/useServices";
 import { useTypewriterHeadline } from "@/hooks/useHeroHeadlines";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
@@ -199,6 +199,14 @@ const TELEMETRY_COMPARISON = {
   ],
 };
 
+// Index-aligned with HowItWorksShowcase's five fixed stage visuals (Connect, Scan, Findings,
+// Score, Remediate — HowItWorksShowcase.tsx) so each step's left-column copy pairs with the
+// right-column animation that actually illustrates it. Steps 1/2/4 keep this page's existing
+// Establish-the-link / Full-spectrum-scan / composite-score copy verbatim; steps 3 and 5 are
+// reworded (not reused from Governance) around Home's own real Findings and remediation
+// claims — step 5 paraphrases the Health Engine's real remediation behavior from the ENGINES
+// list below ("Where write-back remediation is configured for your tenant, common issues get
+// resolved automatically. Otherwise, they're flagged for you to act on.").
 const HOW_IT_WORKS_STEPS = [
   {
     step: 1,
@@ -214,39 +222,53 @@ const HOW_IT_WORKS_STEPS = [
   },
   {
     step: 3,
+    title: "Every gap, logged",
+    description:
+      "Configuration drift, security gaps, licensing waste, and compliance exceptions are logged as real, inspectable findings — not a generic score with no explanation.",
+  },
+  {
+    step: 4,
     title: "A real number, not a guess",
     description:
       "A composite health score plus a pillar-by-pillar breakdown — not a generic questionnaire estimate.",
   },
   {
-    step: 4,
-    title: "Scheduled drift enforcement",
-    description:
-      "Monitoring re-checks your tenant on a real cadence — hourly to daily, with critical events flagged within minutes on Enhanced and Premium — catching drift long before an annual audit would.",
-  },
-  {
     step: 5,
-    title: "Full visibility, on demand",
+    title: "Fixed automatically, or flagged for you",
     description:
-      "Every score, every finding, every change — visible whenever you check, not buried in an annual audit.",
+      "Where write-back remediation is configured for your tenant, common issues resolve automatically. Everything else is ranked and re-checked on your next scheduled evaluation.",
   },
 ];
 
-// Illustrative-only mockup data for the cold-visitor "Mission Control preview" panel — not a
-// live/real customer score. Reuses the same pillar taxonomy as the real Architecture Health
-// Engine (HEALTH_PILLAR_LABELS below) and the same gradient-means-healthy/flat-amber-means-
-// needs-attention color convention confirmed against the real thing in
-// msp-portal/src/components/mission-control/MissionControl.tsx (healthRingColor: goodness >=
-// 85 is the "healthy" tier there) — collapsed to two states here since this preview is a
-// simplified illustration, not a pixel-identical clone of the real 3-tier ring.
-const PREVIEW_PILLARS: { pillar: string; goodness: number }[] = [
-  { pillar: "governance", goodness: 92 },
-  { pillar: "security", goodness: 58 },
-  { pillar: "compliance", goodness: 88 },
-  { pillar: "adoption", goodness: 71 },
-  { pillar: "copilot", goodness: 95 },
+// Scan-surface rows for the How It Works showcase's Scan stage — condensed from WHAT_WE_DO
+// above (same four real categories, same claims, shortened to fit the animated panel's
+// compact status-row layout) rather than inventing separate coverage language.
+const HOME_SCAN_SURFACES = [
+  { icon: Layers, label: "Configuration & Drift", sublabel: "Every admin change checked against your baseline" },
+  { icon: Lock, label: "Security & Access Posture", sublabel: "Anonymous links, guest access, OAuth risk, MFA gaps" },
+  { icon: Users, label: "License, Cost & Adoption", sublabel: "Seat utilization, Copilot adoption, licensing waste" },
+  { icon: ShieldCheck, label: "Compliance & Governance", sublabel: "Governance posture against your real configuration" },
 ];
-const PREVIEW_OVERALL_GOODNESS = 81;
+
+// Illustrative-only mockup data for the How It Works showcase's Findings/Score/Remediate
+// stages — not a live/real customer score, same convention as the (now-replaced) static
+// Mission Control preview panel this section used to show. ringValue 74 (amber tier per
+// PillarScoreRing's scoreTone) is a believable "current" reading; remediatedRingValue 92
+// (green tier) is the Remediate stage's illustrative after-state — both values distinct from
+// the Governance topic page's own illustrative 49/85 pair, not copied from it.
+const HOME_HOW_IT_WORKS_DASHBOARD = {
+  panelLabel: "Mission Control preview",
+  ringLabel: "Composite tenant health",
+  ringValue: 74,
+  remediatedRingValue: 92,
+  metrics: [
+    { label: "Configuration drift flags", count: 9 },
+    { label: "Security & access gaps", count: 14 },
+    { label: "Licensing & adoption gaps", count: 5 },
+    { label: "Compliance exceptions", count: 3 },
+  ],
+  caption: "Example data — not your real score",
+};
 
 /**
  * Assessment-tier real pillar overview (website-rebuild-reference-v2.md §3): a logged-in,
@@ -994,74 +1016,30 @@ export default function Home() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
+      {/* HOW IT WORKS — same text-left/visual-right flagship pairing established on the
+          Governance topic page (SolutionTopicPage.tsx): one header block above a single
+          max-w-5xl wrapper, then HowItWorksShowcase's own paired grid (real steps on the
+          left, one animated visual per step on the right, both columns matched height via
+          the showcase's own items-stretch/h-full layout) — replacing the old mismatched
+          max-w-6xl grid + max-w-3xl centered header + static Mission Control panel, which
+          left a visible height gap next to the short step list. */}
       <section className="py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
-              Continuous Monitoring
-            </p>
-            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
-              How <GradientText>Continuous Monitoring</GradientText> Actually Works
-            </h2>
-            <p className="text-text-secondary">Five real steps, on a real schedule. No black box.</p>
-          </div>
+        <div className="max-w-5xl mx-auto">
+          <p className="text-xs uppercase tracking-widest text-text-secondary mb-3">
+            Continuous Monitoring
+          </p>
+          <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-3">
+            How <GradientText>Continuous Monitoring</GradientText> Actually Works
+          </h2>
+          <p className="text-text-secondary mb-10 max-w-2xl">
+            Five real steps, on a real schedule. No black box.
+          </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-            <WorkflowSteps steps={HOW_IT_WORKS_STEPS} />
-
-            <GlassPanel className="p-6 sm:p-8 relative">
-              <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.08] text-text-secondary border border-white/[0.12]">
-                Illustrative Example
-              </span>
-              <h3 className="text-xs uppercase tracking-widest text-text-secondary mb-6">
-                Mission Control preview
-              </h3>
-
-              <div className="flex items-center gap-6 mb-7">
-                <div
-                  className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-full"
-                  style={{
-                    background: `conic-gradient(var(--accent-blue) 0deg, var(--accent-violet) ${PREVIEW_OVERALL_GOODNESS * 3.6}deg, rgba(255,255,255,0.08) ${PREVIEW_OVERALL_GOODNESS * 3.6}deg 360deg)`,
-                  }}
-                  aria-hidden="true"
-                >
-                  <div className="absolute inset-[7px] rounded-full bg-charcoal-1 flex items-center justify-center">
-                    <span className="gradient-text font-numeric text-2xl font-semibold">
-                      {PREVIEW_OVERALL_GOODNESS}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-text-primary">Composite tenant health</div>
-                  <div className="text-xs text-text-secondary mt-1">Example data — not your real score</div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {PREVIEW_PILLARS.map((p) => (
-                  <div key={p.pillar} className="flex items-center gap-3">
-                    <span className="text-xs text-text-secondary w-28 shrink-0">
-                      {HEALTH_PILLAR_LABELS[p.pillar] ?? p.pillar}
-                    </span>
-                    <div className="flex-1 h-2 rounded-full bg-white/[0.08] overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${p.goodness}%`,
-                          background:
-                            p.goodness >= 85
-                              ? "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))"
-                              : "#f59e0b",
-                        }}
-                      />
-                    </div>
-                    <span className="font-numeric text-xs text-text-secondary w-7 text-right">{p.goodness}</span>
-                  </div>
-                ))}
-              </div>
-            </GlassPanel>
-          </div>
+          <HowItWorksShowcase
+            steps={HOW_IT_WORKS_STEPS}
+            dashboard={HOME_HOW_IT_WORKS_DASHBOARD}
+            scanSurfaces={HOME_SCAN_SURFACES}
+          />
         </div>
       </section>
 
@@ -1169,14 +1147,14 @@ export default function Home() {
             <div className="pt-12 border-t border-white/[0.06]">
               <div className="mb-8">
                 <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/[0.06] text-accent-blue border border-white/[0.08] mb-3">
-                  For Existing Customers
+                  Ongoing Advisory
                 </span>
                 <h3 className="font-display text-2xl sm:text-3xl font-bold text-text-primary">
                   Advisory <GradientText>Retainers</GradientText>
                 </h3>
                 <p className="text-sm text-text-secondary leading-relaxed mt-2 max-w-2xl">
-                  Fractional M365 architecture guidance for tenants already under monitoring —
-                  the upgrade path, not a cold-start engagement.
+                  Fractional M365 architecture guidance, best paired with tenants already under
+                  monitoring — but open to anyone ready to start.
                 </p>
               </div>
               {renderProductGrid(retainers)}
