@@ -25,10 +25,26 @@ import {
   computeTenantSignals,
   projectMatchesSignals,
   resolveSignalsOverride,
-  TENANT_SIGNALS,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
+
+// The 9 built-in project (non-adjustment) signal keys. These previously lived in
+// the hardcoded TENANT_SIGNALS array; that catalog now lives in the custom_signals
+// DB table (see the 2026-07-21 unify-signal-catalog migration). This pure unit
+// test asserts computeTenantSignals/projectMatchesSignals semantics and must stay
+// DB-free, so the canonical project keys are inlined here.
+const BUILTIN_PROJECT_SIGNAL_KEYS = [
+  "hasExchangeOnPrem",
+  "hasPowerPlatformUsage",
+  "hasGovernanceGaps",
+  "hasSecurityGaps",
+  "hasCopilotLicenses",
+  "hasSharePointIssues",
+  "hasLicensingWaste",
+  "hasDLPGaps",
+  "alwaysInclude",
+] as const;
 
 // ── minimal interp mock ───────────────────────────────────────────────────────
 // Mirrors the top-level substitution that workflow-executor's `interp` does for
@@ -111,7 +127,7 @@ function makeGroup(
 }
 
 /** All canonical signal keys known to the system (used as knownSignalKeys set). */
-const ALL_KNOWN_KEYS = new Set(TENANT_SIGNALS.map(s => s.key).concat("alwaysInclude"));
+const ALL_KNOWN_KEYS = new Set<string>(BUILTIN_PROJECT_SIGNAL_KEYS);
 
 // ── computeTenantSignals ──────────────────────────────────────────────────────
 
@@ -539,7 +555,7 @@ describe("signalsOverride parity — fast-path produces identical project filter
 
   it("all signals fired: both paths produce identical (maximal) project list", () => {
     // Manually build a firedSignals set that covers every canonical signal
-    const allSignals = new Set(["alwaysInclude", ...TENANT_SIGNALS.map(s => s.key)]);
+    const allSignals = new Set<string>(BUILTIN_PROJECT_SIGNAL_KEYS);
 
     const dbPathFiltered = engagementProjects.filter(p => {
       const { included } = projectMatchesSignals(p, ALL_KNOWN_KEYS, allSignals);

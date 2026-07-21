@@ -7,7 +7,7 @@
  *
  * Covers:
  * - Gate logic: new email → proceed; active MSP → redirect; suspended MSP → proceed
- * - Direct-business MSP flag → always proceed
+ * - Direct-business MSP → redirect too (same as any other active MSP)
  * - Honeypot field triggers silent proceed
  * - Onboarding link token validation states (valid, used, expired)
  * - Link generation parameter validation
@@ -34,11 +34,10 @@ function deriveGateAction(
     mspSlug: string;
     mspName: string;
     mspDomain: string | null;
-    isDirectBusiness: boolean;
   } | null,
   portalBaseUrl = "",
 ): GateAction {
-  if (!user || !mspUser || mspUser.isDirectBusiness) {
+  if (!user || !mspUser) {
     return { action: "proceed" };
   }
 
@@ -105,7 +104,6 @@ describe("deriveGateAction — email gate logic", () => {
         mspSlug: "acme-msp",
         mspName: "ACME MSP",
         mspDomain: "portal.acmemsp.com",
-        isDirectBusiness: false,
       },
     );
     expect(result.action).toBe("redirect");
@@ -124,7 +122,6 @@ describe("deriveGateAction — email gate logic", () => {
         mspSlug: "acme-msp",
         mspName: "ACME MSP",
         mspDomain: null,
-        isDirectBusiness: false,
       },
       "https://portal.example.com",
     );
@@ -143,13 +140,12 @@ describe("deriveGateAction — email gate logic", () => {
         mspSlug: "acme-msp",
         mspName: "ACME MSP",
         mspDomain: "portal.acmemsp.com",
-        isDirectBusiness: false,
       },
     );
     expect(result.action).toBe("proceed");
   });
 
-  it("returns proceed when MSP is the direct-business row (Shane's own MSP)", () => {
+  it("returns redirect when the MSP is the direct-business row (Shane's own MSP)", () => {
     const result = deriveGateAction(
       { id: 99 },
       {
@@ -158,13 +154,17 @@ describe("deriveGateAction — email gate logic", () => {
         mspSlug: "shane-direct",
         mspName: "Shane McCaw Consulting",
         mspDomain: null,
-        isDirectBusiness: true,
       },
+      "https://portal.example.com",
     );
-    expect(result.action).toBe("proceed");
+    expect(result.action).toBe("redirect");
+    if (result.action === "redirect") {
+      expect(result.portalUrl).toBe("https://portal.example.com");
+      expect(result.mspName).toBe("Shane McCaw Consulting");
+    }
   });
 
-  it("returns proceed when trial MSP is isDirectBusiness", () => {
+  it("returns redirect for a trial direct-business MSP customer", () => {
     const result = deriveGateAction(
       { id: 42 },
       {
@@ -173,10 +173,10 @@ describe("deriveGateAction — email gate logic", () => {
         mspSlug: "direct",
         mspName: "Direct",
         mspDomain: null,
-        isDirectBusiness: true,
       },
+      "https://portal.example.com",
     );
-    expect(result.action).toBe("proceed");
+    expect(result.action).toBe("redirect");
   });
 });
 

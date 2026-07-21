@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, engagementProjectsTable } from "@workspace/db";
 import { eq, asc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { TENANT_SIGNALS } from "../lib/tenant-signals";
+import { getProjectSignalDefinitions } from "../lib/tenant-signals";
 
 const router: IRouter = Router();
 
@@ -28,14 +28,9 @@ router.get("/admin/engagement-projects/signals", requireAdmin, async (_req: Requ
       FROM engagement_projects WHERE is_visible = true
     `);
 
-    const customRows = await db.execute(sql`
-      SELECT key, label, description, expected_impact AS "expectedImpact"
-      FROM custom_signals WHERE is_adjustment = FALSE ORDER BY created_at ASC
-    `);
-    const customSignals = (customRows.rows as Array<{ key: string; label: string; description: string; expectedImpact: string }>)
-      .map(c => ({ key: c.key, label: c.label, description: c.description, expectedImpact: c.expectedImpact, recommendedRules: [] as never[] }));
-
-    const allSignals = [...TENANT_SIGNALS, ...customSignals];
+    // Every project (non-adjustment) signal — built-in and custom — from the
+    // unified custom_signals catalog.
+    const allSignals = await getProjectSignalDefinitions();
 
     const enabledRows = await db.execute(sql`
       SELECT signal_key AS "signalKey", enabled FROM signal_enabled_state

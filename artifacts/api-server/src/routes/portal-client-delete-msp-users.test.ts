@@ -219,7 +219,7 @@ vi.mock("../lib/sow-pricing.ts", () => ({
 
 vi.mock("../lib/tenant-signals.ts", () => ({
   computeTenantSignals: vi.fn(),
-  ADJUSTMENT_SIGNALS: {},
+  getAdjustmentSignalDefinitions: vi.fn().mockResolvedValue([]),
   getDisabledSignalKeys: vi.fn().mockReturnValue([]),
 }));
 

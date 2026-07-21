@@ -67,7 +67,7 @@ import {
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
-import { computeTenantSignals, projectMatchesSignals, TENANT_SIGNALS, getDisabledSignalKeys } from "../lib/tenant-signals";
+import { computeTenantSignals, projectMatchesSignals, getProjectSignalDefinitions, getDisabledSignalKeys } from "../lib/tenant-signals";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1887,7 +1887,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
           signalGroupsRes.rows as unknown as Parameters<typeof computeTenantSignals>[3],
           disabledSignalKeys,
         );
-        const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+        const knownSignalKeys = new Set((await getProjectSignalDefinitions()).map(s => s.key));
         signalFilteredProjects = allEngagementProjects.filter(p => {
           const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy : [];
           if (triggers.length === 0) return true;

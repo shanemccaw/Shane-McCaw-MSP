@@ -25,7 +25,7 @@ import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, ADJ_SIGNAL_PATTERNS, type SowPricingLine } from "../lib/sow-pricing.ts";
-import { computeTenantSignals, ADJUSTMENT_SIGNALS, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
+import { computeTenantSignals, getAdjustmentSignalDefinitions, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
@@ -11684,7 +11684,7 @@ async function computeSignalDrivenAdjustments(
       disabledSignalKeys,
     );
 
-    const firedAdjKeys = ADJUSTMENT_SIGNALS.map(s => s.key).filter(k => firedSignals.has(k));
+    const firedAdjKeys = (await getAdjustmentSignalDefinitions()).map(s => s.key).filter(k => firedSignals.has(k));
 
     const adjustmentLines = (Array.isArray(pricingLines) ? pricingLines : [])
       .filter((l): l is { title: string; scope?: string; priceUsd: number; notes?: string; line_type?: string } =>

@@ -306,7 +306,7 @@ mock.module("../lib/sow-pricing.ts", {
 mock.module("../lib/tenant-signals.ts", {
   namedExports: {
     computeTenantSignals: async () => [],
-    ADJUSTMENT_SIGNALS: [],
+    getAdjustmentSignalDefinitions: async () => [],
     getDisabledSignalKeys: async () => new Set(),
   },
 });

@@ -5,8 +5,10 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.signals" });
 import {
-  TENANT_SIGNALS,
-  ADJUSTMENT_SIGNALS,
+  getAllSignalDefinitions,
+  getProjectSignalDefinitions,
+  getAdjustmentSignalDefinitions,
+  getBuiltinSignalKeys,
   computeTenantSignals,
   projectMatchesSignals,
   getDisabledSignalKeys,
@@ -225,7 +227,7 @@ export async function saveSnapshot(name: string, adminId?: number | null): Promi
 
 async function seedAdjustmentSignalRules(): Promise<void> {
   try {
-    for (const sig of ADJUSTMENT_SIGNALS) {
+    for (const sig of await getAdjustmentSignalDefinitions()) {
       // Skip if any rule already exists for this signal key
       const existing = await db.execute(sql`
         SELECT id FROM signal_derivation_rules WHERE signal_key = ${sig.key} LIMIT 1
@@ -268,7 +270,7 @@ void seedAdjustmentSignalRules();
 // ── Seed illustrative category taxonomy examples ────────────────────────────
 // Purely illustrative, inert example rules — one per `category` prefix — so
 // admins can see how the taxonomy is meant to be used. These signal keys
-// ("example:*") are NOT registered in TENANT_SIGNALS/ADJUSTMENT_SIGNALS, so
+// ("example:*") are NOT registered in the custom_signals signal catalog, so
 // they are never evaluated by computeTenantSignals() and can never affect
 // signal firing, pricing, or SOW gating. Idempotent: skipped if any
 // "example:*" rule already exists.
@@ -335,9 +337,13 @@ void seedCategoryTaxonomyExamples();
 // ── Custom signals DB helper ────────────────────────────────────────────────────
 
 async function getCustomSignals(): Promise<Array<{ key: string; label: string; description: string; expectedImpact: string; isAdjustment: boolean }>> {
+  // Admin-created custom signals only (is_builtin = false). The 13 built-ins now
+  // also live in custom_signals but are excluded here so this endpoint keeps its
+  // "custom signals only" contract — the frontend uses this list to decide which
+  // signals show a delete button (built-ins are not deletable).
   const rows = await db.execute(sql`
     SELECT key, label, description, expected_impact AS "expectedImpact", is_adjustment AS "isAdjustment"
-    FROM custom_signals ORDER BY created_at ASC
+    FROM custom_signals WHERE is_builtin = false ORDER BY created_at ASC
   `);
   return rows.rows as Array<{ key: string; label: string; description: string; expectedImpact: string; isAdjustment: boolean }>;
 }
@@ -359,8 +365,8 @@ router.get("/admin/custom-signals", requireAdmin, async (_req: Request, res: Res
 router.delete("/admin/custom-signals/:key", requireAdmin, async (req: Request, res: Response) => {
   try {
     const key = String(req.params.key);
-    const allBuiltin = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key);
-    if (allBuiltin.includes(key)) {
+    const builtinKeys = await getBuiltinSignalKeys();
+    if (builtinKeys.has(key)) {
       res.status(403).json({ error: "Built-in signals cannot be deleted" });
       return;
     }
@@ -394,8 +400,8 @@ router.post("/admin/custom-signals", requireAdmin, async (req: Request, res: Res
       return;
     }
     const slug = String(key).trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "-");
-    const allBuiltin = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key);
-    if (allBuiltin.includes(slug)) {
+    const builtinKeys = await getBuiltinSignalKeys();
+    if (builtinKeys.has(slug)) {
       res.status(409).json({ error: "A built-in signal with that key already exists" });
       return;
     }
@@ -426,12 +432,11 @@ router.post("/admin/custom-signals", requireAdmin, async (req: Request, res: Res
 
 router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const custom = await getCustomSignals();
-    const customAdj = custom
-      .filter(c => c.isAdjustment)
-      .map(c => ({ key: c.key, label: c.label, description: c.description, expectedImpact: c.expectedImpact, recommendedRules: [] }));
+    const adjustmentSignals = await getAdjustmentSignalDefinitions();
     const enabledMap = await getSignalEnabledMap();
-    const all = [...ADJUSTMENT_SIGNALS, ...customAdj].map(s => ({ ...s, enabled: enabledMap[s.key] ?? true }));
+    // enabled is sourced from signal_enabled_state (the authoritative toggle store),
+    // not the custom_signals.enabled column — see the migration note.
+    const all = adjustmentSignals.map(s => ({ ...s, enabled: enabledMap[s.key] ?? true }));
     res.json(all);
   } catch (err) {
     log.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
@@ -496,14 +501,11 @@ router.patch("/admin/signal-rules/:signalKey/enabled", requireAdmin, async (req:
 
 router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rules, groups, custom] = await Promise.all([getAllRules(), getAllGroups(), getCustomSignals()]);
+    const [rules, groups, allSignals] = await Promise.all([getAllRules(), getAllGroups(), getAllSignalDefinitions()]);
 
     const bySignal: Record<string, { rules: SignalDerivationRule[]; groups: SignalRuleGroup[] }> = {};
-    for (const sig of [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS]) {
+    for (const sig of allSignals) {
       bySignal[sig.key] = { rules: [], groups: [] };
-    }
-    for (const c of custom) {
-      if (!bySignal[c.key]) bySignal[c.key] = { rules: [], groups: [] };
     }
     for (const r of rules) {
       if (!bySignal[r.signalKey]) bySignal[r.signalKey] = { rules: [], groups: [] };
@@ -837,10 +839,10 @@ router.post("/admin/signal-rules/evaluate", requireAdmin, async (req: Request, r
     const mergedProfile = (profileUpdates as Record<string, unknown>) ?? {};
     const findings = Array.isArray(parsedFindings) ? (parsedFindings as string[]) : [];
 
-    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const [rules, groups, disabledKeys, allSignals] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys(), getAllSignalDefinitions()]);
     const { firedSignals, trace } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledKeys);
 
-    const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
+    const signalMeta = new Map(allSignals.map(s => [s.key, s]));
     const firedArr = [...firedSignals].map(key => {
       const meta = signalMeta.get(key);
       return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
@@ -861,9 +863,11 @@ router.post("/admin/signal-rules/preview-projects", requireAdmin, async (req: Re
     let firedSignalKeys: string[];
     let firedArr: Array<{ key: string; label: string; expectedImpact: string }> = [];
 
+    const allSignals = await getAllSignalDefinitions();
+    const signalMeta = new Map(allSignals.map(s => [s.key, s]));
+
     if (Array.isArray(body.firedSignals)) {
       firedSignalKeys = body.firedSignals as string[];
-      const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
       firedArr = firedSignalKeys.map(key => {
         const meta = signalMeta.get(key);
         return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
@@ -874,7 +878,6 @@ router.post("/admin/signal-rules/preview-projects", requireAdmin, async (req: Re
       const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
       const { firedSignals, trace: _trace } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledKeys);
       firedSignalKeys = [...firedSignals];
-      const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
       firedArr = firedSignalKeys.map(key => {
         const meta = signalMeta.get(key);
         return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
@@ -888,7 +891,7 @@ router.post("/admin/signal-rules/preview-projects", requireAdmin, async (req: Re
       FROM engagement_projects WHERE is_visible = true ORDER BY sort_order
     `);
 
-    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const knownSignalKeys = new Set(allSignals.filter(s => !s.isAdjustment).map(s => s.key));
     const firedSet = new Set(firedSignalKeys);
     const included: unknown[] = [];
     const excluded: Array<{ project: unknown; reason: string }> = [];
@@ -926,7 +929,7 @@ router.get("/admin/signal-rules/conflicts", requireAdmin, async (_req: Request, 
 
 router.get("/admin/signal-rules/health", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const [rules, groups, disabledKeys, projectSignals] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys(), getProjectSignalDefinitions()]);
 
     const clientsResult = await db.execute(sql`
       SELECT DISTINCT c.id AS client_id,
@@ -952,7 +955,7 @@ router.get("/admin/signal-rules/health", requireAdmin, async (_req: Request, res
 
     const totalClients = clientsResult.rows.length;
     const signalCounts: Record<string, number> = {};
-    for (const sig of TENANT_SIGNALS) signalCounts[sig.key] = 0;
+    for (const sig of projectSignals) signalCounts[sig.key] = 0;
 
     for (const row of clientsResult.rows as Array<{ profile_updates: Record<string, unknown>; findings: string[] }>) {
       const profile = row.profile_updates ?? {};
@@ -1736,7 +1739,7 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       } | null;
     };
 
-    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const [rules, groups, disabledKeys, allSignals] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys(), getAllSignalDefinitions()]);
     const { firedSignals, trace } = computeTenantSignals(
       profileUpdates ?? {},
       Array.isArray(parsedFindings) ? parsedFindings : [],
@@ -1745,7 +1748,7 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       disabledKeys,
     );
 
-    const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
+    const signalMeta = new Map(allSignals.map(s => [s.key, s]));
     const firedArr = [...firedSignals].map(key => {
       const meta = signalMeta.get(key);
       return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
@@ -1758,7 +1761,7 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       FROM engagement_projects WHERE is_visible = true ORDER BY sort_order
     `);
 
-    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const knownSignalKeys = new Set(allSignals.filter(s => !s.isAdjustment).map(s => s.key));
     const firedSet = new Set([...firedSignals]);
     const includedProjects: Array<{ id: number; title: string; priceRange: string | null }> = [];
     const excludedProjects: Array<{ project: { id: number; title: string }; reason: string }> = [];
@@ -1848,11 +1851,11 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
       for (const f of run.parsedFindings ?? []) allFindings.add(f);
     }
 
-    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const [rules, groups, disabledKeys, allSignals] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys(), getAllSignalDefinitions()]);
     const { firedSignals, trace } = computeTenantSignals(mergedProfile, [...allFindings], rules, groups, disabledKeys);
     const firedKeys = [...firedSignals];
 
-    const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
+    const signalMeta = new Map(allSignals.map(s => [s.key, s]));
     const firedArr = firedKeys.map(key => {
       const meta = signalMeta.get(key);
       return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
@@ -1864,7 +1867,7 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
       FROM engagement_projects WHERE is_visible = true ORDER BY sort_order
     `);
 
-    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const knownSignalKeys = new Set(allSignals.filter(s => !s.isAdjustment).map(s => s.key));
     const firedSet = new Set(firedKeys);
     const includedProjects: unknown[] = [];
     const excludedProjects: Array<{ project: unknown; reason: string }> = [];
@@ -1900,16 +1903,8 @@ router.get("/admin/signal-rules/export", requireAdmin, async (_req: Request, res
       getAllGroups(),
       getSignalEnabledMap(),
     ]);
-    const customSignals = await getCustomSignals();
-
-    // Build a combined list of all known signals (static + custom)
-    const allSignals = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS, ...customSignals.map(c => ({
-      key: c.key,
-      label: c.label,
-      description: c.description,
-      expectedImpact: c.expectedImpact,
-      recommendedRules: [] as Array<{ ruleType: string; sourceKey: string; compareValue?: string; rationale: string }>,
-    }))];
+    // Every known signal — built-in and custom — now lives in custom_signals.
+    const allSignals = await getAllSignalDefinitions();
 
     const payload = {
       version: 1,

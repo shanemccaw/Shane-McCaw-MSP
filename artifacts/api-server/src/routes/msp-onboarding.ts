@@ -210,6 +210,10 @@ router.get("/public/onboarding/link/:token", async (req: Request, res: Response)
 // Gate logic:
 //   1. Look up the email in users + msp_users.
 //   2. If a msp_users row exists and its MSP is active → redirect to that MSP's portal.
+//      This includes the direct-business MSP itself (Shane's own book) — an
+//      existing direct-business customer has a real msp_users row like any
+//      reseller customer and must resolve the same way, just with mspDomain
+//      typically null (falls back to PORTAL_BASE_URL, the shared msp-portal).
 //   3. If no msp_users row, or the MSP is suspended/revoked → allow proceed
 //      (will be assigned to the direct-business MSP row at provisioning time).
 
@@ -248,7 +252,6 @@ router.post(
         mspSlug: mspsTable.slug,
         mspName: mspsTable.name,
         mspDomain: mspsTable.domain,
-        isDirectBusiness: mspsTable.isDirectBusiness,
       })
       .from(mspUsersTable)
       .innerJoin(mspsTable, eq(mspsTable.id, mspUsersTable.mspId))
@@ -260,7 +263,7 @@ router.post(
       )
       .limit(1);
 
-    if (!mspUser || mspUser.isDirectBusiness) {
+    if (!mspUser) {
       res.json({ action: "proceed" });
       return;
     }

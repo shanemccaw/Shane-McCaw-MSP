@@ -13,7 +13,7 @@ import {
   tenantMonitorProfilesTable,
 } from "@workspace/db";
 import { eq, ne, desc, and, inArray, isNull, sql } from "drizzle-orm";
-import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
+import { computeTenantSignals, getProjectSignalDefinitions, getAdjustmentSignalDefinitions, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import {
   fetchSignalRulesAndGroups,
@@ -426,7 +426,7 @@ export async function generateConsolidatedSowDocument(
   let firedAdjSignalKeys = new Set<string>();
   let hasAdjSignalRules = false;
   if (signalsOverride != null) {
-    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const knownSignalKeys = new Set((await getProjectSignalDefinitions()).map(s => s.key));
     // Determine whether adj rules are *configured* (not just fired) via a cheap DB existence check.
     // This matches the DB-evaluation path which sets hasAdjSignalRules = typedSignalRules.some(r => r.signalKey.startsWith("adj:")).
     const adjRuleCheck = await db.execute(sql`SELECT 1 FROM signal_derivation_rules WHERE signal_key LIKE 'adj:%' LIMIT 1`);
@@ -573,7 +573,7 @@ export async function generateConsolidatedSowDocument(
       );
     }
 
-    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const knownSignalKeys = new Set((await getProjectSignalDefinitions()).map(s => s.key));
 
     signalFilteredProjects = allEngagementProjects.filter(p => {
       const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [];
@@ -897,7 +897,7 @@ export async function generateConsolidatedSowDocument(
   // ADJUSTMENT MAP's workstream-scoped logic with telemetry-derived results.
   let adjConstraintBlock = "";
   if (hasAdjSignalRules) {
-    const allAdjSignals = ADJUSTMENT_SIGNALS;
+    const allAdjSignals = await getAdjustmentSignalDefinitions();
     const activeAdj = allAdjSignals.filter(s => firedAdjSignalKeys.has(s.key));
     const inactiveAdj = allAdjSignals.filter(s => !firedAdjSignalKeys.has(s.key));
     const activeList = activeAdj.length > 0

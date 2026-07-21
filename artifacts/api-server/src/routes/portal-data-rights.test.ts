@@ -208,7 +208,7 @@ for (const mod of [
       WORKSTREAM_ADJ_MAP: {},
       ADJ_SIGNAL_PATTERNS: [],
       computeTenantSignals: async () => [],
-      ADJUSTMENT_SIGNALS: [],
+      getAdjustmentSignalDefinitions: async () => [],
       getDisabledSignalKeys: async () => new Set(),
       runClientScriptSequence: async () => {},
       advancePhaseIfComplete: async () => {},

@@ -26,8 +26,7 @@ import {
   computeTenantSignals,
   evaluateRule,
   projectMatchesSignals,
-  TENANT_SIGNALS,
-  ADJUSTMENT_SIGNALS,
+  getAllSignalDefinitions,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -1372,7 +1371,7 @@ router.get("/admin/engines/rule-groups/:groupId/preview", requireAdmin, async (r
     if (!group) { res.status(404).json({ error: "Rule group not found" }); return; }
 
     const projects = await db.select().from(engagementProjectsTable);
-    const knownSignalKeys = new Set([...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key));
+    const knownSignalKeys = new Set((await getAllSignalDefinitions()).map(s => s.key));
     const affectedProjects = projects
       .map(p => ({ id: p.id, title: p.title, match: projectMatchesSignals({ title: p.title, triggeredBy: p.triggeredBy as string[] }, knownSignalKeys, new Set([group.signalKey])) }))
       .filter(p => p.match.included)
@@ -1432,7 +1431,7 @@ router.get("/admin/engines/signals/:signalKey/preview", requireAdmin, async (req
   const signalKey = String(req.params.signalKey);
   try {
     const projects = await db.select().from(engagementProjectsTable);
-    const knownSignalKeys = new Set([...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key));
+    const knownSignalKeys = new Set((await getAllSignalDefinitions()).map(s => s.key));
     const affectedProjects = projects
       .map(p => ({ id: p.id, title: p.title, match: projectMatchesSignals({ title: p.title, triggeredBy: p.triggeredBy as string[] }, knownSignalKeys, new Set([signalKey])) }))
       .filter(p => p.match.included)

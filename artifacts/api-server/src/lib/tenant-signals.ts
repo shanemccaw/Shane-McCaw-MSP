@@ -273,184 +273,108 @@ export interface TenantSignal {
   description: string;
   expectedImpact: string;
   recommendedRules: RecommendedRule[];
+  isAdjustment: boolean;
+  isBuiltin: boolean;
+  sortOrder: number;
+  enabled: boolean;
   exampleProfileKey?: string;
   exampleFindingKeyword?: string;
 }
 
-export const TENANT_SIGNALS: TenantSignal[] = [
-  {
-    key: "hasExchangeOnPrem",
-    label: "Exchange On-Premises",
-    description: "Detects on-premises Exchange mailboxes that require migration to Exchange Online.",
-    expectedImpact:
-      "Unlocks the M365 Migration package in the SOW. When this signal fires, the client has on-premises mailboxes that need a full migration workstream — including cutover planning, coexistence configuration, and post-migration validation. This is typically one of the highest-value workstreams and significantly increases SOW scope and pricing.",
-    recommendedRules: [
-      { ruleType: "findings_keyword", sourceKey: "Exchange On-Premises", rationale: "Script findings explicitly report an on-prem Exchange environment." },
-      { ruleType: "findings_keyword", sourceKey: "hybrid connector", rationale: "Hybrid connectors indicate Exchange coexistence is configured — a clear on-prem signal." },
-      { ruleType: "findings_keyword", sourceKey: "mailbox migration", rationale: "Finding mentions mailbox migration needs directly." },
-      { ruleType: "profile_key_truthy", sourceKey: "hasExchangeOnPrem", rationale: "Script sets this boolean flag when Exchange On-Premises is detected." },
-    ],
-    exampleProfileKey: "hasExchangeOnPrem",
-    exampleFindingKeyword: "Exchange On-Premises",
-  },
-  {
-    key: "hasPowerPlatformUsage",
-    label: "Power Platform Usage",
-    description: "Detects active Power Automate flows or Power Apps usage in the tenant.",
-    expectedImpact:
-      "Unlocks Power Platform-related projects in the SOW. Active flows or apps indicate the client is invested in low-code automation and needs governance, ALM (Application Lifecycle Management), or modernization work. This workstream covers environment strategy, DLP policy design, and adoption governance.",
-    recommendedRules: [
-      { ruleType: "findings_keyword", sourceKey: "Power Automate", rationale: "Script findings report Power Automate activity." },
-      { ruleType: "findings_keyword", sourceKey: "Power Apps", rationale: "Script findings report Power Apps usage." },
-      { ruleType: "profile_key_truthy", sourceKey: "hasPowerPlatformUsage", rationale: "Script sets this flag when Power Platform activity is detected." },
-    ],
-    exampleProfileKey: "hasPowerPlatformUsage",
-    exampleFindingKeyword: "Power Automate",
-  },
-  {
-    key: "hasGovernanceGaps",
-    label: "Governance Gaps",
-    description: "Detects missing or immature Microsoft 365 governance policies that expose the tenant to sprawl and compliance risk.",
-    expectedImpact:
-      "Unlocks the Governance Remediation workstream and the Governance Complexity pricing adjustment. Critical governance gaps require a full policy framework design covering Teams lifecycle, guest access, data classification, and enforcement automation. This is often paired with the Security workstream and can substantially increase the SOW value.",
-    recommendedRules: [
-      { ruleType: "profile_key_lt", sourceKey: "governanceScore", compareValue: "60", rationale: "A governance score below 60 indicates material gaps requiring remediation work." },
-      { ruleType: "profile_key_truthy", sourceKey: "hasGovernanceGaps", rationale: "Script explicitly flags governance gaps when critical controls are absent." },
-    ],
-    exampleProfileKey: "governanceScore",
-  },
-  {
-    key: "hasSecurityGaps",
-    label: "Security Gaps",
-    description: "Detects exploitable security vulnerabilities including missing MFA, zero Conditional Access policies, or a low security score.",
-    expectedImpact:
-      "Unlocks the Security Remediation workstream and the Security/Compliance pricing adjustment. Tenants with security gaps have exploitable vulnerabilities that require Zero Trust architecture design, Conditional Access policy deployment, MFA enforcement, and Defender for Microsoft 365 configuration. This is frequently the highest-priority workstream and commands premium pricing.",
-    recommendedRules: [
-      { ruleType: "profile_key_falsy", sourceKey: "mfaEnforced", rationale: "MFA not enforced is a critical security gap — always include this rule." },
-      { ruleType: "profile_key_eq", sourceKey: "conditionalAccessPolicyCount", compareValue: "0", rationale: "Zero Conditional Access policies means the tenant has no identity perimeter controls." },
-      { ruleType: "profile_key_lt", sourceKey: "securityScore", compareValue: "60", rationale: "A security score below 60 indicates multiple exploitable gaps." },
-    ],
-    exampleProfileKey: "mfaEnforced",
-  },
-  {
-    key: "hasCopilotLicenses",
-    label: "Copilot Licenses",
-    description: "Detects active Microsoft 365 Copilot licenses that require deployment readiness and adoption support.",
-    expectedImpact:
-      "Unlocks the Copilot Readiness workstream and the Copilot Readiness pricing adjustment. When the client has Copilot licenses, they need a structured deployment readiness assessment, SharePoint content architecture cleanup, sensitivity label coverage, and an adoption plan to realize ROI. This workstream is growing rapidly in demand and commands strong project pricing.",
-    recommendedRules: [
-      { ruleType: "profile_key_gt", sourceKey: "copilotLicenseCount", compareValue: "0", rationale: "Any Copilot license count greater than zero means readiness and adoption work is needed." },
-    ],
-    exampleProfileKey: "copilotLicenseCount",
-  },
-  {
-    key: "hasSharePointIssues",
-    label: "SharePoint Issues",
-    description: "Detects site sprawl, oversharing, or governance gaps in SharePoint Online.",
-    expectedImpact:
-      "Unlocks the Information Architecture / SharePoint workstream. Large site counts or oversharing findings indicate structural redesign work is required — including metadata framework design, hub site architecture, permissions cleanup, and external sharing governance. This workstream is often bundled with Governance Remediation.",
-    recommendedRules: [
-      { ruleType: "profile_key_gt", sourceKey: "sharepointSiteCount", compareValue: "0", rationale: "Any SharePoint site presence warrants an IA review, especially at scale." },
-      { ruleType: "findings_keyword", sourceKey: "SharePoint", rationale: "Script findings flagging SharePoint issues directly trigger this workstream." },
-    ],
-    exampleProfileKey: "sharepointSiteCount",
-    exampleFindingKeyword: "SharePoint",
-  },
-  {
-    key: "hasLicensingWaste",
-    label: "Licensing Waste",
-    description: "Detects unlicensed users, over-provisioned SKUs, or significant license optimization opportunities.",
-    expectedImpact:
-      "Unlocks the Licensing Optimization workstream and the Tenant Size pricing adjustment for larger tenants. License waste represents a direct cost recovery opportunity — typical engagements recover 15–35% of the annual Microsoft 365 spend through right-sizing, SKU consolidation, and inactive user cleanup. This workstream is high-value for the client and easy to justify.",
-    recommendedRules: [
-      { ruleType: "findings_keyword", sourceKey: "unlicensed", rationale: "Findings mentioning unlicensed users directly indicate licensing waste." },
-      { ruleType: "profile_key_truthy", sourceKey: "hasLicensingWaste", rationale: "Script sets this flag when significant license optimization opportunities are detected." },
-    ],
-    exampleProfileKey: "hasLicensingWaste",
-    exampleFindingKeyword: "unlicensed",
-  },
-  {
-    key: "hasDLPGaps",
-    label: "DLP Gaps",
-    description: "Detects missing Data Loss Prevention policies or unconfigured sensitivity labels.",
-    expectedImpact:
-      "Unlocks the Data Protection / DLP workstream and the Security/Compliance pricing adjustment. Missing DLP policies and sensitivity labels expose the client to data exfiltration, regulatory non-compliance, and accidental oversharing. This workstream covers Microsoft Purview DLP policy design, sensitivity label taxonomy, auto-labeling configuration, and insider risk management.",
-    recommendedRules: [
-      { ruleType: "profile_key_eq", sourceKey: "dlpPoliciesCount", compareValue: "0", rationale: "Zero DLP policies means no data loss prevention controls are in place." },
-      { ruleType: "profile_key_falsy", sourceKey: "sensitivityLabelsConfigured", rationale: "Sensitivity labels not configured means data classification is absent." },
-    ],
-    exampleProfileKey: "dlpPoliciesCount",
-  },
-  {
-    key: "alwaysInclude",
-    label: "Always Include",
-    description: "Virtual signal — projects tagged with this always appear in every SOW regardless of tenant telemetry.",
-    expectedImpact:
-      "Any engagement project carrying this trigger will always be included in every SOW, regardless of tenant telemetry or other signal states. Use this for core baseline offerings that apply to every client — such as an M365 Health Assessment or a Kickoff & Discovery workstream. No rules are needed for this signal; it fires automatically on every SOW generation.",
-    recommendedRules: [],
-  },
-];
+// ─── Unified signal catalog (custom_signals) ─────────────────────────────────
+//
+// The tenant signal catalog — the 13 "built-in" signals (9 project signals +
+// 4 adjustment signals, is_builtin = true) AND any admin-created custom signals
+// — lives ENTIRELY in the `custom_signals` table. There is no hardcoded array;
+// adding, editing, or removing a signal is a data change, not a code deploy.
+// The 13 built-ins were seeded by
+// lib/db/migrations/manual/2026-07-21-unify-signal-catalog-custom-signals.sql.
+//
+// `is_builtin` (not membership in any code array) is what blocks deletion of a
+// built-in signal — see the DELETE /admin/custom-signals/:key handler.
+
+function parseRecommendedRules(value: unknown): RecommendedRule[] {
+  if (Array.isArray(value)) return value as RecommendedRule[];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? (parsed as RecommendedRule[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+interface CustomSignalRow {
+  key: string;
+  label: string;
+  description: string | null;
+  expectedImpact: string | null;
+  recommendedRules: unknown;
+  isAdjustment: boolean;
+  isBuiltin: boolean;
+  sortOrder: number;
+  enabled: boolean;
+  exampleProfileKey: string | null;
+  exampleFindingKeyword: string | null;
+}
+
+function mapCustomSignalRow(row: CustomSignalRow): TenantSignal {
+  return {
+    key: row.key,
+    label: row.label,
+    description: row.description ?? "",
+    expectedImpact: row.expectedImpact ?? "",
+    recommendedRules: parseRecommendedRules(row.recommendedRules),
+    isAdjustment: Boolean(row.isAdjustment),
+    isBuiltin: Boolean(row.isBuiltin),
+    sortOrder: Number(row.sortOrder ?? 0),
+    enabled: row.enabled !== false,
+    exampleProfileKey: row.exampleProfileKey ?? undefined,
+    exampleFindingKeyword: row.exampleFindingKeyword ?? undefined,
+  };
+}
 
 /**
- * Adjustment signals drive which pricing adjustment rows appear in the SOW.
- * They use the `adj:` key prefix to distinguish them from project signals.
- * The signal engine evaluates them exactly the same way as project signals —
- * any rule rows in `signal_derivation_rules` with these keys are evaluated
- * automatically without any engine changes.
+ * Canonical loader for the unified signal catalog. Returns EVERY signal —
+ * built-in and custom, project and adjustment — ordered project-signals-first
+ * then adjustment, each group by sort_order. This is the single source every
+ * consumer reads instead of the old hardcoded TENANT_SIGNALS/ADJUSTMENT_SIGNALS
+ * arrays.
  */
-export const ADJUSTMENT_SIGNALS: TenantSignal[] = [
-  {
-    key: "adj:governance-complexity",
-    label: "Governance Complexity",
-    description:
-      "Fires when the tenant has governance gaps significant enough to warrant a Governance Complexity pricing adjustment in the SOW.",
-    expectedImpact:
-      "Activates the Governance Complexity line in the Pricing Adjustments table. This adjustment reflects the extra effort required when a tenant has immature lifecycle policies, guest access sprawl, or Teams/Group governance gaps that compound the remediation workstream.",
-    recommendedRules: [
-      { ruleType: "profile_key_lt",    sourceKey: "governanceScore",  compareValue: "60", rationale: "Governance score below 60 indicates material complexity." },
-      { ruleType: "profile_key_truthy", sourceKey: "hasGovernanceGaps", rationale: "Script explicitly flags governance gaps when critical controls are absent." },
-    ],
-    exampleProfileKey: "governanceScore",
-  },
-  {
-    key: "adj:tenant-size",
-    label: "Tenant Size",
-    description:
-      "Fires when the tenant is large enough (typically 250+ users) that scale significantly increases project effort.",
-    expectedImpact:
-      "Activates the Tenant Size pricing adjustment. Larger tenants require more discovery, more policy rollout effort, and more stakeholder management — this adjustment accounts for that overhead.",
-    recommendedRules: [
-      { ruleType: "profile_key_gt", sourceKey: "totalUserCount", compareValue: "250", rationale: "Tenants with more than 250 users have materially higher project overhead." },
-    ],
-    exampleProfileKey: "totalUserCount",
-  },
-  {
-    key: "adj:security-compliance",
-    label: "Security/Compliance",
-    description:
-      "Fires when the tenant has security or compliance gaps that require additional hardening effort beyond the base Security workstream.",
-    expectedImpact:
-      "Activates the Security/Compliance pricing adjustment. Tenants missing MFA enforcement, Conditional Access policies, or DLP coverage require deeper remediation work — Zero Trust architecture, policy design, and Purview configuration — that commands a premium adjustment.",
-    recommendedRules: [
-      { ruleType: "profile_key_falsy", sourceKey: "mfaEnforced",                  rationale: "MFA not enforced is a critical gap that substantially increases security work." },
-      { ruleType: "profile_key_eq",    sourceKey: "conditionalAccessPolicyCount", compareValue: "0", rationale: "Zero Conditional Access policies means no identity perimeter controls." },
-      { ruleType: "profile_key_eq",    sourceKey: "dlpPoliciesCount",             compareValue: "0", rationale: "Zero DLP policies means data loss prevention is absent." },
-    ],
-    exampleProfileKey: "mfaEnforced",
-  },
-  {
-    key: "adj:copilot-readiness",
-    label: "Copilot Readiness",
-    description:
-      "Fires when the tenant has active Copilot for Microsoft 365 licenses that require readiness and deployment work.",
-    expectedImpact:
-      "Activates the Copilot Readiness pricing adjustment. When a tenant has Copilot licenses, delivering the Copilot workstream requires additional content architecture cleanup, sensitivity label coverage, and adoption planning that justifies this adjustment.",
-    recommendedRules: [
-      { ruleType: "profile_key_gt", sourceKey: "copilotLicenseCount", compareValue: "0", rationale: "Any Copilot licenses present means readiness overhead is required." },
-    ],
-    exampleProfileKey: "copilotLicenseCount",
-  },
-];
+export async function getAllSignalDefinitions(): Promise<TenantSignal[]> {
+  const rows = await db.execute(sql`
+    SELECT key, label, description, expected_impact AS "expectedImpact",
+           recommended_rules AS "recommendedRules", is_adjustment AS "isAdjustment",
+           is_builtin AS "isBuiltin", sort_order AS "sortOrder", enabled,
+           example_profile_key AS "exampleProfileKey",
+           example_finding_keyword AS "exampleFindingKeyword"
+    FROM custom_signals
+    ORDER BY is_adjustment ASC, sort_order ASC, created_at ASC
+  `);
+  return (rows.rows as unknown as CustomSignalRow[]).map(mapCustomSignalRow);
+}
+
+/** Project (non-adjustment) signals only — replaces the old TENANT_SIGNALS array. */
+export async function getProjectSignalDefinitions(): Promise<TenantSignal[]> {
+  return (await getAllSignalDefinitions()).filter(s => !s.isAdjustment);
+}
+
+/** Adjustment (adj:*) signals only — replaces the old ADJUSTMENT_SIGNALS array. */
+export async function getAdjustmentSignalDefinitions(): Promise<TenantSignal[]> {
+  return (await getAllSignalDefinitions()).filter(s => s.isAdjustment);
+}
+
+/**
+ * Keys of the built-in signals (is_builtin = true). Used by the custom-signal
+ * create/delete routes to protect the built-ins from deletion and key collision
+ * — replacing the old "is it in the hardcoded array?" membership check.
+ */
+export async function getBuiltinSignalKeys(): Promise<Set<string>> {
+  const rows = await db.execute(sql`SELECT key FROM custom_signals WHERE is_builtin = true`);
+  return new Set((rows.rows as Array<{ key: string }>).map(r => r.key));
+}
 
 // ─── Signal intelligence fields ────────────────────────────────────────────
 //
