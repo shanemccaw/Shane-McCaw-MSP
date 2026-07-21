@@ -564,7 +564,7 @@ export default function Home() {
             style={GRADIENT_BG}
             data-track="cta"
           >
-            <span>{item.isFreeOffering ? "Begin Mission Readiness" : "Deploy Full Evaluation"}</span>
+            <span>{item.isFreeOffering ? "Begin Mission Readiness" : "Run My Full Evaluation"}</span>
             <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -651,20 +651,21 @@ export default function Home() {
 
     return (
       <div className="w-full">
-        <GlassPanel className="p-6 sm:p-8 mb-10 max-w-2xl mx-auto">
-          <label htmlFor="seat-count" className="flex items-center justify-center gap-2 text-sm font-semibold text-text-secondary mb-4">
-            <Users className="w-4 h-4 text-accent-blue" />
-            How many licensed users are in your tenant?
-          </label>
-
-          <div className="text-center mb-6">
-            <span className="gradient-text font-numeric text-5xl sm:text-6xl font-medium tabular-nums">
-              {clampedSeatCount.toLocaleString()}
-            </span>
-            <div className="text-xs text-text-secondary mt-1 uppercase tracking-wider">licensed users</div>
+        <GlassPanel className="p-4 sm:p-5 mb-6 max-w-xl mx-auto">
+          <div className="flex items-center justify-between gap-3 mb-2.5">
+            <label htmlFor="seat-count" className="flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
+              <Users className="w-3.5 h-3.5 text-accent-blue" />
+              Licensed users
+            </label>
+            <div className="flex items-baseline gap-1">
+              <span className="gradient-text font-numeric text-2xl sm:text-3xl font-bold tabular-nums">
+                {clampedSeatCount.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-text-secondary uppercase tracking-wider">seats</span>
+            </div>
           </div>
 
-          <div className="relative px-1 mb-2 pt-3">
+          <div className="relative px-1 mb-1 pt-2.5">
             {seatSlider.markers.map((m) => {
               const markerPct = ((m - seatSlider.sliderMin) / sliderRange) * 100;
               return (
@@ -689,17 +690,17 @@ export default function Home() {
               }}
             />
           </div>
-          <div className="flex justify-between text-[10px] text-text-secondary font-numeric mb-6">
+          <div className="flex justify-between text-[10px] text-text-secondary font-numeric mb-3">
             <span>{seatSlider.sliderMin.toLocaleString()}</span>
             <span>{seatSlider.sliderMax.toLocaleString()}+</span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-center">
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
             {seatSlider.presets.map((preset) => (
               <button
                 key={preset}
                 onClick={() => setSeatCount(preset)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
                   clampedSeatCount === preset
                     ? "text-white"
                     : "bg-charcoal-1 text-text-secondary border border-white/[0.08] hover:text-text-primary hover:border-white/[0.16]"
@@ -786,7 +787,7 @@ export default function Home() {
                   style={isHighlighted ? GRADIENT_BG : undefined}
                   data-track="cta"
                 >
-                  <span>Activate Tenant Telemetry</span>
+                  <span>Start Continuous Monitoring</span>
                   <ChevronRight className="w-4 h-4" />
                 </Link>
               </div>
@@ -1203,7 +1204,7 @@ export default function Home() {
                 style={GRADIENT_BG}
                 data-track="cta"
               >
-                Activate Tenant Telemetry
+                Start Continuous Monitoring
               </a>
               <Link
                 href="/contact"
