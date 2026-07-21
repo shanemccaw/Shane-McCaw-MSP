@@ -767,13 +767,35 @@ export async function ensureScopeCreepTables(): Promise<void> {
       id SERIAL PRIMARY KEY,
       msp_id INTEGER NOT NULL,
       customer_id INTEGER NOT NULL,
+      client_service_id INTEGER REFERENCES client_services(id) ON DELETE CASCADE,
       policy_id INTEGER NOT NULL REFERENCES scope_creep_policies(id) ON DELETE RESTRICT,
       assigned_by_user_id INTEGER,
       idempotency_key TEXT UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE(msp_id, customer_id)
+      UNIQUE(msp_id, customer_id, client_service_id)
     )
+  `);
+
+  // Self-healing migration for existing installs — CREATE TABLE IF NOT EXISTS above
+  // only applies to genuinely fresh installs, so existing tables need this to catch up.
+  // client_service_id: which specific active engagement (Project, Monitoring, Assessment,
+  // Retainer) this assignment applies to. NULL is reserved but not currently used as a
+  // "customer-wide" fallback — every real assignment should reference a specific engagement.
+  await db.execute(sql`
+    ALTER TABLE scope_creep_assignments ADD COLUMN IF NOT EXISTS client_service_id INTEGER REFERENCES client_services(id) ON DELETE CASCADE
+  `);
+
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'scope_creep_assignments_msp_customer_service_key'
+      ) THEN
+        ALTER TABLE scope_creep_assignments DROP CONSTRAINT IF EXISTS scope_creep_assignments_msp_id_customer_id_key;
+        ALTER TABLE scope_creep_assignments ADD CONSTRAINT scope_creep_assignments_msp_customer_service_key UNIQUE (msp_id, customer_id, client_service_id);
+      END IF;
+    END $$;
   `);
 
   await db.execute(sql`
