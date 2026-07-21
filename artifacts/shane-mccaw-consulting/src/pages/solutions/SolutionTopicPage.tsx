@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { Link, useRoute } from "wouter";
-import { ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowRight, CheckCircle2, AlertTriangle, ClipboardCheck, Sparkles, FolderKanban } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
@@ -13,8 +13,51 @@ import { getSolutionTopic, HEALTH_PILLAR_LABELS, topicMatchesKeywordText } from 
 import { PersonalizedContent } from "@/components/PersonalizedContent";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useHealthPillars, useLatestPresentation, usePortalUrl, useQuizOfferData } from "@/hooks/usePersonalizationData";
+import { useServices } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 import { trackEvent } from "@/lib/analytics";
 import NotFound from "@/pages/not-found";
+
+/**
+ * One step of the Quiz → Assessment → Projects funnel explainer (Real Projects +
+ * Assessments CTAs on Topic Pages task, website-rebuild-reference-v2.md §1/§2) —
+ * makes the relationship between the three explicit instead of three disconnected CTAs.
+ */
+function FunnelStep({
+  index,
+  icon: Icon,
+  title,
+  body,
+  href,
+  linkLabel,
+}: {
+  index: number;
+  icon: typeof Sparkles;
+  title: string;
+  body: string;
+  href: string;
+  linkLabel: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-charcoal-1 p-6 flex flex-col h-full">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="shrink-0 w-8 h-8 rounded-full glass-panel flex items-center justify-center text-accent-blue text-sm font-semibold font-numeric">
+          {index}
+        </span>
+        <Icon className="w-5 h-5 text-accent-blue" />
+      </div>
+      <h3 className="font-display text-base font-bold text-text-primary mb-2">{title}</h3>
+      <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{body}</p>
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
+        data-track="cta"
+      >
+        {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
+      </Link>
+    </div>
+  );
+}
 
 /**
  * Solutions/Topic page (website-rebuild-reference-v2.md §3/§5). One route per topic slug,
@@ -31,6 +74,22 @@ export default function SolutionTopicPage() {
   const { score: overallHealthScore, pillars } = useHealthPillars();
   const { presentation } = useLatestPresentation();
   const { portalUrl } = usePortalUrl();
+  const { services: assessmentServices } = useServices({ type: "assessment" });
+
+  // Real, topic-relevant Assessment for the funnel-explainer CTA (Real Projects +
+  // Assessments CTAs on Topic Pages task) — matched by the same keyword approach
+  // already used for quiz-signal/article nudges (topicMatchesKeywordText), against
+  // the real `services` catalog (serviceType='assessment'), never document_products.
+  // Several assessments can share a keyword (e.g. "compliance"); the shortest-named
+  // match is kept as the most on-topic, single real product to link — not a guess,
+  // just a tiebreak among genuine matches. null when nothing in the catalog matches,
+  // which the funnel section below handles by falling back to the generic Assessment CTA.
+  const matchedAssessment = useMemo(() => {
+    if (!topic) return null;
+    const matches = assessmentServices.filter((s) => topicMatchesKeywordText(topic.slug, s.name));
+    if (matches.length === 0) return null;
+    return [...matches].sort((a, b) => a.name.length - b.name.length)[0] ?? null;
+  }, [topic, assessmentServices]);
 
   // Composite topic (m365-health) shows the full 7-pillar breakdown; every other topic
   // shows its worst (lowest) matched pillar — real per-domain score, no fabricated single
@@ -393,6 +452,64 @@ export default function SolutionTopicPage() {
           </section>
         </>
       )}
+
+      {/* Funnel explainer + real Assessment CTA (Real Projects + Assessments CTAs on
+          Topic Pages task) — makes the Quiz → Assessment → Projects relationship explicit
+          instead of leaving visitors with disconnected CTAs, per website-rebuild-reference-v2.md
+          §1/§2. Shown on every topic page, all tiers — this is orientation, not personalization. */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
+        <div className="max-w-3xl mx-auto text-center mb-10">
+          <h2 className="font-display text-2xl font-bold text-text-primary mb-4">
+            How This Actually Works
+          </h2>
+          <p className="text-text-secondary leading-relaxed">
+            Three real steps, not three separate pitches. The {topic.shortLabel} quiz is a
+            self-reported read that points you in the right direction. A free or paid Assessment
+            replaces the guess with a real Graph API scan of your actual tenant. And if that scan
+            turns up a real gap, the fix is a scoped project — priced and agreed before any work
+            starts, never an instant checkout.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <FunnelStep
+            index={1}
+            icon={Sparkles}
+            title="Take the Quiz"
+            body="Self-reported, a few questions. Tells us — and you — where to look first."
+            href={topic.quizHref}
+            linkLabel={`Take the ${topic.shortLabel} quiz`}
+          />
+          <FunnelStep
+            index={2}
+            icon={ClipboardCheck}
+            title="Get a Real Assessment"
+            body={
+              matchedAssessment
+                ? `${matchedAssessment.name} — a real Microsoft Graph API scan of your tenant, not a questionnaire.`
+                : "A real Microsoft Graph API scan of your tenant, not a questionnaire."
+            }
+            href={
+              matchedAssessment
+                ? `/assessments/${encodeURIComponent(matchedAssessment.slug ?? String(matchedAssessment.id))}`
+                : "/assessment"
+            }
+            linkLabel={matchedAssessment ? `Start the ${matchedAssessment.name}` : "Start a Free Assessment"}
+          />
+          <FunnelStep
+            index={3}
+            icon={FolderKanban}
+            title="Scope a Project"
+            body="If the scan finds a real gap here, we scope it as a priced SOW — a conversation, not a cart."
+            href="/book"
+            linkLabel="Request a scoped SOW"
+          />
+        </div>
+      </section>
+
+      {/* Real follow-on projects for this topic (engagement_projects, SOW-gated) — renders
+          nothing at all when no real project's triggeredBy signal domain matches this topic,
+          per this task's explicit no-empty-state rule. */}
+      <FollowOnProjects topicSlug={topic.slug} />
     </Layout>
   );
 }

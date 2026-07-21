@@ -687,6 +687,49 @@ export function topicMatchesKeywordText(slug: string, text: string): boolean {
   return (TOPIC_KEYWORDS[slug] ?? []).some((kw) => hay.includes(kw));
 }
 
+/**
+ * `engagement_projects.triggeredBy` real signal-key domain prefix → topic slug
+ * (Real Projects + Assessments CTAs on Topic Pages task). Signal keys use the
+ * `signal.<domain>.<name>` convention (verified against `signal_derivation_rules`);
+ * the domain segment is what a Solutions/Topic page owns. Quiz-derived
+ * migration-readiness triggers use a separate `trigger.quiz.*` /
+ * `trigger.purchase-timing.*` convention (no domain segment) and map directly to
+ * Migration. Deliberately no entry for "power-platform" or a plain "migration"
+ * domain — real, by design: those topics show zero follow-on projects until a
+ * project is tagged with a matching signal domain, per this task's explicit rule
+ * that an unmatched topic hides its Projects section entirely rather than showing
+ * an empty state.
+ */
+export const SIGNAL_DOMAIN_TO_TOPIC_SLUG: Record<string, string> = {
+  copilot: "copilot",
+  sharepoint: "sharepoint",
+  teams: "teams",
+  governance: "governance",
+  security: "security-compliance",
+  compliance: "security-compliance",
+};
+
+/** Topic slugs a follow-on project's real `triggeredBy` signal keys resolve to. */
+export function topicSlugsForProjectTriggers(triggeredBy: string[]): Set<string> {
+  const slugs = new Set<string>();
+  for (const key of triggeredBy) {
+    if (key.startsWith("trigger.quiz.") || key.startsWith("trigger.purchase-timing.")) {
+      slugs.add("migration");
+      continue;
+    }
+    if (key.startsWith("signal.")) {
+      const domain = key.split(".")[1];
+      const slug = domain ? SIGNAL_DOMAIN_TO_TOPIC_SLUG[domain] : undefined;
+      if (slug) slugs.add(slug);
+    }
+  }
+  return slugs;
+}
+
+export function projectMatchesTopic(triggeredBy: string[], topicSlug: string): boolean {
+  return topicSlugsForProjectTriggers(triggeredBy).has(topicSlug);
+}
+
 export function findTopicByText(text: string): SolutionTopic | undefined {
   return SOLUTIONS_TOPICS.find((t) => topicMatchesKeywordText(t.slug, text));
 }
