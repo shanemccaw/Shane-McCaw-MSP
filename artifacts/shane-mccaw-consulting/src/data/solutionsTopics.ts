@@ -124,10 +124,10 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
     icon: Lock,
     pillar: "Security",
     gradientPhrase: "before it's an incident report",
-    headlinePrefix: "Find the gap ",
-    headlineSuffix: "before it's an incident report.",
+    headlinePrefix: "Close the gap ",
+    headlineSuffix: "before it becomes an incident report.",
     subhead:
-      "Anonymous links, stale guest accounts, missing MFA, over-privileged OAuth apps — the same handful of misconfigurations show up in nearly every breach post-mortem. They're also the easiest things to check for continuously, not once a year.",
+      "Anonymous links, stale guest accounts, missing MFA, and over-privileged OAuth grants — the same handful of misconfigurations behind most real-world breaches, checked on a recurring schedule against your actual tenant, not once a year.",
     quizHref: "/security-quiz",
     stats: [
       { label: "Security pillar", value: "Scored" },
@@ -141,15 +141,54 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
       "MFA registration coverage on privileged identities",
     ],
     risks: [
-      "A single forgotten anonymous link turning into a data exposure headline",
-      "Compliance frameworks (SOC 2, HIPAA) assuming controls that were never actually verified",
+      "An anonymous sharing link left open for months, discovered only after something has already leaked through it",
+      "A departed employee's or contractor's guest account that was never removed, still holding its original permissions",
+      "An OAuth app a user approved once, now sitting with broad access nobody has reviewed since",
+      "A privileged admin account with no MFA registered — the exact account an attacker targets first",
     ],
     relatedEngine: {
       name: "Security Engine",
       description:
-        "Continuously hunts anonymous share links, stale guest access, over-privileged OAuth apps, and MFA gaps.",
+        "Hunts anonymous share links, stale guest access, over-privileged OAuth apps, and MFA gaps on a recurring scan cadence.",
     },
     healthPillarKeys: ["security", "compliance"],
+    productOverview:
+      "The Security Engine connects to Microsoft Graph with scoped, read-only access and evaluates your tenant's real configuration: sharing link exposure, guest account activity, OAuth application consent grants, and MFA registration status per identity. Every finding traces back to an actual Graph API response, re-checked on a scheduled cadence — not a checklist filled out once a year.",
+    credibilityBody:
+      "I'm the Microsoft 365 Architect at NASA today, and the checks this page runs — anonymous sharing links, stale guest accounts, OAuth consent grants, MFA coverage — are the same class of control I manage in a live enterprise tenant, not theoretical best practices. One clarification, since the word \"Compliance\" is in this page's title: this covers your organization's own commercial security and governance posture — not federal regulatory compliance, government contracting requirements, or any government-specific framework. This platform doesn't provide, claim, or imply coverage of any federal compliance program, and isn't built for regulated federal environments.",
+    whyItMattersIntro:
+      "Anonymous sharing links left open, stale guest accounts still holding permissions, over-privileged OAuth consent grants, and privileged accounts missing MFA — these four gaps show up in nearly every real-world breach post-mortem, and they're exactly what this engine checks for on a recurring basis, not once at audit time.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "A scoped, read-only Microsoft Graph connection is granted during onboarding — no standing credential, revocable at any time.",
+      },
+      {
+        title: "Scan",
+        description: "The Security Engine evaluates sharing links, guest accounts, OAuth consent grants, and MFA registration against your tenant's real current state.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll into your tenant's real Security pillar score inside the Architecture Health Engine — not a generic industry checklist score.",
+      },
+      {
+        title: "Recheck",
+        description: "Scans repeat on a scheduled cadence, so drift since the last check gets caught instead of only surfacing at the next annual audit.",
+      },
+      {
+        title: "Surface",
+        description: "New or worsening findings appear in your Portal, with the specific fix ranked by what closes the biggest exposure first.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Security pillar score, not a self-attested rating",
+      "A live list of open anonymous links, stale guest accounts, risky OAuth grants, and MFA gaps — every finding traceable to a real Graph API check",
+      "Scheduled re-checks, so a fixed finding that regresses gets caught again",
+      "Zero questionnaires — every number on this page comes from your actual tenant",
+    ],
+    modulesIntro: "Every module below runs on the same real Graph telemetry — no self-attestation, no once-a-year audit.",
+    finalCtaBody:
+      "Start a free Assessment and get your real Security score — scanned against your actual tenant, not guessed from a questionnaire.",
   },
   {
     slug: "governance",
@@ -218,6 +257,45 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         "Tracks configuration baseline deltas across SharePoint site collections as they drift from the approved architecture.",
     },
     healthPillarKeys: ["architecture"],
+    productOverview:
+      "SharePoint Governance runs a live, read-only Microsoft Graph API scan across your tenant's real site and hub architecture — checked against actual usage patterns, permission inheritance traced from every site collection down to individual unique-permission breaks, content type and metadata governance checked for consistency, and search and findability configuration audited. It's the same surface a user hits when they can't find something in your intranet, or find too much of it — scanned directly, not guessed at from a checklist.",
+    credibilityBody:
+      "I'm the current Microsoft 365 Architect at NASA, where I govern the same site architecture, permission inheritance, and metadata problems this page scans for — not case studies I read about, but a tenant I administer every day. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same architectural discipline that keeps a SharePoint environment usable at NASA's scale is what's engineered into this scan.",
+    whyItMattersIntro:
+      "An ungoverned SharePoint doesn't fail all at once — it fails one abandoned site, one broken permission inheritance, and one orphaned share at a time, until the intranet you're paying a license fee for is the tool nobody opens voluntarily.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only Graph API connection. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine reads your real site and hub architecture, permission inheritance chains, content type and metadata configuration, and search and findability settings across every site collection.",
+      },
+      {
+        title: "Findings",
+        description: "Every orphaned unique-permission site, broken inheritance chain, and metadata inconsistency is logged as a real, inspectable finding — not a scored questionnaire answer.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll up into your real Architecture pillar score inside the Architecture Health Engine.",
+      },
+      {
+        title: "Remediate",
+        description: "You get the specific fixes, ranked by which one closes the biggest exposure first — and the Drift Engine keeps tracking that same architecture as it moves.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Architecture pillar score, not a self-reported estimate",
+      "A full site and hub architecture map, checked against actual usage — not guessed at",
+      "Every permission inheritance break and orphaned unique-permission site, traced and logged",
+      "Content type and metadata governance findings, plus your search and findability configuration read",
+      "Ongoing tracking from the Drift Engine, which tracks configuration baseline deltas across your site collections as they drift from the approved architecture",
+      "Zero questionnaires. Every finding comes from a live Graph API scan of your actual tenant.",
+    ],
+    modulesIntro: "SharePoint Governance checks four real surfaces before sprawl and broken permissions become the norm:",
+    finalCtaBody:
+      "Start a free Assessment and get your real Architecture pillar score — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
   },
   {
     slug: "power-platform",
