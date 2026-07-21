@@ -324,6 +324,43 @@ export const SOLUTIONS_TOPICS: SolutionTopic[] = [
         "Correlates service health and adoption signals into a composite score, surfacing structural issues dashboards alone miss.",
     },
     healthPillarKeys: ["governance"],
+    productOverview:
+      "Teams Governance runs a live, read-only Microsoft Graph API scan across every team and Microsoft 365 Group in your tenant — creation and naming patterns, archival and lifecycle status, guest membership, channel and app counts, and meeting/calling policy assignment. It's built to catch what a usage dashboard can't: a team that looks active by usage stats but has no clear owner, an external guest with standing access nobody's reviewed since onboarding, or channel sprawl that's quietly outgrown the policies meant to contain it.",
+    credibilityBody:
+      "I govern Microsoft Teams lifecycle policy, naming discipline, and external guest access for NASA's own tenant — the structural problems this page scans for are ones I manage directly, not case studies I read about. This platform doesn't score your tenant against NASA's specific frameworks — that's not what it's built to do — but the same lifecycle discipline that keeps NASA's Teams environment governed is what's engineered into this scan.",
+    whyItMattersIntro:
+      "A Teams rollout with strong adoption numbers can still be structurally ungoverned — and the two failure modes that matter most don't show up in a usage dashboard at all.",
+    howItWorks: [
+      {
+        title: "Connect",
+        description: "You grant a scoped, read-only Graph API connection. No agent installed, no standing credential left behind.",
+      },
+      {
+        title: "Scan",
+        description: "The engine reads team and Microsoft 365 Group creation history, naming patterns, archival status, guest membership, channel and app counts, and meeting/calling policy assignment across your tenant.",
+      },
+      {
+        title: "Findings",
+        description: "Every abandoned team with standing guest access, naming-convention violation, and channel sprawl pattern is logged as a real, inspectable finding — not a scored questionnaire answer.",
+      },
+      {
+        title: "Score",
+        description: "Findings roll up into your real Governance pillar score inside the Architecture Health Engine.",
+      },
+      {
+        title: "Remediate",
+        description: "You get the specific fixes, ranked by which one closes the biggest exposure first — and the Health Engine keeps re-checking the same surface after you fix it.",
+      },
+    ],
+    whatYouGet: [
+      "Your real Governance pillar score, not a self-reported estimate",
+      "A full lifecycle and guest-access report — every abandoned team, naming-convention violation, and external guest with standing access flagged",
+      "A channel and app sprawl read — where usage has outgrown the policies meant to contain it",
+      "Zero questionnaires. Every finding comes from a live Graph API scan of your actual tenant.",
+    ],
+    modulesIntro: "Teams Governance checks four real surfaces before sprawl becomes a cleanup project:",
+    finalCtaBody:
+      "Start a free Assessment and get your real Governance pillar score — scanned, not guessed — or take the quiz for a faster, self-reported read first.",
   },
   {
     slug: "migration",
