@@ -30,21 +30,21 @@ export function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Get Started</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/assessment" className="hover:text-text-primary transition-colors">Assessment</Link></li>
-              <li><Link href="/monitoring" className="hover:text-text-primary transition-colors">Monitoring</Link></li>
-              <li><Link href={QUIZ_HUB_HREF} className="hover:text-text-primary transition-colors">Free Quiz</Link></li>
+              <li><Link href="/assessment" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Assessment</Link></li>
+              <li><Link href="/monitoring" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Monitoring</Link></li>
+              <li><Link href={QUIZ_HUB_HREF} className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Free Quiz</Link></li>
             </ul>
 
             <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Solutions</h4>
             <ul className="space-y-2 text-sm text-text-secondary">
-              <li><Link href="/solutions/copilot" className="hover:text-text-primary transition-colors">Copilot & AI</Link></li>
-              <li><Link href="/solutions/security-compliance" className="hover:text-text-primary transition-colors">Security & Compliance</Link></li>
-              <li><Link href="/solutions/governance" className="hover:text-text-primary transition-colors">Governance</Link></li>
-              <li><Link href="/solutions/sharepoint" className="hover:text-text-primary transition-colors">SharePoint</Link></li>
-              <li><Link href="/solutions/power-platform" className="hover:text-text-primary transition-colors">Power Platform</Link></li>
-              <li><Link href="/solutions/teams" className="hover:text-text-primary transition-colors">Teams</Link></li>
-              <li><Link href="/solutions/migration" className="hover:text-text-primary transition-colors">Migration</Link></li>
-              <li><Link href="/solutions/m365-health" className="hover:text-text-primary transition-colors">M365 Health</Link></li>
+              <li><Link href="/solutions/copilot" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Copilot & AI</Link></li>
+              <li><Link href="/solutions/security-compliance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Security & Compliance</Link></li>
+              <li><Link href="/solutions/governance" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Governance</Link></li>
+              <li><Link href="/solutions/sharepoint" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">SharePoint</Link></li>
+              <li><Link href="/solutions/power-platform" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Power Platform</Link></li>
+              <li><Link href="/solutions/teams" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Teams</Link></li>
+              <li><Link href="/solutions/migration" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Migration</Link></li>
+              <li><Link href="/solutions/m365-health" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">M365 Health</Link></li>
             </ul>
           </div>
 
@@ -52,19 +52,19 @@ export function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Platform</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/products" className="hover:text-text-primary transition-colors">Quick-Start Packs</Link></li>
-              <li><Link href="/retainer" className="hover:text-text-primary transition-colors">Fractional Consulting</Link></li>
-              <li><Link href="/msp" className="hover:text-text-primary transition-colors">MSP / Partners</Link></li>
-              <li><Link href="/trust-security" className="hover:text-text-primary transition-colors">Trust & Security</Link></li>
-              <li><Link href="/status" className="hover:text-text-primary transition-colors">System Status</Link></li>
-              <li><Link href="/resources" className="hover:text-text-primary transition-colors">Resources</Link></li>
+              <li><Link href="/products" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Quick-Start Packs</Link></li>
+              <li><Link href="/retainer" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Fractional Consulting</Link></li>
+              <li><Link href="/msp" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">MSP / Partners</Link></li>
+              <li><Link href="/trust-security" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Trust & Security</Link></li>
+              <li><Link href="/status" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">System Status</Link></li>
+              <li><Link href="/resources" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Resources</Link></li>
             </ul>
 
             <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Company</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/about" className="hover:text-text-primary transition-colors">About</Link></li>
-              <li><Link href="/contact" className="hover:text-text-primary transition-colors">Contact</Link></li>
-              <li><Link href="/book" className="hover:text-text-primary transition-colors">Book a Call</Link></li>
+              <li><Link href="/about" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">About</Link></li>
+              <li><Link href="/contact" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Contact</Link></li>
+              <li><Link href="/book" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Book a Call</Link></li>
             </ul>
           </div>
 
@@ -72,13 +72,13 @@ export function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4 text-sm tracking-wide">Legal</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/terms" className="hover:text-text-primary transition-colors">Terms of Service</Link></li>
-              <li><Link href="/privacy" className="hover:text-text-primary transition-colors">Privacy Policy</Link></li>
+              <li><Link href="/terms" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Privacy Policy</Link></li>
             </ul>
 
             <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Account</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
-              <li><Link href="/login" className="hover:text-text-primary transition-colors">Client Login</Link></li>
+              <li><Link href="/login" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Client Login</Link></li>
             </ul>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function Footer() {
           <p className="text-text-secondary text-xs">
             &copy; {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.
           </p>
-          <Link href="/privacy" className="text-text-secondary text-xs hover:text-text-primary transition-colors">
+          <Link href="/privacy" className="text-text-secondary text-xs block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">
             Privacy Policy
           </Link>
         </div>
