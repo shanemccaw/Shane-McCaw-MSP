@@ -346,7 +346,7 @@ export default function AssessmentDetail() {
       </section>
 
       {/* ── WHAT YOU GET ────────────────────────────────────────────────── */}
-      {(allDeliverables.length > 0 || features.length > 0 || service.associatedDocuments.length > 0) && (
+      {(allDeliverables.length > 0 || features.length > 0 || (service.associatedDocuments ?? []).length > 0) && (
         <section className="py-12 border-t border-white/[0.06]">
           <div className="max-w-[1100px] mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-12">
@@ -357,7 +357,7 @@ export default function AssessmentDetail() {
               </p>
             </div>
 
-            <div className={`grid grid-cols-1 ${[allDeliverables.length > 0, features.length > 0, service.associatedDocuments.length > 0].filter(Boolean).length > 1
+            <div className={`grid grid-cols-1 ${[allDeliverables.length > 0, features.length > 0, (service.associatedDocuments ?? []).length > 0].filter(Boolean).length > 1
                 ? "lg:grid-cols-2"
                 : "max-w-[640px] mx-auto"
               } gap-8`}>
@@ -399,7 +399,7 @@ export default function AssessmentDetail() {
                 </GlassPanel>
               )}
 
-              {service.associatedDocuments.length > 0 && (
+              {(service.associatedDocuments ?? []).length > 0 && (
                 <GlassPanel className="p-8">
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={GRADIENT_BG}>
@@ -408,7 +408,7 @@ export default function AssessmentDetail() {
                     <h3 className="font-display font-bold text-text-primary text-lg">Documents You&apos;ll Receive</h3>
                   </div>
                   <ul className="space-y-4">
-                    {service.associatedDocuments.map((doc) => (
+                    {(service.associatedDocuments ?? []).map((doc) => (
                       <li key={doc.title} className="flex items-start gap-3">
                         <CheckCircle className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" />
                         <span className="text-text-primary text-sm leading-relaxed font-medium">{doc.title}</span>

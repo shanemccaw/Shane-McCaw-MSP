@@ -630,13 +630,13 @@ export default function Assessments() {
                 ))}
               </ul>
             )}
-            {service.associatedDocuments.length > 0 && (
+            {(service.associatedDocuments ?? []).length > 0 && (
               <div className="mb-5">
                 <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
                   Documents you&rsquo;ll receive
                 </div>
                 <ul className="space-y-2">
-                  {service.associatedDocuments.map((doc) => (
+                  {(service.associatedDocuments ?? []).map((doc) => (
                     <li key={doc.title} className="flex items-start gap-2">
                       <FileText className="w-4 h-4 text-accent-violet flex-shrink-0 mt-0.5" />
                       <span className="text-sm text-text-secondary leading-relaxed">{doc.title}</span>
