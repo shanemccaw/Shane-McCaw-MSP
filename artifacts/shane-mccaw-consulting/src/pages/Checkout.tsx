@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { GlassPanel } from "@/components/design-system/GlassPanel";
+import { GradientText } from "@/components/design-system/GradientText";
 import { Button } from "@/components/ui/button";
 import { CaptchaGate } from "@/components/CaptchaGate";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier, type AssessmentOffer } from "@/hooks/useCatalog";
 import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
+
+const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
 type AnyTier = MonitoringTier | RetainerTier | MspTier | AssessmentOffer;
 
@@ -199,27 +203,28 @@ function StepIndicator({ current }: { current: Step }) {
             <div
               className={`flex items-center gap-1.5 text-sm font-medium ${
                 active
-                  ? "text-[#0A2540]"
+                  ? "text-text-primary"
                   : done
-                    ? "text-[#0078D4]"
-                    : "text-muted-foreground"
+                    ? "text-accent-blue"
+                    : "text-text-tertiary"
               }`}
             >
               <span
                 className={`w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold ${
                   active
-                    ? "bg-[#0A2540] text-white"
+                    ? "text-white"
                     : done
-                      ? "bg-[#0078D4] text-white"
-                      : "bg-border text-muted-foreground"
+                      ? "bg-accent-blue text-white"
+                      : "bg-white/[0.08] text-text-tertiary"
                 }`}
+                style={active ? GRADIENT_BG : undefined}
               >
                 {done ? <CheckCircle2 className="size-3.5" /> : idx + 1}
               </span>
               <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
             </div>
             {idx < WIZARD_STEPS.length - 1 && (
-              <span className="text-border">›</span>
+              <span className="text-text-tertiary">›</span>
             )}
           </div>
         );
@@ -580,63 +585,76 @@ export default function Checkout() {
         description="Securely purchase a Microsoft 365 consulting service from Shane McCaw."
       />
 
-      <div className="min-h-screen bg-[#F7F9FC] py-16">
-        <div className="max-w-2xl mx-auto px-4">
+      <div className="min-h-screen pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl mx-auto">
           {/* Loading */}
           {step === "loading" && (
             <div className="flex justify-center py-24">
-              <Loader2 className="size-8 animate-spin text-[#0078D4]" />
+              <Loader2 className="size-8 animate-spin text-accent-blue" />
             </div>
           )}
 
           {/* Catalog error */}
           {step === "catalog-error" && (
-            <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center space-y-4">
-              <AlertCircle className="mx-auto size-12 text-destructive" />
-              <h2 className="text-xl font-bold text-[#0A2540]">Unable to load service catalogue</h2>
-              <p className="text-muted-foreground">
+            <GlassPanel className="p-10 text-center space-y-4">
+              <AlertCircle className="mx-auto size-12 text-red-400" />
+              <h2 className="font-display text-xl font-bold text-text-primary">Unable to load service catalogue</h2>
+              <p className="text-text-secondary">
                 There was a problem fetching service information. Please refresh and try again.
               </p>
-              <Button variant="outline" onClick={() => window.location.reload()}>
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+              >
                 Refresh
-              </Button>
-            </div>
+              </button>
+            </GlassPanel>
           )}
 
           {/* Not found */}
           {step === "not-found" && (
-            <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center space-y-4">
-              <AlertCircle className="mx-auto size-12 text-muted-foreground" />
-              <h2 className="text-xl font-bold text-[#0A2540]">Service not found</h2>
-              <p className="text-muted-foreground">
+            <GlassPanel className="p-10 text-center space-y-4">
+              <AlertCircle className="mx-auto size-12 text-text-tertiary" />
+              <h2 className="font-display text-xl font-bold text-text-primary">Service not found</h2>
+              <p className="text-text-secondary">
                 We couldn't find a service matching{" "}
-                <strong>{slug ?? "the requested product"}</strong>. It may have been removed or
+                <strong className="text-text-primary">{slug ?? "the requested product"}</strong>. It may have been removed or
                 the link may be incorrect.
               </p>
-              <Link href="/products">
-                <Button variant="outline">View all services</Button>
+              <Link
+                href="/products"
+                className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+              >
+                View all services
               </Link>
-            </div>
+            </GlassPanel>
           )}
 
           {/* Not yet available */}
           {step === "unavailable" && service && (
-            <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center space-y-4">
-              <Clock className="mx-auto size-12 text-[#0078D4]" />
-              <h2 className="text-xl font-bold text-[#0A2540]">{service.name}</h2>
-              <p className="text-muted-foreground">
+            <GlassPanel className="p-10 text-center space-y-4">
+              <Clock className="mx-auto size-12 text-accent-blue" />
+              <h2 className="font-display text-xl font-bold text-text-primary">{service.name}</h2>
+              <p className="text-text-secondary">
                 This service isn't yet available for online purchase. Please contact Shane directly
                 to discuss your requirements and get started.
               </p>
               <div className="flex gap-3 justify-center flex-wrap">
-                <Link href="/contact">
-                  <Button>Contact Shane</Button>
+                <Link
+                  href="/contact"
+                  className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={GRADIENT_BG}
+                >
+                  Contact Shane
                 </Link>
-                <Link href="/book">
-                  <Button variant="outline">Book a discovery call</Button>
+                <Link
+                  href="/book"
+                  className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+                >
+                  Book a discovery call
                 </Link>
               </div>
-            </div>
+            </GlassPanel>
           )}
 
           {/* Wizard */}
@@ -644,25 +662,25 @@ export default function Checkout() {
             <>
               <StepIndicator current={step} />
 
-              <div className="bg-white rounded-2xl border border-border shadow-sm p-8">
+              <GlassPanel className="p-8">
                 {/* Step 1: Guest info */}
                 {step === "guest-info" && (
                   <div className="space-y-6">
                     <div>
-                      <h2 className="text-2xl font-semibold text-[#0A2540]">Your information</h2>
-                      <p className="text-muted-foreground mt-1">Enter your details to get started.</p>
+                      <h2 className="font-display text-2xl font-semibold text-text-primary">Your information</h2>
+                      <p className="text-text-secondary mt-1">Enter your details to get started.</p>
                     </div>
 
                     {service && (
-                      <div className="rounded-xl bg-[#F7F9FC] border border-border p-4 flex items-center justify-between gap-4">
+                      <div className="rounded-xl bg-charcoal-1 border border-white/[0.06] p-4 flex items-center justify-between gap-4">
                         <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+                          <p className="text-xs font-bold uppercase tracking-wider text-text-tertiary mb-0.5">
                             Selected service
                           </p>
-                          <p className="font-semibold text-[#0A2540]">{service.name}</p>
+                          <p className="font-semibold text-text-primary">{service.name}</p>
                         </div>
                         {priceDisplay && (
-                          <p className="text-primary font-bold text-lg shrink-0">{priceDisplay}</p>
+                          <p className="font-numeric text-text-primary font-bold text-lg shrink-0">{priceDisplay}</p>
                         )}
                       </div>
                     )}
@@ -676,7 +694,12 @@ export default function Checkout() {
                             <FormItem>
                               <FormLabel>Full name</FormLabel>
                               <FormControl>
-                                <Input placeholder="Jane Smith" autoComplete="name" {...field} />
+                                <Input
+                                  placeholder="Jane Smith"
+                                  autoComplete="name"
+                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
+                                  {...field}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -693,6 +716,7 @@ export default function Checkout() {
                                   type="email"
                                   placeholder="you@yourcompany.com"
                                   autoComplete="email"
+                                  className="bg-white/[0.04] border-white/[0.12] text-text-primary placeholder:text-text-tertiary focus-visible:ring-accent-blue/60 focus-visible:border-accent-blue/60"
                                   {...field}
                                 />
                               </FormControl>
@@ -700,7 +724,12 @@ export default function Checkout() {
                             </FormItem>
                           )}
                         />
-                        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+                        <Button
+                          type="submit"
+                          className="w-full text-white"
+                          style={GRADIENT_BG}
+                          disabled={form.formState.isSubmitting}
+                        >
                           {form.formState.isSubmitting ? (
                             <><Loader2 className="mr-2 size-4 animate-spin" /> Saving…</>
                           ) : (
@@ -717,39 +746,39 @@ export default function Checkout() {
                   <div className="space-y-6">
                     <button
                       onClick={() => setStep("guest-info")}
-                      className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0A2540]"
+                      className="flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors"
                     >
                       <ArrowLeft className="size-3.5" /> Back
                     </button>
 
                     <div>
-                      <h2 className="text-2xl font-semibold text-[#0A2540]">
+                      <h2 className="font-display text-2xl font-semibold text-text-primary">
                         Microsoft 365 admin consent
                       </h2>
-                      <p className="text-muted-foreground mt-1">
+                      <p className="text-text-secondary mt-1">
                         Shane's monitoring and automation tools need read access to your Microsoft
                         365 tenant. This is granted once by your M365 administrator.
                       </p>
                     </div>
 
-                    <div className="rounded-xl border border-border bg-[#F7F9FC] p-5 space-y-3">
+                    <div className="rounded-xl border border-white/[0.06] bg-charcoal-1 p-5 space-y-3">
                       <div className="flex items-start gap-3">
-                        <Users className="size-5 text-[#0078D4] shrink-0 mt-0.5" />
+                        <Users className="size-5 text-accent-blue shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-[#0A2540] text-sm">Who does this step</p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="font-semibold text-text-primary text-sm">Who does this step</p>
+                          <p className="text-sm text-text-secondary">
                             Your Microsoft 365 Global Administrator or a Privileged Role
                             Administrator.
                           </p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
-                        <ShieldCheck className="size-5 text-[#0078D4] shrink-0 mt-0.5" />
+                        <ShieldCheck className="size-5 text-accent-blue shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-[#0A2540] text-sm">
+                          <p className="font-semibold text-text-primary text-sm">
                             What access is granted
                           </p>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-text-secondary">
                             Read-only access to tenant configuration, user data, and service health.
                             No changes are made without your explicit approval.
                           </p>
@@ -762,20 +791,20 @@ export default function Checkout() {
                         href={consentUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-[#0078D4] text-[#0078D4] font-semibold text-sm hover:bg-[#0078D4]/5 transition-colors"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-accent-blue text-accent-blue font-semibold text-sm hover:bg-accent-blue/10 transition-colors"
                       >
                         Grant admin consent in Microsoft{" "}
                         <ExternalLink className="size-4" />
                       </a>
                     ) : (
-                      <div className="rounded-xl bg-[#F7F9FC] border border-border p-4 text-sm text-muted-foreground">
+                      <div className="rounded-xl bg-charcoal-1 border border-white/[0.06] p-4 text-sm text-text-secondary">
                         Loading consent link…
                       </div>
                     )}
 
-                    <div className="rounded-xl border border-[#0078D4]/20 bg-[#0078D4]/5 p-4 flex items-start gap-3">
-                      <Clock className="size-5 text-[#0078D4] shrink-0 mt-0.5" />
-                      <p className="text-sm text-[#0A2540]">
+                    <div className="rounded-xl border border-accent-blue/20 bg-accent-blue/5 p-4 flex items-start gap-3">
+                      <Clock className="size-5 text-accent-blue shrink-0 mt-0.5" />
+                      <p className="text-sm text-text-primary">
                         Waiting for your Microsoft 365 administrator to complete consent — this
                         page will continue automatically.
                       </p>
@@ -793,39 +822,39 @@ export default function Checkout() {
                           setSessionExpired(false);
                           setStep("consent");
                         }}
-                        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0A2540]"
+                        className="flex items-center gap-1.5 text-sm text-text-tertiary hover:text-text-primary transition-colors"
                       >
                         <ArrowLeft className="size-3.5" /> Back
                       </button>
                     )}
 
                     <div>
-                      <h2 className="text-2xl font-semibold text-[#0A2540]">
+                      <h2 className="font-display text-2xl font-semibold text-text-primary">
                         {service.isFree ? "Review & confirm" : "Review & pay"}
                       </h2>
-                      <p className="text-muted-foreground mt-1">
+                      <p className="text-text-secondary mt-1">
                         {service.isFree ? "Confirm your free request details below." : "Confirm your order details below."}
                       </p>
                     </div>
 
                     {/* Order summary */}
-                    <div className="rounded-xl border border-border bg-[#F7F9FC] p-5 space-y-3">
+                    <div className="rounded-xl border border-white/[0.06] bg-charcoal-1 p-5 space-y-3">
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="font-semibold text-[#0A2540]">{service.name}</p>
+                          <p className="font-semibold text-text-primary">{service.name}</p>
                           {service.description && (
-                            <p className="text-sm text-muted-foreground mt-0.5">
+                            <p className="text-sm text-text-secondary mt-0.5">
                               {service.description}
                             </p>
                           )}
                         </div>
                         {priceDisplay && (
-                          <p className="text-primary font-bold text-lg shrink-0">{priceDisplay}</p>
+                          <p className="font-numeric text-text-primary font-bold text-lg shrink-0">{priceDisplay}</p>
                         )}
                       </div>
                       {guestInfo && (
-                        <div className="border-t border-border pt-3 text-sm text-muted-foreground">
-                          <span className="font-medium text-[#0A2540]">Purchasing as:</span>{" "}
+                        <div className="border-t border-white/[0.06] pt-3 text-sm text-text-secondary">
+                          <span className="font-medium text-text-primary">Purchasing as:</span>{" "}
                           {guestInfo.name} · {guestInfo.email}
                         </div>
                       )}
@@ -833,13 +862,13 @@ export default function Checkout() {
 
                     {/* Payment canceled notice */}
                     {paymentCanceled && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
-                        <XCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+                        <XCircle className="size-5 text-amber-400 shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-amber-900 text-sm">
+                          <p className="font-semibold text-amber-300 text-sm">
                             Payment was not completed
                           </p>
-                          <p className="text-sm text-amber-700 mt-0.5">
+                          <p className="text-sm text-amber-200/80 mt-0.5">
                             You left the Stripe payment page before completing your purchase. Your
                             information has been saved — click "Proceed to payment" to try again.
                           </p>
@@ -849,11 +878,11 @@ export default function Checkout() {
 
                     {/* Session expired */}
                     {sessionExpired && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
-                        <Clock className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3">
+                        <Clock className="size-5 text-amber-400 shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-amber-900 text-sm">Session expired</p>
-                          <p className="text-sm text-amber-700 mt-0.5">
+                          <p className="font-semibold text-amber-300 text-sm">Session expired</p>
+                          <p className="text-sm text-amber-200/80 mt-0.5">
                             Your checkout session timed out. Click "Proceed to payment" to start a
                             fresh session — your information has been saved.
                           </p>
@@ -863,11 +892,11 @@ export default function Checkout() {
 
                     {/* Payment error */}
                     {paymentError && !sessionExpired && (
-                      <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex items-start gap-3">
-                        <AlertCircle className="size-5 text-destructive shrink-0 mt-0.5" />
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3">
+                        <AlertCircle className="size-5 text-red-400 shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold text-destructive text-sm">Payment error</p>
-                          <p className="text-sm text-destructive/80 mt-0.5">{paymentError}</p>
+                          <p className="font-semibold text-red-400 text-sm">Payment error</p>
+                          <p className="text-sm text-red-300/80 mt-0.5">{paymentError}</p>
                         </div>
                       </div>
                     )}
@@ -878,17 +907,18 @@ export default function Checkout() {
                         id="terms-check"
                         checked={termsAccepted}
                         onCheckedChange={(v) => setTermsAccepted(!!v)}
+                        className="border-white/20 data-[state=checked]:bg-accent-blue data-[state=checked]:border-accent-blue"
                       />
                       <label
                         htmlFor="terms-check"
-                        className="text-sm text-foreground leading-snug cursor-pointer"
+                        className="text-sm text-text-secondary leading-snug cursor-pointer"
                       >
                         I agree to the{" "}
-                        <Link href="/legal/terms" className="underline text-primary">
+                        <Link href="/legal/terms" className="underline text-accent-blue">
                           Terms of Service
                         </Link>{" "}
                         and{" "}
-                        <Link href="/legal/privacy" className="underline text-primary">
+                        <Link href="/legal/privacy" className="underline text-accent-blue">
                           Privacy Policy
                         </Link>
                         . {service.isFree ? (
@@ -899,8 +929,8 @@ export default function Checkout() {
                       </label>
                     </div>
 
-                    <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2 text-sm text-text-secondary">
+                      <ShieldCheck className="size-4 text-accent-blue shrink-0 mt-0.5" />
                       <span>
                         {service.isFree ? (
                           "Your M365 configuration snapshot will begin immediately. No credit card required."
@@ -917,7 +947,8 @@ export default function Checkout() {
                     <Button
                       onClick={service.isFree ? handleFreeCheckout : handlePay}
                       disabled={launching || !termsAccepted || !captchaToken}
-                      className="w-full"
+                      className="w-full text-white"
+                      style={GRADIENT_BG}
                       size="lg"
                     >
                       {launching ? (
@@ -941,44 +972,44 @@ export default function Checkout() {
                 {/* Step 4: Confirmed */}
                 {step === "confirmed" && (
                   <div className="flex flex-col items-center gap-4 py-8 text-center">
-                    <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-2">
-                      <CheckCircle2 className="size-8 text-[#0078D4]" />
+                    <div className="w-16 h-16 rounded-full bg-accent-blue/10 flex items-center justify-center mb-2">
+                      <CheckCircle2 className="size-8 text-accent-blue" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-[#0A2540]">Order confirmed!</h2>
+                    <h2 className="font-display text-2xl font-semibold text-text-primary">
+                      Order <GradientText>confirmed</GradientText>!
+                    </h2>
                     {guestInfo?.email ? (
-                      <p className="text-muted-foreground max-w-sm">
+                      <p className="text-text-secondary max-w-sm">
                         Thank you for your purchase. You'll receive an email at{" "}
-                        <strong>{guestInfo.email}</strong> with account setup instructions within
+                        <strong className="text-text-primary">{guestInfo.email}</strong> with account setup instructions within
                         one business day.
                       </p>
                     ) : (
-                      <p className="text-muted-foreground max-w-sm">
+                      <p className="text-text-secondary max-w-sm">
                         Thank you for your purchase. You'll receive setup instructions by email
                         within one business day.
                       </p>
                     )}
-                    <p className="text-sm text-muted-foreground max-w-sm">
+                    <p className="text-sm text-text-secondary max-w-sm">
                       Shane will personally reach out to schedule your onboarding call and begin
                       your engagement.
                     </p>
-                    <Link href="/">
-                      <Button
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => {
-                          const sid = sessionId ?? loadSessionId();
-                          if (sid) clearGuestInfoCache(sid);
-                          clearSessionId();
-                        }}
-                      >
-                        Return home
-                      </Button>
+                    <Link
+                      href="/"
+                      className="mt-2 inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
+                      onClick={() => {
+                        const sid = sessionId ?? loadSessionId();
+                        if (sid) clearGuestInfoCache(sid);
+                        clearSessionId();
+                      }}
+                    >
+                      Return home
                     </Link>
                   </div>
                 )}
-              </div>
+              </GlassPanel>
 
-              <p className="text-center text-xs text-muted-foreground mt-6">
+              <p className="text-center text-xs text-text-tertiary mt-6">
                 Payments are securely processed by Stripe. Your email and payment information are
                 never stored on our servers.
               </p>
