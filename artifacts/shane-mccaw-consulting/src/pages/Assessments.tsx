@@ -315,114 +315,119 @@ export default function Assessments() {
         description="Free and paid Microsoft 365 assessments — a real, consent-gated Graph API scan, not a questionnaire, with the same scan depth as our continuous Monitoring service."
       />
 
+      {/* 1. Hero Section */}
       <section className="pt-32 sm:pt-40 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-4xl mx-auto mb-12">
+        <div className="text-center max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
             <ShieldCheck className="w-4 h-4" />
-            Built by a Former NASA M365 Architect
+            Built by the M365 Architect at NASA
           </div>
           <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary tracking-tight leading-tight mb-5">
             A Real Scan of Your Tenant.<br />
             <GradientText>Not a Guess.</GradientText>
           </h1>
           <p className="text-lg text-text-secondary leading-relaxed max-w-3xl mx-auto">
-            Architected by Shane McCaw — creator of the M365 Copilot governance standard NASA
-            distributed agency-wide. Every assessment connects securely to your live Microsoft
-            365 tenant and scores your real governance, security, and compliance posture — the
-            same depth whether you start free or go paid.
+            Every assessment connects securely to your live Microsoft 365 tenant and scores your
+            real governance, security, and compliance posture — not a self-reported
+            questionnaire. Start free or go paid; the scan depth is identical either way.
           </p>
         </div>
+      </section>
 
-        <div className="max-w-3xl mx-auto mb-10">
-          <GlassPanel className="p-6 sm:p-8">
-            {!wizardOpen && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
-                <div>
-                  <h2 className="font-display text-xl font-bold text-text-primary mb-1">
-                    Not sure where to start?
-                  </h2>
-                  <p className="text-sm text-text-secondary">
-                    3 quick questions — watch the right category light up as you answer.
-                  </p>
-                </div>
-                <button
-                  onClick={handleStartWizard}
-                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
-                  style={GRADIENT_BG}
-                  data-track="cta"
-                >
-                  Start
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+      {/* 2. What These Assessments Actually Do */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+            What These Assessments Actually Do
+          </h2>
+          <p className="text-text-secondary text-lg leading-relaxed">
+            Each assessment connects to your tenant through the Microsoft Graph API and reads
+            your actual configuration — identity policies, sharing settings, licensing,
+            compliance controls, whatever the category covers. It's evaluated against real
+            security and governance baselines and returned as a prioritized set of findings:
+            what's wrong, how bad it is, and what to fix first. Not a self-assessment checklist,
+            not a generic industry report — a decision-grade read on what's actually happening
+            inside your tenant right now.
+          </p>
+        </div>
+      </section>
 
-            {wizardOpen && !wizardDone && (
-              <div>
-                <div className="flex items-center justify-center gap-2 mb-6">
-                  {WIZARD_QUESTIONS.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-2 w-2 rounded-full transition-all duration-200 ${
-                        i === questionIndex
-                          ? 'w-6 bg-accent-blue'
-                          : i < questionIndex
-                            ? 'bg-accent-blue/60'
-                            : 'bg-white/[0.12]'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
-                  {WIZARD_QUESTIONS[questionIndex].text}
-                </h3>
-                <div className="space-y-3">
-                  {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
-                    <button
-                      key={option.text}
-                      onClick={() => handleAnswer(option)}
-                      className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
-                    >
-                      {option.text}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {wizardOpen && wizardDone && (
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
-                  Based on your answers
-                </p>
-                <h3 className="font-display text-xl font-bold text-text-primary mb-4">
-                  {bestZones.length > 0 ? (
-                    <>
-                      <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
-                      {bestZones.length > 1 ? 'are' : 'is'} your best match
-                    </>
-                  ) : (
-                    "We couldn't quite pin down a single match — browse the categories below"
-                  )}
-                </h3>
-                <button
-                  onClick={handleRetakeWizard}
-                  className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
-                >
-                  Retake the quiz
-                </button>
-              </div>
-            )}
+      {/* 3. Built by the CURRENT Microsoft 365 Architect for NASA */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <GlassPanel className="p-8 sm:p-10 text-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-blue/10 text-accent-blue text-xs font-semibold uppercase tracking-wider mb-6">
+              <ShieldCheck className="w-4 h-4" />
+              Personal Credential
+            </div>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+              Built by the CURRENT Microsoft 365 Architect for NASA
+            </h2>
+            <p className="text-text-secondary text-lg leading-relaxed mb-4">
+              Shane McCaw is the current M365 Architect at NASA, where he built the Copilot
+              governance standard the agency distributes internally. The same engineering
+              discipline — real telemetry, real scoring, no guesswork — is what runs underneath
+              every assessment on this site.
+            </p>
+            <p className="text-text-tertiary text-sm leading-relaxed">
+              That NASA role is a personal engineering credential, not a platform capability.
+              These assessments are engineered for commercial Microsoft 365 tenants and do not
+              provide federal compliance scoring, FedRAMP, or GCC alignment of any kind.
+            </p>
           </GlassPanel>
         </div>
+      </section>
 
-        <div className="flex items-center gap-4 max-w-md mx-auto mb-10">
-          <div className="h-px flex-1 bg-white/[0.08]" />
-          <span className="text-xs uppercase tracking-widest text-text-tertiary whitespace-nowrap">
-            or browse by category
-          </span>
-          <div className="h-px flex-1 bg-white/[0.08]" />
+      {/* 4. Why These Assessments Matter */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+            Why These Assessments Matter
+          </h2>
+          <p className="text-text-secondary text-lg leading-relaxed">
+            Misconfigured access, unmanaged sharing, and licensing waste don't announce
+            themselves — they compound quietly until an incident, an audit, or a failed Copilot
+            rollout forces the issue. An assessment turns that invisible risk into a
+            prioritized, actionable list before it costs you, so the fix happens on your
+            timeline instead of someone else's.
+          </p>
         </div>
+      </section>
+
+      {/* 5. How These Assessments Work */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
+            How These Assessments Work
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            {[
+              { step: '1', title: 'Pick a category', body: "Browse by category or answer 3 quick questions and we'll point you to the right one." },
+              { step: '2', title: 'Grant scoped consent', body: 'Nothing runs against your tenant until you explicitly authorize it.' },
+              { step: '3', title: 'Real Graph-based scan', body: 'The same scan engine we run for continuous Monitoring reads your live environment.' },
+              { step: '4', title: 'Findings compiled', body: 'Results are ranked by real risk, not a generic severity label.' },
+              { step: '5', title: 'Portal access', body: 'Create your account and track findings, results, and next steps going forward.' },
+            ].map((s) => (
+              <div key={s.step} className="text-center">
+                <div
+                  className="w-9 h-9 mx-auto mb-3 rounded-full flex items-center justify-center text-white text-sm font-bold font-numeric"
+                  style={GRADIENT_BG}
+                >
+                  {s.step}
+                </div>
+                <h3 className="font-display text-sm font-bold text-text-primary mb-1">{s.title}</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Assessment Categories */}
+      <section id="assessment-categories" className="py-16 px-4 sm:px-6 lg:px-8">
+        <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
+          Assessment Categories
+        </h2>
 
         {loading && (
           <div className="flex justify-center items-center py-20">
@@ -554,6 +559,136 @@ export default function Assessments() {
             )}
           </div>
         )}
+      </section>
+
+      {/* 7. Assessment Wizard */}
+      <section id="assessment-wizard" className="py-16 px-4 sm:px-6 lg:px-8">
+        <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary text-center mb-10">
+          Assessment Wizard
+        </h2>
+        <div className="max-w-3xl mx-auto mb-10">
+          <GlassPanel className="p-6 sm:p-8">
+            {!wizardOpen && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+                <div>
+                  <h2 className="font-display text-xl font-bold text-text-primary mb-1">
+                    Not sure where to start?
+                  </h2>
+                  <p className="text-sm text-text-secondary">
+                    3 quick questions — watch the right category light up as you answer.
+                  </p>
+                </div>
+                <button
+                  onClick={handleStartWizard}
+                  className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+                  style={GRADIENT_BG}
+                  data-track="cta"
+                >
+                  Start
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {wizardOpen && !wizardDone && (
+              <div>
+                <div className="flex items-center justify-center gap-2 mb-6">
+                  {WIZARD_QUESTIONS.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-2 w-2 rounded-full transition-all duration-200 ${
+                        i === questionIndex
+                          ? 'w-6 bg-accent-blue'
+                          : i < questionIndex
+                            ? 'bg-accent-blue/60'
+                            : 'bg-white/[0.12]'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <h3 className="font-display text-lg sm:text-xl font-bold text-text-primary text-center mb-6">
+                  {WIZARD_QUESTIONS[questionIndex].text}
+                </h3>
+                <div className="space-y-3">
+                  {WIZARD_QUESTIONS[questionIndex].options.map((option) => (
+                    <button
+                      key={option.text}
+                      onClick={() => handleAnswer(option)}
+                      className="w-full text-left px-5 py-4 rounded-xl border border-white/[0.08] bg-white/[0.02] text-text-secondary hover:border-accent-blue/40 hover:text-text-primary hover:bg-white/[0.04] transition-all text-sm leading-relaxed"
+                    >
+                      {option.text}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {wizardOpen && wizardDone && (
+              <div className="text-center">
+                <p className="text-xs uppercase tracking-widest text-accent-blue font-semibold mb-2">
+                  Based on your answers
+                </p>
+                <h3 className="font-display text-xl font-bold text-text-primary mb-4">
+                  {bestZones.length > 0 ? (
+                    <>
+                      <GradientText>{joinWithAnd(bestZones.map((k) => ZONES.find((z) => z.key === k)!.label))}</GradientText>{' '}
+                      {bestZones.length > 1 ? 'are' : 'is'} your best match
+                    </>
+                  ) : (
+                    "We couldn't quite pin down a single match — browse the categories below"
+                  )}
+                </h3>
+                <button
+                  onClick={handleRetakeWizard}
+                  className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
+                >
+                  Retake the quiz
+                </button>
+              </div>
+            )}
+          </GlassPanel>
+        </div>
+      </section>
+
+      {/* 8. What's Inside Each Assessment */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto text-center">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-5">
+            What's Inside Each Assessment
+          </h2>
+          <p className="text-text-secondary text-lg leading-relaxed">
+            Every assessment hands you the same three things: findings ranked by real risk
+            instead of a generic severity label, plain-language scoring you can hand straight to
+            leadership or an auditor without translation, and the same underlying telemetry your
+            account carries forward if you move into continuous Monitoring. Each individual
+            assessment's specific deliverables are listed on its own card above — this is the
+            construct all of them share.
+          </p>
+        </div>
+      </section>
+
+      {/* 9. Begin Your Assessment */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <GlassPanel className="p-8 sm:p-10 text-center">
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4">
+              Begin Your Assessment
+            </h2>
+            <p className="text-text-secondary text-lg leading-relaxed mb-8">
+              Pick a category above, or let the 3-question wizard point you to the right one.
+              Either way, you're getting a real scan of your real tenant.
+            </p>
+            <a
+              href="#assessment-wizard"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm font-bold transition-opacity hover:opacity-90"
+              style={GRADIENT_BG}
+              data-track="cta"
+            >
+              Start the Wizard
+              <ChevronRight className="w-4 h-4" />
+            </a>
+          </GlassPanel>
+        </div>
       </section>
     </Layout>
   );
