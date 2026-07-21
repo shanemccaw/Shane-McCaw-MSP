@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,14 +17,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  type LucideIcon,
   Loader2,
   ShieldCheck,
   CheckCircle2,
   Lock,
   Sparkles,
   ArrowRight,
-  Rocket,
   LayoutDashboard,
+  Radar,
+  KeyRound,
+  Share2,
+  DollarSign,
+  Play,
+  Pause,
 } from "lucide-react";
 
 const schema = z
@@ -60,17 +66,137 @@ interface SetupContext {
 }
 
 /** Where setup-password sends the buyer next — kept in sync with onSubmit's landing logic. */
-function destinationForRole(role: string | null): { label: string; icon: typeof Rocket } {
-  if (role === "Assessment") return { label: "Run your first assessment", icon: Rocket };
+function destinationForRole(role: string | null): { label: string; icon: LucideIcon } {
+  if (role === "Assessment") return { label: "See your scan results", icon: Radar };
   if (role === "CustomerUser") return { label: "Open your dashboard", icon: LayoutDashboard };
   return { label: "Enter your workspace", icon: LayoutDashboard };
 }
 
 /** The one-line expectation under the greeting, grounded in what was actually bought. */
 function expectationForRole(role: string | null): string {
-  if (role === "Assessment") return "You're one password away from your first real assessment.";
+  if (role === "Assessment") return "You're one password away from seeing your scan results.";
   if (role === "CustomerUser") return "You're one password away from your live dashboard.";
   return "You're one password away from your workspace.";
+}
+
+/**
+ * Account-setup scan simulator — an adapted, self-contained port of the public
+ * site's TenantScanPreview (shane-mccaw-consulting Assessments hero), restyled to
+ * this page's sidebar-* tokens. Shown for the Assessment outcome, where the real
+ * result behind this password is a live tenant scan. Purely illustrative
+ * (explicit caption), never implying a live scan is streaming here.
+ *
+ * The surfaces are the real assessment reads the catalog names (Conditional
+ * Access, SharePoint sharing, MFA coverage, Copilot exposure, License waste) —
+ * not invented coverage. Motion honesty follows the original: static finished
+ * state under prefers-reduced-motion, and a persistent pause/play toggle.
+ */
+const SCAN_SIM_ROWS: { icon: LucideIcon; label: string; detail: string }[] = [
+  { icon: KeyRound, label: "Conditional Access policies", detail: "Sign-in paths with no policy protection" },
+  { icon: Share2, label: "SharePoint sharing links", detail: "Broad-access and external links, site by site" },
+  { icon: ShieldCheck, label: "MFA registration coverage", detail: "Privileged roles checked first" },
+  { icon: Sparkles, label: "Copilot data exposure", detail: "What the semantic index could surface today" },
+  { icon: DollarSign, label: "License assignment", detail: "Unused and underused seats, SKU by SKU" },
+];
+
+const SCAN_SIM_ROW_MS = 1500;
+const SCAN_SIM_HOLD_MS = 3200;
+const SCAN_SIM_RESTART_MS = 700;
+
+function AccountSetupScanSim() {
+  const [reduced] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const total = SCAN_SIM_ROWS.length;
+  const [done, setDone] = useState(0);
+  const [stopped, setStopped] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // One self-rescheduling tick: rows advance, the completed bar holds, then loops.
+  useEffect(() => {
+    if (reduced || stopped) return;
+    const delay = done >= total ? SCAN_SIM_HOLD_MS : done === 0 ? SCAN_SIM_RESTART_MS : SCAN_SIM_ROW_MS;
+    const t = setTimeout(() => setDone((d) => (d >= total ? 0 : d + 1)), delay);
+    return () => clearTimeout(t);
+  }, [done, reduced, stopped, total]);
+
+  const shownDone = reduced ? total : done;
+  const complete = shownDone >= total;
+
+  return (
+    <div
+      ref={ref}
+      className="relative rounded-2xl border border-sidebar-border bg-sidebar-accent/30 p-5 sm:p-6"
+    >
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-sidebar-primary">
+          <Radar className="size-3.5" />
+          What your scan is doing
+        </div>
+        {!reduced && (
+          <button
+            type="button"
+            onClick={() => setStopped((s) => !s)}
+            aria-pressed={stopped}
+            aria-label={stopped ? "Resume the scan preview animation" : "Pause the scan preview animation"}
+            className="shrink-0 size-6 rounded-full bg-sidebar-foreground/10 hover:bg-sidebar-foreground/20 flex items-center justify-center text-sidebar-foreground/60 transition-colors"
+          >
+            {stopped ? <Play className="size-3" /> : <Pause className="size-3" />}
+          </button>
+        )}
+      </div>
+
+      <div aria-hidden="true">
+        <div className="h-1.5 rounded-full bg-sidebar-foreground/10 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-sidebar-primary"
+            style={{
+              width: `${(shownDone / total) * 100}%`,
+              transition: shownDone === 0 ? "none" : `width ${SCAN_SIM_ROW_MS}ms linear`,
+            }}
+          />
+        </div>
+        <div className="mt-2.5 text-xs text-sidebar-foreground/60 min-h-[1.25rem]">
+          {complete
+            ? "Scan complete — findings ranked by real risk"
+            : `Scanning ${SCAN_SIM_ROWS[shownDone]?.label ?? ""}…`}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {SCAN_SIM_ROWS.map((row, i) => {
+            const state = i < shownDone ? "done" : i === shownDone && !complete ? "scanning" : "queued";
+            const Icon = row.icon;
+            return (
+              <div key={row.label} className="flex items-start gap-3">
+                <Icon
+                  className={`size-4 shrink-0 mt-0.5 ${
+                    state === "scanning" ? "text-sidebar-primary animate-pulse" : "text-sidebar-foreground/60"
+                  } ${state === "queued" ? "opacity-40" : ""}`}
+                />
+                <div className={`flex-1 min-w-0 ${state === "queued" ? "opacity-50" : ""}`}>
+                  <div className="text-xs text-sidebar-foreground/80">{row.label}</div>
+                  <div className="text-[11px] text-sidebar-foreground/50 leading-snug mt-0.5">{row.detail}</div>
+                </div>
+                {state === "done" ? (
+                  <CheckCircle2 className="size-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                ) : (
+                  <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/50 shrink-0 mt-0.5">
+                    {state === "scanning" ? "Scanning…" : "Queued"}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="mt-4 pt-3 border-t border-sidebar-border text-[11px] text-sidebar-foreground/45">
+        Example surfaces — your real findings appear the moment you're in.
+      </p>
+    </div>
+  );
 }
 
 export default function AccountSetupPage() {
@@ -203,7 +329,7 @@ export default function AccountSetupPage() {
   const role = context?.role ?? null;
   const dest = destinationForRole(role);
 
-  const steps: { label: string; state: "done" | "current" | "upcoming"; icon: typeof Rocket }[] = [
+  const steps: { label: string; state: "done" | "current" | "upcoming"; icon: LucideIcon }[] = [
     { label: "Order confirmed", state: "done", icon: CheckCircle2 },
     { label: "Create your password", state: "current", icon: Lock },
     { label: dest.label, state: "upcoming", icon: dest.icon },
@@ -283,7 +409,17 @@ export default function AccountSetupPage() {
             </div>
           )}
 
-          {/* Grounded "what happens next" rail — the real 3-step path from here. */}
+          {/* For the Assessment outcome the "what happens next" is a live scan —
+              show the scan simulator in place of the abstract step rail; the path
+              is already carried by the greeting and the password card's caption. */}
+          {role === "Assessment" ? (
+            <div
+              className="animate-in fade-in slide-in-from-bottom-3 duration-500 motion-reduce:animate-none"
+              style={{ animationDelay: "340ms", animationFillMode: "both" }}
+            >
+              <AccountSetupScanSim />
+            </div>
+          ) : (
           <ol
             className="space-y-4 pt-2 animate-in fade-in slide-in-from-bottom-3 duration-500 motion-reduce:animate-none"
             style={{ animationDelay: "340ms", animationFillMode: "both" }}
@@ -326,6 +462,7 @@ export default function AccountSetupPage() {
               );
             })}
           </ol>
+          )}
         </div>
 
         {/* ── Password card: unchanged account-security logic ───────────────── */}
