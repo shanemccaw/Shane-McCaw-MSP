@@ -285,3 +285,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ⏳ IN FLIGHT | Assessments: Document Richness + Associated Documents + Category Selector | |
 | 2026-07-21 | ⏳ IN FLIGHT — Site-Wide Forced-Refresh Bug: Root Cause Investigation | | |
 | 2026-07-21 | ⏳ IN FLIGHT — Home Page: Hero/Pricing Layout + Animated Visual Bugs | | |
+| 2026-07-21 | ⏳ IN FLIGHT — Resources Article Page: Full Dark-Theme Re-Verification | | |
