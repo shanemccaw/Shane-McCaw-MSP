@@ -26,7 +26,7 @@ export default function Assessments() {
   const displayedPaid = activeTab === 'free' ? [] : paidAssessments;
 
   const handleCheckout = (service: PublicService) => {
-    setLocation(`/checkout?product=${encodeURIComponent(service.slug ?? "")}`);
+    setLocation(`/checkout/${encodeURIComponent(service.slug ?? "")}`);
   };
 
   // Free stays understated/plain glass; Paid gets the gradient-bordered treatment — same

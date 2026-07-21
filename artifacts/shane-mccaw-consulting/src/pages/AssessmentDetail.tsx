@@ -157,7 +157,7 @@ export default function AssessmentDetail() {
   // TODO: Support Max price range (service.maxPrice) later when the application is more mature
   const priceDisplay = formatPrice(service.basePrice || service.price);
   const showPrice = !service.isFree && priceDisplay !== "Contact for pricing";
-  const onboardingHref = `/checkout?product=${service.slug}`;
+  const onboardingHref = `/checkout/${service.slug}`;
   const audience = splitLines(service.targetAudience);
   const deliverables = service.deliverables ?? [];
   const features = service.features ?? [];

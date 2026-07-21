@@ -442,7 +442,7 @@ export default function Home() {
                 )}
               </div>
               <Link
-                href={`/checkout?product=${item.slug}`}
+                href={`/checkout/${item.slug}`}
                 className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
                 style={GRADIENT_BG}
                 data-track="cta"
@@ -493,7 +493,7 @@ export default function Home() {
             )}
           </div>
           <Link
-            href={`/checkout?product=${item.slug}`}
+            href={`/checkout/${item.slug}`}
             className="px-4 py-2 rounded-lg text-white text-xs font-bold transition-opacity hover:opacity-90 flex items-center gap-1"
             style={GRADIENT_BG}
             data-track="cta"
@@ -710,7 +710,7 @@ export default function Home() {
                 )}
 
                 <Link
-                  href={`/checkout?product=${matched.slug}`}
+                  href={`/checkout/${matched.slug}`}
                   className={`mt-auto px-4 py-3 rounded-xl text-sm font-bold text-center transition-all flex items-center justify-center gap-1 ${
                     isHighlighted ? "text-white hover:opacity-90" : "bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]"
                   }`}

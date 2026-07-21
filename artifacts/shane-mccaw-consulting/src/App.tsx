@@ -116,7 +116,7 @@ export default function App() {
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
       <Route path="/book" component={Book} />
-      <Route path="/checkout" component={Checkout} />
+      <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/technical-overview" component={TechnicalOverview} />
       <Route path="/msp" component={Msp} />

@@ -56,7 +56,7 @@ function ArchitectCard({ tier, loading }: { tier: RetainerTier; loading: boolean
   const features = tier.features ?? [];
   const hl = tier.highlighted;
   const hasCheckout = !!tier.fulfillmentTypeKey && !!tier.slug;
-  const checkoutHref = tier.slug ? `/checkout?product=${tier.slug}` : null;
+  const checkoutHref = tier.slug ? `/checkout/${tier.slug}` : null;
   const detailHref = tier.pageHref ?? (tier.slug ? `/retainers/${tier.slug}` : null);
 
   return (
@@ -620,7 +620,7 @@ export default function RetainersOverview() {
                       >
                         {tier.slug && tier.fulfillmentTypeKey && (
                           <Link
-                            href={`/checkout?product=${tier.slug}`}
+                            href={`/checkout/${tier.slug}`}
                             className={`inline-flex items-center justify-center gap-1 text-xs font-bold transition-colors ${
                               tier.highlighted
                                 ? "text-white px-3 py-1.5 rounded-full"

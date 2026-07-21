@@ -190,7 +190,7 @@ export default function LandingPage() {
         } catch { /* storage full or private browsing — silently skip */ }
       }
       const serviceSlug = page.linkedService?.slug;
-      window.location.href = serviceSlug ? `/checkout?product=${serviceSlug}` : `/assessment`;
+      window.location.href = serviceSlug ? `/checkout/${serviceSlug}` : `/assessment`;
     } catch (err) {
       setTokenError(err instanceof Error ? err.message : "Unable to continue. Please try again.");
       ctaClickedRef.current = false;

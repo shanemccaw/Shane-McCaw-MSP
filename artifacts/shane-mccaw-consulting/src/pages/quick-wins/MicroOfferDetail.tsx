@@ -130,7 +130,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
 
   const priceDisplay = formatPriceDisplay(service);
   const showPrice = priceDisplay && priceDisplay !== "Contact for pricing";
-  const onboardingHref = `/checkout?product=${service.slug}`;
+  const onboardingHref = `/checkout/${service.slug}`;
   const audience = splitLines(service.targetAudience);
   const steps = [...(service.workflowTasks ?? [])].sort((a, b) => a.order - b.order);
   const deliverables = service.deliverables ?? [];

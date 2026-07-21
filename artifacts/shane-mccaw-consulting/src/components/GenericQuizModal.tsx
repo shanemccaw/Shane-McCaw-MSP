@@ -591,7 +591,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <a
-                      href={`/checkout?product=${upsell.slug}`}
+                      href={`/checkout/${upsell.slug}`}
                       className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                       onClick={() => results && trackEvent("quiz_upsell_cta_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                     >

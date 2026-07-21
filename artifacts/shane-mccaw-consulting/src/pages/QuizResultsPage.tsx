@@ -64,7 +64,7 @@ function resolveMonitoringHref(detectedSeats: number, tiers: MonitoringTierRow[]
   }
 
   if (!chosen?.slug) return "/monitoring";
-  return `/checkout?product=${encodeURIComponent(chosen.slug)}&seats=${detectedSeats}`;
+  return `/checkout/${encodeURIComponent(chosen.slug)}?seats=${detectedSeats}`;
 }
 
 // ─── Score bar ────────────────────────────────────────────────────────────────

@@ -745,7 +745,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                     </p>
                     <div className="flex flex-col sm:flex-row gap-2 pt-1">
                       <a
-                        href={`/checkout?product=${upsell.slug}`}
+                        href={`/checkout/${upsell.slug}`}
                         className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                         onClick={() =>
                           trackEvent("quiz_upsell_cta_click", {

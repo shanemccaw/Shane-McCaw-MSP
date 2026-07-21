@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearch, useLocation, Link } from "wouter";
+import { useSearch, useLocation, useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -234,10 +234,10 @@ function StepIndicator({ current }: { current: Step }) {
 }
 
 export default function Checkout() {
+  const { slug } = useParams<{ slug: string }>();
   const search = useSearch();
   const [, navigate] = useLocation();
   const params = new URLSearchParams(search);
-  const slug = params.get("product");
   const checkoutStatus = params.get("checkout_status") as "success" | "canceled" | null;
   // `session` param is set by ConsentSuccessPage when redirecting back to checkout
   const sessionParam = params.get("session");
@@ -313,12 +313,12 @@ export default function Checkout() {
       if (checkoutStatus === "success") {
         trackCheckoutCompleted(svc.billingType ?? "service", { service_id: String(svc.id) });
         setStep("confirmed");
-        navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+        navigate(`/checkout/${encodeURIComponent(slug)}`, { replace: true });
       } else {
         setConsentGranted(true);
         setPaymentCanceled(true);
         setStep("payment");
-        navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+        navigate(`/checkout/${encodeURIComponent(slug)}`, { replace: true });
       }
       return;
     }
@@ -353,7 +353,7 @@ export default function Checkout() {
       }).catch(() => {});
 
       setStep("payment");
-      navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+      navigate(`/checkout/${encodeURIComponent(slug)}`, { replace: true });
       return;
     }
 
@@ -457,9 +457,9 @@ export default function Checkout() {
 
       // Build Stripe return URLs
       const origin = window.location.origin;
-      const base = `/checkout?product=${encodeURIComponent(service.slug ?? "")}`;
-      const successUrl = `${origin}${base}&checkout_status=success`;
-      const cancelUrl = `${origin}${base}&checkout_status=canceled`;
+      const base = `/checkout/${encodeURIComponent(service.slug ?? "")}`;
+      const successUrl = `${origin}${base}?checkout_status=success`;
+      const cancelUrl = `${origin}${base}?checkout_status=canceled`;
 
       const sessionRes = await fetch("/api/portal/checkout/create-session", {
         method: "POST",

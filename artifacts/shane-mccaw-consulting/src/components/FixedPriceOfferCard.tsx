@@ -245,7 +245,7 @@ export default function FixedPriceOfferCard({
   const { services, loading } = useServices("micro_offer");
   const svc = services.find((s) => s.slug === slug) ?? null;
 
-  const resolvedCtaHref = ctaHref ?? `/checkout?product=${slug}`;
+  const resolvedCtaHref = ctaHref ?? `/checkout/${slug}`;
   const resolvedCtaLabel = ctaLabel ?? "Get Started";
 
   if (loading) return <PriceSkeleton variant={variant} />;

@@ -212,7 +212,7 @@ export default function ArchitectEnterprise() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/checkout?product=architect-enterprise"
+              href="/checkout/architect-enterprise"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"

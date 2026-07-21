@@ -164,10 +164,9 @@ export default function Msp() {
     if (!selectedTier || !agreed) return;
     if (!selectedTier.fulfillmentTypeKey) return;
     const params = new URLSearchParams({
-      product: selectedTier.slug,
       onboarding: selectedOnboarding ?? "self_service",
     });
-    window.location.href = `/checkout?${params.toString()}`;
+    window.location.href = `/checkout/${encodeURIComponent(selectedTier.slug)}?${params.toString()}`;
   }
 
   return (

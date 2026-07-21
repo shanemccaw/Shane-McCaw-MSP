@@ -48,7 +48,7 @@ export default function ConsentSuccessPage() {
     if (!sessionInfo) return;
     const base = window.location.origin;
     const seatsParam = sessionInfo.seats > 1 ? `&seats=${sessionInfo.seats}` : "";
-    window.location.href = `${base}/checkout?product=${encodeURIComponent(sessionInfo.productSlug)}&session=${encodeURIComponent(sessionId ?? "")}${seatsParam}`;
+    window.location.href = `${base}/checkout/${encodeURIComponent(sessionInfo.productSlug)}?session=${encodeURIComponent(sessionId ?? "")}${seatsParam}`;
   }
 
   return (
