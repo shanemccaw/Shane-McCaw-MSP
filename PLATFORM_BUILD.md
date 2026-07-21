@@ -275,4 +275,4 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 | 2026-07-21 | ✅ DONE — Remove Prominent 'Book a Call' CTA | 6b98ca94 |
 | 2026-07-21 | ⏳ IN FLIGHT — Fix Quiz/Assessment Wording Confusion | |
 | 2026-07-21 | ⏳ IN FLIGHT — Assessments List Page: Full Rebuild | |
-| 2026-07-21 | ⏳ IN FLIGHT — scope_creep_assignments engagement-scoped refactor | |
+| 2026-07-21 | ✅ DONE — scope_creep_assignments engagement-scoped refactor | 7b0cbade |
