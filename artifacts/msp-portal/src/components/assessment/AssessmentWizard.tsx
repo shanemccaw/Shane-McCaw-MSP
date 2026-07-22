@@ -29,6 +29,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useTheme } from "@/lib/theme-context";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,17 +46,19 @@ import { Radar as RadarChart, type DistributionWidgetData } from "@workspace/das
 import {
   CheckCircle2,
   ChevronRight,
+  Coins,
   FileText,
   FileSignature,
   CreditCard,
+  ListChecks,
   Loader2,
   Lock,
+  Quote,
   Radar,
   ScrollText,
   ShieldCheck,
   AlertTriangle,
   XCircle,
-  UserRound,
 } from "lucide-react";
 
 // ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
@@ -439,7 +442,7 @@ export function AssessmentWizard() {
                     className={[
                       "flex size-8 shrink-0 items-center justify-center rounded-full",
                       state === "complete"
-                        ? "bg-emerald-500/15 text-emerald-500"
+                        ? "bg-status-green/15 text-status-green"
                         : state === "current"
                           ? "bg-primary/15 text-primary"
                           : "bg-muted text-muted-foreground",
@@ -509,7 +512,7 @@ function PanelShell({
 }) {
   const toneCls =
     tone === "emerald"
-      ? "bg-emerald-500/10 text-emerald-500"
+      ? "bg-status-green/10 text-status-green"
       : tone === "muted"
         ? "bg-muted text-muted-foreground"
         : "bg-primary/10 text-primary";
@@ -522,6 +525,53 @@ function PanelShell({
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       </div>
       <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+// ── Generating-step shell ────────────────────────────────────────────────────
+// A richer stage for the one screen a paying customer stares at the longest:
+// the same card language as PanelShell, plus an ambient accent glow, an
+// eyebrow line, and a larger title. Purely presentational — `tone` tracks the
+// same derived states (in progress / complete / failed) the step already
+// computes, it never derives anything of its own.
+function GeneratingShell({
+  icon: Icon,
+  tone,
+  eyebrow,
+  title,
+  children,
+}: {
+  icon: typeof Radar;
+  tone: "progress" | "complete" | "failed";
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const chipCls =
+    tone === "complete"
+      ? "bg-status-green/15 text-status-green"
+      : tone === "failed"
+        ? "bg-status-red/15 text-status-red"
+        : "bg-primary/15 text-primary";
+  const orbCls =
+    tone === "complete" ? "bg-status-green/10" : tone === "failed" ? "bg-status-red/10" : "bg-primary/10";
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 md:p-8">
+      <div
+        aria-hidden
+        className={`pointer-events-none absolute -right-24 -top-24 size-64 rounded-full blur-3xl ${orbCls}`}
+      />
+      <div className="relative flex items-center gap-4">
+        <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${chipCls}`}>
+          <Icon className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/65">{eyebrow}</p>
+          <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-foreground md:text-2xl">{title}</h2>
+        </div>
+      </div>
+      <div className="relative mt-6">{children}</div>
     </div>
   );
 }
@@ -540,36 +590,12 @@ function checklistDocStatus(docType: string, items: AssessmentDocument[]): Check
   return "active"; // "generating" or any other in-flight status
 }
 
-function ChecklistIcon({ status }: { status: ChecklistStatus }) {
-  const toneCls =
-    status === "complete"
-      ? "bg-emerald-500/15 text-emerald-500"
-      : status === "failed"
-        ? "bg-red-500/15 text-red-500"
-        : status === "active"
-          ? "bg-primary/15 text-primary"
-          : "bg-muted text-muted-foreground";
-  return (
-    <span className={`flex size-7 shrink-0 items-center justify-center rounded-full ${toneCls}`}>
-      {status === "complete" ? (
-        <CheckCircle2 className="size-4" />
-      ) : status === "failed" ? (
-        <XCircle className="size-4" />
-      ) : status === "active" ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <span className="size-1.5 rounded-full bg-current" />
-      )}
-    </span>
-  );
-}
-
 // ── Path to remediation — connected phase timeline ──────────────────────────
-// A richer visual treatment of the same real checklist data (scan → each real
-// expected document → SOW) — a numbered, connected timeline instead of a flat
-// list, with an explicit Complete/In Progress/Planned/Failed status per phase.
-// The underlying status derivation (checklistDocStatus) is untouched; this
-// only restyles how those same statuses are presented.
+// The generation journey as three connected phases — deep scan, report
+// generation (each real expected document as a live chip), Statement of Work —
+// with glow states, status badges, and a progress connector between phases.
+// Purely a richer presentation of the same real statuses derived by
+// checklistDocStatus; the underlying data and derivation are untouched.
 function phaseStatusLabel(status: ChecklistStatus): string {
   switch (status) {
     case "complete":
@@ -583,52 +609,212 @@ function phaseStatusLabel(status: ChecklistStatus): string {
   }
 }
 
-function phaseStatusTextCls(status: ChecklistStatus): string {
-  switch (status) {
-    case "complete":
-      return "text-emerald-500";
-    case "failed":
-      return "text-red-500";
-    case "active":
-      return "text-primary";
-    default:
-      return "text-muted-foreground";
-  }
+interface PhaseDocItem {
+  key: string;
+  label: string;
+  status: ChecklistStatus;
 }
 
-function PhaseTimeline({
-  items,
-  compact,
-}: {
-  items: { key: string; label: string; status: ChecklistStatus }[];
-  compact?: boolean;
-}) {
+interface PhaseItem {
+  key: string;
+  title: string;
+  blurb: string;
+  status: ChecklistStatus;
+  icon: typeof Radar;
+  /** Per-document live chips (report-generation phase only). */
+  docs?: PhaseDocItem[];
+  /** Optional live-progress slot rendered under the phase body (e.g. the doc workflow's SSE ticker). */
+  live?: React.ReactNode;
+}
+
+function PhaseBadge({ status }: { status: ChecklistStatus }) {
+  const toneCls =
+    status === "complete"
+      ? "border-status-green/30 bg-status-green/10 text-status-green"
+      : status === "failed"
+        ? "border-status-red/30 bg-status-red/10 text-status-red"
+        : status === "active"
+          ? "border-primary/30 bg-primary/10 text-primary"
+          : "border-border bg-muted/40 text-muted-foreground";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${toneCls}`}
+    >
+      {status === "active" && (
+        <span aria-hidden className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75 motion-reduce:hidden" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+        </span>
+      )}
+      {phaseStatusLabel(status)}
+    </span>
+  );
+}
+
+function PhaseNode({ status, icon: Icon }: { status: ChecklistStatus; icon: typeof Radar }) {
+  if (status === "complete") {
+    return (
+      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-status-green/30 bg-status-green/10 text-status-green">
+        <CheckCircle2 className="size-4" />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-status-red/30 bg-status-red/10 text-status-red">
+        <XCircle className="size-4" />
+      </span>
+    );
+  }
+  if (status === "active") {
+    return (
+      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary shadow-[0_0_18px_-4px_hsl(var(--primary)/0.6)]">
+        <span
+          aria-hidden
+          className="absolute inset-0 animate-ping rounded-full border border-primary/40 [animation-duration:2.6s] motion-reduce:hidden"
+        />
+        <Icon className="size-4" />
+      </span>
+    );
+  }
+  return (
+    <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground">
+      <Icon className="size-4" />
+    </span>
+  );
+}
+
+/** Connector segment between two phases — colored by both endpoints so the
+ *  line reads as progress flowing down the timeline. */
+function connectorCls(from: ChecklistStatus, to: ChecklistStatus): string {
+  if (from === "complete") {
+    if (to === "complete") return "bg-status-green/40";
+    if (to === "active") return "bg-gradient-to-b from-status-green/40 to-primary/40";
+    if (to === "failed") return "bg-gradient-to-b from-status-green/40 to-status-red/40";
+    return "bg-gradient-to-b from-status-green/40 to-border";
+  }
+  if (from === "active") return "bg-gradient-to-b from-primary/40 to-border";
+  if (from === "failed") return "bg-gradient-to-b from-status-red/40 to-border";
+  return "bg-border";
+}
+
+function DocChip({ label, status }: { label: string; status: ChecklistStatus }) {
+  const toneCls =
+    status === "complete"
+      ? "border-status-green/25 bg-status-green/5 text-foreground"
+      : status === "failed"
+        ? "border-status-red/30 bg-status-red/5 text-foreground"
+        : status === "active"
+          ? "border-primary/30 bg-primary/5 text-foreground"
+          : "border-border bg-muted/30 text-muted-foreground";
+  return (
+    <span className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors duration-500 ${toneCls}`}>
+      {status === "complete" ? (
+        <CheckCircle2 className="size-3.5 shrink-0 text-status-green" />
+      ) : status === "failed" ? (
+        <XCircle className="size-3.5 shrink-0 text-status-red" />
+      ) : status === "active" ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+      ) : (
+        <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
+          <span className="size-1 rounded-full bg-current opacity-60" />
+        </span>
+      )}
+      <span className="truncate text-xs">{label}</span>
+      {/* The per-document status the old flat checklist showed as visible text —
+          kept in the accessibility tree; sighted users read it from the icon. */}
+      <span className="sr-only">{phaseStatusLabel(status)}</span>
+    </span>
+  );
+}
+
+function PhaseTimeline({ phases }: { phases: PhaseItem[] }) {
   return (
     <ol>
-      {items.map((item, i) => (
-        <li key={item.key} className={`relative ${i < items.length - 1 ? "pb-5" : ""}`}>
-          {i < items.length - 1 && (
+      {phases.map((phase, i) => (
+        <li key={phase.key} className={`relative flex gap-4 ${i < phases.length - 1 ? "pb-7" : ""}`}>
+          {i < phases.length - 1 && (
             <span
               aria-hidden
-              className={`absolute left-3.5 top-7 bottom-0 w-px ${
-                item.status === "complete" ? "bg-emerald-500/40" : "bg-border"
-              }`}
+              className={`absolute bottom-0 left-5 top-10 w-px -translate-x-1/2 ${connectorCls(phase.status, phases[i + 1].status)}`}
             />
           )}
-          <div className="relative flex items-start gap-3">
-            <ChecklistIcon status={item.status} />
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className={`truncate ${compact ? "text-xs text-muted-foreground" : "text-sm text-foreground"}`}>
-                {item.label}
+          <PhaseNode status={phase.status} icon={phase.icon} />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <p className={`text-sm font-semibold ${phase.status === "pending" ? "text-muted-foreground" : "text-foreground"}`}>
+                {phase.title}
               </p>
-              <p className={`text-xs font-medium ${phaseStatusTextCls(item.status)}`}>
-                {phaseStatusLabel(item.status)}
-              </p>
+              <PhaseBadge status={phase.status} />
             </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{phase.blurb}</p>
+            {phase.docs && phase.docs.length > 0 && (
+              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {phase.docs.map((d) => (
+                  <DocChip key={d.key} label={d.label} status={d.status} />
+                ))}
+              </div>
+            )}
+            {phase.live && <div className="mt-3">{phase.live}</div>}
           </div>
         </li>
       ))}
     </ol>
+  );
+}
+
+// ── Live-progress primitives ────────────────────────────────────────────────
+
+/** The shared Progress bar with a shimmer sweep while work is in flight. */
+function ShimmerProgress({ value }: { value: number }) {
+  return (
+    <div className="relative overflow-hidden rounded-full">
+      <Progress value={value} className="h-1.5" />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shimmer-sweep bg-gradient-to-r from-transparent via-primary/25 to-transparent motion-reduce:hidden dark:via-white/25"
+      />
+    </div>
+  );
+}
+
+/** The live per-check feed from the diagnostics SSE stream, styled as a
+ *  telemetry readout: mono type, entrance per row, pinned to the newest entry. */
+function ScanLogFeed({ log }: { log: { checkKey: string; label: string; status: string }[] }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Keep the newest check in view as entries stream in — but only while the
+  // user is already at (or near) the bottom. Never yank the scroll position
+  // away from someone reading earlier entries; scrolls only this box, never
+  // the page. The threshold absorbs the row(s) just appended, since this runs
+  // after the DOM update.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [log.length]);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-background/50">
+      <div className="border-b border-border px-3 py-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-foreground/65">Live check feed</p>
+      </div>
+      <div ref={boxRef} className="max-h-44 space-y-1 overflow-y-auto p-3">
+        {log.map((entry, i) => (
+          <div
+            key={`${entry.checkKey}-${i}`}
+            className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
+          >
+            {entry.status === "ok" ? (
+              <CheckCircle2 className="size-3.5 shrink-0 text-status-green" />
+            ) : (
+              <XCircle className="size-3.5 shrink-0 text-status-red" />
+            )}
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{entry.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -643,29 +829,45 @@ function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefi
   // guard above) — this component must never assume its caller's normalization
   // ran, so it degrades to "no real stat data yet" instead of throwing.
   if (!stats) return null;
-  const cards: { label: string; value: string }[] = [];
+  const cards: { label: string; value: string; icon: typeof Radar; iconCls: string }[] = [];
   if (stats.genuineFindings != null) {
     cards.push({
       label: stats.genuineFindings === 1 ? "Finding to review" : "Findings to review",
       value: String(stats.genuineFindings),
+      icon: ListChecks,
+      // Zero genuine findings is good news — let the icon say so.
+      iconCls:
+        stats.genuineFindings > 0
+          ? "bg-status-amber/15 text-status-amber"
+          : "bg-status-green/15 text-status-green",
     });
   }
   if (stats.licenseWasteMonthlyCents != null) {
     cards.push({
       label: "License waste, per month",
       value: `$${Math.round(stats.licenseWasteMonthlyCents / 100).toLocaleString()}`,
+      icon: Coins,
+      iconCls: "bg-status-violet/15 text-status-violet",
     });
   }
   if (cards.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {cards.map((c) => (
-        <div key={c.label} className="rounded-xl border border-border bg-card/60 px-4 py-3">
-          <p className="text-lg font-semibold tabular-nums text-foreground">{c.value}</p>
-          <p className="text-xs text-muted-foreground">{c.label}</p>
-        </div>
-      ))}
+    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards motion-reduce:animate-none">
+      {cards.map((c) => {
+        const CardIcon = c.icon;
+        return (
+          <div key={c.label} className="rounded-xl border border-border bg-background/50 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="min-w-0 break-words text-2xl font-semibold tabular-nums tracking-tight text-foreground">{c.value}</p>
+              <span className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${c.iconCls}`}>
+                <CardIcon className="size-3.5" />
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs text-muted-foreground">{c.label}</p>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -680,6 +882,13 @@ function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefi
 // renderer already refuses to render below 3 dimensions, but we hide the
 // panel entirely rather than show a near-empty/broken-looking chart.
 function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
+  // This app's --border/--muted-foreground CSS vars hold raw HSL triples the
+  // Nivo theme can't consume as colors, and light/dark want different resolved
+  // values — so the chart's grid/tick/series colors are resolved here,
+  // theme-aware, and passed to the shared renderer explicitly.
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   if (radar.pillars.length < 3) return null;
 
   const data: DistributionWidgetData = {
@@ -689,13 +898,18 @@ function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="rounded-2xl border border-border bg-background/50 p-5 animate-in fade-in zoom-in-95 duration-700 delay-200 fill-mode-backwards motion-reduce:animate-none">
       <p className="text-sm font-medium text-foreground">Tenant health axes</p>
       <p className="mt-1 text-xs text-muted-foreground">
         Real coverage from this scan's package — only pillars with real signal data are plotted.
       </p>
-      <div className="mt-3 flex h-56 min-h-0">
-        <RadarChart data={data} />
+      <div className="mt-2 flex h-60 min-h-0">
+        <RadarChart
+          data={data}
+          color={isDark ? "#479ef5" : "#1a7eef"}
+          gridStroke={isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}
+          tickFill={isDark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)"}
+        />
       </div>
     </div>
   );
@@ -711,15 +925,27 @@ function CioNarrativePanel({ narrative }: { narrative: AssessmentStatus["narrati
   if (narrative.status === "not_started") return null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-primary/10 via-primary/5 to-transparent p-6 pl-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
-      <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary/50" />
-      <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <UserRound className="size-3.5" />
-        From Shane McCaw, your M365 architect
+    <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/[0.04] to-transparent p-5 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none md:p-6">
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-primary via-primary/40 to-transparent"
+      />
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <Quote className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          {/* Light primary (#1a7eef) is below AA at this size on the tinted
+              panel — deepen the same hue in light mode only. */}
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(212_87%_42%)] dark:text-primary">
+            Architect's perspective
+          </p>
+          <p className="text-xs text-muted-foreground">From Shane McCaw, your M365 architect</p>
+        </div>
       </div>
       {narrative.status === "ready" && narrative.html ? (
         <div
-          className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground"
+          className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground animate-in fade-in duration-500 motion-reduce:animate-none"
           dangerouslySetInnerHTML={{ __html: narrative.html }}
         />
       ) : narrative.status === "failed" ? (
@@ -729,7 +955,7 @@ function CioNarrativePanel({ narrative }: { narrative: AssessmentStatus["narrati
       ) : (
         <div className="space-y-2.5">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2 className="size-4 animate-spin text-primary" />
             Shane is reviewing your results and writing up what matters most…
           </div>
           <Skeleton className="h-3.5 w-full" />
@@ -800,21 +1026,110 @@ function StepPanel({
     case "generating": {
       const anyFailed = scanFailed || reportsFailed;
 
-      const checklist: { key: string; label: string; status: ChecklistStatus }[] = [
+      // The same real per-item statuses the flat checklist used, grouped for
+      // presentation into three connected phases: deep scan → report generation
+      // (one live chip per real expected document) → Statement of Work. The
+      // underlying derivation (checklistDocStatus) is untouched — only how
+      // those statuses are laid out changed.
+      const docItems: PhaseDocItem[] = status.documents.expected.map((d) => ({
+        key: `doc:${d.docType}`,
+        label: d.title,
+        status: !scanComplete ? ("pending" as ChecklistStatus) : checklistDocStatus(d.docType, status.documents.items),
+      }));
+      const scanPhaseStatus: ChecklistStatus = scanFailed ? "failed" : scanComplete ? "complete" : "active";
+      // Phase-level rollup of those same per-document statuses (presentation
+      // only), ordered so a contradiction can never render: a failed document
+      // always wins over "complete" (the server's allReady deliberately
+      // tolerates a failed row among ready ones, so "every ready" and "one
+      // failed" can be true at once), and a run whose workflow died can't sit
+      // "in progress" forever.
+      const workflowDead =
+        status.documents.workflowStatus === "failed" || status.documents.workflowStatus === "cancelled";
+      const docsPhaseStatus: ChecklistStatus = !scanComplete
+        ? "pending"
+        : docItems.some((d) => d.status === "failed")
+          ? "failed"
+          : docItems.length > 0
+            ? docItems.every((d) => d.status === "complete")
+              ? "complete"
+              : workflowDead
+                ? "failed"
+                : "active"
+            : reportsComplete
+              ? "complete"
+              : workflowDead
+                ? "failed"
+                : "active";
+      // The SOW phase reads its own real row status. A missing row is "failed"
+      // only when the workflow genuinely died before producing it — never just
+      // because some other document failed (reportsFailed can latch on a stale
+      // failed row while the run is still alive and the SOW still on its way).
+      // Once every report is done and the run is alive, the missing-row window
+      // reads "active": the SOW is generated last, so that window is its turn.
+      const sowDocStatus: ChecklistStatus = !scanComplete
+        ? "pending"
+        : checklistDocStatus("consolidated_sow", status.documents.items);
+      const sowPhaseStatus: ChecklistStatus =
+        sowDocStatus !== "pending"
+          ? sowDocStatus
+          : !scanComplete
+            ? "pending"
+            : workflowDead
+              ? "failed"
+              : docsPhaseStatus === "complete" && !reportsComplete
+                ? "active"
+                : "pending";
+
+      // Live doc-generation ticker (the workflow SSE stream + poll fallback,
+      // exactly the same message logic as before) — attached to whichever
+      // phase is actually in progress, so it can never sit under a phase
+      // badged "Complete" (in every successful run's final window the ticker's
+      // "Generating 1 document…" is the SOW itself).
+      const liveTicker =
+        scanComplete && !anyFailed && !reportsComplete ? (
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 font-mono text-[11px] text-muted-foreground">
+              <Loader2 className="mt-px size-3.5 shrink-0 animate-spin text-primary" />
+              <span className="min-w-0">
+                {docProgress?.message
+                  ? docProgress.message
+                  : status.documents.generating > 0
+                    ? `Generating ${status.documents.generating} document${status.documents.generating === 1 ? "" : "s"}…`
+                    : "Preparing your documents…"}
+              </span>
+            </div>
+            {docProgress?.total != null && docProgress.total > 0 && (
+              <ShimmerProgress
+                value={Math.min(100, Math.round(((docProgress.step ?? 0) / docProgress.total) * 100))}
+              />
+            )}
+          </div>
+        ) : null;
+
+      const phases: PhaseItem[] = [
         {
           key: "scan",
-          label: "Deep scan of your tenant",
-          status: scanFailed ? "failed" : scanComplete ? "complete" : "active",
+          title: "Deep scan of your tenant",
+          blurb: "Reading your tenant's real configuration, security posture, and licensing.",
+          status: scanPhaseStatus,
+          icon: Radar,
         },
-        ...status.documents.expected.map((d) => ({
-          key: `doc:${d.docType}`,
-          label: d.title,
-          status: !scanComplete ? ("pending" as ChecklistStatus) : checklistDocStatus(d.docType, status.documents.items),
-        })),
+        {
+          key: "docs",
+          title: "Report generation",
+          blurb: "Each report is written from your scan's real findings.",
+          status: docsPhaseStatus,
+          icon: FileText,
+          docs: docItems,
+          live: docsPhaseStatus === "active" ? liveTicker : null,
+        },
         {
           key: "sow",
-          label: "Statement of Work",
-          status: !scanComplete ? ("pending" as ChecklistStatus) : checklistDocStatus("consolidated_sow", status.documents.items),
+          title: "Statement of Work",
+          blurb: "Tailored to your results — you'll fine-tune the scope before anything is signed.",
+          status: sowPhaseStatus,
+          icon: FileSignature,
+          live: docsPhaseStatus !== "active" && sowPhaseStatus === "active" ? liveTicker : null,
         },
       ];
 
@@ -823,7 +1138,12 @@ function StepPanel({
       if (reportsComplete) {
         const readyCount = status.documents.ready;
         return (
-          <PanelShell icon={FileText} tone="emerald" title="Your assessment is ready">
+          <GeneratingShell
+            icon={FileText}
+            tone="complete"
+            eyebrow="Your Microsoft 365 assessment"
+            title="Your assessment is ready"
+          >
             {status.narrative.status === "ready" && status.narrative.html && (
               <div className="mb-5">
                 <CioNarrativePanel narrative={status.narrative} />
@@ -833,7 +1153,7 @@ function StepPanel({
               <StatCards stats={status.stats} />
               <PillarRadarPanel radar={status.radar} />
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               We've finished generating your assessment{" "}
               {readyCount > 0 ? (
                 <>
@@ -845,13 +1165,13 @@ function StepPanel({
               )}{" "}
               Review the findings that matter most, then tailor your scope and choose a plan.
             </p>
-            <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
-              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="mt-6">
+              <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/65">
                 Path to remediation
               </p>
-              <PhaseTimeline items={checklist} />
+              <PhaseTimeline phases={phases} />
             </div>
-            <div className="mt-5 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <Button onClick={onGoToReview}>
                 Review findings <ChevronRight className="ml-1 size-4" />
               </Button>
@@ -861,7 +1181,7 @@ function StepPanel({
                 </Button>
               )}
             </div>
-          </PanelShell>
+          </GeneratingShell>
         );
       }
 
@@ -894,20 +1214,21 @@ function StepPanel({
       })();
 
       return (
-        <PanelShell
+        <GeneratingShell
           icon={anyFailed ? AlertTriangle : Radar}
-          tone={anyFailed ? "muted" : "primary"}
+          tone={anyFailed ? "failed" : "progress"}
+          eyebrow="Your Microsoft 365 assessment"
           title={anyFailed ? "We hit a snag" : "Generating your assessment"}
         >
           {/* Honest failure — a failed scan or doc run is never silently hung or
-              treated as success; the checklist below still shows exactly what did
+              treated as success; the timeline below still shows exactly what did
               and didn't finish. */}
           {anyFailed ? (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 Something went wrong while {scanFailed ? "reading your Microsoft 365 environment" : "preparing your assessment documents"}, and we couldn't finish automatically. This is on us — nothing you did caused it{scanFailed ? "" : ", and your scan data is safe"}.
               </p>
-              <p className="mt-3 text-sm text-muted-foreground">
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                 Our team has been notified automatically and will get this sorted. This page keeps
                 checking, so you can leave it open — it'll update the moment things are ready.
               </p>
@@ -915,55 +1236,61 @@ function StepPanel({
           ) : scanComplete ? (
             // The narrative leads once the scan is done — it's the value-delivery
             // moment while documents are still generating, not a second wait
-            // screen. The scan-result ring becomes supporting evidence underneath
-            // it, not the headline.
+            // screen. The stat cards, radar, and scan-result ring stagger in
+            // underneath it as supporting evidence, not the headline.
             <div className="space-y-4">
               <CioNarrativePanel narrative={status.narrative} />
               <StatCards stats={status.stats} />
               <PillarRadarPanel radar={status.radar} />
-              <div className="flex items-center gap-4 rounded-xl border border-border bg-card/60 px-4 py-3">
-                <ScoreRing value={pct} color={ringColor} size={48} strokeWidth={5} className="shrink-0" />
+              <div className="flex items-center gap-4 rounded-xl border border-border bg-background/50 p-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-backwards motion-reduce:animate-none">
+                <ScoreRing value={pct} color={ringColor} size={56} strokeWidth={5} className="shrink-0" />
                 <div className="min-w-0 space-y-0.5">
-                  <p className="text-xs font-medium text-foreground">Your scan results</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-sm font-medium text-foreground">Your scan results</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
                     {total > 0 ? scanSummary : "Now writing up your findings and Statement of Work."}
                   </p>
                 </div>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              {scanJustFinished
-                ? "Your scan just finished — we're finalizing your results now."
-                : "We're reading your Microsoft 365 configuration and security posture, then writing up your findings and a tailored Statement of Work — all on this page."}
-            </p>
+            // Scan still running — a quiet sonar motif carries the "actively
+            // reading your tenant" feeling; the live bar + check feed below it
+            // are the real telemetry.
+            <div className="flex items-center gap-4">
+              <div aria-hidden className="relative flex size-14 shrink-0 items-center justify-center">
+                <span className="absolute inset-0 animate-ping rounded-full border border-primary/30 [animation-duration:2.8s] motion-reduce:hidden" />
+                <span className="absolute inset-1.5 animate-ping rounded-full border border-primary/20 [animation-duration:2.8s] [animation-delay:0.9s] motion-reduce:hidden" />
+                <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+                  <Radar className="size-4.5" />
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  {scanJustFinished ? "Your scan just finished" : "Reading your Microsoft 365 environment"}
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  {scanJustFinished
+                    ? "We're finalizing your results now."
+                    : "Configuration and security posture first, then your findings and a tailored Statement of Work — all on this page."}
+                </p>
+              </div>
+            </div>
           )}
 
-          {/* ── Path to remediation — real items, real statuses, ticking as they
-              land as a connected phase timeline. Once the narrative is leading
-              (scanComplete), this shrinks to a compact secondary indicator
-              rather than competing with it. ── */}
-          <div className={scanComplete ? "mt-5 rounded-xl border border-border/60 bg-card/40 p-3" : "mt-5 rounded-2xl border border-border bg-card/60 p-4"}>
-            {!scanComplete && (
-              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Path to remediation
-              </p>
-            )}
-            <PhaseTimeline items={checklist} compact={scanComplete} />
-          </div>
-
-          {/* ── Live progress detail beneath the checklist ── */}
+          {/* ── Live scan progress — the bar + per-check telemetry feed ── */}
           {!anyFailed && !scanComplete && (
-            <div className="mt-5 space-y-3">
+            <div className="mt-6 space-y-3">
               {scanProgress ? (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="truncate pr-2">{scanProgress.label}</span>
-                    <span className="shrink-0 tabular-nums font-mono">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+                      {scanProgress.label}
+                    </p>
+                    <p className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-foreground">
                       {scanProgress.index}/{scanProgress.total}
-                    </span>
+                    </p>
                   </div>
-                  <Progress
+                  <ShimmerProgress
                     value={scanProgress.total > 0 ? Math.round((scanProgress.index / scanProgress.total) * 100) : 0}
                   />
                 </div>
@@ -977,40 +1304,20 @@ function StepPanel({
                       : "Starting your scan…"}
                 </div>
               )}
-              {scanLog.length > 0 && (
-                <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-muted/30 p-3">
-                  {scanLog.map((entry, i) => (
-                    <div key={`${entry.checkKey}-${i}`} className="flex items-center gap-2 text-xs">
-                      {entry.status === "ok" ? (
-                        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
-                      ) : (
-                        <XCircle className="size-3.5 shrink-0 text-red-500" />
-                      )}
-                      <span className="truncate text-muted-foreground">{entry.label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {scanLog.length > 0 && <ScanLogFeed log={scanLog} />}
             </div>
           )}
 
-          {!anyFailed && scanComplete && (
-            <div className="mt-5 space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                {docProgress?.message
-                  ? docProgress.message
-                  : status.documents.generating > 0
-                    ? `Generating ${status.documents.generating} document${status.documents.generating === 1 ? "" : "s"}…`
-                    : "Preparing your documents…"}
-              </div>
-              {docProgress?.total != null && docProgress.total > 0 && (
-                <Progress
-                  value={Math.min(100, Math.round(((docProgress.step ?? 0) / docProgress.total) * 100))}
-                />
-              )}
-            </div>
-          )}
+          {/* ── Path to remediation — the same real items and statuses, as a
+              connected phase timeline. During document generation the reports
+              phase carries the live chips + workflow ticker, so the timeline
+              doubles as the live progress display. ── */}
+          <div className="mt-7">
+            <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Path to remediation
+            </p>
+            <PhaseTimeline phases={phases} />
+          </div>
 
           {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note */}
           {status.isTestbed && !status.scan.active ? (
@@ -1024,7 +1331,7 @@ function StepPanel({
               [DEBUG] {status.scan.everScanned ? "Re-trigger scan" : "Trigger scan"}
             </Button>
           ) : null}
-        </PanelShell>
+        </GeneratingShell>
       );
     }
 

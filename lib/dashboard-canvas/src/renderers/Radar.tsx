@@ -8,9 +8,19 @@ import type { DistributionWidgetData } from "../types";
 
 export interface RadarProps {
   data: DistributionWidgetData;
+  /** Series color (area fill, border, dot border). Defaults to the dashboard widget blue. */
+  color?: string;
+  /**
+   * Grid line stroke. The default reads `var(--border)`, which only works in
+   * hosts whose --border var is a *resolvable color* — apps that store raw HSL
+   * triples in that var (e.g. msp-portal) should pass a resolved color here.
+   */
+  gridStroke?: string;
+  /** Axis tick label fill — same var-resolvability caveat as gridStroke. */
+  tickFill?: string;
 }
 
-export function Radar({ data }: RadarProps) {
+export function Radar({ data, color = "#0078D4", gridStroke, tickFill }: RadarProps) {
   if (data.slices.length < 3) {
     // A radar needs at least 3 dimensions to read as a shape.
     return (
@@ -33,17 +43,17 @@ export function Radar({ data }: RadarProps) {
         margin={{ top: 24, right: 40, bottom: 24, left: 40 }}
         gridLevels={4}
         gridShape="circular"
-        colors={["#0078D4"]}
+        colors={[color]}
         fillOpacity={0.15}
         borderWidth={2}
         dotSize={6}
         dotColor={{ theme: "background" }}
         dotBorderWidth={2}
-        dotBorderColor="#0078D4"
+        dotBorderColor={color}
         enableDotLabel={false}
         theme={{
-          axis: { ticks: { text: { fontSize: 9, fill: "var(--muted-foreground, #71717a)" } } },
-          grid: { line: { stroke: "var(--border, #e5e7eb)" } },
+          axis: { ticks: { text: { fontSize: 9, fill: tickFill ?? "var(--muted-foreground, #71717a)" } } },
+          grid: { line: { stroke: gridStroke ?? "var(--border, #e5e7eb)" } },
           tooltip: { container: { fontSize: 12, borderRadius: 8 } },
         }}
       />

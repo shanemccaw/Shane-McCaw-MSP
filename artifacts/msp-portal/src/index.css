@@ -320,6 +320,24 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 }
 
+/* Live-progress shimmer — a highlight strip that sweeps across an in-flight
+ * progress bar (assessment generating screen). Declared as a theme animation
+ * token so `animate-shimmer-sweep` exists as a utility. The overlay element is
+ * expected to be w-1/3 of its track; translating -100% → 400% of its own width
+ * carries it fully across and off either edge. */
+@theme {
+  --animate-shimmer-sweep: shimmer-sweep 2.2s ease-in-out infinite;
+
+  @keyframes shimmer-sweep {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
