@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { json } from "@codemirror/lang-json";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FileCog, Plus, Pencil, Loader2, X } from "lucide-react";
@@ -16,6 +19,7 @@ interface DocumentType {
   pipelineCategory: "standalone" | "pipeline_output";
   sortOrder: number;
   isActive: boolean;
+  sections: { id: string; heading: string; guidance: string }[];
 }
 
 // No dedicated lightweight services-lookup endpoint exists yet — reusing the
@@ -44,6 +48,7 @@ interface TypeForm {
   pipelineCategory: "standalone" | "pipeline_output";
   sortOrder: string;
   isActive: boolean;
+  sectionsRaw: string;
 }
 
 const emptyTypeForm = (): TypeForm => ({
@@ -54,6 +59,7 @@ const emptyTypeForm = (): TypeForm => ({
   pipelineCategory: "standalone",
   sortOrder: "0",
   isActive: true,
+  sectionsRaw: "[]",
 });
 
 async function readErr(res: Response, fallback: string): Promise<string> {
@@ -115,6 +121,7 @@ export default function DocumentTypesManager() {
       pipelineCategory: type.pipelineCategory,
       sortOrder: String(type.sortOrder),
       isActive: type.isActive,
+      sectionsRaw: JSON.stringify(type.sections ?? [], null, 2),
     });
     setFormError(null);
     setModalOpen(true);
@@ -129,6 +136,20 @@ export default function DocumentTypesManager() {
       setFormError("Key must be lowercase letters, digits, or underscores only");
       return;
     }
+    let parsedSections: { id: string; heading: string; guidance: string }[];
+    try {
+      const parsed = JSON.parse(form.sectionsRaw);
+      if (!Array.isArray(parsed)) throw new Error("Sections must be a JSON array");
+      for (const s of parsed) {
+        if (typeof s !== "object" || s === null || typeof s.id !== "string" || typeof s.heading !== "string" || typeof s.guidance !== "string") {
+          throw new Error("Each section must have string id, heading, and guidance fields");
+        }
+      }
+      parsedSections = parsed as { id: string; heading: string; guidance: string }[];
+    } catch (err) {
+      setFormError(err instanceof Error ? `Sections JSON error: ${err.message}` : "Invalid sections JSON");
+      return;
+    }
     setSaving(true);
     setFormError(null);
     try {
@@ -138,6 +159,7 @@ export default function DocumentTypesManager() {
         pipelineCategory: form.pipelineCategory,
         sortOrder: Number(form.sortOrder) || 0,
         isActive: form.isActive,
+        sections: parsedSections,
       };
 
       const res = editingType
@@ -315,6 +337,23 @@ export default function DocumentTypesManager() {
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Sections <span className="font-normal text-muted-foreground/60">(JSON array of {"{"}id, heading, guidance{"}"})</span>
+              </label>
+              <div className="border border-border rounded-md overflow-hidden" style={{ height: "220px" }}>
+                <CodeMirror
+                  value={form.sectionsRaw}
+                  onChange={value => setForm(f => ({ ...f, sectionsRaw: value }))}
+                  extensions={[json()]}
+                  theme={oneDark}
+                  height="100%"
+                  style={{ height: "100%", fontSize: "12px" }}
+                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 items-end">
