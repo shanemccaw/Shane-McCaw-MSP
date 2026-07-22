@@ -13,7 +13,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({ metrics, onMetricClick }) =>
       {/* 1. Compliance Health Score */}
       <div 
         onClick={() => onMetricClick?.('healthScore')}
-        className="card-obsidian p-6 flex flex-col justify-between cursor-pointer group hover:border-[#479ef5]/60 transition-all"
+        className="bg-card border border-border p-6 flex flex-col justify-between cursor-pointer group hover:border-[#479ef5]/60 transition-all"
       >
         <div>
           <span className="text-[12px] font-['JetBrains_Mono'] text-[#c0c7d3] uppercase tracking-wider font-medium">
@@ -39,7 +39,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({ metrics, onMetricClick }) =>
       {/* 2. Labeled Content Ratio */}
       <div 
         onClick={() => onMetricClick?.('labeledRatio')}
-        className="card-obsidian p-6 flex flex-col justify-between cursor-pointer group hover:border-[#479ef5]/60 transition-all"
+        className="bg-card border border-border p-6 flex flex-col justify-between cursor-pointer group hover:border-[#479ef5]/60 transition-all"
       >
         <div>
           <span className="text-[12px] font-['JetBrains_Mono'] text-[#c0c7d3] uppercase tracking-wider font-medium">
@@ -64,7 +64,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({ metrics, onMetricClick }) =>
       {/* 3. Retention Coverage */}
       <div 
         onClick={() => onMetricClick?.('retentionCoverage')}
-        className="card-obsidian p-6 flex flex-col justify-between cursor-pointer group hover:border-[#10b981]/60 transition-all"
+        className="bg-card border border-border p-6 flex flex-col justify-between cursor-pointer group hover:border-[#10b981]/60 transition-all"
       >
         <div>
           <span className="text-[12px] font-['JetBrains_Mono'] text-[#c0c7d3] uppercase tracking-wider font-medium">
@@ -89,7 +89,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({ metrics, onMetricClick }) =>
       {/* 4. Audit Log Completeness */}
       <div 
         onClick={() => onMetricClick?.('auditCompleteness')}
-        className="card-obsidian p-6 flex flex-col justify-between cursor-pointer group hover:border-[#f59e0b]/60 transition-all"
+        className="bg-card border border-border p-6 flex flex-col justify-between cursor-pointer group hover:border-[#f59e0b]/60 transition-all"
       >
         <div>
           <span className="text-[12px] font-['JetBrains_Mono'] text-[#c0c7d3] uppercase tracking-wider font-medium">

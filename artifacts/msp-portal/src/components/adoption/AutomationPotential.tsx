@@ -35,7 +35,7 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
         return (
           <div
             key={act.id}
-            className="glass-card p-6 rounded-xl flex flex-col gap-4 border border-white/10 hover:border-white/20 transition-all justify-between group"
+            className="p-6 rounded-xl flex flex-col gap-4 border border-white/10 hover:border-white/20 transition-all justify-between group"
           >
             <div className="space-y-3">
               <div className="flex items-center gap-3">

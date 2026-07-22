@@ -43,7 +43,7 @@ export const RemediationModal: React.FC<RemediationModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="glass-card bg-[#1e2020] border border-[#404752] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+      <div className="bg-[#1e2020] border border-[#404752] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#404752] flex items-center justify-between bg-[#121414]">
           <div className="flex items-center space-x-2">

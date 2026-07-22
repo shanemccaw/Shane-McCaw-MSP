@@ -64,7 +64,7 @@ export const PillarGrid: React.FC<PillarGridProps> = ({
             <div
               key={pillar.id}
               onClick={() => onSelectPillar(pillar.id)}
-              className={`glass-card p-4 rounded-xl cursor-pointer transition-all duration-300 relative group flex flex-col justify-between ${
+              className={`bg-card border border-border p-4 rounded-xl cursor-pointer transition-all duration-300 relative group flex flex-col justify-between ${
                 isSelected
                   ? 'ring-2 ring-[#479ef5] bg-[#2a2a2a] shadow-[0_0_20px_rgba(71,158,245,0.2)]'
                   : 'hover:-translate-y-1'

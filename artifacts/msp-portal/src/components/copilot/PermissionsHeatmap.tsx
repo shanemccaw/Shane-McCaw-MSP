@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
+import { Search, ArrowUp, ArrowDown, Cloud, Users, FolderOpen, Database, Shield } from 'lucide-react';
 import { HeatmapEntity } from './types';
+
+const ENTITY_ICONS: Record<HeatmapEntity['icon'], React.ComponentType<{ className?: string }>> = {
+  cloud: Cloud,
+  groups: Users,
+  folder_open: FolderOpen,
+  database: Database,
+  shield: Shield
+};
 
 interface PermissionsHeatmapProps {
   entities: HeatmapEntity[];
@@ -61,7 +70,7 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
   };
 
   return (
-    <section className="glass-card rounded-xl p-6 overflow-hidden">
+    <section className="bg-card border border-border rounded-xl p-6 overflow-hidden">
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
@@ -76,9 +85,7 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
         <div className="flex items-center gap-4 flex-wrap">
           {/* Search Box */}
           <div className="relative">
-            <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#c0c7d3] text-sm pointer-events-none">
-              search
-            </span>
+            <Search className="absolute left-2.5 top-2 text-[#c0c7d3] w-4 h-4 pointer-events-none" />
             <input
               type="text"
               placeholder="Search site / drive..."
@@ -118,9 +125,11 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
                 <div className="flex items-center gap-1">
                   Entity (Sites/Drives)
                   {sortField === 'name' && (
-                    <span className="material-symbols-outlined text-xs">
-                      {sortDirection === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                    </span>
+                    sortDirection === 'asc' ? (
+                      <ArrowUp className="w-3 h-3" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3" />
+                    )
                   )}
                 </div>
               </th>
@@ -151,16 +160,16 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
             </tr>
           </thead>
           <tbody className="font-mono text-xs">
-            {filteredEntities.map((entity) => (
+            {filteredEntities.map((entity) => {
+              const EntityIcon = ENTITY_ICONS[entity.icon];
+              return (
               <tr
                 key={entity.id}
                 onClick={() => onSelectEntity(entity)}
                 className="border-b border-[#2b2b2b]/40 hover:bg-white/5 transition-colors cursor-pointer group"
               >
                 <td className="py-3 px-2 flex items-center gap-2 font-mono text-xs text-white">
-                  <span className="material-symbols-outlined text-[#479ef5] text-base group-hover:scale-110 transition-transform">
-                    {entity.icon}
-                  </span>
+                  <EntityIcon className="text-[#479ef5] w-4 h-4 group-hover:scale-110 transition-transform" />
                   <div>
                     <span className="font-semibold text-[#f0f0f0] group-hover:text-[#479ef5] transition-colors">
                       {entity.name}
@@ -211,7 +220,8 @@ export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {filteredEntities.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-8 text-center text-[#8a919d] font-body">

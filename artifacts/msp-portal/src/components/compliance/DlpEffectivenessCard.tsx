@@ -10,14 +10,14 @@ export const DlpEffectivenessCard: React.FC<DlpEffectivenessCardProps> = ({ dlpD
   const [activeBar, setActiveBar] = useState<DlpActionCategory | null>(null);
 
   return (
-    <div className="card-obsidian p-6 relative overflow-hidden flex flex-col justify-between">
+    <div className="bg-card border border-border p-6 relative overflow-hidden flex flex-col justify-between">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-['Hanken_Grotesk'] text-[18px] leading-[24px] font-semibold text-[#e2e2e2]">
           DLP Effectiveness
         </h3>
         {/* Risk Score Pill */}
-        <div className="glass-dark px-3 py-1 rounded-full border border-[#479ef5]/20 flex items-center gap-2">
+        <div className="bg-[#101419]/60 px-3 py-1 rounded-full border border-[#479ef5]/20 flex items-center gap-2">
           <span className="text-[10px] font-['JetBrains_Mono'] font-medium text-[#c0c7d3]">
             RISK SCORE
           </span>

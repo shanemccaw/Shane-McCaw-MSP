@@ -9,7 +9,7 @@ interface RoleInventoryProps {
 
 export const RoleInventory: React.FC<RoleInventoryProps> = ({ roles, onSelectRole }) => {
   return (
-    <div className="glass-card p-6 rounded-xl h-full flex flex-col justify-between">
+    <div className="bg-card border border-border p-6 rounded-xl h-full flex flex-col justify-between">
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-headline text-lg font-semibold flex items-center gap-2 text-[#e2e2e2]">
           <BadgeCheck className="w-5 h-5 text-[#479ef5]" />

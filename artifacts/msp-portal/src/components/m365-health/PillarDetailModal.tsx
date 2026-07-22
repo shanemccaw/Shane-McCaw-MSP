@@ -54,7 +54,7 @@ export const PillarDetailModal: React.FC<PillarDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
-      <div className="glass-card bg-[#1e2020] border border-[#404752] rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
+      <div className="bg-[#1e2020] border border-[#404752] rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
         {/* Modal Header */}
         <div className="px-6 py-5 border-b border-[#404752] flex items-center justify-between">
           <div className="flex items-center space-x-3">

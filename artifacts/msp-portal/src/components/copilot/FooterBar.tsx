@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FileText, Download, BookOpen, X } from 'lucide-react';
 import { ExecutiveMetrics } from './types';
 
 interface FooterBarProps {
@@ -35,7 +36,7 @@ export const FooterBar: React.FC<FooterBarProps> = ({
             onClick={() => setShowDocs(true)}
             className="hover:text-[#479ef5] transition-colors flex items-center gap-1"
           >
-            <span className="material-symbols-outlined text-sm">description</span>
+            <FileText className="w-4 h-4" />
             Documentation
           </button>
 
@@ -43,7 +44,7 @@ export const FooterBar: React.FC<FooterBarProps> = ({
             onClick={onOpenExportReport}
             className="hover:text-[#479ef5] transition-colors flex items-center gap-1 text-[#479ef5] font-semibold"
           >
-            <span className="material-symbols-outlined text-sm">download</span>
+            <Download className="w-4 h-4" />
             Export Report
           </button>
 
@@ -66,19 +67,17 @@ export const FooterBar: React.FC<FooterBarProps> = ({
       {/* Documentation Drawer Modal */}
       {showDocs && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="glass-card max-w-xl w-full rounded-xl border border-[#404752] p-6 space-y-4 shadow-2xl">
+          <div className="max-w-xl w-full rounded-xl border border-[#404752] p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b border-[#2b2b2b] pb-3">
               <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#479ef5]">
-                  menu_book
-                </span>
+                <BookOpen className="text-[#479ef5] w-5 h-5" />
                 Copilot Governance Architecture Docs
               </h3>
               <button
                 onClick={() => setShowDocs(false)}
                 className="text-[#8a919d] hover:text-white"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <X className="w-5 h-5" />
               </button>
             </div>
 

@@ -15,7 +15,7 @@ export const CostAndRiskRow: React.FC<CostAndRiskRowProps> = ({
   return (
     <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
       {/* 1. Cost Savings Projection */}
-      <div className="glass-card p-6 md:p-8 rounded-xl flex flex-col justify-between relative overflow-hidden">
+      <div className="bg-card border border-border p-6 md:p-8 rounded-xl flex flex-col justify-between relative overflow-hidden">
         <div>
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-headline text-lg font-bold text-[#e2e2e2]">
@@ -94,7 +94,7 @@ export const CostAndRiskRow: React.FC<CostAndRiskRowProps> = ({
       </div>
 
       {/* 2. Risk Concentration */}
-      <div className="glass-card p-6 md:p-8 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-6 md:p-8 rounded-xl flex flex-col justify-between">
         <div>
           <div className="flex justify-between items-center mb-6">
             <h3 className="font-headline text-lg font-bold text-[#e2e2e2]">

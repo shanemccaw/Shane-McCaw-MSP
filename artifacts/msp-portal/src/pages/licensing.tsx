@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { Header } from '@/components/licensing/Header';
 import { HeroBand } from '@/components/licensing/HeroBand';
 import { SkuInventory } from '@/components/licensing/SkuInventory';
 import { AssignmentHygiene } from '@/components/licensing/AssignmentHygiene';
@@ -186,6 +187,15 @@ export default function LicensingPage() {
       </div>
 
       <main className="max-w-[1440px] mx-auto px-6 space-y-6">
+        {/* Section 0: Header */}
+        <Header
+          filter={filter}
+          onFilterChange={handleFilterChange}
+          onRefresh={handleRefresh}
+          onExport={handleExport}
+          isRefreshing={isRefreshing}
+        />
+
         {/* Section 1: Hero Band */}
         <HeroBand
           efficiencyScore={efficiencyScore}

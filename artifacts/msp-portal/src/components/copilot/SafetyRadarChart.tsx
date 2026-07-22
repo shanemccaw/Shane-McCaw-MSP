@@ -44,7 +44,7 @@ export const SafetyRadarChart: React.FC<SafetyRadarChartProps> = ({ data }) => {
     .join(' ');
 
   return (
-    <section className="glass-card rounded-xl p-6 min-h-[460px] flex flex-col justify-between relative overflow-hidden">
+    <section className="bg-card border border-border rounded-xl p-6 min-h-[460px] flex flex-col justify-between relative overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <div>
           <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
@@ -174,7 +174,7 @@ export const SafetyRadarChart: React.FC<SafetyRadarChartProps> = ({ data }) => {
 
         {/* Floating Tooltip Box when hovering axis point */}
         {hoveredAxis && (
-          <div className="absolute top-4 right-4 glass-card p-3 rounded-lg border border-[#b388ff]/40 shadow-xl z-20 pointer-events-none animate-fadeIn">
+          <div className="absolute top-4 right-4 p-3 rounded-lg border border-[#b388ff]/40 shadow-xl z-20 pointer-events-none animate-fadeIn">
             <p className="font-mono text-xs font-semibold text-[#b388ff] uppercase">
               {hoveredAxis.axis}
             </p>

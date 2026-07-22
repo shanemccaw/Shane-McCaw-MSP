@@ -19,7 +19,7 @@ export const AlertVolumeCard: React.FC<AlertVolumeCardProps> = ({ volumeData, mt
   };
 
   return (
-    <div className="glass-card rounded-xl p-6 border border-white/10 shadow-xl flex flex-col justify-between h-full">
+    <div className="bg-card rounded-xl p-6 border border-white/10 shadow-xl flex flex-col justify-between h-full">
       {/* Card Header */}
       <div className="flex justify-between items-center mb-6">
         <div>

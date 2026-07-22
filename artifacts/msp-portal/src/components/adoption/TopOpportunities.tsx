@@ -43,7 +43,7 @@ export const TopOpportunities: React.FC<TopOpportunitiesProps> = ({
   };
 
   return (
-    <section className="glass-card rounded-xl overflow-hidden mb-6 border border-white/10 shadow-lg">
+    <section className="rounded-xl overflow-hidden mb-6 border border-white/10 shadow-lg">
       {/* Header section with distinct background */}
       <div className="p-4 lg:p-5 border-b border-white/10 bg-[#282a2b] flex items-center justify-between">
         <div>

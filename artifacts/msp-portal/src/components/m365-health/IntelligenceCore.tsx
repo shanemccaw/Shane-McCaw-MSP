@@ -55,7 +55,7 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
   return (
     <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
       {/* 1. Spider Chart Simulation: Pillar Synergy */}
-      <div className="glass-card p-5 rounded-xl h-80 flex flex-col justify-between relative group">
+      <div className="bg-card border border-border p-5 rounded-xl h-80 flex flex-col justify-between relative group">
         <div className="flex justify-between items-center mb-2">
           <div>
             <h3 className="font-mono text-xs font-semibold text-[#e2e2e2] tracking-wider uppercase flex items-center space-x-1.5">
@@ -152,7 +152,7 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
       </div>
 
       {/* 2. Risk Heat Map */}
-      <div className="glass-card p-5 rounded-xl h-80 flex flex-col justify-between relative">
+      <div className="bg-card border border-border p-5 rounded-xl h-80 flex flex-col justify-between relative">
         <div className="flex justify-between items-center mb-2">
           <div>
             <h3 className="font-mono text-xs font-semibold text-[#e2e2e2] tracking-wider uppercase">
@@ -211,7 +211,7 @@ export const IntelligenceCore: React.FC<IntelligenceCoreProps> = ({
       </div>
 
       {/* 3. Cost Efficiency */}
-      <div className="glass-card p-5 rounded-xl h-80 flex flex-col justify-between">
+      <div className="bg-card border border-border p-5 rounded-xl h-80 flex flex-col justify-between">
         <div className="flex justify-between items-center mb-2">
           <div>
             <h3 className="font-mono text-xs font-semibold text-[#e2e2e2] tracking-wider uppercase">

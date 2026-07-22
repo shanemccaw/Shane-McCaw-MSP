@@ -33,7 +33,7 @@ export const TeamsHeatMap: React.FC<TeamsHeatMapProps> = ({
     : data.filter(d => d.department === selectedDepartment);
 
   return (
-    <section className="glass-card p-6 rounded-xl flex flex-col h-full">
+    <section className="bg-card border border-border p-6 rounded-xl flex flex-col h-full">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="font-headline text-lg font-bold text-white tracking-tight flex items-center gap-2">

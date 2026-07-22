@@ -31,7 +31,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
 
   return (
     <div className="fixed bottom-6 right-6 z-50 max-w-md w-full animate-in slide-in-from-bottom-5 fade-in duration-300">
-      <div className="glass-card p-4 rounded-xl border border-[#479ef5]/40 shadow-2xl bg-[#1e2020] text-white flex items-start gap-3">
+      <div className="p-4 rounded-xl border border-[#479ef5]/40 shadow-2xl bg-[#1e2020] text-white flex items-start gap-3">
         <div className="w-8 h-8 rounded-lg bg-[#479ef5]/20 flex items-center justify-center text-[#479ef5] shrink-0 mt-0.5">
           {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
           {toast.type === 'info' && <Info className="w-4 h-4 text-[#479ef5]" />}

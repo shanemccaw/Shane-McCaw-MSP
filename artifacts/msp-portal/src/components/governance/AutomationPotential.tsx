@@ -72,7 +72,7 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
         {automations.map((auto) => (
           <div
             key={auto.id}
-            className={`glass-card p-6 rounded-xl flex flex-col justify-between transition-all duration-300 ${
+            className={`bg-card border border-border p-6 rounded-xl flex flex-col justify-between transition-all duration-300 ${
               auto.accentColor === 'violet'
                 ? 'border-t-2 border-t-[#c084fc]/40 hover:border-[#c084fc]'
                 : auto.accentColor === 'green'

@@ -23,7 +23,7 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
   return (
     <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
       {/* 1. Security Trend */}
-      <div className="glass-card p-5 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
         <div className="flex justify-between items-center mb-3">
           <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
             SECURITY TRENDS
@@ -108,7 +108,7 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
       </div>
 
       {/* 2. Compliance Drift */}
-      <div className="glass-card p-5 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
         <div className="flex justify-between items-center mb-3">
           <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
             COMPLIANCE DRIFT
@@ -172,7 +172,7 @@ export const TrendsRow: React.FC<TrendsRowProps> = ({
       </div>
 
       {/* 3. Adoption Metrics */}
-      <div className="glass-card p-5 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
         <div className="flex justify-between items-center mb-3">
           <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
             ADOPTION METRICS

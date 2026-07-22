@@ -1,4 +1,5 @@
 import React from 'react';
+import { Zap, Tag, Ban, CheckCircle2 } from 'lucide-react';
 import { AutomationTask } from './types';
 
 interface AutomationPotentialProps {
@@ -38,20 +39,20 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
     switch (accentColor) {
       case 'primary':
         return (
-          <span className="material-symbols-outlined text-[#479ef5] bg-[#479ef5]/10 p-2 rounded-lg text-2xl">
-            shutter_speed
+          <span className="text-[#479ef5] bg-[#479ef5]/10 p-2 rounded-lg inline-flex">
+            <Zap className="w-6 h-6" />
           </span>
         );
       case 'secondary':
         return (
-          <span className="material-symbols-outlined text-[#b388ff] bg-[#b388ff]/10 p-2 rounded-lg text-2xl">
-            label_important
+          <span className="text-[#b388ff] bg-[#b388ff]/10 p-2 rounded-lg inline-flex">
+            <Tag className="w-6 h-6" />
           </span>
         );
       case 'error':
         return (
-          <span className="material-symbols-outlined text-red-400 bg-red-500/10 p-2 rounded-lg text-2xl">
-            block
+          <span className="text-red-400 bg-red-500/10 p-2 rounded-lg inline-flex">
+            <Ban className="w-6 h-6" />
           </span>
         );
       default:
@@ -69,7 +70,7 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
         {tasks.map((task) => (
           <div
             key={task.id}
-            className="glass-card p-6 rounded-xl group hover:border-[#404752] transition-all flex flex-col justify-between"
+            className="bg-card border border-border p-6 rounded-xl group hover:border-[#404752] transition-all flex flex-col justify-between"
           >
             <div>
               <div className="flex justify-between items-start mb-4">
@@ -107,9 +108,7 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
                 </div>
               ) : task.status === 'completed' ? (
                 <div className="py-2.5 px-3 bg-emerald-950/40 border border-emerald-500/30 rounded text-emerald-400 font-mono text-xs text-center font-bold flex items-center justify-center gap-2">
-                  <span className="material-symbols-outlined text-base">
-                    check_circle
-                  </span>
+                  <CheckCircle2 className="w-4 h-4" />
                   AUTOMATION EXECUTED
                 </div>
               ) : (

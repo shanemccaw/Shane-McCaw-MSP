@@ -79,7 +79,7 @@ export const IntelligenceSignals: React.FC<IntelligenceSignalsProps> = ({
   };
 
   return (
-    <section className="glass-card rounded-xl overflow-hidden mb-6">
+    <section className="bg-card border border-border rounded-xl overflow-hidden mb-6">
       {/* Header */}
       <div className="bg-[#1e2020] px-6 py-4 border-b border-[#404752]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>

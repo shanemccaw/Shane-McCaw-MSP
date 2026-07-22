@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CheckCircle2, AlertTriangle, Clock, RefreshCw, X } from 'lucide-react';
 import { EnablementControl } from './types';
 
 interface EnablementControlsProps {
@@ -50,34 +51,18 @@ export const EnablementControls: React.FC<EnablementControlsProps> = ({
       case 'active':
       case 'ready':
       case 'percent':
-        return (
-          <span className="material-symbols-outlined text-[#4caf50] text-xl">
-            check_circle
-          </span>
-        );
+        return <CheckCircle2 className="text-[#4caf50] w-5 h-5" />;
       case 'warning':
-        return (
-          <span className="material-symbols-outlined text-red-400 text-xl">
-            warning
-          </span>
-        );
+        return <AlertTriangle className="text-red-400 w-5 h-5" />;
       case 'pending':
-        return (
-          <span className="material-symbols-outlined text-amber-500 text-xl">
-            pending
-          </span>
-        );
+        return <Clock className="text-amber-500 w-5 h-5" />;
       case 'running':
-        return (
-          <span className="material-symbols-outlined text-[#479ef5] text-xl animate-spin">
-            sync
-          </span>
-        );
+        return <RefreshCw className="text-[#479ef5] w-5 h-5 animate-spin" />;
     }
   };
 
   return (
-    <section className="glass-card rounded-xl p-6">
+    <section className="bg-card border border-border rounded-xl p-6">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
@@ -126,7 +111,7 @@ export const EnablementControls: React.FC<EnablementControlsProps> = ({
             onClick={() => setActiveControl(null)}
             className="text-[#8a919d] hover:text-white transition-colors"
           >
-            <span className="material-symbols-outlined text-sm">close</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}

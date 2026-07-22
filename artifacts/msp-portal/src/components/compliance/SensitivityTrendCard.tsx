@@ -9,7 +9,7 @@ export const SensitivityTrendCard: React.FC<SensitivityTrendCardProps> = ({ tren
   const [activePoint, setActivePoint] = useState<TrendDataPoint | null>(null);
 
   return (
-    <div className="card-obsidian p-6 overflow-hidden relative flex flex-col justify-between">
+    <div className="bg-card border border-border p-6 overflow-hidden relative flex flex-col justify-between">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-['Hanken_Grotesk'] text-[18px] leading-[24px] font-semibold text-[#e2e2e2]">

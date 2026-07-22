@@ -32,7 +32,7 @@ export const PolicyDriftTrend: React.FC<PolicyDriftTrendProps> = ({ data }) => {
   }, [data, timeRange]);
 
   return (
-    <section className="glass-card p-6 rounded-xl relative">
+    <section className="bg-card border border-border p-6 rounded-xl relative">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
         <h3 className="font-headline text-lg font-semibold flex items-center gap-2 text-[#e2e2e2]">
           <Activity className="w-5 h-5 text-[#479ef5]" />

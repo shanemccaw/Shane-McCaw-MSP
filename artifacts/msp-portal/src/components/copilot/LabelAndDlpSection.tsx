@@ -13,7 +13,7 @@ export const LabelAndDlpSection: React.FC<LabelAndDlpSectionProps> = ({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* LEFT: Label Coverage Analysis */}
-      <div className="glass-card p-6 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
         <h3 className="font-display text-lg font-semibold text-[#f0f0f0] mb-6">
           Label Coverage Analysis
         </h3>
@@ -111,7 +111,7 @@ export const LabelAndDlpSection: React.FC<LabelAndDlpSectionProps> = ({
       </div>
 
       {/* RIGHT: DLP Effectiveness */}
-      <div className="glass-card p-6 rounded-xl flex flex-col justify-between">
+      <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
         <div className="flex justify-between items-center mb-6">
           <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
             DLP Effectiveness

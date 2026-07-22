@@ -13,7 +13,7 @@ export const AdminExposureMatrix: React.FC<AdminExposureMatrixProps> = ({ metric
   const getMetricByKey = (key: string) => metrics.find((m) => m.key === key);
 
   return (
-    <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-full relative">
+    <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full relative">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-headline text-lg font-semibold flex items-center gap-2 text-[#e2e2e2]">
           <Shield className="w-5 h-5 text-[#eab308]" />

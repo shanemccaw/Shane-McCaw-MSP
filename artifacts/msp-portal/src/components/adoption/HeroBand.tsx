@@ -26,7 +26,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
   return (
     <section className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch mb-6">
       {/* Adoption Health Score Box */}
-      <div className="md:col-span-4 glass-card p-6 rounded-xl flex flex-col justify-center items-center text-center relative overflow-hidden group">
+      <div className="md:col-span-4 bg-card border border-border p-6 rounded-xl flex flex-col justify-center items-center text-center relative overflow-hidden group">
         <div className="absolute top-0 left-0 w-full h-1 bg-[#479ef5]"></div>
         
         <div className="flex items-center gap-1.5 mb-4">
@@ -86,7 +86,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 3 Metric Cards */}
       <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Teams Users */}
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#479ef5] hover:border-l-[6px] transition-all">
+        <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#479ef5] hover:border-l-[6px] transition-all">
           <div className="w-10 h-10 rounded-lg bg-[#479ef5]/15 flex items-center justify-center text-[#479ef5] mb-4">
             <Users className="w-5 h-5" />
           </div>
@@ -101,7 +101,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
         </div>
 
         {/* Active SharePoint Sites */}
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#b685e1] hover:border-l-[6px] transition-all">
+        <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#b685e1] hover:border-l-[6px] transition-all">
           <div className="w-10 h-10 rounded-lg bg-[#b685e1]/15 flex items-center justify-center text-[#b685e1] mb-4">
             <Cloud className="w-5 h-5" />
           </div>
@@ -116,7 +116,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
         </div>
 
         {/* Copilot Active Users */}
-        <div className="glass-card p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#ffb300] hover:border-l-[6px] transition-all">
+        <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between border-l-4 border-l-[#ffb300] hover:border-l-[6px] transition-all">
           <div className="w-10 h-10 rounded-lg bg-[#ffb300]/15 flex items-center justify-center text-[#ffb300] mb-4">
             <Sparkles className="w-5 h-5" />
           </div>

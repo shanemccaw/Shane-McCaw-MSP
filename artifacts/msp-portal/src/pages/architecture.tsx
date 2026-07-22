@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { Header } from '@/components/architecture/Header';
 import { ScoreOverview } from '@/components/architecture/ScoreOverview';
 import { TenantTopology } from '@/components/architecture/TenantTopology';
 import { IdentityRoleDensity } from '@/components/architecture/IdentityRoleDensity';
@@ -256,6 +257,16 @@ export default function ArchitecturePage() {
           {toastMessage}
         </div>
       )}
+
+      <Header
+        currentEnvironment={environment}
+        onSelectEnvironment={setEnvironment}
+        lastAnalysisTime={lastAnalysis}
+        isScanning={isScanning}
+        onRunScan={handleRunScan}
+        isRemediated={isRemediated}
+        onReset={handleReset}
+      />
 
       {/* Top Score Row */}
       <ScoreOverview

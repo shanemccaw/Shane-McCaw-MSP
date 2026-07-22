@@ -25,7 +25,7 @@ export const CopilotUsage: React.FC<CopilotUsageProps> = ({
   };
 
   return (
-    <section className="glass-card p-6 rounded-xl flex flex-col justify-between h-full">
+    <section className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-headline text-lg font-bold text-white tracking-tight flex items-center gap-2">

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BarChart3, X, Check, Copy } from 'lucide-react';
 import { ExecutiveMetrics, HeatmapEntity, ReadinessBlocker } from './types';
 
 interface ExportReportModalProps {
@@ -51,12 +52,10 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-      <div className="glass-card max-w-2xl w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
+      <div className="max-w-2xl w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
         <div className="flex justify-between items-center border-b border-[#2b2b2b] pb-4">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#479ef5] text-2xl">
-              analytics
-            </span>
+            <BarChart3 className="text-[#479ef5] w-6 h-6" />
             <h3 className="font-display text-xl font-bold text-white">
               Executive Intelligence Report Summary
             </h3>
@@ -65,7 +64,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
             onClick={onClose}
             className="text-[#8a919d] hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
           >
-            <span className="material-symbols-outlined text-lg">close</span>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -116,9 +115,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
               onClick={handleCopy}
               className="px-4 py-2 font-mono text-xs font-semibold bg-[#2b2b2b] text-white hover:bg-[#38393a] rounded-md transition-colors flex items-center gap-1.5"
             >
-              <span className="material-symbols-outlined text-sm">
-                {copied ? 'check' : 'content_copy'}
-              </span>
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               {copied ? 'COPIED TO CLIPBOARD' : 'COPY JSON'}
             </button>
             <button

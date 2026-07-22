@@ -52,7 +52,7 @@ export const GroupSprawl: React.FC<GroupSprawlProps> = ({ stats, cells, onCellCl
         {stats.map((stat, idx) => (
           <div
             key={idx}
-            className={`glass-card p-4 rounded-xl flex items-center gap-4 ${
+            className={`bg-card border border-border p-4 rounded-xl flex items-center gap-4 ${
               stat.borderLeft ? 'border-l-4 border-l-[#ef4444]' : ''
             }`}
           >
@@ -72,7 +72,7 @@ export const GroupSprawl: React.FC<GroupSprawlProps> = ({ stats, cells, onCellCl
       </div>
 
       {/* Right Heatmap */}
-      <div className="lg:col-span-2 glass-card p-6 rounded-xl flex flex-col justify-between">
+      <div className="lg:col-span-2 bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <h3 className="font-headline text-lg font-semibold flex items-center gap-2 text-[#e2e2e2]">
             <Grid className="w-5 h-5 text-[#ef4444]" />

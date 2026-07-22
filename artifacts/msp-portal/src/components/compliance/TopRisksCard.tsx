@@ -9,7 +9,7 @@ interface TopRisksCardProps {
 
 export const TopRisksCard: React.FC<TopRisksCardProps> = ({ risks, onRiskSelect }) => {
   return (
-    <section className="card-obsidian-no-hover p-6 border-t-2 border-t-[#da4e49]">
+    <section className="bg-card border border-border p-6 border-t-2 border-t-[#da4e49]">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-['Hanken_Grotesk'] text-[18px] leading-[24px] font-semibold text-[#e2e2e2]">

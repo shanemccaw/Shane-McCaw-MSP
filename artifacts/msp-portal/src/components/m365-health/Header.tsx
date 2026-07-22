@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="glass-card rounded-xl p-4 md:p-6 mb-6">
+    <header className="bg-card border border-border rounded-xl p-4 md:p-6 mb-6">
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         {/* Brand & Tenant Context */}
         <div className="flex items-center space-x-4">
@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
 
               {showTenantMenu && (
-                <div className="absolute left-0 mt-2 w-64 glass-card rounded-lg border border-[#404752] py-2 z-50 shadow-2xl bg-[#1e2020]">
+                <div className="absolute left-0 mt-2 w-64 rounded-lg border border-[#404752] py-2 z-50 shadow-2xl bg-[#1e2020]">
                   <div className="px-3 py-1 text-[10px] font-mono text-[#8a919d] uppercase">Switch Tenant Context</div>
                   {tenants.map((t) => (
                     <button

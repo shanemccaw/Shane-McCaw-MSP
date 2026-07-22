@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { Header } from '@/components/governance/Header';
 import { HeroMetrics } from '@/components/governance/HeroMetrics';
 import { RoleInventory } from '@/components/governance/RoleInventory';
 import { AdminExposureMatrix } from '@/components/governance/AdminExposureMatrix';
@@ -107,6 +108,14 @@ export default function GovernancePage() {
       )}
 
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 relative z-10">
+        {/* Section 0: Header */}
+        <Header
+          latency={latency}
+          status="SECURE_OPERATIONAL"
+          isScanning={isScanning}
+          onRefresh={handleRunAudit}
+        />
+
         {/* Section 1: Hero Metrics */}
         <HeroMetrics
           data={healthData}

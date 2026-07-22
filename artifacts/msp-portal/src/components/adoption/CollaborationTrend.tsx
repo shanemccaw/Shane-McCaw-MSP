@@ -43,7 +43,7 @@ export const CollaborationTrend: React.FC<CollaborationTrendProps> = ({
   highCollabSites = 672
 }) => {
   return (
-    <section className="glass-card p-6 rounded-xl flex flex-col justify-between h-full">
+    <section className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full">
       {/* Header & Legend */}
       <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
         <div>

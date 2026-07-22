@@ -1,4 +1,5 @@
 import React from 'react';
+import { ShieldCheck, UserCheck, TrendingDown } from 'lucide-react';
 import { ExecutiveMetrics } from './types';
 
 interface HeaderHeroProps {
@@ -37,7 +38,7 @@ export const HeaderHero: React.FC<HeaderHeroProps> = ({ metrics }) => {
         </div>
 
         {/* Aggregate Readiness Gauge Card */}
-        <div className="glass-card p-6 rounded-xl flex flex-col items-center justify-center min-w-[280px] self-stretch md:self-auto transition-all duration-300 hover:border-sky-500/30">
+        <div className="bg-card border border-border p-6 rounded-xl flex flex-col items-center justify-center min-w-[280px] self-stretch md:self-auto transition-all duration-300 hover:border-sky-500/30">
           <span className="font-mono text-xs text-[#c0c7d3] uppercase mb-3 tracking-wider">
             Aggregate Readiness
           </span>
@@ -80,14 +81,12 @@ export const HeaderHero: React.FC<HeaderHeroProps> = ({ metrics }) => {
       {/* Top 3 KPI Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: PERMISSIONS HYGIENE */}
-        <div className="glass-card p-5 rounded-xl border-t-2 border-[#479ef5] transition-all hover:bg-white/5">
+        <div className="bg-card border border-border p-5 rounded-xl border-t-2 border-t-[#479ef5] transition-all hover:bg-white/5">
           <div className="flex justify-between items-start mb-4">
             <span className="font-mono text-xs font-medium text-[#c0c7d3] tracking-wider uppercase">
               PERMISSIONS HYGIENE
             </span>
-            <span className="material-symbols-outlined text-[#479ef5] text-xl">
-              security
-            </span>
+            <ShieldCheck className="text-[#479ef5] w-5 h-5" />
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="font-display text-3xl font-bold text-[#f0f0f0]">
@@ -104,14 +103,12 @@ export const HeaderHero: React.FC<HeaderHeroProps> = ({ metrics }) => {
         </div>
 
         {/* Card 2: SENSITIVE DATA PROTECTION */}
-        <div className="glass-card p-5 rounded-xl border-t-2 border-[#b388ff] transition-all hover:bg-white/5">
+        <div className="bg-card border border-border p-5 rounded-xl border-t-2 border-t-[#b388ff] transition-all hover:bg-white/5">
           <div className="flex justify-between items-start mb-4">
             <span className="font-mono text-xs font-medium text-[#c0c7d3] tracking-wider uppercase">
               SENSITIVE DATA PROTECTION
             </span>
-            <span className="material-symbols-outlined text-[#b388ff] text-xl">
-              verified_user
-            </span>
+            <UserCheck className="text-[#b388ff] w-5 h-5" />
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="font-display text-3xl font-bold text-[#f0f0f0]">
@@ -128,14 +125,12 @@ export const HeaderHero: React.FC<HeaderHeroProps> = ({ metrics }) => {
         </div>
 
         {/* Card 3: COPILOT RISK SCORE */}
-        <div className="glass-card p-5 rounded-xl border-t-2 border-[#4caf50] transition-all hover:bg-white/5">
+        <div className="bg-card border border-border p-5 rounded-xl border-t-2 border-t-[#4caf50] transition-all hover:bg-white/5">
           <div className="flex justify-between items-start mb-4">
             <span className="font-mono text-xs font-medium text-[#c0c7d3] tracking-wider uppercase">
               COPILOT RISK SCORE
             </span>
-            <span className="material-symbols-outlined text-[#4caf50] text-xl">
-              trending_down
-            </span>
+            <TrendingDown className="text-[#4caf50] w-5 h-5" />
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="font-display text-3xl font-bold text-[#4caf50] green-glow">

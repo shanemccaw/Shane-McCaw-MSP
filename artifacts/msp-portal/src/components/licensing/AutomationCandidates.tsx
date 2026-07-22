@@ -69,7 +69,7 @@ export const AutomationCandidates: React.FC<AutomationCandidatesProps> = ({
           return (
             <div
               key={card.id}
-              className={`glass-card p-6 rounded-xl flex flex-col justify-between ${getBorderColor(
+              className={`bg-card border border-border p-6 rounded-xl flex flex-col justify-between ${getBorderColor(
                 card.type
               )} relative hover:border-white/20 transition-all`}
             >

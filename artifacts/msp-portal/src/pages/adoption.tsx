@@ -14,6 +14,7 @@ import {
   AUTOMATION_ACTIONS
 } from '@/components/adoption/mockData';
 
+import { Header } from '@/components/adoption/Header';
 import { HeroBand } from '@/components/adoption/HeroBand';
 import { TeamsHeatMap } from '@/components/adoption/TeamsHeatMap';
 import { CollaborationTrend } from '@/components/adoption/CollaborationTrend';
@@ -169,6 +170,19 @@ export default function AdoptionPage() {
     <AppShell title="Adoption">
     <div className="grid-overlay min-h-screen p-4 sm:p-6 lg:p-8 font-body">
       <main className="max-w-[1440px] mx-auto space-y-6">
+        {/* SECTION 0: HEADER */}
+        <Header
+          timeframe={timeframe}
+          setTimeframe={setTimeframe}
+          selectedDepartment={selectedDepartment}
+          setSelectedDepartment={setSelectedDepartment}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onRefreshData={handleRefreshData}
+          onExportReport={handleExportReport}
+          isRefreshing={isRefreshing}
+        />
+
         {/* SECTION 1: HERO BAND */}
         <HeroBand
           score={currentMetrics.score}

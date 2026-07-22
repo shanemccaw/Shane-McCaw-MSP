@@ -11,7 +11,7 @@ export const SkuInventory: React.FC<SkuInventoryProps> = ({ skus, onSelectSku })
   const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
 
   return (
-    <div className="glass-card p-6 rounded-xl h-full flex flex-col justify-between">
+    <div className="bg-card border border-border p-6 rounded-xl h-full flex flex-col justify-between">
       <div>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">

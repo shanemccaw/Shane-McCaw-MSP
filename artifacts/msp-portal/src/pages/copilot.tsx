@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { BadgeCheck } from 'lucide-react';
+import { AppShell } from '@/components/app-shell';
 import {
   initialMetrics,
   initialHeatmapEntities,
@@ -8,26 +10,26 @@ import {
   initialEnablementControls,
   initialBlockers,
   initialAutomationTasks
-} from './data/initialData';
+} from '@/components/copilot/initialData';
 import {
   ExecutiveMetrics,
   HeatmapEntity,
   ReadinessBlocker,
   AutomationTask
-} from './types';
+} from '@/components/copilot/types';
 
-import { HeaderHero } from './components/HeaderHero';
-import { PermissionsHeatmap } from './components/PermissionsHeatmap';
-import { LabelAndDlpSection } from './components/LabelAndDlpSection';
-import { SafetyRadarChart } from './components/SafetyRadarChart';
-import { EnablementControls } from './components/EnablementControls';
-import { ReadinessBlockers } from './components/ReadinessBlockers';
-import { AutomationPotential } from './components/AutomationPotential';
-import { FooterBar } from './components/FooterBar';
-import { EntityDetailModal } from './components/EntityDetailModal';
-import { ExportReportModal } from './components/ExportReportModal';
+import { HeaderHero } from '@/components/copilot/HeaderHero';
+import { PermissionsHeatmap } from '@/components/copilot/PermissionsHeatmap';
+import { LabelAndDlpSection } from '@/components/copilot/LabelAndDlpSection';
+import { SafetyRadarChart } from '@/components/copilot/SafetyRadarChart';
+import { EnablementControls } from '@/components/copilot/EnablementControls';
+import { ReadinessBlockers } from '@/components/copilot/ReadinessBlockers';
+import { AutomationPotential } from '@/components/copilot/AutomationPotential';
+import { FooterBar } from '@/components/copilot/FooterBar';
+import { EntityDetailModal } from '@/components/copilot/EntityDetailModal';
+import { ExportReportModal } from '@/components/copilot/ExportReportModal';
 
-export default function App() {
+export default function CopilotPage() {
   const [metrics, setMetrics] = useState<ExecutiveMetrics>(initialMetrics);
   const [entities, setEntities] = useState<HeatmapEntity[]>(
     initialHeatmapEntities
@@ -218,6 +220,7 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Copilot">
     <div className="min-h-screen bg-[#1a1a1a] text-[#f0f0f0] relative selection:bg-[#479ef5]/30 selection:text-sky-200">
       {/* Technical Grid Overlay */}
       <div className="fixed inset-0 technical-grid pointer-events-none z-0" />
@@ -232,10 +235,8 @@ export default function App() {
 
       {/* Toast Notification Floating Banner */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 glass-card border border-[#479ef5]/40 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
-          <span className="material-symbols-outlined text-[#479ef5] text-xl">
-            verified
-          </span>
+        <div className="fixed top-6 right-6 z-50 bg-card border border-[#479ef5]/40 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <BadgeCheck className="text-[#479ef5] w-5 h-5" />
           <span className="font-mono text-xs font-medium">{toastMessage}</span>
         </div>
       )}
@@ -298,5 +299,6 @@ export default function App() {
         blockers={blockers}
       />
     </div>
+    </AppShell>
   );
 }

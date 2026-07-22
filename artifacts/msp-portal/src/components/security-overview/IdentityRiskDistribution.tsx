@@ -14,7 +14,7 @@ export const IdentityRiskDistribution: React.FC<IdentityRiskDistributionProps> =
   const [activePoint, setActivePoint] = useState<SignInTrendPoint | null>(null);
 
   return (
-    <div className="glass-card rounded-xl p-4 h-full flex flex-col justify-between border border-white/10 shadow-lg">
+    <div className="bg-card rounded-xl p-4 h-full flex flex-col justify-between border border-white/10 shadow-lg">
       {/* Identity Risk Distribution Section */}
       <div>
         <h3 className="font-mono text-xs text-[#c0c7d3] mb-3 flex items-center gap-1.5 uppercase tracking-wider font-medium">

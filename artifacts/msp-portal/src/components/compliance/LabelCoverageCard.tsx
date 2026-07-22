@@ -11,7 +11,7 @@ export const LabelCoverageCard: React.FC<LabelCoverageCardProps> = ({ data }) =>
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null);
 
   return (
-    <div className="card-obsidian p-6 relative">
+    <div className="bg-card border border-border p-6 relative">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-['Hanken_Grotesk'] text-[18px] leading-[24px] font-semibold text-[#e2e2e2]">

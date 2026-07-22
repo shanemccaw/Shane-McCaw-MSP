@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing
 }) => {
   return (
-    <header className="glass-card rounded-xl p-4 lg:p-5 mb-6 border border-white/10 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+    <header className="rounded-xl p-4 lg:p-5 mb-6 border border-white/10 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
       {/* Title & Branding */}
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-[#479ef5]/15 border border-[#479ef5]/30 flex items-center justify-center text-[#479ef5]">

@@ -25,7 +25,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 1. Efficiency Score */}
       <div 
         onClick={() => onCardClick?.('efficiency')}
-        className="glass-card p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group cursor-pointer hover:border-[#479ef5]/50 transition-all"
+        className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between relative overflow-hidden group cursor-pointer hover:border-[#479ef5]/50 transition-all"
       >
         <div className="absolute top-0 left-0 w-1 h-full bg-[#479ef5]"></div>
         <div className="flex justify-between items-center">
@@ -59,7 +59,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 2. Monthly Waste */}
       <div 
         onClick={() => onCardClick?.('waste')}
-        className="glass-card p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-[#ffb4ab]/50 transition-all"
+        className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-[#ffb4ab]/50 transition-all"
       >
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-mono-tech text-[#c0c7d3] uppercase tracking-wider">
@@ -85,7 +85,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 3. Savings Potential */}
       <div 
         onClick={() => onCardClick?.('savings')}
-        className="glass-card p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-[#a0c9ff]/50 transition-all"
+        className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-[#a0c9ff]/50 transition-all"
       >
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-mono-tech text-[#c0c7d3] uppercase tracking-wider">
@@ -111,7 +111,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 4. Under-Licensed */}
       <div 
         onClick={() => onCardClick?.('underlicensed')}
-        className="glass-card p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-yellow-500/50 transition-all"
+        className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between group cursor-pointer hover:border-yellow-500/50 transition-all"
       >
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-mono-tech text-[#c0c7d3] uppercase tracking-wider">
@@ -137,7 +137,7 @@ export const HeroBand: React.FC<HeroBandProps> = ({
       {/* 5. Copilot Readiness */}
       <div 
         onClick={() => onCardClick?.('copilot')}
-        className="glass-card p-5 rounded-xl flex flex-col justify-between bg-[#5a3289]/10 group cursor-pointer hover:border-[#cda3ff]/50 transition-all"
+        className="border border-border p-5 rounded-xl flex flex-col justify-between bg-[#5a3289]/10 group cursor-pointer hover:border-[#cda3ff]/50 transition-all"
       >
         <div className="flex justify-between items-center">
           <span className="text-[10px] font-mono-tech text-[#c0c7d3] uppercase tracking-wider">

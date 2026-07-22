@@ -281,7 +281,7 @@ export default function M365HealthPage() {
 
       {/* Floating Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 glass-card bg-[#1e2020] border border-[#479ef5] px-4 py-3 rounded-xl text-xs font-mono text-[#a0c9ff] shadow-2xl flex items-center space-x-2 animate-bounce">
+        <div className="fixed bottom-6 right-6 z-50 bg-[#1e2020] border border-[#479ef5] px-4 py-3 rounded-xl text-xs font-mono text-[#a0c9ff] shadow-2xl flex items-center space-x-2 animate-bounce">
           <Sparkles className="w-4 h-4 text-[#479ef5]" />
           <span>{toastMessage}</span>
         </div>

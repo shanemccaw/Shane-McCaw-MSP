@@ -25,7 +25,7 @@ export const RetentionCoverageCard: React.FC<RetentionCoverageCardProps> = ({ wo
   };
 
   return (
-    <div className="card-obsidian p-6 relative">
+    <div className="bg-card border border-border p-6 relative">
       <h3 className="font-['Hanken_Grotesk'] text-[18px] leading-[24px] font-semibold text-[#e2e2e2] mb-6">
         Retention Coverage by Workload
       </h3>

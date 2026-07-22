@@ -18,7 +18,7 @@ export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
   isRefreshing,
 }) => {
   return (
-    <div className="glass-card rounded-xl p-6 relative overflow-hidden flex flex-col justify-between border border-white/10 shadow-2xl">
+    <div className="bg-card rounded-xl p-6 relative overflow-hidden flex flex-col justify-between border border-white/10 shadow-2xl">
       {/* Top Bar with Title, Controls and Health Score */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10">
         <div>

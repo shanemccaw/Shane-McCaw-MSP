@@ -25,7 +25,7 @@ export const AutomationPotentialSection: React.FC<AutomationPotentialSectionProp
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Auto-apply sensitivity labels */}
         {patches[0] && (
-          <div className="card-obsidian-no-hover p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#479ef5] hover:bg-[#2b2b2b] transition-colors">
+          <div className="bg-card border border-border p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#479ef5] hover:bg-[#2b2b2b] transition-colors">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-[#479ef5]/10 rounded">
                 <Tag className="w-5 h-5 text-[#479ef5]" />
@@ -59,7 +59,7 @@ export const AutomationPotentialSection: React.FC<AutomationPotentialSectionProp
 
         {/* Card 2: Tighten DLP rules */}
         {patches[1] && (
-          <div className="card-obsidian-no-hover p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#f59e0b] hover:bg-[#2b2b2b] transition-colors">
+          <div className="bg-card border border-border p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#f59e0b] hover:bg-[#2b2b2b] transition-colors">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-[#f59e0b]/10 rounded">
                 <Shield className="w-5 h-5 text-[#f59e0b]" />
@@ -92,7 +92,7 @@ export const AutomationPotentialSection: React.FC<AutomationPotentialSectionProp
 
         {/* Card 3: Enforce retention baseline */}
         {patches[2] && (
-          <div className="card-obsidian-no-hover p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#10b981] hover:bg-[#2b2b2b] transition-colors">
+          <div className="bg-card border border-border p-6 flex flex-col justify-between gap-6 border-l-4 border-l-[#10b981] hover:bg-[#2b2b2b] transition-colors">
             <div className="flex justify-between items-start">
               <div className="p-2 bg-[#10b981]/10 rounded">
                 <History className="w-5 h-5 text-[#10b981]" />

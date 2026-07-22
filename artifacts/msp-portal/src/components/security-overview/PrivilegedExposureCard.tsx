@@ -23,7 +23,7 @@ export const PrivilegedExposureCard: React.FC<PrivilegedExposureCardProps> = ({ 
   const polygonPath = `${pTop.x},${pTop.y} ${pRight.x},${pRight.y} ${pBottom.x},${pBottom.y} ${pLeft.x},${pLeft.y}`;
 
   return (
-    <div className="glass-card rounded-xl p-6 border border-white/10 shadow-xl flex flex-col justify-between">
+    <div className="bg-card rounded-xl p-6 border border-white/10 shadow-xl flex flex-col justify-between">
       {/* Title Header */}
       <div className="flex justify-between items-start mb-5">
         <div>

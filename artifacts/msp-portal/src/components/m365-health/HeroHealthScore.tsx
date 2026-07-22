@@ -28,7 +28,7 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
   const strokeDashoffset = circumference - (circumference * healthScore) / 100;
 
   return (
-    <section className="grid grid-cols-1 md:grid-cols-12 gap-6 glass-card p-6 md:p-8 rounded-xl relative overflow-hidden mb-6">
+    <section className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-card border border-border p-6 md:p-8 rounded-xl relative overflow-hidden mb-6">
       {/* Background ambient lighting */}
       <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#479ef5]/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-[#dab9ff]/10 rounded-full blur-3xl pointer-events-none" />

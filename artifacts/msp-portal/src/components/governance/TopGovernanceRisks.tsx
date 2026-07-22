@@ -16,7 +16,7 @@ export const TopGovernanceRisks: React.FC<TopGovernanceRisksProps> = ({
   return (
     <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Top 5 Governance Risks */}
-      <div className="glass-card rounded-xl overflow-hidden flex flex-col justify-between">
+      <div className="bg-card border border-border rounded-xl overflow-hidden flex flex-col justify-between">
         <div>
           <div className="bg-[#282a2b] px-6 py-4 border-b border-white/5 flex justify-between items-center">
             <h3 className="font-headline text-lg font-semibold text-[#e2e2e2] flex items-center gap-2">

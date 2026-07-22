@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { HeaderHeroBand } from '@/components/security-overview/HeaderHeroBand';
 import { IdentityRiskDistribution } from '@/components/security-overview/IdentityRiskDistribution';
 import { PrivilegedExposureCard } from '@/components/security-overview/PrivilegedExposureCard';
 import { AlertVolumeCard } from '@/components/security-overview/AlertVolumeCard';
@@ -141,7 +142,15 @@ export default function SecurityOverviewPage() {
       <main className="max-w-[1440px] mx-auto space-y-4 md:space-y-6">
         {/* Row 1: Header Hero Band + Identity Risk Distribution */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          <div className="lg:col-span-8"></div>
+          <div className="lg:col-span-8">
+            <HeaderHeroBand
+              metrics={metrics}
+              timeframe={timeframe}
+              onTimeframeChange={handleTimeframeChange}
+              onRefresh={handleRefresh}
+              isRefreshing={isRefreshing}
+            />
+          </div>
           <div className="lg:col-span-4">
             <IdentityRiskDistribution
               distribution={riskDistribution}

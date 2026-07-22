@@ -11,7 +11,7 @@ export const CopilotEngagement: React.FC<CopilotEngagementProps> = ({ onAutoAssi
   const strokeDashoffset = strokeDasharray * (1 - deployedPercent / 100);
 
   return (
-    <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-full relative overflow-hidden">
+    <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full relative overflow-hidden">
       <div className="absolute top-4 right-4 h-8 w-8 rounded-full border border-[#479ef5]/30 bg-[#479ef5]/10 flex items-center justify-center">
         <Sparkles className="w-4 h-4 text-[#479ef5]" />
       </div>

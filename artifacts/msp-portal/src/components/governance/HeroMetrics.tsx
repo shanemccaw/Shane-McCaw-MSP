@@ -13,7 +13,7 @@ export const HeroMetrics: React.FC<HeroMetricsProps> = ({ data, onCardClick }) =
       {/* 1. Governance Health Score */}
       <div 
         onClick={() => onCardClick?.('health')}
-        className="glass-card p-6 flex flex-col justify-between border-t-2 border-t-[#479ef5] rounded-xl relative overflow-hidden h-48 cursor-pointer group"
+        className="bg-card border border-border p-6 flex flex-col justify-between border-t-2 border-t-[#479ef5] rounded-xl relative overflow-hidden h-48 cursor-pointer group"
       >
         <div className="flex justify-between items-start">
           <span className="font-mono text-xs text-[#c0c7d3] uppercase font-medium">
@@ -40,7 +40,7 @@ export const HeroMetrics: React.FC<HeroMetricsProps> = ({ data, onCardClick }) =
       {/* 2. Policy Drift Events (30D) */}
       <div 
         onClick={() => onCardClick?.('drift')}
-        className="glass-card p-6 flex flex-col justify-between border-t-2 border-t-[#eab308] rounded-xl h-48 cursor-pointer group"
+        className="bg-card border border-border p-6 flex flex-col justify-between border-t-2 border-t-[#eab308] rounded-xl h-48 cursor-pointer group"
       >
         <div className="flex justify-between items-start">
           <span className="font-mono text-xs text-[#c0c7d3] uppercase font-medium">
@@ -62,7 +62,7 @@ export const HeroMetrics: React.FC<HeroMetricsProps> = ({ data, onCardClick }) =
       {/* 3. Admin Accounts */}
       <div 
         onClick={() => onCardClick?.('admins')}
-        className="glass-card p-6 flex flex-col justify-between border-t-2 border-t-[#c084fc] rounded-xl h-48 cursor-pointer group"
+        className="bg-card border border-border p-6 flex flex-col justify-between border-t-2 border-t-[#c084fc] rounded-xl h-48 cursor-pointer group"
       >
         <div className="flex justify-between items-start">
           <span className="font-mono text-xs text-[#c0c7d3] uppercase font-medium">
@@ -83,7 +83,7 @@ export const HeroMetrics: React.FC<HeroMetricsProps> = ({ data, onCardClick }) =
       {/* 4. Group Sprawl Index */}
       <div 
         onClick={() => onCardClick?.('sprawl')}
-        className="glass-card p-6 flex flex-col justify-between border-t-2 border-t-[#ef4444] rounded-xl h-48 cursor-pointer group"
+        className="bg-card border border-border p-6 flex flex-col justify-between border-t-2 border-t-[#ef4444] rounded-xl h-48 cursor-pointer group"
       >
         <div className="flex justify-between items-start">
           <span className="font-mono text-xs text-[#c0c7d3] uppercase font-medium">

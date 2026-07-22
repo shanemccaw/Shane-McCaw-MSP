@@ -34,7 +34,7 @@ export const ActionModal: React.FC<ActionModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
       <div 
-        className="glass-card w-full max-w-lg rounded-xl border border-white/15 p-6 shadow-2xl relative bg-[#1e2020] text-white animate-in zoom-in-95"
+        className="w-full max-w-lg rounded-xl border border-white/15 p-6 shadow-2xl relative bg-[#1e2020] text-white animate-in zoom-in-95"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}

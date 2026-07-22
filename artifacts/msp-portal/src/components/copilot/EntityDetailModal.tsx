@@ -1,4 +1,5 @@
 import React from 'react';
+import { Cloud, Users, FolderOpen, Database, Shield, X, Wand2 } from 'lucide-react';
 import { HeatmapEntity } from './types';
 
 interface EntityDetailModalProps {
@@ -7,6 +8,14 @@ interface EntityDetailModalProps {
   onRemediateEntity: (entityId: string) => void;
 }
 
+const ENTITY_ICONS: Record<HeatmapEntity['icon'], React.ComponentType<{ className?: string }>> = {
+  cloud: Cloud,
+  groups: Users,
+  folder_open: FolderOpen,
+  database: Database,
+  shield: Shield
+};
+
 export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
   entity,
   onClose,
@@ -14,14 +23,16 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
 }) => {
   if (!entity) return null;
 
+  const EntityIcon = ENTITY_ICONS[entity.icon];
+
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-      <div className="glass-card max-w-xl w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
+      <div className="max-w-xl w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
         {/* Header */}
         <div className="flex justify-between items-start border-b border-[#2b2b2b] pb-4">
           <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-[#479ef5] text-3xl bg-[#479ef5]/10 p-2 rounded-lg">
-              {entity.icon}
+            <span className="text-[#479ef5] bg-[#479ef5]/10 p-2 rounded-lg inline-flex">
+              <EntityIcon className="w-7 h-7" />
             </span>
             <div>
               <h3 className="font-display text-xl font-bold text-white">
@@ -36,7 +47,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
             onClick={onClose}
             className="text-[#8a919d] hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
           >
-            <span className="material-symbols-outlined text-xl">close</span>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -87,7 +98,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
         {/* Risk Assessment */}
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg space-y-1">
           <div className="flex items-center gap-2 text-red-400 font-mono text-xs font-bold uppercase">
-            <span className="material-symbols-outlined text-sm">shield</span>
+            <Shield className="w-4 h-4" />
             Copilot Risk Warning
           </div>
           <p className="font-body text-xs text-[#c0c7d3]">
@@ -115,7 +126,7 @@ export const EntityDetailModal: React.FC<EntityDetailModalProps> = ({
               }}
               className="px-4 py-2 font-mono text-xs font-bold bg-[#479ef5] text-[#003259] hover:bg-sky-400 rounded-md transition-all shadow-md flex items-center gap-1"
             >
-              <span className="material-symbols-outlined text-sm">auto_fix_high</span>
+              <Wand2 className="w-4 h-4" />
               REVOKE ANONYMOUS LINKS
             </button>
           </div>

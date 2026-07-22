@@ -7,7 +7,7 @@ interface WasteDistributionProps {
 
 export const WasteDistribution: React.FC<WasteDistributionProps> = ({ onInspectRiskUsers }) => {
   return (
-    <div className="glass-card p-6 rounded-xl flex flex-col justify-between h-full">
+    <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full">
       <div>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">

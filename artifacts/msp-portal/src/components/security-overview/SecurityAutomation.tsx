@@ -29,7 +29,7 @@ export const SecurityAutomation: React.FC<SecurityAutomationProps> = ({
             return (
               <div
                 key={policy.id}
-                className={`glass-card p-4 rounded-xl flex items-center justify-between border-l-4 ${policy.borderClass} transition-all`}
+                className={`bg-card p-4 rounded-xl flex items-center justify-between border-l-4 ${policy.borderClass} transition-all`}
               >
                 <div>
                   <p className="font-headline text-2xl font-bold text-white mb-0.5">

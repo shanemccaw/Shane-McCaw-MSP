@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AlertCircle, X, ThumbsUp, Wrench, Check } from 'lucide-react';
 import { ReadinessBlocker } from './types';
 
 interface ReadinessBlockersProps {
@@ -44,14 +45,14 @@ export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
   };
 
   return (
-    <section className="glass-card rounded-xl overflow-hidden">
+    <section className="bg-card border border-border rounded-xl overflow-hidden">
       {/* Header */}
       <div className="p-6 border-b border-[#2b2b2b] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/5">
         <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
           Top 5 Copilot Readiness Blockers
         </h3>
         <span className="text-xs font-mono text-red-400 uppercase font-semibold flex items-center gap-1.5 bg-red-500/10 px-3 py-1 rounded border border-red-500/20">
-          <span className="material-symbols-outlined text-sm">priority_high</span>
+          <AlertCircle className="w-4 h-4" />
           CRITICAL ACTION REQUIRED
         </span>
       </div>
@@ -102,7 +103,7 @@ export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
       {/* Blocker Action Modal/Drawer */}
       {selectedBlocker && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="glass-card max-w-lg w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
+          <div className="max-w-lg w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-2">
                 <span className="font-display text-2xl font-bold text-red-400">
@@ -121,7 +122,7 @@ export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
                 onClick={() => setSelectedBlocker(null)}
                 className="text-[#8a919d] hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
               >
-                <span className="material-symbols-outlined text-lg">close</span>
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -135,9 +136,7 @@ export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
 
               <div className="p-3 rounded-lg bg-[#1a1a1a] border border-[#479ef5]/30">
                 <strong className="block text-[#479ef5] font-mono uppercase mb-1 flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">
-                    recommend
-                  </span>
+                  <ThumbsUp className="w-4 h-4" />
                   Recommended Action Plan
                 </strong>
                 {selectedBlocker.recommendation}
@@ -159,12 +158,12 @@ export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
                   }}
                   className="px-5 py-2 font-mono text-xs font-semibold rounded-md bg-[#479ef5] text-[#003259] hover:bg-[#3284d6] transition-all shadow-md flex items-center gap-1.5"
                 >
-                  <span className="material-symbols-outlined text-sm">build</span>
+                  <Wrench className="w-4 h-4" />
                   REMEDIATE NOW (+{selectedBlocker.impactScore} SCORE)
                 </button>
               ) : (
                 <span className="font-mono text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-sm">check</span>
+                  <Check className="w-4 h-4" />
                   REMEDIATION COMPLETED
                 </span>
               )}

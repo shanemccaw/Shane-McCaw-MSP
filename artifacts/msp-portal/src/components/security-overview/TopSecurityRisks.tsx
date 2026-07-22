@@ -9,7 +9,7 @@ interface TopSecurityRisksProps {
 
 export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({ risks, onSelectRisk }) => {
   return (
-    <div className="glass-card rounded-xl p-6 border border-white/10 shadow-xl h-full flex flex-col justify-between">
+    <div className="bg-card rounded-xl p-6 border border-white/10 shadow-xl h-full flex flex-col justify-between">
       <div>
         <h2 className="font-headline text-lg font-semibold text-[#a0c9ff] mb-4 flex items-center gap-2">
           <AlertOctagon className="w-5 h-5 text-[#ffb4ab]" />

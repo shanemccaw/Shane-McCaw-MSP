@@ -21,7 +21,7 @@ export const AssignmentHygiene: React.FC<AssignmentHygieneProps> = ({ data, onCe
   const formatNumber = (num: number) => (num < 10 ? `0${num}` : `${num}`);
 
   return (
-    <div className="glass-card p-6 rounded-xl h-full flex flex-col justify-between">
+    <div className="bg-card border border-border p-6 rounded-xl h-full flex flex-col justify-between">
       <div>
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
