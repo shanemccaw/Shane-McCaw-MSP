@@ -67,11 +67,21 @@ const M365_HEALTH_CACHE_TTL_MS = 5 * 60 * 1000;
 let m365HealthCache: { value: M365HealthSection; expiresAt: number } | null = null;
 
 /**
- * Resolves Shane's own real M365 tenant: the single non-testbed msp_customers
- * row under the isDirectBusiness MSP with granted Graph consent. This is a
- * PUBLIC page, so we deliberately show only this one tenant's health — not a
- * per-customer selector. If a real customer base exists later, this needs to
- * become an authenticated per-customer view instead (flagged, not solved here).
+ * Resolves Shane's own real M365 tenant: the single msp_customers row under
+ * the isDirectBusiness MSP flagged isTestbed with granted Graph consent.
+ * isTestbed=true is this codebase's established marker for "the one real
+ * tenant it's safe to run live Graph writes/tests against, never a paying
+ * customer's" (same flag Launch Control, baseline-template testing, and
+ * Mission Control's remediate action all gate on) — it identifies Shane's
+ * own tenant, not throwaway/fake data, so it must be INCLUDED here, not
+ * excluded. Filtering isTestbed=false (the prior behavior) selects real
+ * paying direct-business customers instead, which both fails to resolve
+ * Shane's own tenant and would leak a real customer's M365 health onto this
+ * unauthenticated public page if one ever had granted consent.
+ * This is a PUBLIC page, so we deliberately show only this one tenant's
+ * health — not a per-customer selector. If a real customer base exists
+ * later, this needs to become an authenticated per-customer view instead
+ * (flagged, not solved here).
  */
 async function resolveOwnTenantId(): Promise<string | null> {
   const [row] = await db
@@ -81,7 +91,7 @@ async function resolveOwnTenantId(): Promise<string | null> {
     .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
     .where(and(
       eq(mspsTable.isDirectBusiness, true),
-      eq(mspCustomersTable.isTestbed, false),
+      eq(mspCustomersTable.isTestbed, true),
       eq(tenantConsentTable.consentStatus, "granted"),
     ))
     .limit(1);

@@ -117,6 +117,38 @@ const M365_STATUS_META: Record<M365ServiceStatus, { label: string; color: string
   interruption: { label: "Interruption", color: "text-red-400" },
 };
 
+// Per-reason copy for the 5 real `available: false` states computeM365Health
+// (public-status.ts) can return, so an operator can tell what's wrong from
+// this page alone instead of needing a server-log investigation. Falls back
+// to the generic message for any unrecognized reason string.
+const M365_UNAVAILABLE_META: Record<string, { label: string; icon: typeof Clock; color: string }> = {
+  not_configured: {
+    label: "M365 Service Health monitoring hasn't been configured yet.",
+    icon: Clock,
+    color: "text-text-tertiary",
+  },
+  no_tenant: {
+    label: "No M365 tenant is currently connected for health reporting.",
+    icon: Clock,
+    color: "text-text-tertiary",
+  },
+  fetch_failed: {
+    label: "Couldn't reach Microsoft 365 to check service health right now.",
+    icon: AlertTriangle,
+    color: "text-amber-400",
+  },
+  consent_revoked: {
+    label: "M365 access was revoked for the connected tenant — health data is unavailable until it's reconnected.",
+    icon: AlertTriangle,
+    color: "text-amber-400",
+  },
+};
+const M365_UNAVAILABLE_FALLBACK = {
+  label: "M365 service health is temporarily unavailable.",
+  icon: Clock,
+  color: "text-text-tertiary",
+} as const;
+
 function M365StatusPill({ status }: { status: M365ServiceStatus }) {
   const meta = M365_STATUS_META[status];
   const cls =
@@ -154,10 +186,12 @@ function M365HealthTab({ data, error }: { data: StatusResponse | null; error: st
   }
 
   if (!m365.available) {
+    const meta = M365_UNAVAILABLE_META[m365.reason] ?? M365_UNAVAILABLE_FALLBACK;
+    const Icon = meta.icon;
     return (
       <GlassPanel className="px-6 py-5 flex items-center gap-3">
-        <Clock className="w-6 h-6 shrink-0 text-text-tertiary" />
-        <span className="text-lg font-semibold text-text-secondary">M365 service health is temporarily unavailable</span>
+        <Icon className={`w-6 h-6 shrink-0 ${meta.color}`} />
+        <span className="text-lg font-semibold text-text-secondary">{meta.label}</span>
       </GlassPanel>
     );
   }
