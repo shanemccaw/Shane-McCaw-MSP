@@ -480,7 +480,42 @@ function StatCardPairs({
           )}
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">Shane</div>
+     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* TODO: real source = Drift Engine (drift.* findings). Currently placeholder. */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex justify-between items-start mb-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Configuration Drift</p>
+              <h4 className="text-2xl font-semibold text-foreground">
+                {driftPlaceholder?.currentPct ?? "—"}%{" "}
+                {driftPlaceholder && (
+                  <span className={cn("text-sm font-normal", driftPlaceholder.deltaPct <= 0 ? "text-destructive" : "text-primary")}>
+                    {driftPlaceholder.deltaPct > 0 ? "+" : ""}
+                    {driftPlaceholder.deltaPct}%
+                  </span>
+                )}
+              </h4>
+            </div>
+          </div>
+          <MiniBarChart heights={[60, 45, 25]} />
+        </div>
+
+        {/* REAL — genuineFindings stat, presented in the mockup's visual style */}
+        <div className="bg-card border border-border rounded-xl p-6">
+          <div className="flex justify-between items-start mb-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted-foreground">Findings to Review</p>
+              <h4 className="text-2xl font-semibold text-foreground">{stats.genuineFindings ?? "—"}</h4>
+            </div>
+            <ShieldCheck className="size-5 text-primary" />
+          </div>
+          {wasteDisplay && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Plus <span className="text-primary font-semibold">{wasteDisplay}</span> in real license waste identified.
+            </p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
