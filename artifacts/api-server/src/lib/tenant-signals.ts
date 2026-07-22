@@ -683,9 +683,18 @@ async function recordSignalTransitions(
   firedSignals: Set<string>,
 ): Promise<void> {
   try {
+    // tenant_signal_history.customer_id's live FK constraint actually targets
+    // users.id (not mspCustomers.id, despite the column name) — see
+    // resolveCustomerPortalUserId's doc comment for the same drift.
+    const portalUserId = await resolveCustomerPortalUserId(customerId);
+    if (portalUserId === null) {
+      log.warn({ customerId, mspId }, "recordSignalTransitions: no active portal user for customer, skipping");
+      return;
+    }
+
     const openRows = await db.execute(sql`
       SELECT signal_key AS "signalKey" FROM tenant_signal_history
-      WHERE customer_id = ${customerId} AND resolved_at IS NULL
+      WHERE customer_id = ${portalUserId} AND resolved_at IS NULL
     `);
     const openSignalKeys = new Set((openRows.rows as { signalKey: string }[]).map(r => r.signalKey));
 
@@ -696,10 +705,10 @@ async function recordSignalTransitions(
       try {
         await db.execute(sql`
           INSERT INTO tenant_signal_history (customer_id, msp_id, signal_key, fired_at)
-          VALUES (${customerId}, ${mspId}, ${signalKey}, NOW())
+          VALUES (${portalUserId}, ${mspId}, ${signalKey}, NOW())
         `);
       } catch (err) {
-        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
+        log.warn({ err, customerId, portalUserId, mspId, signalKey }, "recordSignalTransitions: failed to insert newly-fired row");
       }
     }
 
@@ -708,10 +717,10 @@ async function recordSignalTransitions(
         await db.execute(sql`
           UPDATE tenant_signal_history
           SET resolved_at = NOW()
-          WHERE customer_id = ${customerId} AND signal_key = ${signalKey} AND resolved_at IS NULL
+          WHERE customer_id = ${portalUserId} AND signal_key = ${signalKey} AND resolved_at IS NULL
         `);
       } catch (err) {
-        log.warn({ err, customerId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
+        log.warn({ err, customerId, portalUserId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
       }
     }
   } catch (err) {
