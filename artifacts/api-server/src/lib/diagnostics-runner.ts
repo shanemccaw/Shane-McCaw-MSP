@@ -32,6 +32,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
+import { generateCioNarrative } from "./cio-narrative-generator";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -766,6 +767,28 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       requiresScript,
       findings: findingsCount,
     });
+
+    // CIO-Report Narrative — fire as soon as the scan itself completes, well
+    // before documents finish generating, so the wait between "scan done" and
+    // "documents done" becomes the narrative's value-delivery moment. Only on a
+    // genuinely completed run (matches assessment_doc_gate's own bar) with a
+    // known customer (benchmark/cost lookups need customerId). Fire-and-forget —
+    // a narrative failure must never fail or slow down the diagnostics run itself.
+    if (finalStatus === "completed" && customerId != null) {
+      void generateCioNarrative({
+        runId,
+        customerId,
+        tenantId: resolvedTenantId,
+        findings: findingRows.map((f) => ({
+          checkKey: f.checkKey,
+          checkLabel: f.checkLabel,
+          severity: f.severity as FindingSeverity,
+          title: f.title,
+          description: f.description ?? null,
+          checkStatus: f.checkStatus ?? null,
+        })),
+      }).catch((err) => log.warn({ err, runId }, "diagnostics-runner: CIO narrative fire failed (non-fatal)"));
+    }
 
     log.info({ runId, finalStatus, checksTotal, checksOk, checksError, findingsCount }, "diagnostics-runner: run completed");
 

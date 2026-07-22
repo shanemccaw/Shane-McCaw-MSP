@@ -1781,6 +1781,15 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   documentId: uuid("document_id"),
   errorMessage: text("error_message"),
   summary: jsonb("summary").$type<Record<string, unknown>>(),
+  // CIO-Report Narrative — AI-generated architect-voice narrative of this run's
+  // real, already-classified findings + real peer-benchmark data, rendered inside
+  // the Assessment Wizard's "generating" step as soon as the scan completes (not
+  // gated on document generation). "not_started" until diagnostics-runner.ts fires
+  // generateCioNarrative() on a completed run; idempotent — never regenerated once
+  // past "not_started".
+  cioNarrativeStatus: text("cio_narrative_status").notNull().default("not_started"),
+  cioNarrativeHtml: text("cio_narrative_html"),
+  cioNarrativeGeneratedAt: timestamp("cio_narrative_generated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

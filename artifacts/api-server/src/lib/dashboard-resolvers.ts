@@ -356,8 +356,8 @@ async function loadCheckMapping(checkKey: string): Promise<CheckMapping | null> 
   return { targetFields };
 }
 
-/** Fetch the latest extractedProperties for a single check on a tenant. */
-async function latestCheckProps(
+/** Fetch the latest extractedProperties for a single check on a tenant. Exported for reuse by cio-narrative-generator.ts (real license-waste cost data). */
+export async function latestCheckProps(
   tenantId: string,
   checkKey: string,
 ): Promise<Record<string, unknown> | null> {
@@ -620,7 +620,7 @@ function firstNumber(props: Record<string, unknown>, keys: string[]): number | n
  * targetField) from monitor check props, e.g. `{ skuPartNumber: { SPE_E3: 12 } }`.
  * Returns null if no such object-valued field is present.
  */
-function extractGroupByCountCounts(props: Record<string, unknown>): Record<string, number> | null {
+export function extractGroupByCountCounts(props: Record<string, unknown>): Record<string, number> | null {
   for (const k of Object.keys(props)) {
     if (k.startsWith("__") || k.startsWith("_")) continue;
     const v = props[k];
