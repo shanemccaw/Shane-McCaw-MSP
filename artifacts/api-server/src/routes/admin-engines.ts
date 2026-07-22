@@ -1799,14 +1799,15 @@ async function listManualMigrationFiles(): Promise<string[]> {
   return entries
     .filter((e) => e.isFile() && e.name.endsWith(".sql"))
     .map((e) => e.name)
-    .sort();
+    .sort()
+    .reverse();
 }
 
 /**
  * @route GET /api/simulator/migrations/files
- * @desc Lists every .sql file in lib/db/migrations/manual/, sorted alphabetically
- *       (filenames are dated YYYY-MM-DD-description.sql, so alphabetical order
- *       is chronological/dependency order).
+ * @desc Lists every .sql file in lib/db/migrations/manual/, sorted reverse-alphabetically
+ *       (filenames are dated YYYY-MM-DD-description.sql, so reverse-alphabetical order
+ *       is newest-to-oldest chronological order).
  */
 router.get("/simulator/migrations/files", requireAdmin, async (_req: Request, res: Response) => {
   try {
