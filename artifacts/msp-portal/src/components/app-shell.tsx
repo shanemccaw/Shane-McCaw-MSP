@@ -576,8 +576,8 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Store,
         label: "Marketplace",
         href: "/marketplace",
-        // Shared across roles — Assessment reaches it via the sidebar; CustomerUser
-        // (who uses CustomerTopBar, not the sidebar) reaches it via the avatar menu.
+        // Shared across roles — both Assessment and CustomerUser reach it via
+        // the sidebar (CustomerUser also has it in the avatar menu).
         roles: ["Assessment", "CustomerUser"],
       },
       {
@@ -1258,14 +1258,18 @@ function CustomerDocumentsPanel({
 
 // ── Customer top bar (CustomerUser role only) ─────────────────────────────────
 //
-// Replaces the left-nav sidebar entirely for CustomerUser: all wayfinding lives
-// in this persistent bar. Other roles keep the sidebar shell unchanged.
+// Companion bar to the shared NAV_SECTIONS sidebar (same combination the admin
+// roles use): on desktop the sidebar carries branding + wayfinding and this bar
+// carries the page title + actions; on mobile (sidebar behind the hamburger)
+// this bar keeps the brand block so white-label identity is never lost.
 
 function CustomerTopBar({
   profile,
   brandName,
+  title,
   user,
   mspRole,
+  onOpenMobileNav,
   onSearch,
   onOpenDocs,
   onToggleSupport,
@@ -1276,8 +1280,10 @@ function CustomerTopBar({
 }: {
   profile: MspProfile | null;
   brandName: string;
+  title?: string;
   user: ReturnType<typeof useAuth>["user"];
   mspRole: MspRole | undefined;
+  onOpenMobileNav: () => void;
   onSearch: () => void;
   onOpenDocs: () => void;
   onToggleSupport: () => void;
@@ -1291,9 +1297,20 @@ function CustomerTopBar({
 
   return (
     <header className="h-14 shrink-0 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4 md:px-6 sticky top-0 z-10">
-      {/* Tenant identity — MSP brand (white-label) + attribution.
+      {/* Mobile nav toggle — opens the sidebar overlay (same pattern as the
+          admin top bar's hamburger). */}
+      <button
+        className="md:hidden text-muted-foreground hover:text-foreground"
+        onClick={onOpenMobileNav}
+        aria-label="Open navigation"
+      >
+        <Menu className="size-5" />
+      </button>
+
+      {/* Tenant identity — MSP brand (white-label) + attribution. Mobile only:
+          on md+ the sidebar header renders the same brand (admin pattern).
           Reuses the same profile data the sidebar shell renders; no refetch. */}
-      <Link href="/customer-home">
+      <Link href="/customer-home" className="md:hidden">
         <div className="flex items-center gap-2.5 min-w-0 cursor-pointer group">
           {profile?.logoUrl ? (
             <img src={profile.logoUrl} alt={brandName} className="size-6 object-contain shrink-0" />
@@ -1310,6 +1327,13 @@ function CustomerTopBar({
           </div>
         </div>
       </Link>
+
+      {/* Page title — desktop only, matching the admin top bar. */}
+      {title && (
+        <h1 className="hidden md:block text-sm font-semibold text-foreground truncate">
+          {title}
+        </h1>
+      )}
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         {/* Search — ⌘K trigger. Visual/keyboard element only; no search backend
@@ -1535,6 +1559,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   // backend rejects PlatformAdmin chat/escalate with 403). Hide the trigger and
   // the docked panel so the affordance never appears for them.
   const isPlatformAdmin = user?.role === "admin" || user?.mspRole === "PlatformAdmin";
+  const isCustomerUser = mspRole === "CustomerUser";
 
   // Fetch MSP profile for real white-label branding.
   // For PlatformAdmin (no mspId on token), pass ?slug= so the backend can resolve the MSP.
@@ -1667,8 +1692,9 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         )}
       </div>
 
-      {/* Tenant/customer switcher */}
-      {!collapsed && (
+      {/* Tenant/customer switcher — admin roles only. For CustomerUser there is
+          nothing to switch and the box would just repeat the brand header. */}
+      {!isCustomerUser && !collapsed && (
         <div className="px-3 pt-3 pb-1">
           <TenantSwitcher
             profile={profile}
@@ -1678,7 +1704,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
           />
         </div>
       )}
-      {collapsed && (
+      {!isCustomerUser && collapsed && (
         <div className="px-2 pt-3 pb-1">
           <TenantSwitcher
             profile={profile}
@@ -1697,7 +1723,9 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             onClick={() => setCmdOpen(true)}
           >
             <Search className="size-3.5 shrink-0" />
-            <span className="flex-1 text-left">Search customers…</span>
+            <span className="flex-1 text-left">
+              {isCustomerUser ? "Search…" : "Search customers…"}
+            </span>
             <kbd className="text-[10px] bg-sidebar-border px-1 rounded">⌘K</kbd>
           </button>
         </div>
@@ -1776,11 +1804,9 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     </div>
   );
 
-  const isCustomerUser = mspRole === "CustomerUser";
-
   // Shared page body — inactive/suspension banners, the routed page content,
   // and the persistent credibility footer. Identical for every role; only the
-  // surrounding chrome (sidebar vs. customer top bar) differs.
+  // surrounding chrome (admin top bar vs. customer top bar) differs.
   const pageBody = (
     <>
       {isAccountInactive && (
@@ -1855,18 +1881,41 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     </>
   );
 
-  // ── CustomerUser layout — no left sidebar; all wayfinding in the top bar ────
+  // ── CustomerUser layout — same sidebar + top bar combination as the admin
+  // roles: the shared NAV_SECTIONS sidebar (already role-filtered down to the
+  // "My Portal" items via isVisible) alongside the customer-specific top bar,
+  // which keeps its search / docs panel / support / theme / avatar actions.
   if (isCustomerUser) {
     return (
       <>
         {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
         <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+          {/* Desktop sidebar */}
+          <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
+
+          {/* Mobile sidebar overlay */}
+          {mobileOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-black/60 md:hidden"
+              onClick={() => setMobileOpen(false)}
+            >
+              <div
+                className="absolute left-0 top-0 h-full flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {sidebarContent}
+              </div>
+            </div>
+          )}
+
           <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
             <CustomerTopBar
               profile={profile}
               brandName={brandName}
+              title={title}
               user={user}
               mspRole={mspRole}
+              onOpenMobileNav={() => setMobileOpen(true)}
               onSearch={() => setCmdOpen(true)}
               onOpenDocs={() => setDocsPanelOpen(true)}
               onToggleSupport={() => setSupportOpen((v) => !v)}
