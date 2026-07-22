@@ -55,12 +55,26 @@ async function resolveEngineCustomerId(clientUserId: number): Promise<number | n
 export async function generateSowDocument(params: GenerateSowParams): Promise<GenerateSowResult> {
   const { clientUserId, projectId, docTypeKey, testMode = false } = params;
 
+  let documentId: number | null = null;
+
   try {
     const [docTypeRow] = await db.select().from(documentTypesTable).where(eq(documentTypesTable.key, docTypeKey)).limit(1);
     if (!docTypeRow) throw new Error(`document-engine-sow: unknown document type "${docTypeKey}"`);
     if (docTypeRow.pipelineCategory !== "pipeline_output") {
       throw new Error(`document-engine-sow: "${docTypeKey}" is not a pipeline_output document type — generateSowDocument() only handles pipeline_output types (e.g. SOW), not standalone types`);
     }
+
+    const [placeholderRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+      customerId: clientUserId,
+      projectId,
+      category: docTypeRow.category,
+      docType: docTypeKey,
+      title: docTypeRow.label,
+      htmlContent: "",
+      status: "generating",
+    }).returning({ id: insightsGeneratedDocumentsTable.id });
+    documentId = placeholderRow.id;
+
     // docTypeRow.requiresSowHtml is out of scope here: this function only produces
     // the SOW itself. A downstream type like task_execution_guide that needs to read
     // the resulting SOW's pricing table back (requiresSowHtml === true) is separate
@@ -157,42 +171,48 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
 
     const htmlContent = extractAiHtml(aiResponse);
 
-    const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
-      customerId: clientUserId,
-      projectId,
-      category: docTypeRow.category,
-      docType: docTypeKey,
-      title: docTypeRow.label,
-      htmlContent,
-      status: testMode ? "draft" : "approved",
-      generationInput: {
-        scopedProfile: {},
-        scopedFindings: priorFindings,
-        salesOfferCandidates: candidates.map((c) => ({
-          serviceId: c.serviceId,
-          serviceName: c.serviceName,
-          rationale: c.rationale,
-          adjustedPriceCents: c.adjustedPriceCents,
-          firedSignalKeys: c.firedSignalKeys,
-        })),
-      },
-    }).returning({ id: insightsGeneratedDocumentsTable.id });
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({
+        title: docTypeRow.label,
+        htmlContent,
+        status: testMode ? "draft" : "approved",
+        generationInput: {
+          scopedProfile: {},
+          scopedFindings: priorFindings,
+          salesOfferCandidates: candidates.map((c) => ({
+            serviceId: c.serviceId,
+            serviceName: c.serviceName,
+            rationale: c.rationale,
+            adjustedPriceCents: c.adjustedPriceCents,
+            firedSignalKeys: c.firedSignalKeys,
+          })),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(insightsGeneratedDocumentsTable.id, documentId));
 
     log.info(
-      { clientUserId, projectId, documentId: inserted.id, docTypeKey, testMode },
+      { clientUserId, projectId, documentId, docTypeKey, testMode },
       "document-engine-sow: SOW document generated",
     );
 
-    void generateOmgCardsFromTelemetry(inserted.id).catch((err) => {
-      log.warn({ err, documentId: inserted.id }, "document-engine-sow: OMG card generation failed (non-fatal)");
+    void generateOmgCardsFromTelemetry(documentId).catch((err) => {
+      log.warn({ err, documentId }, "document-engine-sow: OMG card generation failed (non-fatal)");
     });
 
-    return { documentId: inserted.id, htmlContent };
+    return { documentId, htmlContent };
   } catch (err) {
     log.error(
       { clientUserId, projectId, docTypeKey, testMode, err },
       "document-engine-sow: SOW generation failed",
     );
+    if (typeof documentId === "number") {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, documentId))
+        .catch(() => { /* best-effort — never let the failure-marking itself throw over the original error */ });
+    }
     throw err;
   }
 }
