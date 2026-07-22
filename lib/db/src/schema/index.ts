@@ -129,6 +129,7 @@ export const documentTypesTable = pgTable("document_types", {
   // Structure instructions substituted into the consulting prompt's
   // {{sectionHints}} token. Null for report types (fixed prompt structure).
   sectionHints: text("section_hints"),
+  sections: jsonb("sections").$type<{ id: string; heading: string; guidance: string }[]>().notNull().default([]),
   // Mirrors task_execution_guide's special case: prompt is built from a real
   // SOW document's HTML rather than the standard findings/scores block.
   requiresSowHtml: boolean("requires_sow_html").notNull().default(false),
