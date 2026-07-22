@@ -606,7 +606,7 @@ export function AssessmentGeneratingScreen({
         driftPlaceholder={driftPlaceholder}
         licenseEfficiencyPlaceholder={licenseEfficiencyPlaceholder}
       />
-      <CriticalGaps gaps={criticalGapsPlaceholder} />
+      Test<CriticalGaps gaps={criticalGapsPlaceholder} />
       <ContinueCta onContinue={onContinue} label={continueLabel} disabled={continueDisabled} />
     </div>
   );
