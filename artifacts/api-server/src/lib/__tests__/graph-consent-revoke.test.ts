@@ -54,9 +54,12 @@ vi.mock("drizzle-orm", () => ({
   and: vi.fn((...args: unknown[]) => ({ op: "and", args })),
 }));
 
-vi.mock("../logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-}));
+vi.mock("../logger", () => {
+  const child = vi.fn();
+  const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
+  child.mockReturnValue(base);
+  return { logger: base };
+});
 
 vi.mock("../audit", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -64,7 +67,7 @@ vi.mock("../audit", () => ({
 
 // ── Import under test (after mocks) ───────────────────────────────────────────
 
-import { graphFetchForTenant, markTenantConsentRevoked, ConsentRevokedError } from "../graph";
+import { graphFetchForTenant, markTenantConsentRevoked, ConsentRevokedError, LicenseGapError, classifyGraphError } from "../graph";
 import { db } from "@workspace/db";
 import { createAuditLog } from "../audit";
 
@@ -219,6 +222,93 @@ describe("graphFetchForTenant — 401 auto-revoke", () => {
     expect(res.ok).toBe(true);
     expect(mockCreateAuditLog).not.toHaveBeenCalled();
     expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── License-gap classification — the fix ──────────────────────────────────────
+// A tenant that lacks a required M365 SKU (Entra Premium, Defender) returns a
+// 403/401 that is NOT a consent problem. It must throw LicenseGapError and must
+// NEVER flip tenant consent (no transaction, no audit log). This is the core
+// correctness fix: previously a 401 "Account is not provisioned" auto-revoked the
+// whole tenant, and a 403 premium error surfaced as a generic technical error.
+
+const graph403Premium = () => ({
+  ok: false,
+  status: 403,
+  headers: new Headers(),
+  text: async () =>
+    '{"error":{"code":"Authentication_RequestFromNonPremiumTenantOrB2CTenant","message":"Tenant is not a B2C tenant and doesn\'t have premium license"}}',
+});
+
+const graph401NotProvisioned = () => ({
+  ok: false,
+  status: 401,
+  headers: new Headers(),
+  text: async () => '{"error":{"code":"Unauthorized","message":"Account is not provisioned."}}',
+});
+
+describe("graphFetchForTenant — license/feature gap (no consent flip)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Fully reset the fetch stub's queue+implementation. clearAllMocks only clears
+    // usage data, not the mockResolvedValueOnce queue, so a prior describe's
+    // token-cache-hit test can leave a stale queued response that would otherwise
+    // desync our fresh-token calls here.
+    mockFetch.mockReset();
+    const txUpdateWhere = vi.fn().mockResolvedValue([]);
+    const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+    mockDb.tx.update.mockReturnValue({ set: txUpdateSet });
+    mockDb.transaction.mockImplementation(async (cb: (tx: { update: Mock }) => Promise<void>) => {
+      await cb(mockDb.tx);
+    });
+    mockCreateAuditLog.mockResolvedValue(undefined);
+  });
+
+  it("throws LicenseGapError (not ConsentRevokedError) on an Entra Premium 403", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph403Premium());
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-premium", "/identityProtection/riskyUsers"); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(LicenseGapError);
+    expect(err).not.toBeInstanceOf(ConsentRevokedError);
+    expect((err as LicenseGapError).feature).toContain("Entra ID Premium");
+    // Critically: NO consent revocation side effects.
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockCreateAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("throws LicenseGapError on a 401 'Account is not provisioned' — does NOT auto-revoke consent", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401NotProvisioned());
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-notprov", "/security/secureScores"); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(LicenseGapError);
+    expect(err).not.toBeInstanceOf(ConsentRevokedError);
+    // The whole point of the fix: a provisioning gap must not nuke tenant consent.
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockCreateAuditLog).not.toHaveBeenCalled();
+  });
+});
+
+describe("classifyGraphError", () => {
+  it("classifies the Entra Premium error code as a license gap", () => {
+    const r = classifyGraphError('{"error":{"code":"Authentication_RequestFromNonPremiumTenantOrB2CTenant"}}', 403);
+    expect(r.kind).toBe("license_gap");
+    expect(r.feature).toContain("Entra ID Premium");
+  });
+
+  it("classifies 'not provisioned' as a license gap (Defender)", () => {
+    const r = classifyGraphError('{"error":{"code":"Unauthorized","message":"Account is not provisioned."}}', 401);
+    expect(r.kind).toBe("license_gap");
+    expect(r.feature).toContain("Defender");
+  });
+
+  it("classifies a genuine consent body as consent, never a license gap", () => {
+    expect(classifyGraphError('{"error":{"code":"invalid_grant"}}', 400).kind).toBe("consent");
+    expect(classifyGraphError("AADSTS65001", 403).kind).toBe("consent");
+  });
+
+  it("leaves a plain permission error as 'other' (not a license gap)", () => {
+    const r = classifyGraphError('{"error":{"code":"Authorization_RequestDenied","message":"Insufficient privileges."}}', 403);
+    expect(r.kind).toBe("other");
   });
 });
 

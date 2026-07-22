@@ -54,19 +54,32 @@ vi.mock("../graph", () => ({
       this.tenantId = tenantId;
     }
   },
+  LicenseGapError: class LicenseGapError extends Error {
+    tenantId: string;
+    feature: string;
+    graphErrorCode: string | null;
+    rawBody: string;
+    constructor(tenantId: string, feature: string, graphErrorCode: string | null, rawBody: string) {
+      super(`License gap for ${tenantId}: ${feature}`);
+      this.name = "LicenseGapError";
+      this.tenantId = tenantId;
+      this.feature = feature;
+      this.graphErrorCode = graphErrorCode;
+      this.rawBody = rawBody;
+    }
+  },
   markTenantConsentRevoked: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../logger", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock("../logger", () => {
+  const child = vi.fn();
+  const base = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child };
+  child.mockReturnValue(base);
+  return { logger: base };
+});
 
 import { graphFetchForTenant } from "../graph";
-import { ConsentRevokedError } from "../graph";
+import { ConsentRevokedError, LicenseGapError } from "../graph";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
 
@@ -561,6 +574,23 @@ describe("executeMonitorCheck", () => {
     expect(result.checkKey).toBe("entra:mfa");
   });
 
+  it("returns license_gap status (not consent_revoked) when LicenseGapError is thrown", async () => {
+    const err = new LicenseGapError("tenant1", "Microsoft Entra ID Premium (P1/P2)", "Authentication_RequestFromNonPremiumTenantOrB2CTenant", "{...}");
+    mockFetch.mockRejectedValue(err);
+
+    const { markTenantConsentRevoked } = await import("../graph");
+    (markTenantConsentRevoked as Mock).mockClear?.();
+
+    const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
+    expect(result.status).toBe("license_gap");
+    expect(result.licenseFeature).toBe("Microsoft Entra ID Premium (P1/P2)");
+    // A license gap is NOT a consent problem — it must never flip tenant consent.
+    expect(markTenantConsentRevoked as Mock).not.toHaveBeenCalled();
+    // Definitive falsy license flag is stamped for the signal engine.
+    expect(result.extractedProperties.hasAADP1orP2).toBe(false);
+    expect(result.extractedProperties._licenseGap).toBe(true);
+  });
+
   it("returns requires_script status for air-gapped checks", async () => {
     const airgappedCheck = { ...baseCheck, requiresCustomerScript: true };
     const result = await executeMonitorCheck({ check: airgappedCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
@@ -646,5 +676,69 @@ describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
     expect(result.runStatus).toBe("consent_revoked");
     const consentRevokedEvents = progressEvents.filter(e => e.includes("consent_revoked"));
     expect(consentRevokedEvents.length).toBeGreaterThan(0);
+  });
+});
+
+// ── executeMonitoringPackage — license gap completes, no short-circuit ─────────
+
+describe("executeMonitoringPackage — license gap does not block completion", () => {
+  it("runs every check and completes when the only non-ok results are license gaps", async () => {
+    const progressEvents: string[] = [];
+
+    const mockFetch = graphFetchForTenant as Mock;
+    // Every check hits a premium-license wall. With independent classification
+    // this must NOT short-circuit (each check may need a different SKU) and the
+    // run must still complete (a license gap is a known limit, not a failure).
+    mockFetch.mockRejectedValue(
+      new LicenseGapError("tenant-lg", "Microsoft Entra ID Premium (P1/P2)", "Authentication_RequestFromNonPremiumTenantOrB2CTenant", "{...}"),
+    );
+
+    const { db } = await import("@workspace/db");
+    const mockDb = db as unknown as { select: Mock; insert: Mock };
+
+    const fakeChecks = [
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+    ];
+
+    mockDb.select
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            and: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ key: "pkg1", label: "Package 1", engines: [], status: "active" }]) }),
+            limit: vi.fn().mockResolvedValue([{ key: "pkg1", label: "Package 1", engines: [], status: "active" }]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue([
+              { checkKey: "check:a", sortOrder: 0 },
+              { checkKey: "check:b", sortOrder: 1 },
+            ]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(fakeChecks),
+        }),
+      });
+
+    const result = await executeMonitoringPackage({
+      packageKey: "pkg1",
+      tenantId: "tenant-lg",
+      triggerId: "run-1",
+      onProgress: (e) => progressEvents.push(`${e.checkKey}:${e.status}`),
+    });
+
+    // Completed — license gaps never make a run partial_failure or consent_revoked.
+    expect(result.runStatus).toBe("completed");
+    // No short-circuit: BOTH checks actually ran and reported license_gap.
+    expect(progressEvents).toContain("check:a:license_gap");
+    expect(progressEvents).toContain("check:b:license_gap");
+    expect(result.licenseGapCount).toBe(2);
+    expect(result.licenseGapFeatures).toContain("Microsoft Entra ID Premium (P1/P2)");
   });
 });

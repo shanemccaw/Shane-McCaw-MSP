@@ -247,6 +247,15 @@ router.get(
           checksTotal: latestRun?.checksTotal ?? null,
           checksOk: latestRun?.checksOk ?? null,
           checksError: latestRun?.checksError ?? null,
+          // Checks that couldn't run because the tenant lacks the required M365
+          // add-on (Entra Premium, Defender, …). Reported separately so the wizard
+          // can honestly distinguish "unavailable — missing license" from real
+          // findings, and name the missing feature(s) as an upsell rather than a
+          // scary red count. Sourced from the same run row + its summary, not
+          // re-derived on the client.
+          checksLicenseGap: latestRun?.checksLicenseGap ?? null,
+          licenseGapFeatures:
+            ((latestRun?.summary as Record<string, unknown> | null | undefined)?.licenseGapFeatures as string[] | undefined) ?? [],
           lastScanAt: lastCompleted ? (lastCompleted.completedAt ?? lastCompleted.createdAt) : null,
           everScanned: latestRun != null,
         },

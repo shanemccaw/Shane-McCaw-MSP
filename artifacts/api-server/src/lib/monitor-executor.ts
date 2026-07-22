@@ -23,7 +23,7 @@ import {
   type MonitoringPackage,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
-import { graphFetchForTenant, ConsentRevokedError, markTenantConsentRevoked } from "./graph";
+import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked } from "./graph";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -53,13 +53,15 @@ export interface MappingRule {
 
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   errorMessage?: string;
   itemCount: number;
   pageCount: number;
   profileId?: string;
+  /** For status "license_gap": the customer-safe name of the missing M365 add-on. */
+  licenseFeature?: string;
 }
 
 export interface PackageRunResult {
@@ -69,6 +71,10 @@ export interface PackageRunResult {
   runStatus: "completed" | "partial_failure" | "consent_revoked" | "no_checks";
   checks: CheckResult[];
   enginesRecomputed: string[];
+  /** Count of checks that couldn't run due to a missing M365 SKU/add-on (not a failure). */
+  licenseGapCount: number;
+  /** Distinct customer-safe names of the missing M365 add-ons this run detected. */
+  licenseGapFeatures: string[];
   startedAt: string;
   completedAt: string;
 }
@@ -431,6 +437,26 @@ export async function graphFetchPaginated(
   return { items, pageCount, rawResponse };
 }
 
+// ── License-gap → profile-flag mapping ────────────────────────────────────────
+// When a Graph check fails because the tenant lacks a SKU, the tenant's own Graph
+// response is definitive proof it doesn't have that feature. Emit the same falsy
+// boolean flags the M365 script parser (parse-m365-script-output.ts) writes for
+// script-based customers — hasAADP1orP2 / hasDefender — so buildTenantProfile()
+// and the signal engine can derive a real "lacks X" upsell signal from a
+// Graph-only scan (no customer-side PowerShell run required). Only definitive
+// mappings are emitted; an unrecognized feature contributes no flag (the
+// _licenseGapFeature marker still records what was missing).
+export function licenseGapProfileFlags(feature: string): Record<string, boolean> {
+  const f = feature.toLowerCase();
+  if (f.includes("entra") || f.includes("premium") || f.includes("p1") || f.includes("p2") || f.includes("azure ad")) {
+    return { hasAADP1orP2: false };
+  }
+  if (f.includes("defender")) {
+    return { hasDefender: false };
+  }
+  return {};
+}
+
 // ── Single check executor ─────────────────────────────────────────────────────
 
 export async function executeMonitorCheck(opts: {
@@ -592,6 +618,57 @@ export async function executeMonitorCheck(opts: {
       };
     }
 
+    // License/feature gap — the tenant lacks the M365 SKU this check needs. This is
+    // an accurate, known limitation, NOT a fault: persist it as its own status,
+    // never call markTenantConsentRevoked (consent is intact), and record the
+    // missing feature so downstream (findings, landing page, upsell signals) can
+    // report it honestly. We also stamp the profile's extractedProperties with
+    // definitive falsy license flags derived from the tenant's own Graph response
+    // (e.g. hasAADP1orP2: false) — the same keys the M365 profile parser writes —
+    // so buildTenantProfile()/the signal engine can key a real upsell signal off a
+    // Graph-only scan without a customer-side PowerShell run.
+    if (err instanceof LicenseGapError) {
+      const licenseFlags = licenseGapProfileFlags(err.feature);
+      const extracted: Record<string, unknown> = {
+        _licenseGap: true,
+        _licenseGapFeature: err.feature,
+        _licenseGapCode: err.graphErrorCode ?? null,
+        ...licenseFlags,
+      };
+      log.info(
+        { checkKey: check.key, tenantId, feature: err.feature, code: err.graphErrorCode },
+        "monitor-executor: check unavailable — tenant lacks required M365 license/add-on",
+      );
+      const [row] = await db
+        .insert(tenantMonitorProfilesTable)
+        .values({
+          tenantId,
+          checkKey: check.key,
+          checkSchemaVersion: check.schemaVersion,
+          triggerId,
+          idempotencyKey,
+          status: "license_gap",
+          extractedProperties: extracted,
+          errorMessage: `Requires ${err.feature}`,
+          itemCount: 0,
+          pageCount: 0,
+        })
+        .onConflictDoNothing()
+        .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+      return {
+        checkKey: check.key,
+        status: "license_gap",
+        extractedProperties: extracted,
+        severityMatched: null,
+        errorMessage: `Requires ${err.feature}`,
+        itemCount: 0,
+        pageCount: 0,
+        profileId: row?.profileId,
+        licenseFeature: err.feature,
+      };
+    }
+
     const errorMessage = err instanceof Error ? err.message : String(err);
     log.error({ err, checkKey: check.key, tenantId }, "monitor-executor: check failed");
 
@@ -653,6 +730,8 @@ export async function executeMonitoringPackage(opts: {
       runStatus: "no_checks",
       checks: [],
       enginesRecomputed: [],
+      licenseGapCount: 0,
+      licenseGapFeatures: [],
       startedAt,
       completedAt: new Date().toISOString(),
     };
@@ -673,6 +752,8 @@ export async function executeMonitoringPackage(opts: {
       runStatus: "no_checks",
       checks: [],
       enginesRecomputed: [],
+      licenseGapCount: 0,
+      licenseGapFeatures: [],
       startedAt,
       completedAt: new Date().toISOString(),
     };
@@ -742,7 +823,11 @@ export async function executeMonitoringPackage(opts: {
     });
   }
 
-  // Determine overall run status
+  // Determine overall run status.
+  // license_gap results are a known, accurate SKU limitation — NOT a technical
+  // failure — so they never make a run "partial_failure". A run is only
+  // partial_failure for genuinely-unresolved "error" results; a tenant whose only
+  // non-ok results are license gaps completes honestly (unblocking doc generation).
   const hasConsentRevoked = results.some(r => r.status === "consent_revoked");
   const hasErrors = results.some(r => r.status === "error");
   const runStatus: PackageRunResult["runStatus"] = hasConsentRevoked
@@ -750,6 +835,11 @@ export async function executeMonitoringPackage(opts: {
     : hasErrors
     ? "partial_failure"
     : "completed";
+
+  const licenseGapResults = results.filter(r => r.status === "license_gap");
+  const licenseGapFeatures = [...new Set(
+    licenseGapResults.map(r => r.licenseFeature).filter((f): f is string => !!f),
+  )];
 
   // Collect engines to recompute from both package and individual check definitions
   const enginesSet = new Set<string>();
@@ -765,6 +855,8 @@ export async function executeMonitoringPackage(opts: {
     runStatus,
     checks: results,
     enginesRecomputed: [...enginesSet],
+    licenseGapCount: licenseGapResults.length,
+    licenseGapFeatures,
     startedAt,
     completedAt: new Date().toISOString(),
   };
@@ -781,6 +873,7 @@ export interface MonitoringEngineOutput {
     error: number;
     requiresScript: number;
     consentRevoked: number;
+    licenseGap: number;
     coverage: number;
     failures: string[];
   };
@@ -833,14 +926,17 @@ export async function computeMonitoringEngine(customerId: number): Promise<Monit
   const error = results.filter(r => r.status === "error").length;
   const requiresScript = results.filter(r => r.status === "requires_script").length;
   const consentRevoked = results.filter(r => r.status === "consent_revoked").length;
+  const licenseGap = results.filter(r => r.status === "license_gap").length;
   const covered = ok + requiresScript;
   const coverage = total > 0 ? Math.round((covered / total) * 100) : 0;
+  // license_gap is NOT a failure — it's a known SKU limitation, so it stays out
+  // of the failures list (only genuine errors + consent revocations are failures).
   const failures = results.filter(r => r.status === "error" || r.status === "consent_revoked").map(r => r.checkKey);
 
   return {
     engine: "monitoring",
     results,
-    breakdown: { total, ok, error, requiresScript, consentRevoked, coverage, failures },
+    breakdown: { total, ok, error, requiresScript, consentRevoked, licenseGap, coverage, failures },
     logs: [],
     debug: { customerId, checksEvaluated: total },
     timestamp: new Date().toISOString(),
@@ -851,7 +947,7 @@ export function computeMonitoringEngineForPayload(): MonitoringEngineOutput {
   return {
     engine: "monitoring",
     results: [],
-    breakdown: { total: 0, ok: 0, error: 0, requiresScript: 0, consentRevoked: 0, coverage: 0, failures: [] },
+    breakdown: { total: 0, ok: 0, error: 0, requiresScript: 0, consentRevoked: 0, licenseGap: 0, coverage: 0, failures: [] },
     logs: ["Payload mode: no historical monitor profiles to evaluate"],
     debug: { payloadMode: true },
     timestamp: new Date().toISOString(),

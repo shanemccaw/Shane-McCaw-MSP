@@ -168,6 +168,34 @@ export class ConsentRevokedError extends Error {
 }
 
 /**
+ * Error thrown when a Graph call fails because the customer tenant does not have
+ * the Microsoft 365 SKU / add-on that the endpoint requires (e.g. Entra ID
+ * Premium P1/P2, Microsoft Defender for Office 365). This is NOT a consent or
+ * permission problem — admin consent is valid and the app is authorized; the
+ * tenant simply hasn't licensed/provisioned the feature. Callers must treat this
+ * as a distinct, accurate "we couldn't check this because the SKU is missing"
+ * state — never as a consent revocation (it must NOT flip tenant consent) and
+ * never as a genuine technical failure that blocks a scan from completing.
+ *
+ * `feature` is a customer-safe name of the missing add-on; `graphErrorCode` is
+ * the raw Graph error code when one was present (for telemetry / signal mapping).
+ */
+export class LicenseGapError extends Error {
+  readonly tenantId: string;
+  readonly feature: string;
+  readonly graphErrorCode: string | null;
+  readonly rawBody: string;
+  constructor(tenantId: string, feature: string, graphErrorCode: string | null, rawBody: string) {
+    super(`Microsoft 365 license/feature gap for tenant ${tenantId}: ${feature}`);
+    this.name = "LicenseGapError";
+    this.tenantId = tenantId;
+    this.feature = feature;
+    this.graphErrorCode = graphErrorCode;
+    this.rawBody = rawBody;
+  }
+}
+
+/**
  * Flip a tenant's consent status to "revoked" in a single DB transaction and evict
  * its token cache. Also marks all non-revoked monitor profile rows for the tenant as
  * `consent_revoked` atomically, then emits a canonical audit event so the event log
@@ -249,6 +277,83 @@ function isConsentErrorBody(body: string): boolean {
     body.includes("consent_required") ||
     body.includes("InvalidAuthenticationToken")
   );
+}
+
+/**
+ * Pull the Graph error `code` out of a raw response body, e.g.
+ * {"error":{"code":"Authentication_RequestFromNonPremiumTenantOrB2CTenant",...}}
+ */
+function extractGraphErrorCode(body: string): string | null {
+  const m = body.match(/"code"\s*:\s*"([^"]+)"/);
+  return m?.[1] ?? null;
+}
+
+/**
+ * Documented, stable Graph/AAD error codes that mean the tenant lacks a required
+ * premium SKU (Entra ID Premium P1/P2) — NOT a consent/permission problem. These
+ * are exact error-code matches, not fuzzy string heuristics, so they can be
+ * relied on to distinguish a real license gap from a genuine failure.
+ */
+const ENTRA_PREMIUM_ERROR_CODES = new Set([
+  "Authentication_RequestFromNonPremiumTenantOrB2CTenant",
+  "RequestFromNonPremiumTenantOrB2CTenant",
+]);
+
+/**
+ * Classify a non-2xx Graph error body into one of three kinds:
+ *   - "consent"    : admin consent revoked / never granted → re-authorize needed.
+ *   - "license_gap": the tenant doesn't have the M365 add-on the endpoint needs
+ *                    (Entra Premium, Defender, etc.) — a real, known SKU limit,
+ *                    not a fault. Carries a customer-safe `feature` name.
+ *   - "other"      : a genuine permission / request / transient error.
+ *
+ * License-gap detection keys off documented AAD/Graph error CODES first (the
+ * reliable structural signal), then a small set of well-known, unambiguous
+ * message phrases ("account is not provisioned", "doesn't have premium license",
+ * "not licensed for this feature"). Anything not matching those exact signals is
+ * deliberately left as "consent"/"other" — we never guess a license gap from a
+ * generic error, per the no-silent-reclassification rule.
+ */
+export function classifyGraphError(
+  body: string,
+  _status: number,
+): { kind: "consent" | "license_gap" | "other"; feature?: string; code?: string | null } {
+  const code = extractGraphErrorCode(body);
+  const lower = body.toLowerCase();
+
+  // Consent takes precedence — a revoked-consent body is never a license gap.
+  if (isConsentErrorBody(body)) {
+    return { kind: "consent", code };
+  }
+
+  // Entra ID Premium (P1/P2) — exact error-code match, the strongest signal.
+  if (code && ENTRA_PREMIUM_ERROR_CODES.has(code)) {
+    return { kind: "license_gap", feature: "Microsoft Entra ID Premium (P1/P2)", code };
+  }
+  if (
+    lower.includes("doesn't have premium license") ||
+    lower.includes("does not have premium license") ||
+    lower.includes("nonpremiumtenant") ||
+    lower.includes("non premium tenant") ||
+    // "…is not a B2C tenant and doesn't have premium license" phrasing
+    (lower.includes("b2ctenant") && lower.includes("premium"))
+  ) {
+    return { kind: "license_gap", feature: "Microsoft Entra ID Premium (P1/P2)", code };
+  }
+
+  // Feature/workload not provisioned on the tenant — the documented response when
+  // a security/Defender (or similar add-on) workload was never licensed. "not
+  // provisioned" is a stable, unambiguous Graph phrase meaning the SKU is absent.
+  if (lower.includes("not provisioned")) {
+    return { kind: "license_gap", feature: "Microsoft Defender for Office 365", code };
+  }
+
+  // Explicit "not licensed" phrasing for a feature.
+  if (lower.includes("not licensed for this feature") || lower.includes("not licensed")) {
+    return { kind: "license_gap", feature: "a required Microsoft 365 add-on license", code };
+  }
+
+  return { kind: "other", code };
 }
 
 function setPathValue(obj: any, path: string, value: any) {
@@ -341,26 +446,39 @@ export async function graphFetchForTenant(
     },
   });
 
-  if (res.status === 401) {
+  // 401/400/403 all need the body inspected before we decide what happened.
+  // Order of precedence, most-specific first:
+  //   1. license/feature gap (tenant lacks the SKU) → LicenseGapError, NO consent
+  //      flip — this is a real, known limitation, not a fault or a revocation.
+  //   2. genuine consent problem → auto-revoke + ConsentRevokedError.
+  //   3. any other 401 → treat as consent revocation (unchanged legacy behavior).
+  //   4. any other non-consent 400/403 → synthetic Response for the caller.
+  if (res.status === 401 || res.status === 400 || res.status === 403) {
     const text = await res.text();
-    log.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — auto-revoking consent");
-    tenantTokenCache.delete(tenantId);
-    await markTenantConsentRevoked(tenantId);
-    throw new ConsentRevokedError(tenantId);
-  }
+    const cls = classifyGraphError(text, res.status);
 
-  // Also catch consent errors embedded in 400/403 response bodies
-  // (e.g. token returned successfully but Graph rejects with invalid_grant on use)
-  if (res.status === 400 || res.status === 403) {
-    const text = await res.text();
-    if (isConsentErrorBody(text)) {
-      log.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error in body — auto-revoking consent");
+    if (cls.kind === "license_gap") {
+      log.info(
+        { tenantId, status: res.status, feature: cls.feature, code: cls.code },
+        "Graph tenant call: Microsoft 365 license/feature gap — not a consent problem, not auto-revoking",
+      );
+      throw new LicenseGapError(
+        tenantId,
+        cls.feature ?? "a required Microsoft 365 add-on license",
+        cls.code ?? null,
+        text,
+      );
+    }
+
+    if (res.status === 401 || cls.kind === "consent") {
+      log.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error — auto-revoking consent");
       tenantTokenCache.delete(tenantId);
       await markTenantConsentRevoked(tenantId);
       throw new ConsentRevokedError(tenantId);
     }
-    // Non-consent 400/403 — return the response with the body already consumed.
-    // Re-wrap as a synthetic Response so callers can still check ok/status.
+
+    // Non-consent, non-license 400/403 — return the response with the body already
+    // consumed. Re-wrap as a synthetic Response so callers can still check ok/status.
     return new Response(text, { status: res.status, headers: res.headers });
   }
 

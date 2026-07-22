@@ -77,6 +77,8 @@ interface AssessmentStatus {
     checksTotal: number | null;
     checksOk: number | null;
     checksError: number | null;
+    checksLicenseGap: number | null;
+    licenseGapFeatures: string[];
     lastScanAt: string | null;
     everScanned: boolean;
   };
@@ -638,8 +640,31 @@ function StepPanel({
 
       const total = status.scan.checksTotal ?? 0;
       const ok = status.scan.checksOk ?? 0;
-      const pct = total > 0 ? Math.round((ok / total) * 100) : 0;
-      const ringColor: ScoreRingColor = total === 0 ? "blue" : pct >= 85 ? "green" : pct >= 60 ? "amber" : "red";
+      const licenseGap = status.scan.checksLicenseGap ?? 0;
+      const genuineError = status.scan.checksError ?? 0;
+      const licenseGapFeatures = status.scan.licenseGapFeatures ?? [];
+      // Score over checks we could actually evaluate. License gaps are
+      // "unavailable" (the tenant lacks the add-on), NOT failures, so they don't
+      // drag the passed-rate down — a tenant without Defender/Entra Premium
+      // shouldn't read as "31% healthy" when everything checkable passed.
+      const evaluable = ok + genuineError;
+      const pct = evaluable > 0 ? Math.round((ok / evaluable) * 100) : total > 0 ? 100 : 0;
+      const ringColor: ScoreRingColor = evaluable === 0 ? "blue" : pct >= 85 ? "green" : pct >= 60 ? "amber" : "red";
+      // Honest one-line summary: what passed, what genuinely needs a look, and
+      // what we simply couldn't check because the licensing isn't there (named).
+      const scanSummary = (() => {
+        const parts: string[] = [];
+        if (ok > 0) parts.push(`${ok} check${ok === 1 ? "" : "s"} passed`);
+        if (genuineError > 0) parts.push(`${genuineError} couldn't complete`);
+        const lead = parts.length > 0 ? parts.join(" · ") : "Scan complete";
+        const gap =
+          licenseGap > 0
+            ? ` ${licenseGap} check${licenseGap === 1 ? "" : "s"} couldn't run because your tenant doesn't have ${
+                licenseGapFeatures.length > 0 ? licenseGapFeatures.join(" or ") : "certain Microsoft 365 add-ons"
+              } — that's a licensing gap, not a security issue.`
+            : "";
+        return `${lead}. Now writing up your findings and Statement of Work.${gap}`;
+      })();
 
       return (
         <PanelShell
@@ -668,9 +693,7 @@ function StepPanel({
                   We finished reading your Microsoft&nbsp;365 environment
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {total > 0
-                    ? `${ok}/${total} checks passed — now writing up your findings and Statement of Work.`
-                    : "Now writing up your findings and Statement of Work."}
+                  {total > 0 ? scanSummary : "Now writing up your findings and Statement of Work."}
                 </p>
               </div>
             </div>

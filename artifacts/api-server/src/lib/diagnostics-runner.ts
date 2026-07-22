@@ -49,6 +49,9 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   if (result.status === "consent_revoked") return "critical";
   if (result.status === "error") return "warning";
   if (result.status === "requires_script") return "info";
+  // A license gap is not a security finding — it's a known SKU limitation. Surface
+  // it as informational, never as a red/critical item the customer must "fix".
+  if (result.status === "license_gap") return "info";
   if (result.severityMatched) {
     const s = result.severityMatched.toLowerCase();
     if (s === "critical" || s === "high") return "critical";
@@ -58,10 +61,16 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   return "ok";
 }
 
+function licenseGapFeatureOf(result: CheckResult): string {
+  const f = (result.extractedProperties as Record<string, unknown> | undefined)?._licenseGapFeature;
+  return typeof f === "string" && f.trim() ? f : "a required Microsoft 365 add-on";
+}
+
 function buildFindingTitle(result: CheckResult): string {
   if (result.status === "consent_revoked") return "Consent Revoked — Check could not run";
   if (result.status === "error") return `Check error: ${result.checkKey}`;
   if (result.status === "requires_script") return "Requires customer-side script";
+  if (result.status === "license_gap") return `Not checked — requires ${licenseGapFeatureOf(result)}`;
   if (result.severityMatched) return `${result.severityMatched} finding detected`;
   return "Check passed";
 }
@@ -208,11 +217,24 @@ function buildFindingDescription(result: CheckResult): string {
   if (result.status === "requires_script") {
     return "This check requires a PowerShell runbook to run in the customer's environment. Results will appear after the script is executed.";
   }
+  if (result.status === "license_gap") {
+    const feature = licenseGapFeatureOf(result);
+    return `We couldn't evaluate this because your Microsoft 365 tenant doesn't have ${feature}. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding ${feature} would let us monitor and report on it.`;
+  }
   const props = result.extractedProperties;
   if (props && Object.keys(props).length > 0) {
     return describeExtractedProperties(props);
   }
   return "No issues detected for this check.";
+}
+
+/** Map a missing-feature name to a stable upsell signal key (see the Sales Offer
+ *  Engine wiring follow-up). Only definitive mappings return a key. */
+function licenseUpsellSignalKey(feature: string): string | null {
+  const f = feature.toLowerCase();
+  if (f.includes("entra") || f.includes("premium") || f.includes("azure ad")) return "security:lacks_entra_premium";
+  if (f.includes("defender")) return "security:lacks_defender";
+  return null;
 }
 
 function buildRecommendation(result: CheckResult): Record<string, unknown> | null {
@@ -221,7 +243,20 @@ function buildRecommendation(result: CheckResult): Record<string, unknown> | nul
   const rec: Record<string, unknown> = {};
   const severity = classifyCheckSeverity(result);
 
-  if (result.status === "consent_revoked") {
+  if (result.status === "license_gap") {
+    // Not a remediation — a genuine upsell opportunity. Capture the missing
+    // feature + a stable signalKey so a future Sales Offer Engine rule group can
+    // key an add-on offer off it (the engine reads tenant profile/monitor tables,
+    // where the license-gap flags are also written — see monitor-executor.ts).
+    const feature = licenseGapFeatureOf(result);
+    rec.action = `Consider adding ${feature} to enable this monitoring capability`;
+    rec.priority = 4;
+    rec.category = "license_upsell";
+    rec.feature = feature;
+    const signalKey = licenseUpsellSignalKey(feature);
+    if (signalKey) rec.signalKey = signalKey;
+    return rec;
+  } else if (result.status === "consent_revoked") {
     rec.action = "Re-establish application consent for the customer tenant";
     rec.priority = 1;
     rec.category = "consent";
@@ -265,9 +300,11 @@ function buildReportHtml(opts: {
   checksOk: number;
   checksError: number;
   requiresScript: number;
+  licenseGap: number;
+  licenseGapFeatures: string[];
   generatedAt: string;
 }): string {
-  const { customerName, runId, packageKey, findings, checksTotal, checksOk, checksError, requiresScript, generatedAt } = opts;
+  const { customerName, runId, packageKey, findings, checksTotal, checksOk, checksError, requiresScript, licenseGap, licenseGapFeatures, generatedAt } = opts;
 
   const severityBadge = (s: FindingSeverity) => {
     const map: Record<FindingSeverity, string> = {
@@ -317,7 +354,12 @@ function buildReportHtml(opts: {
       <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;">Requires Script</td>
       <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#d97706;">${requiresScript}</td>
     </tr>
+    ${licenseGap > 0 ? `<tr style="background:#f9fafb;">
+      <td style="padding:8px 12px;border:1px solid #e5e7eb;font-weight:600;">Not Available (license)</td>
+      <td style="padding:8px 12px;border:1px solid #e5e7eb;color:#2563eb;">${licenseGap}${licenseGapFeatures.length > 0 ? ` &middot; ${licenseGapFeatures.join(", ")}` : ""}</td>
+    </tr>` : ""}
   </table>
+  ${licenseGap > 0 ? `<p style="font-size:12px;color:#6b7280;margin:-20px 0 32px;">${licenseGap} check${licenseGap === 1 ? "" : "s"} could not be evaluated because your tenant doesn't have ${licenseGapFeatures.length > 0 ? licenseGapFeatures.join(" or ") : "certain Microsoft 365 add-ons"}. These are not security problems &mdash; adding the licensing would let us monitor these areas.</p>` : ""}
 
   <h2 style="font-size:16px;font-weight:600;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:16px;">Findings</h2>
   ${findingsHtml}
@@ -407,6 +449,7 @@ export interface DiagnosticsRunResult {
   checksOk: number;
   checksError: number;
   requiresScript: number;
+  checksLicenseGap: number;
   findingsCount: number;
   documentId?: string;
 }
@@ -536,8 +579,14 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
     const checksTotal = pkgResult.checks.length;
     const checksOk = pkgResult.checks.filter(c => c.status === "ok").length;
+    // checksError counts only genuinely-unresolved problems (technical errors +
+    // consent revocations). License gaps are a known SKU limitation, tracked
+    // separately in checksLicenseGap so they never inflate the "needs attention"
+    // count or block the run from completing.
     const checksError = pkgResult.checks.filter(c => c.status === "error" || c.status === "consent_revoked").length;
     const requiresScript = pkgResult.checks.filter(c => c.status === "requires_script").length;
+    const checksLicenseGap = pkgResult.licenseGapCount;
+    const licenseGapFeatures = pkgResult.licenseGapFeatures;
 
     // 4. Persist structured findings
     const findingRows: Array<typeof mspDiagnosticFindingsTable.$inferInsert> = [];
@@ -590,6 +639,8 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         checksOk,
         checksError,
         requiresScript,
+        licenseGap: checksLicenseGap,
+        licenseGapFeatures,
         generatedAt: new Date().toUTCString(),
       });
 
@@ -693,11 +744,14 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         checksOk,
         checksError,
         checksRequiresScript: requiresScript,
+        checksLicenseGap,
         runStatus: pkgResult.runStatus,
         summary: {
           findingsCount,
           criticalCount: findingRows.filter(f => f.severity === "critical").length,
           warningCount: findingRows.filter(f => f.severity === "warning").length,
+          licenseGapCount: checksLicenseGap,
+          licenseGapFeatures,
           enginesRecomputed: pkgResult.enginesRecomputed,
         },
         updatedAt: new Date(),
@@ -734,7 +788,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       finalStatus,
     });
 
-    return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, findingsCount, documentId };
+    return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, checksLicenseGap, findingsCount, documentId };
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

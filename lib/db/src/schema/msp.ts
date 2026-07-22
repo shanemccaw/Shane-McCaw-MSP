@@ -1442,7 +1442,11 @@ export const monitoringPackageChecksTable = pgTable("monitoring_package_checks",
 
 export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferSelect;
 
-export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script"] as const;
+// "license_gap": the check couldn't run because the tenant lacks the required
+// Microsoft 365 SKU/add-on (e.g. Entra ID Premium, Defender for Office 365). This
+// is an accurate, known limitation — NOT a security finding, a consent revocation,
+// or a technical failure — and must never block a scan from completing.
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap"] as const;
 export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
 
 export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
@@ -1769,6 +1773,10 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   checksOk: integer("checks_ok").notNull().default(0),
   checksError: integer("checks_error").notNull().default(0),
   checksRequiresScript: integer("checks_requires_script").notNull().default(0),
+  // Checks that could not run because the tenant lacks the required M365 SKU/add-on.
+  // Tracked separately from checksError so a license-gapped tenant is not penalized
+  // as if it had genuine technical failures, and can still reach a "completed" run.
+  checksLicenseGap: integer("checks_license_gap").notNull().default(0),
   runStatus: text("run_status"),
   documentId: uuid("document_id"),
   errorMessage: text("error_message"),
