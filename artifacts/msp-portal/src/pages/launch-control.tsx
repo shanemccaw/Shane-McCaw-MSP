@@ -38,6 +38,7 @@ import {
   HelpCircle,
   CheckCircle2,
   XCircle,
+  Undo2,
 } from "lucide-react";
 
 interface LaunchControlAction {
@@ -72,12 +73,25 @@ interface ExecutionResult {
   method: string;
   label: string;
   missingVariables?: string[];
+  /** Only present on the execute response — true when this execution's template is reversible. */
+  reversible?: boolean;
+  /** id of the audit log row written for this execution — required to call rollback. */
+  auditLogId?: number;
+}
+
+interface RollbackResult {
+  success: boolean;
+  message: string;
+  at: number;
 }
 
 interface RowResult {
   success: boolean;
   message: string;
   at: number;
+  auditLogId?: number;
+  reversible?: boolean;
+  rollback?: RollbackResult;
 }
 
 const AVAILABILITY_LABELS: Record<LaunchControlAction["availability"], string> = {
@@ -118,6 +132,9 @@ export default function LaunchControlPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [rowResults, setRowResults] = useState<Record<number, RowResult>>({});
+
+  const [rollbackTarget, setRollbackTarget] = useState<LaunchControlAction | null>(null);
+  const [rollbackConfirmOpen, setRollbackConfirmOpen] = useState(false);
 
   // Prefill from ?customerId= — e.g. a deep link from a customer's own page.
   useEffect(() => {
@@ -216,7 +233,16 @@ export default function LaunchControlPage() {
       const message = success
         ? `Executed successfully (${data.result.status})`
         : `Execution failed (${data.result.status}${data.result.errorType ? `, ${data.result.errorType}` : ""})`;
-      setRowResults((prev) => ({ ...prev, [action.id]: { success, message, at: Date.now() } }));
+      setRowResults((prev) => ({
+        ...prev,
+        [action.id]: {
+          success,
+          message,
+          at: Date.now(),
+          auditLogId: data.result.auditLogId,
+          reversible: data.result.reversible,
+        },
+      }));
       if (success) {
         toast.success(`${action.actionName} executed`);
       } else {
@@ -225,6 +251,61 @@ export default function LaunchControlPage() {
     } catch {
       const message = "Network error — please try again.";
       setRowResults((prev) => ({ ...prev, [action.id]: { success: false, message, at: Date.now() } }));
+      toast.error(message);
+    }
+  }
+
+  function openRollbackConfirm(action: LaunchControlAction) {
+    setRollbackTarget(action);
+    setRollbackConfirmOpen(true);
+  }
+
+  async function handleRollback() {
+    if (!rollbackTarget || !user?.mspId) return;
+    const action = rollbackTarget;
+    const auditLogId = rowResults[action.id]?.auditLogId;
+    if (!auditLogId) return;
+
+    try {
+      const res = await fetchWithAuth(
+        `/api/msp/${user.mspId}/launch-control/rollback/${auditLogId}`,
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => ({}) as { error?: string; result?: ExecutionResult });
+
+      if (!res.ok) {
+        const message = body.error ?? "Failed to roll back action.";
+        setRowResults((prev) => {
+          const existing = prev[action.id];
+          if (!existing) return prev;
+          return { ...prev, [action.id]: { ...existing, rollback: { success: false, message, at: Date.now() } } };
+        });
+        toast.error(message);
+        return;
+      }
+
+      const result = body.result as ExecutionResult;
+      const success = result?.success ?? false;
+      const message = success
+        ? `Rolled back successfully (${result.status})`
+        : `Rollback failed (${result.status}${result.errorType ? `, ${result.errorType}` : ""})`;
+      setRowResults((prev) => {
+        const existing = prev[action.id];
+        if (!existing) return prev;
+        return { ...prev, [action.id]: { ...existing, rollback: { success, message, at: Date.now() } } };
+      });
+      if (success) {
+        toast.success(`${action.actionName} rolled back`);
+      } else {
+        toast.error(`${action.actionName} rollback failed`);
+      }
+    } catch {
+      const message = "Network error — please try again.";
+      setRowResults((prev) => {
+        const existing = prev[action.id];
+        if (!existing) return prev;
+        return { ...prev, [action.id]: { ...existing, rollback: { success: false, message, at: Date.now() } } };
+      });
       toast.error(message);
     }
   }
@@ -339,15 +420,37 @@ export default function LaunchControlPage() {
                               {result.message}
                             </div>
                           )}
+                          {result?.rollback && (
+                            <div
+                              className={`text-xs mt-1 flex items-center gap-1 ${
+                                result.rollback.success ? "text-green-400" : "text-red-400"
+                              }`}
+                            >
+                              {result.rollback.success ? (
+                                <CheckCircle2 className="h-3 w-3" />
+                              ) : (
+                                <XCircle className="h-3 w-3" />
+                              )}
+                              Undo: {result.rollback.message}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {clickable && (
-                        <Button variant="outline" size="sm" onClick={() => openConfirm(action)}>
-                          <Play className="h-4 w-4 mr-1" />
-                          Execute
-                        </Button>
-                      )}
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        {clickable && (
+                          <Button variant="outline" size="sm" onClick={() => openConfirm(action)}>
+                            <Play className="h-4 w-4 mr-1" />
+                            Execute
+                          </Button>
+                        )}
+                        {result?.success && result.reversible && result.auditLogId && !result.rollback && (
+                          <Button variant="ghost" size="sm" onClick={() => openRollbackConfirm(action)}>
+                            <Undo2 className="h-4 w-4 mr-1" />
+                            Undo
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   );
 
@@ -408,6 +511,18 @@ export default function LaunchControlPage() {
               </div>
             )}
           </ConfirmModal>
+        )}
+
+        {rollbackTarget && (
+          <ConfirmModal
+            open={rollbackConfirmOpen}
+            onOpenChange={setRollbackConfirmOpen}
+            title={`Undo: ${rollbackTarget.actionName}`}
+            description="This will run the real reverse operation against the customer's tenant to undo the previous execution. Undoing is itself a real tenant write, not a client-side revert."
+            confirmLabel="Undo"
+            variant="destructive"
+            onConfirm={handleRollback}
+          />
         )}
       </div>
     </AppShell>

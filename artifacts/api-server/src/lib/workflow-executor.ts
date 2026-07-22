@@ -406,6 +406,8 @@ export interface BaselineTemplateExecutionResult {
   label: string;
   /** Present (and success=false) when requiredVariables didn't resolve — no Graph call was made. */
   missingVariables?: string[];
+  /** id of the baseline_action_template_audit_log row written for this execution, if the insert succeeded. */
+  auditLogId?: number;
 }
 
 /**
@@ -460,28 +462,148 @@ export async function runBaselineTemplateAgainstTenant(
   const { graphWriteForTenant } = await import("./graph");
   const result = await graphWriteForTenant(tenantId, endpoint, method, body, [200, 201, 204]);
 
-  await db.insert(baselineActionTemplateAuditLogTable).values({
-    action: result.success ? "executed" : "failed",
-    templateId,
-    afterSnapshot: {
-      success: result.success,
-      status: result.status,
-      errorType: result.errorType ?? null,
-      endpoint,
-      method,
-      customerId,
-      tenantId,
-      executedAt: new Date().toISOString(),
-      ...(source !== undefined ? { source } : {}),
-    },
-  }).catch((auditErr: unknown) => {
+  let auditLogId: number | undefined;
+  try {
+    const [inserted] = await db.insert(baselineActionTemplateAuditLogTable).values({
+      action: result.success ? "executed" : "failed",
+      templateId,
+      // Raw variables passed into this function — required for Launch Control
+      // rollback (body-only variables like accountEnabled/skuId are otherwise
+      // unrecoverable once execution completes; the endpoint string only
+      // preserves path-based variables like groupId/memberId).
+      requestVariables: payload,
+      afterSnapshot: {
+        success: result.success,
+        status: result.status,
+        errorType: result.errorType ?? null,
+        endpoint,
+        method,
+        customerId,
+        tenantId,
+        executedAt: new Date().toISOString(),
+        ...(source !== undefined ? { source } : {}),
+      },
+    }).returning({ id: baselineActionTemplateAuditLogTable.id });
+    auditLogId = inserted?.id;
+  } catch (auditErr) {
     log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
-  });
+  }
 
   return {
     success: result.success, status: result.status, data: result.data, errorType: result.errorType,
-    endpoint, method, label: template.label,
+    endpoint, method, label: template.label, auditLogId,
   };
+}
+
+export interface RollbackExecutionResult {
+  success: boolean;
+  status: number;
+  data: unknown;
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
+  endpoint: string;
+  method: string;
+  label: string;
+  /** id of the audit log row written for the rollback call itself (distinct from the original execution's row). */
+  rollbackAuditLogId?: number;
+}
+
+/**
+ * Roll back a single Launch Control execution via its paired reverse
+ * template — explicit reverse-template pairing only, not a generic
+ * snapshot/replay mechanism (4 of the 8 reversible-candidate actions are
+ * POST-based and can't be generically reversed by replaying the same
+ * endpoint). One level only: rolling back a rollback is not supported by
+ * this function's caller (routes/msp-launch-control.ts only ever passes the
+ * original execution's audit log id).
+ */
+export async function rollbackExecution(auditLogId: number): Promise<RollbackExecutionResult> {
+  const [auditRow] = await db
+    .select()
+    .from(baselineActionTemplateAuditLogTable)
+    .where(eq(baselineActionTemplateAuditLogTable.id, auditLogId))
+    .limit(1);
+  if (!auditRow) {
+    throw new Error(`Audit log entry ${auditLogId} not found`);
+  }
+  if (auditRow.action !== "executed") {
+    throw new Error(`Cannot roll back audit log entry ${auditLogId} — action was '${auditRow.action}', not 'executed'`);
+  }
+  if (!auditRow.templateId) {
+    throw new Error(`Audit log entry ${auditLogId} has no templateId`);
+  }
+
+  const [template] = await db
+    .select()
+    .from(baselineActionTemplatesTable)
+    .where(eq(baselineActionTemplatesTable.templateId, auditRow.templateId))
+    .limit(1);
+  if (!template) {
+    throw new Error(`Template '${auditRow.templateId}' not found`);
+  }
+  if (!template.reversible || !template.reverseTemplateId) {
+    throw new Error(`Template '${auditRow.templateId}' is not reversible`);
+  }
+
+  const afterSnapshot = (auditRow.afterSnapshot ?? {}) as Record<string, unknown>;
+  const customerId = afterSnapshot["customerId"];
+  const tenantId = afterSnapshot["tenantId"];
+  if (typeof customerId !== "number" || typeof tenantId !== "string" || !tenantId) {
+    throw new Error(`Audit log entry ${auditLogId} is missing customerId/tenantId context needed to roll back`);
+  }
+
+  const requestVariables: Record<string, unknown> = { ...((auditRow.requestVariables ?? {}) as Record<string, unknown>) };
+
+  // Special case — self-paired template (the sign-in toggle): rolling back
+  // isn't "replay with the same variables" (that would just repeat the same
+  // action) — invert the captured boolean variable(s) instead.
+  if (template.reverseTemplateId === template.templateId) {
+    for (const varName of template.requiredVariables ?? []) {
+      const raw = requestVariables[varName];
+      const normalized = typeof raw === "boolean" ? raw : String(raw).trim().toLowerCase();
+      if (normalized === true || normalized === "true") requestVariables[varName] = false;
+      else if (normalized === false || normalized === "false") requestVariables[varName] = true;
+      // anything not boolean-like (e.g. userId) is left untouched
+    }
+    const result = await runBaselineTemplateAgainstTenant(
+      template.reverseTemplateId, tenantId, customerId, requestVariables, "launch_control_rollback",
+    );
+    return { ...result, rollbackAuditLogId: result.auditLogId };
+  }
+
+  // Special case — Teams remove, when rolling back an add: teams.remove_member
+  // requires the Teams CONVERSATION MEMBERSHIP id, not the memberId (user id)
+  // captured for the add — that id can't be pulled from requestVariables
+  // alone and requires a live read immediately before the reverse call.
+  if (template.templateId === "teams.add_member" && template.reverseTemplateId === "teams.remove_member") {
+    const teamId = requestVariables["teamId"];
+    const memberId = requestVariables["memberId"];
+    if (typeof teamId !== "string" || !teamId || typeof memberId !== "string" || !memberId) {
+      throw new Error(`Audit log entry ${auditLogId} is missing teamId/memberId needed to resolve the Teams membership id`);
+    }
+
+    const { graphFetchForTenant } = await import("./graph");
+    const membersRes = await graphFetchForTenant(tenantId, `/teams/${teamId}/members`);
+    if (!membersRes.ok) {
+      throw new Error(`Failed to resolve Teams membership id for user ${memberId} in team ${teamId} (GET /teams/{teamId}/members returned ${membersRes.status})`);
+    }
+    const membersData = (await membersRes.json()) as { value?: Array<{ id: string; userId?: string }> };
+    const membership = (membersData.value ?? []).find((m) => m.userId === memberId);
+    if (!membership) {
+      throw new Error(`User ${memberId} is not a current member of team ${teamId} — nothing to roll back`);
+    }
+
+    const result = await runBaselineTemplateAgainstTenant(
+      "teams.remove_member", tenantId, customerId, { teamId, membershipId: membership.id }, "launch_control_rollback",
+    );
+    return { ...result, rollbackAuditLogId: result.auditLogId };
+  }
+
+  // All other pairs: replay the paired reverse template with the same
+  // captured requestVariables.
+  const result = await runBaselineTemplateAgainstTenant(
+    template.reverseTemplateId, tenantId, customerId, requestVariables, "launch_control_rollback",
+  );
+  return { ...result, rollbackAuditLogId: result.auditLogId };
 }
 
 /**

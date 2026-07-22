@@ -2220,6 +2220,13 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
   // Archived (not hard-deleted) templates are grandfathered into any config pack
   // that already references them — mirrors MONITOR_CHECK_STATUS semantics.
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  // Launch Control rollback (Reverse-Template Pairing): true only for the 6
+  // templates with a real, explicit single-step reverse. reverseTemplateId
+  // points at the paired reverse template's own templateId — self-referential
+  // for users.disable_enable_signin, which pairs with itself (rollback inverts
+  // the captured boolean instead of replaying the same call verbatim).
+  reversible: boolean("reversible").notNull().default(false),
+  reverseTemplateId: text("reverse_template_id"),
   createdByAdminId: integer("created_by_admin_id"),
   updatedByAdminId: integer("updated_by_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2241,6 +2248,12 @@ export const baselineActionTemplateAuditLogTable = pgTable("baseline_action_temp
   adminId: integer("admin_id"),
   beforeSnapshot: jsonb("before_snapshot").$type<Record<string, unknown>>(),
   afterSnapshot: jsonb("after_snapshot").$type<Record<string, unknown>>(),
+  // Raw variables/request body passed into runBaselineTemplateAgainstTenant()
+  // at execution time (the function's `payload` param) — required for Launch
+  // Control rollback, since body-only variables (e.g. accountEnabled, skuId)
+  // are otherwise unrecoverable once execution completes (the endpoint string
+  // only preserves path-based variables like groupId/memberId).
+  requestVariables: jsonb("request_variables").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("baseline_action_template_audit_log_template_id_idx").on(t.templateId),

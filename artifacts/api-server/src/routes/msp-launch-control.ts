@@ -28,6 +28,7 @@
  * Routes:
  *   GET  /api/msp/:mspId/launch-control/actions?customerId=:customerId
  *   POST /api/msp/:mspId/launch-control/execute
+ *   POST /api/msp/:mspId/launch-control/rollback/:auditLogId
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -35,6 +36,7 @@ import { db } from "@workspace/db";
 import {
   writeActionCatalogTable,
   baselineActionTemplatesTable,
+  baselineActionTemplateAuditLogTable,
   mspCustomersTable,
   clientServicesTable,
   servicesTable,
@@ -274,10 +276,63 @@ router.post(
         { mspId, templateId, customerId, tenantId: customer.tenantId, success: result.success, userId: req.user?.id },
         "msp-launch-control: execute completed",
       );
-      res.json({ result, tenant: { customerId: customer.id, name: customer.name } });
+      res.json({
+        result: { ...result, reversible: result.success && template.reversible },
+        tenant: { customerId: customer.id, name: customer.name },
+      });
     } catch (err) {
       log.error({ err, mspId, catalogActionId, customerId }, "POST /msp/:mspId/launch-control/execute failed");
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to execute action" });
+    }
+  },
+);
+
+// ── POST /msp/:mspId/launch-control/rollback/:auditLogId ─────────────────────
+
+router.post(
+  "/msp/:mspId/launch-control/rollback/:auditLogId",
+  requireRole("MSPOperator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = parseInt(p(req.params["mspId"]), 10);
+    const auditLogId = parseInt(p(req.params["auditLogId"]), 10);
+    if (isNaN(mspId) || isNaN(auditLogId)) {
+      res.status(400).json({ error: "mspId and auditLogId must be numbers" });
+      return;
+    }
+
+    try {
+      const [auditRow] = await db
+        .select()
+        .from(baselineActionTemplateAuditLogTable)
+        .where(eq(baselineActionTemplateAuditLogTable.id, auditLogId))
+        .limit(1);
+      if (!auditRow) {
+        res.status(404).json({ error: "Audit log entry not found" });
+        return;
+      }
+      const afterSnapshot = (auditRow.afterSnapshot ?? {}) as Record<string, unknown>;
+      const customerId = afterSnapshot["customerId"];
+      if (typeof customerId !== "number") {
+        res.status(400).json({ error: "Audit log entry has no recoverable customer context" });
+        return;
+      }
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(403).json({ error: "Access to this customer is not permitted" });
+        return;
+      }
+
+      const { rollbackExecution } = await import("../lib/workflow-executor");
+      const result = await rollbackExecution(auditLogId);
+
+      log.info(
+        { mspId, auditLogId, customerId, success: result.success, userId: req.user?.id },
+        "msp-launch-control: rollback completed",
+      );
+      res.json({ result });
+    } catch (err) {
+      log.error({ err, mspId, auditLogId }, "POST /msp/:mspId/launch-control/rollback/:auditLogId failed");
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to roll back action" });
     }
   },
 );
