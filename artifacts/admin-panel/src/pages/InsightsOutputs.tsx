@@ -1,36 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from "recharts";
-import {
   BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight, ChevronDown,
   Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
   Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2, Layers,
-  SlidersHorizontal, Copy, RotateCcw, Search,
+  SlidersHorizontal, Copy, RotateCcw, Search, FileCog,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { InsightsPayloadDialog, type PayloadPreview } from "@/components/InsightsPayloadDialog";
+import DocumentTypesManager from "@/components/DocumentTypesManager";
 
 const API = "/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Scores {
-  security: number; governance: number; readiness: number; composite: number;
-}
-
-interface ScoresData {
-  scores: Scores;
-  coveragePct: number; totalGaps: number; totalRuns: number;
-  findings: string[]; recommendations: string[];
-  weeklyTrend: { week: string; composite: number; security: number; governance: number; readiness: number }[];
-  conditionalAccessPct: number; deviceCompliancePct: number;
-}
-
-interface HeatmapEntry {
-  domain: string; high: number; medium: number; low: number; total: number; riskScore: number;
-}
 
 interface InsightsDoc {
   id: number; customerId: number | null; projectId: number | null;
@@ -114,37 +96,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 // ── Shared UI helpers ──────────────────────────────────────────────────────────
-
-function ScoreBadge({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center bg-card border border-gray-700/50 rounded-xl p-4 gap-1">
-      <div className="relative w-20 h-20">
-        <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r="32" fill="none" stroke="#2d333b" strokeWidth="8" />
-          <circle cx="40" cy="40" r="32" fill="none" stroke={color} strokeWidth="8"
-            strokeDasharray={`${(value / 100) * 201} 201`} strokeLinecap="round" />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-lg font-bold text-white">{value}</span>
-        </div>
-      </div>
-      <span className="text-xs text-gray-400 text-center">{label}</span>
-    </div>
-  );
-}
-
-function ProgressBar({ label, value, color = "#2F6FED" }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-xs text-gray-400">
-        <span>{label}</span><span>{value}%</span>
-      </div>
-      <div className="h-2 bg-[#2d333b] rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${value}%`, background: color }} />
-      </div>
-    </div>
-  );
-}
 
 function StatusPill({ status }: { status: string }) {
   if (status === "generating") {
@@ -361,164 +312,6 @@ function PromptEditDialog({
               {saving ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</> : "Save"}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Dashboard Tab ──────────────────────────────────────────────────────────────
-
-function DashboardTab({
-  customerId, projectId, fetchWithAuth,
-}: {
-  customerId: number | null; projectId: number | null;
-  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
-}) {
-  const [scoresData, setScoresData] = useState<ScoresData | null>(null);
-  const [heatmap, setHeatmap] = useState<HeatmapEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (customerId) params.set("customerId", String(customerId));
-      if (projectId)  params.set("projectId",  String(projectId));
-      const qs = params.size > 0 ? `?${params}` : "";
-
-      const [sr, hr] = await Promise.all([
-        fetchWithAuth(`${API}/admin/insights/scores${qs}`),
-        fetchWithAuth(`${API}/admin/insights/heatmap${qs}`),
-      ]);
-      if (!sr.ok) throw new Error("Failed to load scores");
-      setScoresData(await sr.json() as ScoresData);
-      if (hr.ok) setHeatmap(((await hr.json()) as { heatmap: HeatmapEntry[] }).heatmap ?? []);
-    } catch (e) {
-      setError(String(e));
-    } finally { setLoading(false); }
-  }, [customerId, projectId, fetchWithAuth]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  if (loading) return (
-    <div className="flex flex-col gap-4 animate-pulse">
-      {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-card rounded-xl" />)}
-    </div>
-  );
-  if (error) return (
-    <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center gap-2">
-      <AlertTriangle className="w-4 h-4 shrink-0" />{error}
-      <button onClick={() => void load()} className="ml-auto text-xs underline">Retry</button>
-    </div>
-  );
-
-  const sd = scoresData;
-  const SCORE_COLORS = { security: "#ef4444", governance: "#f59e0b", readiness: "#3b82f6", composite: "#2F6FED" };
-
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Score cards */}
-      <div className="bg-card border border-gray-700/50 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold">M365 Health Scores</h3>
-          <button onClick={() => void load()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3.5 h-3.5" /></button>
-        </div>
-        <div className="grid grid-cols-4 gap-3">
-          <ScoreBadge label="Security"   value={sd?.scores.security   ?? 0} color={SCORE_COLORS.security}   />
-          <ScoreBadge label="Governance"  value={sd?.scores.governance  ?? 0} color={SCORE_COLORS.governance}  />
-          <ScoreBadge label="Readiness"   value={sd?.scores.readiness   ?? 0} color={SCORE_COLORS.readiness}   />
-          <ScoreBadge label="Composite"   value={sd?.scores.composite   ?? 0} color={SCORE_COLORS.composite}   />
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-          <div className="bg-background rounded-lg p-3">
-            <div className="text-lg font-bold text-white">{sd?.totalRuns ?? 0}</div>
-            <div className="text-xs text-gray-400">Script Runs</div>
-          </div>
-          <div className="bg-background rounded-lg p-3">
-            <div className="text-lg font-bold text-yellow-400">{sd?.totalGaps ?? 0}</div>
-            <div className="text-xs text-gray-400">Config Gaps</div>
-          </div>
-          <div className="bg-background rounded-lg p-3">
-            <div className="text-lg font-bold text-blue-400">{sd?.coveragePct ?? 0}%</div>
-            <div className="text-xs text-gray-400">Coverage</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Coverage bars */}
-      <div className="bg-card border border-gray-700/50 rounded-xl p-5">
-        <h3 className="text-white font-semibold mb-4">Infrastructure Coverage</h3>
-        <div className="flex flex-col gap-3">
-          <ProgressBar label="Conditional Access Coverage" value={sd?.conditionalAccessPct ?? 0} color="#2F6FED" />
-          <ProgressBar label="Device Compliance"           value={sd?.deviceCompliancePct  ?? 0} color="#10b981" />
-          <ProgressBar label="Assessment Coverage"         value={sd?.coveragePct           ?? 0} color="#f59e0b" />
-        </div>
-      </div>
-
-      {/* Risk heatmap */}
-      {heatmap.length > 0 && (
-        <div className="bg-card border border-gray-700/50 rounded-xl p-5">
-          <h3 className="text-white font-semibold mb-4">Risk Heatmap by Domain</h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={heatmap} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
-              <XAxis dataKey="domain" tick={{ fill: "#9ca3af", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
-              <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 12 }} />
-              <Bar dataKey="high"   name="High"   fill="#ef4444" stackId="a" />
-              <Bar dataKey="medium" name="Medium" fill="#f59e0b" stackId="a" />
-              <Bar dataKey="low"    name="Low"    fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Score trend */}
-      {(sd?.weeklyTrend.length ?? 0) > 0 && (
-        <div className="bg-card border border-gray-700/50 rounded-xl p-5">
-          <h3 className="text-white font-semibold mb-4">Score Trend (8-week)</h3>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={sd!.weeklyTrend} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
-              <XAxis dataKey="week" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <YAxis domain={[0, 100]} tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: "#11151C", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
-              <Bar dataKey="composite" name="Composite" fill="#2F6FED" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Findings + Recommendations — full-width two-column row */}
-      <div className="grid grid-cols-2 gap-5">
-        <div className="bg-card border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
-          <h4 className="text-white font-medium text-sm mb-3">Latest Findings</h4>
-          {(sd?.findings.length ?? 0) === 0 ? (
-            <p className="text-gray-500 text-xs">No findings yet. Run PowerShell assessments to populate.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {sd!.findings.slice(0, 20).map((f, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-300"><span className="text-red-400 shrink-0">•</span>{f}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="bg-card border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
-          <h4 className="text-white font-medium text-sm mb-3">Recommendations</h4>
-          {(sd?.recommendations.length ?? 0) === 0 ? (
-            <p className="text-gray-500 text-xs">No recommendations yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {sd!.recommendations.slice(0, 10).map((r, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-300">
-                  <CheckCircle className="w-3 h-3 text-green-400 shrink-0 mt-0.5" />{r}
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       </div>
     </div>
@@ -2002,10 +1795,10 @@ function Selectors({
 
 // ── Root component ─────────────────────────────────────────────────────────────
 
-type Tab = "dashboard" | "documents" | "consulting" | "automation";
+type Tab = "document_types" | "documents" | "consulting" | "automation";
 
 const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: "dashboard",  label: "Dashboard",  icon: BarChart2  },
+  { key: "document_types", label: "Document Types", icon: FileCog },
   { key: "documents",  label: "Documents",  icon: FileText   },
   { key: "consulting", label: "Consulting", icon: Users      },
   { key: "automation", label: "Automation", icon: Settings   },
@@ -2018,10 +1811,10 @@ export default function InsightsOutputs() {
   const initialTab = useMemo<Tab>(() => {
     try {
       const param = new URLSearchParams(window.location.search).get("tab");
-      const valid: Tab[] = ["dashboard", "documents", "consulting", "automation"];
-      return (valid.includes(param as Tab) ? param : "dashboard") as Tab;
+      const valid: Tab[] = ["document_types", "documents", "consulting", "automation"];
+      return (valid.includes(param as Tab) ? param : "documents") as Tab;
     } catch {
-      return "dashboard";
+      return "documents";
     }
   }, []);
 
@@ -2108,7 +1901,7 @@ export default function InsightsOutputs() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === "dashboard"  && <DashboardTab  {...tabProps} />}
+        {tab === "document_types" && <DocumentTypesManager />}
         {tab === "documents"  && <DocumentsTab  {...tabProps} refreshKey={docsRefreshKey} />}
         {tab === "consulting" && <ConsultingTab {...tabProps} />}
         {tab === "automation" && <AutomationTab {...tabProps} />}
