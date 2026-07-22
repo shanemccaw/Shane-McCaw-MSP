@@ -78,6 +78,9 @@ import { verifyCaptchaToken } from "../lib/captcha";
 import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { promoteMspUserToCustomer } from "./portal";
 import { randomUUID } from "crypto";
+import { getPillarCoverage } from "../lib/pillar-coverage";
+import { latestCheckProps, extractGroupByCountCounts } from "../lib/dashboard-resolvers";
+import { computeSkuCostBreakdown } from "../lib/cost-engine";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -238,6 +241,41 @@ router.get(
         .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
 
+      // ── Real pillar coverage (radar) + real stat cards ────────────────────
+      // Gated identically to the CIO narrative (lastCompleted, matching
+      // assessment_doc_gate's own "completed" bar) — no scan yet means no real
+      // per-pillar data or cost data exists to show, so both stay empty rather
+      // than fabricated.
+      let pillarCoverage: Awaited<ReturnType<typeof getPillarCoverage>> = [];
+      let genuineFindings: number | null = null;
+      let licenseWasteMonthlyCents: number | null = null;
+
+      if (lastCompleted) {
+        const runSummary = (lastCompleted.summary as Record<string, unknown> | null | undefined) ?? null;
+        genuineFindings =
+          runSummary != null
+            ? Number(runSummary.criticalCount ?? 0) + Number(runSummary.warningCount ?? 0)
+            : null;
+
+        pillarCoverage = await getPillarCoverage(lastCompleted.packageKey, customerId).catch((err) => {
+          log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
+          return [];
+        });
+
+        if (lastCompleted.tenantId) {
+          try {
+            const props = await latestCheckProps(lastCompleted.tenantId, "cost:license-waste-estimate");
+            const counts = props ? extractGroupByCountCounts(props) : null;
+            if (counts) {
+              const breakdown = await computeSkuCostBreakdown(counts);
+              if (breakdown.totalMonthlyCents > 0) licenseWasteMonthlyCents = breakdown.totalMonthlyCents;
+            }
+          } catch (err) {
+            log.warn({ err, customerId }, "GET /portal/assessment/status: license waste computation failed");
+          }
+        }
+      }
+
       res.json({
         scan: {
           active: scanActive,
@@ -295,6 +333,21 @@ router.get(
         },
         mfa: {
           enrolled: mfaEnrolled,
+        },
+        // Real tenant-health radar — only pillars this customer's actual scanned
+        // package genuinely covers (see pillar-coverage.ts). Empty until a
+        // package has real monitoring_package_checks rows curated for it; never
+        // padded with fabricated axes.
+        radar: {
+          packageKey: lastCompleted?.packageKey ?? null,
+          pillars: pillarCoverage,
+        },
+        // Real stat cards — every number traces to a completed run's own
+        // persisted summary or a live cost-engine query; null means "no real
+        // data yet", never a placeholder.
+        stats: {
+          genuineFindings,
+          licenseWasteMonthlyCents,
         },
         // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see note above)
         isTestbed: customerRow?.isTestbed === true,

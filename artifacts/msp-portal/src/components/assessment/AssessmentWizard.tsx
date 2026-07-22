@@ -37,6 +37,11 @@ import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import { AssessmentSowSelector } from "./AssessmentSowSelector";
 import { AssessmentPaymentPlan } from "./AssessmentPaymentPlan";
+// Real radar/spider chart renderer from the platform's dashboard web-part
+// system — the same component real dashboards use for pillar-snapshot
+// widgets (engine.pillarSnapshot). Aliased to avoid colliding with the
+// lucide-react "Radar" icon already used as this step's PanelShell icon.
+import { Radar as RadarChart, type DistributionWidgetData } from "@workspace/dashboard-canvas";
 import {
   CheckCircle2,
   ChevronRight,
@@ -110,6 +115,20 @@ interface AssessmentStatus {
     status: "not_started" | "generating" | "ready" | "failed";
     html: string | null;
     generatedAt: string | null;
+  };
+  // Real tenant-health radar — only pillars this customer's actual scanned
+  // package genuinely covers (pillar-coverage.ts on the backend). Empty until
+  // the package has real monitoring_package_checks rows curated for it.
+  radar: {
+    packageKey: string | null;
+    pillars: { pillar: string; label: string; score: number }[];
+  };
+  // Real stat cards — every number traces to this run's own persisted summary
+  // or a live cost-engine query; null means "no real data yet", never a
+  // placeholder.
+  stats: {
+    genuineFindings: number | null;
+    licenseWasteMonthlyCents: number | null;
   };
   // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
   isTestbed: boolean;
@@ -537,6 +556,138 @@ function ChecklistIcon({ status }: { status: ChecklistStatus }) {
   );
 }
 
+// ── Path to remediation — connected phase timeline ──────────────────────────
+// A richer visual treatment of the same real checklist data (scan → each real
+// expected document → SOW) — a numbered, connected timeline instead of a flat
+// list, with an explicit Complete/In Progress/Planned/Failed status per phase.
+// The underlying status derivation (checklistDocStatus) is untouched; this
+// only restyles how those same statuses are presented.
+function phaseStatusLabel(status: ChecklistStatus): string {
+  switch (status) {
+    case "complete":
+      return "Complete";
+    case "active":
+      return "In Progress";
+    case "failed":
+      return "Failed";
+    default:
+      return "Planned";
+  }
+}
+
+function phaseStatusTextCls(status: ChecklistStatus): string {
+  switch (status) {
+    case "complete":
+      return "text-emerald-500";
+    case "failed":
+      return "text-red-500";
+    case "active":
+      return "text-primary";
+    default:
+      return "text-muted-foreground";
+  }
+}
+
+function PhaseTimeline({
+  items,
+  compact,
+}: {
+  items: { key: string; label: string; status: ChecklistStatus }[];
+  compact?: boolean;
+}) {
+  return (
+    <ol>
+      {items.map((item, i) => (
+        <li key={item.key} className={`relative ${i < items.length - 1 ? "pb-5" : ""}`}>
+          {i < items.length - 1 && (
+            <span
+              aria-hidden
+              className={`absolute left-3.5 top-7 bottom-0 w-px ${
+                item.status === "complete" ? "bg-emerald-500/40" : "bg-border"
+              }`}
+            />
+          )}
+          <div className="relative flex items-start gap-3">
+            <ChecklistIcon status={item.status} />
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className={`truncate ${compact ? "text-xs text-muted-foreground" : "text-sm text-foreground"}`}>
+                {item.label}
+              </p>
+              <p className={`text-xs font-medium ${phaseStatusTextCls(item.status)}`}>
+                {phaseStatusLabel(item.status)}
+              </p>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// ── Real stat cards ──────────────────────────────────────────────────────────
+// Every number here traces to a real, already-computed source (this run's own
+// persisted summary counts, or a live cost-engine query against real pricing
+// data) — never a placeholder. A stat with no real data behind it (null) is
+// simply omitted, not shown as zero or "—".
+function StatCards({ stats }: { stats: AssessmentStatus["stats"] }) {
+  const cards: { label: string; value: string }[] = [];
+  if (stats.genuineFindings != null) {
+    cards.push({
+      label: stats.genuineFindings === 1 ? "Finding to review" : "Findings to review",
+      value: String(stats.genuineFindings),
+    });
+  }
+  if (stats.licenseWasteMonthlyCents != null) {
+    cards.push({
+      label: "License waste, per month",
+      value: `$${Math.round(stats.licenseWasteMonthlyCents / 100).toLocaleString()}`,
+    });
+  }
+  if (cards.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-xl border border-border bg-card/60 px-4 py-3">
+          <p className="text-lg font-semibold tabular-nums text-foreground">{c.value}</p>
+          <p className="text-xs text-muted-foreground">{c.label}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Tenant health axes — real radar, real coverage only ─────────────────────
+// The same "Package-Aware Pillar Rings" concept, built as a radar instead of
+// individual rings: only pillars this customer's actual scanned package
+// genuinely covers (traced server-side through monitoring_package_checks →
+// signal_derivation_rules pillar weights — see pillar-coverage.ts) ever appear
+// as an axis. A package with real coverage for only 3 of 7 pillars renders 3
+// axes, never 7 with fabricated "perfect" scores on the rest. Nivo's own Radar
+// renderer already refuses to render below 3 dimensions, but we hide the
+// panel entirely rather than show a near-empty/broken-looking chart.
+function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
+  if (radar.pillars.length < 3) return null;
+
+  const data: DistributionWidgetData = {
+    shape: "distribution",
+    label: "This tenant",
+    slices: radar.pillars.map((p) => ({ name: p.label, value: p.score })),
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <p className="text-sm font-medium text-foreground">Tenant health axes</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Real coverage from this scan's package — only pillars with real signal data are plotted.
+      </p>
+      <div className="mt-3 flex h-56 min-h-0">
+        <RadarChart data={data} />
+      </div>
+    </div>
+  );
+}
+
 // ── CIO-Report Narrative ────────────────────────────────────────────────────
 // The architect-voice narrative leads the "generating" step once the scan is
 // done — real findings + real peer-benchmark data, written up by
@@ -547,7 +698,8 @@ function CioNarrativePanel({ narrative }: { narrative: AssessmentStatus["narrati
   if (narrative.status === "not_started") return null;
 
   return (
-    <div className="rounded-2xl border border-border bg-gradient-to-b from-primary/10 via-primary/5 to-transparent p-6 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-primary/10 via-primary/5 to-transparent p-6 pl-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+      <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-primary/50" />
       <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         <UserRound className="size-3.5" />
         From Shane McCaw, your M365 architect
@@ -664,6 +816,10 @@ function StepPanel({
                 <CioNarrativePanel narrative={status.narrative} />
               </div>
             )}
+            <div className="mb-5 space-y-4">
+              <StatCards stats={status.stats} />
+              <PillarRadarPanel radar={status.radar} />
+            </div>
             <p className="text-sm text-muted-foreground">
               We've finished generating your assessment{" "}
               {readyCount > 0 ? (
@@ -676,14 +832,12 @@ function StepPanel({
               )}{" "}
               Review the findings that matter most, then tailor your scope and choose a plan.
             </p>
-            <ul className="mt-5 space-y-2">
-              {checklist.map((item) => (
-                <li key={item.key} className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3">
-                  <ChecklistIcon status={item.status} />
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{item.label}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
+              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Path to remediation
+              </p>
+              <PhaseTimeline items={checklist} />
+            </div>
             <div className="mt-5 flex flex-wrap gap-3">
               <Button onClick={onGoToReview}>
                 Review findings <ChevronRight className="ml-1 size-4" />
@@ -752,6 +906,8 @@ function StepPanel({
             // it, not the headline.
             <div className="space-y-4">
               <CioNarrativePanel narrative={status.narrative} />
+              <StatCards stats={status.stats} />
+              <PillarRadarPanel radar={status.radar} />
               <div className="flex items-center gap-4 rounded-xl border border-border bg-card/60 px-4 py-3">
                 <ScoreRing value={pct} color={ringColor} size={48} strokeWidth={5} className="shrink-0" />
                 <div className="min-w-0 space-y-0.5">
@@ -770,29 +926,18 @@ function StepPanel({
             </p>
           )}
 
-          {/* ── Live checklist — real items, real statuses, ticking as they land.
-              Once the narrative is leading (scanComplete), this shrinks to a
-              compact secondary progress indicator rather than competing with it. ── */}
-          <ul className={scanComplete ? "mt-5 space-y-1.5" : "mt-5 space-y-2"}>
-            {checklist.map((item) => (
-              <li
-                key={item.key}
-                className={
-                  scanComplete
-                    ? "flex items-center gap-2.5 rounded-lg border border-border/60 bg-card/40 px-3 py-1.5"
-                    : "flex items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3"
-                }
-              >
-                <ChecklistIcon status={item.status} />
-                <span className={scanComplete ? "min-w-0 flex-1 truncate text-xs text-muted-foreground" : "min-w-0 flex-1 truncate text-sm text-foreground"}>
-                  {item.label}
-                </span>
-                {item.status === "failed" && (
-                  <span className="shrink-0 text-xs font-medium text-red-500">Failed</span>
-                )}
-              </li>
-            ))}
-          </ul>
+          {/* ── Path to remediation — real items, real statuses, ticking as they
+              land as a connected phase timeline. Once the narrative is leading
+              (scanComplete), this shrinks to a compact secondary indicator
+              rather than competing with it. ── */}
+          <div className={scanComplete ? "mt-5 rounded-xl border border-border/60 bg-card/40 p-3" : "mt-5 rounded-2xl border border-border bg-card/60 p-4"}>
+            {!scanComplete && (
+              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Path to remediation
+              </p>
+            )}
+            <PhaseTimeline items={checklist} compact={scanComplete} />
+          </div>
 
           {/* ── Live progress detail beneath the checklist ── */}
           {!anyFailed && !scanComplete && (
