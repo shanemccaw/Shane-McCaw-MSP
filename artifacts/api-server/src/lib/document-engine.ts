@@ -13,6 +13,7 @@ import { buildTenantProfile } from "./tenant-signals";
 import { getDocumentStylePrefix, getPrompt } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
+import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
@@ -158,6 +159,10 @@ export async function generateDocument(params: GenerateDocumentParams): Promise<
     { clientUserId, projectId, documentId: inserted.id, docTypeKey, testMode },
     "document-engine: standalone document generated",
   );
+
+  void generateOmgCardsFromTelemetry(inserted.id).catch((err) => {
+    log.warn({ err, documentId: inserted.id }, "document-engine: OMG card generation failed (non-fatal)");
+  });
 
   return { documentId: inserted.id, htmlContent, docTypeKey };
 }
