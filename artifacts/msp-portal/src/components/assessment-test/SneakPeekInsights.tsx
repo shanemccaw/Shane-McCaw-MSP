@@ -1,21 +1,22 @@
 import React, { useState } from 'react';
 import {
-  SecurityCoverageData,
   TenantHealthData,
   LicenseOptimizationData,
   CopilotReadinessData,
 } from './types';
 import { TenantHealthCard } from './TenantHealthCard';
 import {
-  ShieldCheck,
+  Activity,
   CreditCard,
   Sparkles,
   AlertTriangle,
-  ArrowUpRight,
 } from 'lucide-react';
 
 interface SneakPeekInsightsProps {
-  security: SecurityCoverageData;
+  /** Average of all real covered-pillar scores, or null when none exist yet. */
+  overallScore: number | null;
+  /** How many real pillars the score averages over (honest provenance line). */
+  pillarCount: number;
   tenantHealth: TenantHealthData;
   licenseOpt: LicenseOptimizationData;
   copilotReadiness: CopilotReadinessData;
@@ -23,12 +24,18 @@ interface SneakPeekInsightsProps {
 }
 
 export const SneakPeekInsights: React.FC<SneakPeekInsightsProps> = ({
-  security,
+  overallScore,
+  pillarCount,
   tenantHealth,
   licenseOpt,
   copilotReadiness,
   onOpenCardDetail,
 }) => {
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset =
+    overallScore != null ? circumference * (1 - overallScore / 100) : circumference;
+
   return (
     <div className="flex flex-col gap-4">
       {/* Header */}
@@ -40,16 +47,17 @@ export const SneakPeekInsights: React.FC<SneakPeekInsightsProps> = ({
       </div>
 
       <div className="flex flex-col gap-4">
-        {/* 1. Overall M365 Health Card */}
-        <div
-          onClick={() => onOpenCardDetail('security')}
-          className="bg-[#242424] rounded-xl card-border p-4 flex flex-col relative overflow-hidden hover:border-[#34d399]/40 transition-all cursor-pointer shadow-md group"
-        >
+        {/* 1. Overall M365 Health Card — REAL average of all covered
+            pillars' real scores (same derivation as the pillar-gauge row
+            and AssessmentGeneratingScreen.tsx). Honest em-dash when no
+            pillar data exists yet. Not clickable — this is a summary
+            scalar, not a single pillar's drill-down. */}
+        <div className="bg-[#242424] rounded-xl card-border p-4 flex flex-col relative overflow-hidden shadow-md">
           <div className="flex justify-between items-start mb-2">
             <span className="text-[11px] font-semibold text-[#8a919d] uppercase tracking-wider">
               Overall M365 Health
             </span>
-            <ShieldCheck className="w-4 h-4 text-[#34d399]" />
+            <Activity className="w-4 h-4 text-[#34d399]" />
           </div>
 
           <div className="flex items-center justify-center relative py-2 h-28">
@@ -64,37 +72,37 @@ export const SneakPeekInsights: React.FC<SneakPeekInsightsProps> = ({
                 <circle
                   cx="50"
                   cy="50"
-                  r="40"
+                  r={radius}
                   fill="none"
                   stroke="rgba(255,255,255,0.1)"
                   strokeWidth="10"
                 />
-                <circle
-                  className="transition-all duration-1000"
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="url(#overallHealthGrad)"
-                  strokeWidth="10"
-                  strokeDasharray="251.2"
-                  strokeDashoffset={251.2 * (1 - security.mfaActivePercentage / 100)}
-                  strokeLinecap="round"
-                />
+                {overallScore != null && (
+                  <circle
+                    className="transition-all duration-1000"
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    fill="none"
+                    stroke="url(#overallHealthGrad)"
+                    strokeWidth="10"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={dashOffset}
+                    strokeLinecap="round"
+                  />
+                )}
               </g>
             </svg>
             <div className="absolute flex flex-col items-center">
-              <span className="text-xl font-bold text-[#34d399] font-mono group-hover:scale-105 transition-transform">
-                {security.mfaActivePercentage}%
+              <span className="text-xl font-bold text-[#34d399] font-mono">
+                {overallScore != null ? `${overallScore}` : '—'}
               </span>
-              <span className="text-[10px] font-medium text-[#8a919d]">MFA Active</span>
             </div>
           </div>
-          <div className="text-[11px] text-[#c0c7d3] flex items-center justify-between mt-1 pt-2 border-t border-white/5">
-            <span>{security.totalUsers} Total Users</span>
-            <span className="text-[#34d399] font-medium flex items-center gap-0.5">
-              Details <ArrowUpRight className="w-3 h-3" />
-            </span>
+          <div className="text-[11px] text-[#c0c7d3] flex items-center justify-center mt-1 pt-2 border-t border-white/5">
+            {overallScore != null
+              ? `Average of ${pillarCount} scanned pillar${pillarCount === 1 ? '' : 's'}`
+              : 'No pillar data from this scan yet'}
           </div>
         </div>
 

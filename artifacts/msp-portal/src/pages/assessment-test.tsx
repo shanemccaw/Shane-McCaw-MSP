@@ -19,7 +19,6 @@ import React, { useState } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { AssessmentHero } from '@/components/assessment-test/AssessmentHero';
 import { ScoreGaugeGrid } from '@/components/assessment-test/ScoreGaugeGrid';
-import { OverallHealthCard } from '@/components/assessment-test/OverallHealthCard';
 import { TelemetryBriefing } from '@/components/assessment-test/TelemetryBriefing';
 import { AssessmentPipeline } from '@/components/assessment-test/AssessmentPipeline';
 import { SneakPeekInsights } from '@/components/assessment-test/SneakPeekInsights';
@@ -31,7 +30,6 @@ import { useAssessmentLiveStatus } from '@/components/assessment-test/useAssessm
 
 import {
   initialTelemetryItems,
-  mockSecurityCoverage,
   mockTenantHealth,
   mockLicenseOptimization,
   mockCopilotReadiness,
@@ -177,21 +175,14 @@ export default function AssessmentTestPage() {
               onTriggerScan={() => void live.debugTriggerScan()}
             />
 
-            {/* 2. Score Gauges (4 real pillar cards) + REAL Overall M365 Health
-                positioned to the right of the four pillar gauges */}
-            <div className="flex flex-col md:flex-row gap-4 items-stretch">
-              <div className="flex-1 min-w-0">
-                <ScoreGaugeGrid
-                  gauges={gauges}
-                  onSelectGauge={(gauge) => {
-                    if (!gauge.notCovered) setSelectedGauge(gauge);
-                  }}
-                />
-              </div>
-              <div className="md:w-44 shrink-0">
-                <OverallHealthCard score={overallScore} pillarCount={pillars.length} />
-              </div>
-            </div>
+            {/* 2. Score Gauges (4 real pillar cards). Overall M365 Health
+                lives in the right-column SneakPeekInsights panel, not here. */}
+            <ScoreGaugeGrid
+              gauges={gauges}
+              onSelectGauge={(gauge) => {
+                if (!gauge.notCovered) setSelectedGauge(gauge);
+              }}
+            />
 
             {/* 3. Telemetry Briefing (STILL MOCK — scoped in a later step) */}
             <TelemetryBriefing
@@ -215,7 +206,8 @@ export default function AssessmentTestPage() {
 
             {/* Sneak Peek Insights (STILL MOCK — scoped in a later step) */}
             <SneakPeekInsights
-              security={mockSecurityCoverage}
+              overallScore={overallScore}
+              pillarCount={pillars.length}
               tenantHealth={mockTenantHealth}
               licenseOpt={mockLicenseOptimization}
               copilotReadiness={mockCopilotReadiness}
