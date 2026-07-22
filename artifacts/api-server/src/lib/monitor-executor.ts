@@ -400,6 +400,14 @@ export async function graphFetchPaginated(
     if (method.toUpperCase() === "GET" && url.includes("$filter=")) {
       options.headers = { ...(options.headers ?? {}), ConsistencyLevel: "eventual" };
     }
+    // /security/alerts_v2's detectionSource/serviceSource are evolvable enums —
+    // newer members (e.g. microsoftInsiderRiskManagement) come back as
+    // unknownFutureValue unless the request opts in via this header. Scoped to
+    // this one endpoint rather than sent on every GET, since it's only meaningful
+    // there; safe to always include on it, Graph ignores it for older members.
+    if (method.toUpperCase() === "GET" && url.includes("/security/alerts_v2")) {
+      options.headers = { ...(options.headers ?? {}), Prefer: "include-unknown-enum-members" };
+    }
 
     // graphFetchForTenant handles auth and consent-revoked detection
     const fullPath = url.startsWith(GRAPH_BASE) ? url.slice(GRAPH_BASE.length) : url;
