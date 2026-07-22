@@ -132,6 +132,10 @@ export const documentTypesTable = pgTable("document_types", {
   // Mirrors task_execution_guide's special case: prompt is built from a real
   // SOW document's HTML rather than the standard findings/scores block.
   requiresSowHtml: boolean("requires_sow_html").notNull().default(false),
+  serviceId: integer("service_id").references((): AnyPgColumn => servicesTable.id, { onDelete: "set null" }),
+  includedProfileKeyPatterns: jsonb("included_profile_key_patterns").$type<string[]>().notNull().default([]),
+  includedSignalCategories: jsonb("included_signal_categories").$type<string[]>().notNull().default([]),
+  pipelineCategory: text("pipeline_category", { enum: ["standalone", "pipeline_output"] }).notNull().default("standalone"),
   sortOrder: integer("sort_order").notNull().default(0),
   // Soft-toggle without deleting the record (and its generated documents).
   isActive: boolean("is_active").notNull().default(true),
