@@ -51,6 +51,7 @@ export default defineConfig({
       "src/lib/exception-tracker.test.ts",
       "src/tests/workflow-run-correlation.test.ts",
       "src/routes/support-chat.test.ts",
+      "src/routes/public-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/__tests__/graph-consent-revoke.test.ts",
       "src/lib/msp-mailer.test.ts",

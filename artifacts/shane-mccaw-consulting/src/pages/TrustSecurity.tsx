@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 
@@ -231,14 +232,13 @@ export default function TrustSecurity() {
             Questions about how this works?
           </h2>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link
-              href="/contact"
+            <ChatCTA
               className="px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90 inline-flex items-center justify-center gap-2"
               style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
               data-track="cta"
             >
               Contact Shane <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
             <Link
               href="/about"
               className="px-7 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"

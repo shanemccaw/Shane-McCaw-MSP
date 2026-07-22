@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { usePersonalizationState } from "@/hooks/usePersonalizationState";
 import { useEngagementOffer } from "@/hooks/usePersonalizationData";
 import { trackEvent } from "@/lib/analytics";
+import { ChatCTA } from "@/components/ChatCTA";
 
 function formatUsd(cents: number): string {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -86,15 +87,14 @@ export function EngagementOfferPanel() {
         </div>
       </div>
 
-      <Link
-        href="/contact"
+      <ChatCTA
         className="mt-4 w-full inline-flex items-center justify-center px-4 py-2.5 rounded-xl font-semibold text-white text-sm transition-opacity hover:opacity-90"
         style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
         data-track="cta"
         onClick={() => trackEvent("personalization_nudge_click", { tier, surface: "engagement_offer_panel", rule: offer.ruleName })}
       >
         Claim this now
-      </Link>
+      </ChatCTA>
     </div>
   );
 }

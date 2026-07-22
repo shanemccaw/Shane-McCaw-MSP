@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ArrowRight, Shield, Zap, Brain, FolderKanban, CheckCircle, Calendar, Activity, Lock } from "lucide-react";
 import { Link } from "wouter";
+import { openChat } from "@/lib/chat";
 
 const sections = [
   {
@@ -115,7 +116,7 @@ export default function HowItWorks() {
             Not questionnaires and kickoff calls. Live automation inside your Microsoft 365 tenant, AI-powered analysis, and a findings session built around your actual environment — not a generic template.
           </p>
           <div className="mt-10 flex flex-wrap gap-4 items-center">
-            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <CTAButton onClick={openChat}>Ask a Question</CTAButton>
             <Link
               href="/how-it-works/technical"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
@@ -197,7 +198,7 @@ export default function HowItWorks() {
             A free 30-minute discovery call is the fastest way to understand which engagement is right for your situation — and what you're likely to find.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <CTAButton onClick={openChat}>Ask a Question</CTAButton>
             <Link
               href="/how-it-works/technical"
               className="inline-flex items-center gap-2 text-white/70 hover:text-white text-sm font-medium border border-white/20 hover:border-white/40 px-6 py-3 rounded-xl transition-colors"

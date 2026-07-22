@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { trackEvent } from "@/lib/analytics";
@@ -481,15 +482,14 @@ export default function Resources() {
               Shane has spent 30 years in the Microsoft ecosystem and currently serves as Lead M365
               Architect at NASA. Book a free 30-minute discovery call to talk through what you're seeing.
             </p>
-            <a
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
             >
               <MessageSquare className="w-4 h-4" />
               Book a Consultation
-            </a>
+            </ChatCTA>
             <p className="mt-4 text-text-secondary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
           </GlassPanel>
         </div>

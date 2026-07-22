@@ -6,6 +6,7 @@ import {
   Package, Compass, LogIn,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChatCTA } from "./ChatCTA";
 
 // Solutions / Topic pages — mirrors the 8 existing quiz categories (website-rebuild-reference-v2.md §5).
 // Each is the personalization surface for its domain; generic domain marketing for a cold visitor.
@@ -170,7 +171,7 @@ export function Header() {
             {/* Company dropdown */}
             <div className="relative" onMouseEnter={() => openMenu("company")} onMouseLeave={closeMenu}>
               <button
-                className={cn(navLinkClass(isActive("/about") || isActive("/contact")), "flex items-center gap-1.5")}
+                className={cn(navLinkClass(isActive("/about")), "flex items-center gap-1.5")}
                 aria-expanded={openDropdown === "company"}
               >
                 <span>Company</span>
@@ -179,7 +180,7 @@ export function Header() {
               {openDropdown === "company" && (
                 <div className="absolute top-full right-0 w-52 mt-1 menu-panel rounded-2xl p-2 z-50">
                   <Link href="/about" onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
-                  <Link href="/contact" onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</Link>
+                  <ChatCTA onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</ChatCTA>
                 </div>
               )}
             </div>
@@ -196,24 +197,22 @@ export function Header() {
               <span>Client Login</span>
             </Link>
             {isAssessmentsPage ? (
-              <Link
-                href="/book"
+              <ChatCTA
                 className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary transition-colors"
                 data-track="cta"
               >
-                <span>Or book a call</span>
+                <span>Or ask a question</span>
                 <ArrowRight className="w-3 h-3" />
-              </Link>
+              </ChatCTA>
             ) : (
-              <Link
-                href="/book"
+              <ChatCTA
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                <span>Book a Call</span>
+                <span>Chat with us</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              </ChatCTA>
             )}
           </div>
 
@@ -264,29 +263,27 @@ export function Header() {
 
           <Link href="/resources" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Resources</Link>
           <Link href="/about" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
-          <Link href="/contact" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</Link>
+          <ChatCTA onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</ChatCTA>
           <Link href="/login" onClick={closeMobileMenu} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-primary hover:bg-white/[0.06]" data-track="nav">Client Login</Link>
 
           <div className="pt-4">
             {isAssessmentsPage ? (
-              <Link
-                href="/book"
+              <ChatCTA
                 onClick={closeMobileMenu}
                 className="w-full text-center py-2 px-4 text-xs font-medium text-text-secondary block"
                 data-track="cta"
               >
-                Or book a call
-              </Link>
+                Or ask a question
+              </ChatCTA>
             ) : (
-              <Link
-                href="/book"
+              <ChatCTA
                 onClick={closeMobileMenu}
                 className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                Book a Call
-              </Link>
+                Chat with us
+              </ChatCTA>
             )}
           </div>
         </div>

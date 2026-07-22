@@ -1,5 +1,6 @@
 import { CheckCircle2, ArrowRight, FolderOpen } from "lucide-react";
 import { type EngagementProject } from "@/hooks/useEngagementProjects";
+import { ChatCTA } from "@/components/ChatCTA";
 
 interface EngagementProjectCardProps {
   project: EngagementProject;
@@ -48,13 +49,12 @@ export function EngagementProjectCard({ project, index }: EngagementProjectCardP
       )}
 
       <div className="mt-auto pt-4">
-        <a
-          href="/book"
+        <ChatCTA
           className="inline-flex items-center justify-center w-full gap-2 border border-white/[0.12] hover:border-white/[0.2] text-text-secondary hover:text-text-primary font-semibold text-sm px-5 py-2.5 rounded-xl transition-colors"
           data-track="cta"
         >
           Request a scoped SOW <ArrowRight className="w-4 h-4" />
-        </a>
+        </ChatCTA>
       </div>
     </div>
   );

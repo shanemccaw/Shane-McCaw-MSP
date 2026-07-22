@@ -2,6 +2,8 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { ChatCTA } from "@/components/ChatCTA";
+import { openChat } from "@/lib/chat";
 import {
   CheckCircle,
   ArrowRight,
@@ -214,7 +216,7 @@ export default function RetainerQuizResults({ scores = DEFAULT_SCORES, onRetake 
                     Keep this current — Start Monitoring
                   </CTAButton>
                   <CTAButton
-                    href="/contact"
+                    onClick={openChat}
                     className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90"
                   >
                     Discuss my results
@@ -394,12 +396,11 @@ export default function RetainerQuizResults({ scores = DEFAULT_SCORES, onRetake 
                 <p className="text-muted-foreground text-sm leading-relaxed mb-3">
                   Talk through your results directly. No commitment — a focused conversation about your environment and which plan will move the needle fastest.
                 </p>
-                <Link
-                  href="/contact"
+                <ChatCTA
                   className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                 >
                   Discuss my results <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                </ChatCTA>
               </div>
             </div>
 

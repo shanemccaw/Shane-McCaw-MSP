@@ -4,6 +4,7 @@ import { useServices, type PublicService } from "../hooks/useServices";
 import { trackPricingInteraction } from "../lib/analytics";
 import { Layout } from "../components/Layout";
 import { SEOMeta } from "../components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "../components/design-system/GlassPanel";
 import { GradientText } from "../components/design-system/GradientText";
 import { StatPanel } from "../components/design-system/StatPanel";
@@ -628,7 +629,7 @@ export default function Monitoring() {
           ) : error || monitoringPackages.length === 0 ? (
             <div className="text-center py-12 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
               Monitoring package data is currently unavailable. Please{" "}
-              <Link href="/contact" className="text-accent-blue hover:underline">contact us</Link> for pricing.
+              <ChatCTA className="text-accent-blue hover:underline">contact us</ChatCTA> for pricing.
             </div>
           ) : (
             <>
@@ -776,13 +777,12 @@ export default function Monitoring() {
                 <Zap className="w-4 h-4" />
                 Run Free Diagnostic
               </Link>
-              <Link
-                href="/contact"
+              <ChatCTA
                 className="px-6 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
                 data-track="cta"
               >
                 Talk to Shane McCaw
-              </Link>
+              </ChatCTA>
             </div>
           </GlassPanel>
         </div>

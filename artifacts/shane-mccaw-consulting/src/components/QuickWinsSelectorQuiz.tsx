@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { CheckCircle, ChevronRight, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
+import { ChatCTA } from "./ChatCTA";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -493,12 +494,11 @@ export function QuickWinsSelectorQuiz() {
           <CTAButton href="/platform/quick-start" className="px-7 py-3 text-sm">
             View All Quick Wins
           </CTAButton>
-          <a
-            href="/book"
+          <ChatCTA
             className="inline-flex items-center justify-center gap-2 text-[#0A2540] font-semibold hover:text-[#0078D4] transition-colors text-sm border border-border px-7 py-3 rounded-xl hover:border-[#0078D4]/40"
           >
             Book a Discovery Call <ArrowRight className="w-4 h-4" />
-          </a>
+          </ChatCTA>
         </div>
 
         <div className="text-center">

@@ -6,8 +6,6 @@ import AssessmentDetail from "./pages/AssessmentDetail";
 import Monitoring from "./pages/Monitoring";
 import Status from "./pages/Status";
 import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Book from "./pages/Book";
 import Checkout from "./pages/Checkout";
 import HowItWorks from "./pages/HowItWorks";
 import TechnicalOverview from "./pages/TechnicalOverview";
@@ -114,8 +112,6 @@ export default function App() {
       <Route path="/monitoring" component={Monitoring} />
       <Route path="/status" component={Status} />
       <Route path="/about" component={About} />
-      <Route path="/contact" component={Contact} />
-      <Route path="/book" component={Book} />
       <Route path="/checkout/:slug" component={Checkout} />
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/technical-overview" component={TechnicalOverview} />

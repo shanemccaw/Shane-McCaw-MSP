@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { Button } from "@/components/ui/button";
@@ -655,19 +656,17 @@ export default function Checkout() {
                 to discuss your requirements and get started.
               </p>
               <div className="flex gap-3 justify-center flex-wrap">
-                <Link
-                  href="/contact"
+                <ChatCTA
                   className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
                   style={GRADIENT_BG}
                 >
                   Contact Shane
-                </Link>
-                <Link
-                  href="/book"
+                </ChatCTA>
+                <ChatCTA
                   className="inline-flex items-center justify-center px-5 py-2.5 rounded-xl border border-white/[0.12] text-text-primary text-sm font-semibold hover:bg-white/[0.06] transition-colors"
                 >
                   Book a discovery call
-                </Link>
+                </ChatCTA>
               </div>
             </GlassPanel>
           )}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { CTAButton } from "./CTAButton";
+import { ChatCTA } from "./ChatCTA";
 import { ArrowRight, CheckCircle, ChevronLeft, Star, TrendingUp, Award } from "lucide-react";
 
 export type TierKey = "Essentials" | "Growth" | "Enterprise";
@@ -220,12 +221,11 @@ export function RetainerSelectorQuiz({ onComplete }: Props) {
             <CTAButton href={config.href} className="px-8 py-4 text-base">
               See the {config.headline} Plan
             </CTAButton>
-            <Link
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 text-white/70 hover:text-white font-medium text-base transition-colors border border-white/20 px-8 py-4 rounded-xl hover:border-white/40"
             >
               Book a Discovery Call <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
           </div>
 
           <div className="border-t border-white/10 pt-8">

@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { ChatCTA } from "@/components/ChatCTA";
 
 export function ConsultationCTA() {
   return (
@@ -33,15 +34,14 @@ export function ConsultationCTA() {
         <p className="text-text-secondary text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
           Work directly with Shane — a 30-year Microsoft veteran and Lead M365 Architect at NASA. No account managers, no junior staff. Just clear, actionable guidance from day one.
         </p>
-        <Link
-          href="/book"
+        <ChatCTA
           className="inline-flex items-center justify-center text-lg px-12 py-5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
           style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
           data-testid="consultation-cta-button"
           data-track="cta"
         >
           Book a Consultation
-        </Link>
+        </ChatCTA>
         <p className="mt-5 text-text-tertiary text-sm tracking-wide">
           No pitch. No obligation. Just clarity.
         </p>

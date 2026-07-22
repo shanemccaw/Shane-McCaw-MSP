@@ -12,6 +12,7 @@ import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import NotFound from "@/pages/not-found";
 import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
+import { ChatCTA } from "@/components/ChatCTA";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function splitLines(text: string | null): string[] {
@@ -246,12 +247,11 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
             <CTAButton href={onboardingHref} className="text-base px-10 py-4">
               Start This Engagement
             </CTAButton>
-            <a
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-8 py-4 rounded-xl hover:border-white/40"
             >
               Book a Free Discovery Call <ArrowRight className="w-4 h-4" />
-            </a>
+            </ChatCTA>
             {service.hasPdf && (
               <button
                 onClick={() => setModalOpen(true)}
@@ -675,12 +675,11 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
             <CTAButton href={onboardingHref} className="text-base px-12 py-4">
               Start Your {service.name}
             </CTAButton>
-            <a
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-8 py-4 rounded-xl hover:border-white/40"
             >
               Book a Free Discovery Call <ArrowRight className="w-4 h-4" />
-            </a>
+            </ChatCTA>
           </div>
           <p className="mt-8 text-white/30 text-sm">
             Or{" "}

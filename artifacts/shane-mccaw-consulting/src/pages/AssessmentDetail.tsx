@@ -5,6 +5,7 @@ import {
   TrendingUp, BadgeCheck, FileText,
 } from "lucide-react";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
@@ -271,12 +272,11 @@ export default function AssessmentDetail() {
                 {service.isFree ? "Start Free Assessment" : "Buy This Assessment"} <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </Link>
-            <a
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center gap-2 text-text-secondary font-semibold hover:text-text-primary transition-colors text-sm border border-white/[0.12] px-8 py-4 rounded-xl hover:border-white/[0.2]"
             >
               Book a Free Discovery Call <ArrowRight className="w-4 h-4" />
-            </a>
+            </ChatCTA>
           </div>
         </div>
       </section>

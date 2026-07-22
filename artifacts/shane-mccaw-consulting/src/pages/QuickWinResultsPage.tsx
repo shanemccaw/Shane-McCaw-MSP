@@ -3,6 +3,8 @@ import { useParams, Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { ChatCTA } from "@/components/ChatCTA";
+import { openChat } from "@/lib/chat";
 import {
   CheckCircle,
   ArrowRight,
@@ -426,7 +428,7 @@ export default function QuickWinResultsPage() {
                       Start This Quick Win
                     </CTAButton>
                     <CTAButton
-                      href="/book"
+                      onClick={openChat}
                       className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90"
                     >
                       Book a Free Call First
@@ -614,12 +616,11 @@ export default function QuickWinResultsPage() {
                   Talk through your results with Shane directly. No commitment — a focused
                   conversation about what would move the needle fastest in your environment.
                 </p>
-                <Link
-                  href="/book"
+                <ChatCTA
                   className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                 >
                   Book a call <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                </ChatCTA>
               </div>
             </div>
           </div>
@@ -643,7 +644,7 @@ export default function QuickWinResultsPage() {
               </CTAButton>
             )}
             <CTAButton
-              href="/book"
+              onClick={openChat}
               className="px-8 py-3.5 text-sm !bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]"
             >
               Book a Free Call

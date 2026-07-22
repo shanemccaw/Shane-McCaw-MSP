@@ -5,6 +5,7 @@ import { z } from "zod";
 import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight, Link2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackEvent, identifyLead, trackAssessmentStarted } from "@/lib/analytics";
+import { ChatCTA } from "@/components/ChatCTA";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 
@@ -603,13 +604,12 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                     >
                       {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
                     </a>
-                    <a
-                      href="/book"
+                    <ChatCTA
                       className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                       onClick={() => results && trackEvent("quiz_upsell_details_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, destination: "book-call" })}
                     >
                       Book a Free Call
-                    </a>
+                    </ChatCTA>
                   </div>
                 </div>
               )}

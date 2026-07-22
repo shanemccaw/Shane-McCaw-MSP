@@ -7,6 +7,7 @@ import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
 import { WorkflowSteps } from "@/components/design-system/WorkflowSteps";
+import { ChatCTA } from "@/components/ChatCTA";
 import {
   Brain,
   X,
@@ -769,8 +770,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       >
                         {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
                       </a>
-                      <a
-                        href="/book"
+                      <ChatCTA
                         className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                         onClick={() =>
                           trackEvent("quiz_upsell_book_click", {
@@ -781,7 +781,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                         }
                       >
                         Book a Free Call
-                      </a>
+                      </ChatCTA>
                     </div>
                     <div className="text-center pt-1">
                       <a

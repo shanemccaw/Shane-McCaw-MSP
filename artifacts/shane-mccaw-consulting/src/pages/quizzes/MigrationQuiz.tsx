@@ -5,6 +5,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
+import { ChatCTA } from "@/components/ChatCTA";
 import {
   CheckCircle, Server, Building2, ShieldCheck, Globe,
   AlertTriangle, Target, Users, ArrowRight, BarChart3, FileText,
@@ -200,13 +201,12 @@ export default function MigrationQuiz() {
               Take the Free Quiz
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
-            <a
-              href="/book"
+            <ChatCTA
               data-track="cta"
               className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary font-semibold text-sm border border-glass-border px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
             >
               Book a Discovery Call
-            </a>
+            </ChatCTA>
           </div>
 
           <div className="flex flex-wrap justify-center gap-6">

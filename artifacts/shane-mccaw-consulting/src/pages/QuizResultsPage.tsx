@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { cn } from "@/lib/utils";
@@ -197,13 +198,12 @@ export default function QuizResultsPage() {
               <AlertTriangle className="w-10 h-10 text-red-400" />
               <h1 className="text-text-primary font-bold text-xl">Results Unavailable</h1>
               <p className="text-text-secondary text-sm max-w-md">{error}</p>
-              <a
-                href="/contact"
+              <ChatCTA
                 className="mt-4 px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-opacity hover:opacity-90"
                 style={GRADIENT_BG}
               >
                 Contact Shane
-              </a>
+              </ChatCTA>
             </div>
           )}
 
@@ -294,12 +294,11 @@ export default function QuizResultsPage() {
                   >
                     {primaryLabel} <ArrowRight className="w-3.5 h-3.5" />
                   </a>
-                  <a
-                    href="/contact"
+                  <ChatCTA
                     className="flex-1 py-2.5 px-4 border border-glass-border hover:border-white/40 text-text-secondary hover:text-text-primary font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                   >
                     Discuss my results
-                  </a>
+                  </ChatCTA>
                 </div>
                 {showMonitoringCta && (
                   <a

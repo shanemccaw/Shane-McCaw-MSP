@@ -1,11 +1,20 @@
-import { Bot, Brain, Layers, BookOpen, CalendarDays, Mail, ArrowLeft } from "lucide-react";
+import type { ReactNode } from "react";
+import { Bot, Brain, Layers, BookOpen, MessageCircle, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 
-const ACTION_CARDS = [
+const ACTION_CARDS: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  href?: string;
+  chat?: boolean;
+  label: string;
+}[] = [
   {
     icon: <Bot className="w-6 h-6 text-accent-blue" />,
     title: "Take the Copilot Readiness Quiz",
@@ -35,18 +44,11 @@ const ACTION_CARDS = [
     label: "Read something useful →",
   },
   {
-    icon: <CalendarDays className="w-6 h-6 text-accent-blue" />,
-    title: "Book a Discovery Call",
-    desc: "30 minutes. No pitch deck. Just an honest conversation about your Microsoft 365 environment.",
-    href: "/book",
-    label: "Find a time →",
-  },
-  {
-    icon: <Mail className="w-6 h-6 text-accent-blue" />,
-    title: "Contact Shane",
-    desc: "If you think this page should exist, let Shane know. He probably forgot to build it.",
-    href: "/contact",
-    label: "Say hello →",
+    icon: <MessageCircle className="w-6 h-6 text-accent-blue" />,
+    title: "Ask the AI Assistant",
+    desc: "Have a question about services, pricing, or getting started? Chat with our assistant — it's the fastest way to get an answer.",
+    chat: true,
+    label: "Open the chat →",
   },
 ];
 
@@ -90,8 +92,8 @@ export default function NotFound() {
             </h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ACTION_CARDS.map((card, i) => (
-              <Link key={i} href={card.href} className="group">
+            {ACTION_CARDS.map((card, i) => {
+              const inner = (
                 <div className="bg-charcoal-1 border border-white/[0.06] rounded-2xl p-6 h-full flex flex-col gap-4 hover:border-accent-blue/40 transition-all duration-200">
                   <div className="w-11 h-11 rounded-xl bg-accent-blue/10 flex items-center justify-center flex-shrink-0">
                     {card.icon}
@@ -104,8 +106,13 @@ export default function NotFound() {
                   </div>
                   <span className="text-accent-blue text-sm font-semibold">{card.label}</span>
                 </div>
-              </Link>
-            ))}
+              );
+              return card.chat ? (
+                <ChatCTA key={i} className="group block">{inner}</ChatCTA>
+              ) : (
+                <Link key={i} href={card.href ?? "/"} className="group">{inner}</Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -116,9 +123,9 @@ export default function NotFound() {
           <GlassPanel className="p-8">
             <p className="text-text-secondary text-sm leading-relaxed">
               If you think this page <em>should</em> exist, let Shane know.{" "}
-              <Link href="/contact" className="text-accent-blue hover:underline font-medium">
+              <ChatCTA className="text-accent-blue hover:underline font-medium">
                 He probably forgot to build it.
-              </Link>
+              </ChatCTA>
             </p>
           </GlassPanel>
         </div>

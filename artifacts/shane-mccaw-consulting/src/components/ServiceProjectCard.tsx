@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle, ArrowRight, FolderOpen, Clock } from "lucide-react";
 import { type PublicService, formatPriceDisplay } from "@/hooks/useServices";
 import { CTAButton } from "@/components/CTAButton";
+import { openChat } from "@/lib/chat";
 
 interface ServiceProjectCardProps {
   service: PublicService;
@@ -106,7 +107,7 @@ export function ServiceProjectCard({ service, index }: ServiceProjectCardProps) 
 
       <div className="mt-auto pt-4">
         <CTAButton
-          href="/book"
+          onClick={openChat}
           className="w-full justify-center text-sm"
           data-testid={`project-card-cta-${index}`}
         >

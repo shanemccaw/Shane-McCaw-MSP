@@ -1,6 +1,7 @@
 import { SharedOfferCard, formatOfferPrice, type OfferCardData } from "@workspace/offer-card";
 export { resolveIcon, badgeClass, BADGE_COLORS, type OfferCardData } from "@workspace/offer-card";
 import { CTAButton } from "@/components/CTAButton";
+import { ChatCTA } from "@/components/ChatCTA";
 import { type PublicService } from "@/hooks/useServices";
 import { AlertTriangle, Download } from "lucide-react";
 import { Link } from "wouter";
@@ -100,8 +101,7 @@ export function OfferCard({
     ) : null;
 
   const bookCallBtn = (
-    <Link
-      href="/book"
+    <ChatCTA
       className={`w-full flex items-center justify-center text-sm font-semibold py-2.5 rounded border transition-colors ${
         hl
           ? "border-white/30 text-white/80 hover:border-white/60 hover:text-white"
@@ -109,7 +109,7 @@ export function OfferCard({
       }`}
     >
       Book a Discovery Call
-    </Link>
+    </ChatCTA>
   );
 
   const cta = (

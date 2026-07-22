@@ -284,6 +284,7 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "pipe-leads", label: "Leads", path: "/pipeline/leads", icon: UserPlus },
           { id: "pipe-quiz-leads", label: "Quiz Leads", path: "/pipeline/quiz-leads", icon: HelpCircle },
+          { id: "pipe-chat-queue", label: "Chat Queue", path: "/pipeline/chat-queue", icon: MessageSquare },
         ],
       },
       {

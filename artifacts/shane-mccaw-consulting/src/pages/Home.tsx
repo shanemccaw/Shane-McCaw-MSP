@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
@@ -1236,13 +1237,12 @@ export default function Home() {
               >
                 Start Continuous Monitoring
               </a>
-              <Link
-                href="/contact"
+              <ChatCTA
                 className="px-6 py-3.5 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors"
                 data-track="cta"
               >
                 Contact Shane McCaw
-              </Link>
+              </ChatCTA>
             </div>
           </GlassPanel>
         </div>

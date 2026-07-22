@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { openChat } from "@/lib/chat";
 import { CheckCircle, ArrowRight, Loader2, Shield, Zap, Lock, ChevronDown } from "lucide-react";
 
 interface LinkedService {
@@ -221,7 +222,10 @@ export default function LandingPage() {
     );
   }
 
-  const ctaHref = page.cta?.href ?? "/contact";
+  // No configured CTA link falls back to opening the site chat assistant (the public
+  // site's only "talk to a human" front door — the contact form and booking calendar
+  // have been removed).
+  const ctaHref = page.cta?.href;
   const defaultCtaText = isLpOnly && !hasServiceAccess ? "Sign Up to Access" : "Get Started";
   const ctaText = page.cta?.buttonText?.trim() || defaultCtaText;
 
@@ -237,7 +241,9 @@ export default function LandingPage() {
         children: fetchingToken ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading…</span> : ctaText,
       } as const;
     }
-    return { href: ctaHref, className: extraClassName, children: ctaText } as const;
+    return ctaHref
+      ? ({ href: ctaHref, className: extraClassName, children: ctaText } as const)
+      : ({ onClick: openChat, className: extraClassName, children: ctaText } as const);
   }
 
   function renderBlock(block: LayoutBlock, i: number) {

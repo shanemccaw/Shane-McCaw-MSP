@@ -1,5 +1,6 @@
 import { CheckCircle, Clock, ArrowRight, ChevronRight, Shield, Building2, ShieldCheck, Users, Rocket, BarChart3, XCircle } from "lucide-react";
 import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
+import { ChatCTA } from "@/components/ChatCTA";
 import { useServices, formatPrice } from "@/hooks/useServices";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -219,12 +220,11 @@ export default function ArchitectEnterprise() {
             >
               Get Started
             </a>
-            <Link
-              href="/contact"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
           </div>
         </div>
       </section>
@@ -466,20 +466,18 @@ export default function ArchitectEnterprise() {
             Shane will review your environment, agree on the first month's priorities, and have your dedicated channel active within 24 hours of engagement start.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="/book?plan=architect-enterprise"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
             >
               Start Architect Enterprise
-            </a>
-            <Link
-              href="/contact"
+            </ChatCTA>
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
           </div>
         </div>
       </section>

@@ -961,12 +961,12 @@ export const CopilotReadinessPDF = () => (
             <Text style={styles.ctaCardLink}>shanemccaw.com/quick-wins</Text>
           </View>
           <View style={styles.ctaCard}>
-            <Text style={styles.ctaCardTitle}>Free 30-Minute Consultation</Text>
+            <Text style={styles.ctaCardTitle}>Have Questions? Ask Our Assistant</Text>
             <Text style={styles.ctaCardText}>
-              Talk through your biggest Copilot concerns with Shane directly. No pitch — 
-              just an honest assessment of where you are and what matters most.
+              Chat with the assistant on our site for an honest read on your biggest
+              Copilot concerns — where you are, what matters most, and how to get started.
             </Text>
-            <Text style={styles.ctaCardLink}>shanemccaw.com/book</Text>
+            <Text style={styles.ctaCardLink}>shanemccaw.com</Text>
           </View>
         </View>
 

@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { ShieldCheck } from "lucide-react";
+import { ChatCTA } from "./ChatCTA";
 
 // Quiz is demoted to a recovery/SEO-feeder role (website-rebuild-reference-v2.md §1/§5) —
 // listed here in the footer, not the primary header nav.
@@ -63,8 +64,8 @@ export function Footer() {
             <h4 className="text-text-primary font-semibold mt-6 mb-4 text-sm tracking-wide">Company</h4>
             <ul className="space-y-2.5 text-sm text-text-secondary">
               <li><Link href="/about" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">About</Link></li>
-              <li><Link href="/contact" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Contact</Link></li>
-              <li><Link href="/book" className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Book a Call</Link></li>
+              <li><ChatCTA className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Contact</ChatCTA></li>
+              <li><ChatCTA className="block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">Ask a Question</ChatCTA></li>
             </ul>
           </div>
 

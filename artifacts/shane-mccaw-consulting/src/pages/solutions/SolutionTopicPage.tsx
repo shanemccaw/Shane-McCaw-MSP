@@ -3,6 +3,7 @@ import { Link, useRoute } from "wouter";
 import { ArrowRight, CheckCircle2, AlertTriangle, ClipboardCheck, Sparkles, FolderKanban } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
@@ -50,7 +51,7 @@ function FunnelStep({
   icon: typeof Sparkles;
   title: string;
   body: string;
-  href: string;
+  href?: string;
   linkLabel: string;
 }) {
   return (
@@ -63,13 +64,22 @@ function FunnelStep({
       </div>
       <h3 className="font-display text-base font-bold text-text-primary mb-2">{title}</h3>
       <p className="text-sm text-text-secondary leading-relaxed mb-5 flex-grow">{body}</p>
-      <Link
-        href={href}
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
-        data-track="cta"
-      >
-        {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
-      </Link>
+      {href ? (
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
+          data-track="cta"
+        >
+          {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      ) : (
+        <ChatCTA
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent-blue hover:opacity-80 transition-opacity"
+          data-track="cta"
+        >
+          {linkLabel} <ArrowRight className="w-3.5 h-3.5" />
+        </ChatCTA>
+      )}
     </div>
   );
 }
@@ -865,7 +875,6 @@ export default function SolutionTopicPage() {
             icon={FolderKanban}
             title="Scope a Project"
             body="If the scan finds a real gap here, we scope it as a priced SOW — a conversation, not a cart."
-            href="/book"
             linkLabel="Request a scoped SOW"
           />
         </div>

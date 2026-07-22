@@ -104,7 +104,7 @@ function getUtmParams(): Record<string, string> {
 
 // ─── Funnel inference — Landing → Pricing → CTA → Form → Submit → Conversion ───
 // (website-rebuild-reference-v2.md §4). Funnel is derived from the route the visitor
-// is currently on; /checkout, /contact, etc. carry no funnel of their own, so the last
+// is currently on; the checkout and login routes, etc. carry no funnel of their own, so the last
 // known funnel is remembered in sessionStorage and recalled once the visitor leaves the
 // originating page — same "durable enough for this session" tradeoff as the rest of the
 // tracker, no new persistence mechanism introduced.

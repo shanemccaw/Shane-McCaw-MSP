@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
@@ -803,15 +804,14 @@ export default function About() {
               Work directly with Shane — a 30-year Microsoft veteran and Lead M365 Architect at NASA.
               No account managers, no junior staff. Just clear, actionable guidance from day one.
             </p>
-            <a
-              href="/book"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
               style={GRADIENT_BG}
               data-track="cta"
               data-testid="consultation-cta-button"
             >
               Book a Consultation
-            </a>
+            </ChatCTA>
             <p className="mt-5 text-text-secondary text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
           </GlassPanel>
         </div>

@@ -1,6 +1,7 @@
 import { CheckCircle, Clock, DollarSign, Phone } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "../hooks/useServices";
 import { CTAButton } from "./CTAButton";
+import { ChatCTA } from "./ChatCTA";
 
 interface FixedPriceOfferCardProps {
   slug: string;
@@ -124,13 +125,12 @@ function FeaturedCard({
           <CTAButton href={ctaHref} className="whitespace-nowrap">
             {ctaLabel}
           </CTAButton>
-          <a
-            href="/book"
+          <ChatCTA
             className="inline-flex items-center justify-center gap-2 border border-[#0078D4] text-[#0078D4] font-semibold px-6 py-3 rounded hover:bg-[#0078D4]/5 transition-colors text-sm whitespace-nowrap"
           >
             <Phone className="w-4 h-4" />
             Book a Call
-          </a>
+          </ChatCTA>
         </div>
       </div>
     </div>
@@ -220,8 +220,7 @@ function CompactCard({
         >
           {ctaLabel}
         </a>
-        <a
-          href="/book"
+        <ChatCTA
           className="inline-flex items-center justify-center gap-2 font-semibold px-5 py-3 rounded-xl transition-colors text-sm border"
           style={{ color: accentColor, borderColor: accentColor }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${accentColor}10`)}
@@ -229,7 +228,7 @@ function CompactCard({
         >
           <Phone className="w-4 h-4" />
           Book a Call
-        </a>
+        </ChatCTA>
       </div>
     </div>
   );

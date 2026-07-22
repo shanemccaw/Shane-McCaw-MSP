@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
@@ -441,13 +442,12 @@ export default function Msp() {
               <span>View Partnership Tiers</span>
               <ArrowRight className="w-5 h-5" />
             </a>
-            <Link
-              href="/contact"
+            <ChatCTA
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-medium text-text-secondary hover:text-text-primary border border-white/[0.12] hover:border-white/[0.2] transition-colors flex items-center justify-center text-base"
               data-track="cta"
             >
               Talk to Shane First
-            </Link>
+            </ChatCTA>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
@@ -745,14 +745,13 @@ export default function Msp() {
                   <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
                   <p className="text-text-primary font-semibold mb-2">Couldn't load partnership tiers</p>
                   <p className="text-text-secondary text-sm leading-relaxed mb-6">{error}</p>
-                  <Link
-                    href="/contact"
+                  <ChatCTA
                     className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3.5 rounded-xl transition-opacity hover:opacity-90 text-sm"
                     style={GRADIENT_BG}
                     data-track="cta"
                   >
                     Contact Shane Directly <ArrowRight className="w-4 h-4" />
-                  </Link>
+                  </ChatCTA>
                 </div>
               )}
 
@@ -762,14 +761,13 @@ export default function Msp() {
                   <p className="text-text-secondary text-sm mb-6">
                     Partnership tiers are being configured. Contact Shane directly to discuss your options.
                   </p>
-                  <Link
-                    href="/contact"
+                  <ChatCTA
                     className="inline-flex items-center gap-2 text-white font-semibold px-6 py-3.5 rounded-xl transition-opacity hover:opacity-90 text-sm"
                     style={GRADIENT_BG}
                     data-track="cta"
                   >
                     Get in Touch
-                  </Link>
+                  </ChatCTA>
                 </div>
               )}
 
@@ -873,13 +871,12 @@ export default function Msp() {
                           <p className="text-xs mb-3 text-text-secondary font-semibold">
                             Not yet available for self-service signup
                           </p>
-                          <Link
-                            href="/contact"
+                          <ChatCTA
                             className="inline-flex items-center gap-2 font-semibold px-6 py-3 rounded-xl border border-white/[0.12] text-text-secondary hover:border-white/[0.2] hover:text-text-primary transition-colors text-xs"
                             data-track="cta"
                           >
                             Contact Shane <ArrowRight className="w-3.5 h-3.5" />
-                          </Link>
+                          </ChatCTA>
                         </div>
                       )}
                     </div>
@@ -1038,14 +1035,13 @@ export default function Msp() {
                       Proceed to Checkout <ArrowRight className="w-4 h-4" />
                     </button>
                   ) : (
-                    <a
-                      href={`/contact?intent=msp-partner&tier=${selectedTier.slug}`}
+                    <ChatCTA
                       className="flex-1 inline-flex items-center justify-center gap-2 text-white font-bold px-8 py-4 rounded-xl transition-opacity hover:opacity-90 text-base text-center"
                       style={GRADIENT_BG}
                       data-track="cta"
                     >
                       Contact Shane to Get Started <ArrowRight className="w-4 h-4" />
-                    </a>
+                    </ChatCTA>
                   )}
                   <button
                     onClick={() => { setAgreed(false); setStep("tiers"); setSelectedTier(null); setSelectedOnboarding(null); }}
@@ -1075,14 +1071,13 @@ export default function Msp() {
                 where the fastest resale wins are.
               </p>
               <div className="flex flex-wrap justify-center gap-4">
-                <Link
-                  href="/book"
+                <ChatCTA
                   className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
                   style={GRADIENT_BG}
                   data-track="cta"
                 >
                   Book a Partner Discovery Call
-                </Link>
+                </ChatCTA>
                 <a
                   href="#tiers"
                   className="inline-flex items-center gap-2 text-text-secondary font-semibold hover:text-text-primary transition-colors text-sm border border-white/[0.12] px-6 py-3.5 rounded-xl hover:border-white/[0.2]"

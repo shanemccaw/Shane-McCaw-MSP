@@ -3184,4 +3184,70 @@ export const platformIncidentsTable = pgTable("platform_incidents", {
 export type InsertPlatformIncident = typeof platformIncidentsTable.$inferInsert;
 export type PlatformIncident = typeof platformIncidentsTable.$inferSelect;
 
+// ── Public AI Chat ─────────────────────────────────────────────────────────────
+// Every public-site chat conversation, stored in full regardless of outcome — one
+// row per browser session, the whole transcript re-upserted each turn (the client
+// re-sends the full messages array, mirroring contact-chat's stateless shape).
+//
+// Escalation here is PULL-BASED ONLY, by deliberate design (a personal-safety
+// requirement): `needsReview` lands the row in an admin queue Shane reviews on his
+// own schedule. Nothing in this table's write path pushes — no email, no
+// notification row, no web-push, no SSE. That is the whole point; do not add one.
+//
+// `declinedPersonalTopic` is audit-only: it records that the guardrail fired on a
+// question about Shane personally (NASA/career/media/speaking/"pick your brain"/
+// direct contact). It MUST NEVER cause `needsReview` to be set — a personal-topic
+// request is declined and recorded, never routed to Shane by any path.
+export const publicChatMessageRole = ["user", "assistant"] as const;
+
+export interface PublicChatStoredMessage {
+  role: (typeof publicChatMessageRole)[number];
+  content: string;
+  at: string;
+}
+
+export const publicChatConversationsTable = pgTable("public_chat_conversations", {
+  id: serial("id").primaryKey(),
+  // Client-generated stable id (crypto.randomUUID) so multi-turn upserts land on
+  // one row. Text, not the pg uuid type, to tolerate any client value safely.
+  sessionId: text("session_id").notNull().unique(),
+  messages: jsonb("messages").$type<PublicChatStoredMessage[]>().notNull().default([]),
+  messageCount: integer("message_count").notNull().default(0),
+  // Pull-based review flag + why the assistant raised it. Never set for a
+  // personal-topic decline.
+  needsReview: boolean("needs_review").notNull().default(false),
+  reviewReason: text("review_reason", {
+    enum: ["purchase_intent", "needs_shane", "explicit_request"],
+  }),
+  reviewStatus: text("review_status", {
+    enum: ["new", "reviewed", "resolved", "archived"],
+  }).notNull().default("new"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  // Audit-only: the guardrail declined a question about Shane personally. Never
+  // escalates.
+  declinedPersonalTopic: boolean("declined_personal_topic").notNull().default(false),
+  // Structured request captured on genuine purchase / service intent — stored on
+  // the row (not sent anywhere) so it surfaces in the pull-based queue only.
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactCompany: text("contact_company"),
+  serviceInterest: text("service_interest"),
+  requestSummary: text("request_summary"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("public_chat_conversations_needs_review_idx").on(t.needsReview, t.reviewStatus),
+  index("public_chat_conversations_updated_at_idx").on(t.updatedAt),
+]);
+
+export const insertPublicChatConversationSchema = createInsertSchema(publicChatConversationsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPublicChatConversation = typeof publicChatConversationsTable.$inferInsert;
+export type PublicChatConversation = typeof publicChatConversationsTable.$inferSelect;
+
 export * from "./msp";

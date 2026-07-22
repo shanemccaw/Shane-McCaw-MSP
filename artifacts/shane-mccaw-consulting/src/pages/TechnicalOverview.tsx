@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { openChat } from "@/lib/chat";
 
 function DocSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -358,7 +359,7 @@ MailboxSettings.Read        — Read Exchange mailbox and forwarding settings`}<
             <p className="text-white/60 text-sm">Shane is happy to walk through the technical architecture in detail before any engagement begins.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
-            <CTAButton href="/book">Book a Discovery Call</CTAButton>
+            <CTAButton onClick={openChat}>Ask a Question</CTAButton>
             <Link
               href="/how-it-works"
               className="inline-flex items-center gap-2 text-white/70 hover:text-white text-sm font-medium border border-white/20 hover:border-white/40 px-5 py-2.5 rounded-xl transition-colors whitespace-nowrap"

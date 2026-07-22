@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { CalendarDays } from "lucide-react";
+import { ChatCTA } from "@/components/ChatCTA";
 
 export function AuthorBio() {
   return (
@@ -32,14 +33,13 @@ export function AuthorBio() {
             hand-offs or account-manager layers.
           </p>
 
-          <Link
-            href="/book"
+          <ChatCTA
             className="inline-flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-opacity hover:opacity-90"
             style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
           >
             <CalendarDays className="w-4 h-4" />
             Book a Free Discovery Call
-          </Link>
+          </ChatCTA>
         </div>
       </div>
     </div>

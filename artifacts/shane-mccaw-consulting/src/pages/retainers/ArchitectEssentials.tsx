@@ -1,5 +1,6 @@
 import { CheckCircle, Clock, ArrowRight, ChevronRight, Building2, ShieldCheck, Users, AlertTriangle, Rocket } from "lucide-react";
 import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -200,12 +201,11 @@ export default function ArchitectEssentials() {
             >
               Get Started
             </a>
-            <Link
-              href="/contact"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
           </div>
         </div>
       </section>
@@ -462,12 +462,11 @@ export default function ArchitectEssentials() {
             >
               {displayPrice ? `Get Started — $${displayPrice}/mo` : "Get Started"}
             </a>
-            <Link
-              href="/contact"
+            <ChatCTA
               className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
-            </Link>
+            </ChatCTA>
           </div>
         </div>
       </section>

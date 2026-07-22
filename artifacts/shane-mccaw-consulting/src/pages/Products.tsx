@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
+import { ChatCTA } from "@/components/ChatCTA";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
 import { GradientText } from "@/components/design-system/GradientText";
 import { StatPanel } from "@/components/design-system/StatPanel";
@@ -302,9 +303,9 @@ export default function Products() {
               <AlertCircle className="size-8 text-accent-violet" />
               <p className="text-text-secondary">
                 Could not load the Quick-Start Packs. Please{" "}
-                <Link href="/contact" className="text-accent-blue hover:underline">
+                <ChatCTA className="text-accent-blue hover:underline">
                   contact us
-                </Link>{" "}
+                </ChatCTA>{" "}
                 directly.
               </p>
             </div>
@@ -313,9 +314,9 @@ export default function Products() {
           {!loading && !error && packs.length === 0 && (
             <div className="text-center py-20 text-text-secondary border border-white/[0.08] rounded-2xl bg-charcoal-1">
               No packs are published yet.{" "}
-              <Link href="/contact" className="text-accent-blue hover:underline">
+              <ChatCTA className="text-accent-blue hover:underline">
                 Get in touch
-              </Link>{" "}
+              </ChatCTA>{" "}
               and we'll scope one directly.
             </div>
           )}

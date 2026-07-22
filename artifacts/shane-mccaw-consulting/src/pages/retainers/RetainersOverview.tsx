@@ -17,6 +17,7 @@ import {
   PhoneCall,
 } from "lucide-react";
 import { Link } from "wouter";
+import { ChatCTA } from "@/components/ChatCTA";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { GlassPanel } from "@/components/design-system/GlassPanel";
@@ -89,14 +90,13 @@ function ScopedCard({ tier }: { tier: RetainerTier }) {
       )}
 
       <div className="mt-auto">
-        <a
-          href="/contact"
+        <ChatCTA
           className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-white transition-opacity hover:opacity-90"
           style={GRADIENT_BG}
           data-track="cta"
         >
           <PhoneCall className="w-4 h-4" /> Request Scoping
-        </a>
+        </ChatCTA>
         <p className="text-xs text-center mt-2 text-text-secondary">
           Scope and pricing finalised in a discovery call
         </p>
@@ -454,20 +454,18 @@ export default function RetainersOverview() {
               Speak directly with Shane — no salespeople, no pressure.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                href="/book"
+              <ChatCTA
                 className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-semibold text-white text-base transition-opacity hover:opacity-90"
                 style={GRADIENT_BG}
                 data-track="cta"
               >
                 Book a Free Discovery Call
-              </a>
-              <Link
-                href="/contact"
+              </ChatCTA>
+              <ChatCTA
                 className="inline-flex items-center justify-center gap-2 text-text-secondary hover:text-text-primary font-medium text-base transition-colors"
               >
                 Send Shane a message <ArrowRight className="w-4 h-4" />
-              </Link>
+              </ChatCTA>
             </div>
           </GlassPanel>
         </div>
