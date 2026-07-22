@@ -163,6 +163,18 @@ export function AssessmentWizard() {
       const res = await fetchWithAuth("/api/portal/assessment/status", undefined, { silent: true });
       if (res.ok) {
         const data = (await res.json()) as AssessmentStatus;
+        // `documents.expected` was added to this endpoint alongside this wizard's
+        // continuous-generation checklist (both landed together). api-server runs
+        // as its own long-lived process here and isn't guaranteed to have already
+        // restarted onto the code that added this field by the moment this bundle
+        // is served — the wire response is a genuine external boundary, not
+        // something the TS return type actually enforces at runtime. Normalize
+        // once here (not scattered at each read site) so a response from an
+        // older-but-still-live process degrades to "no expected documents known
+        // yet" instead of throwing.
+        if (data.documents && !Array.isArray(data.documents.expected)) {
+          data.documents.expected = [];
+        }
         setStatus(data);
       }
     } catch {
