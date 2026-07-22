@@ -1,17 +1,32 @@
 import React, { useState } from 'react';
-import { TelemetryItem } from './types';
-import { X, Copy, Check, Terminal, Brain, ShieldAlert, ArrowRight, Play } from 'lucide-react';
+import { TelemetryItem, RecommendedOffer } from './types';
+import {
+  X,
+  Copy,
+  Check,
+  Terminal,
+  Brain,
+  ShieldAlert,
+  ArrowRight,
+  Play,
+  Microscope,
+  ShoppingBag,
+  ArrowUpRight,
+} from 'lucide-react';
 
 interface TelemetryDetailModalProps {
   item: TelemetryItem | null;
   onClose: () => void;
   onRemediate?: (item: TelemetryItem) => void;
+  /** Real Sales Offer Engine match for this finding (null = honestly none). */
+  offer?: RecommendedOffer | null;
 }
 
 export const TelemetryDetailModal: React.FC<TelemetryDetailModalProps> = ({
   item,
   onClose,
   onRemediate,
+  offer = null,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -78,6 +93,26 @@ export const TelemetryDetailModal: React.FC<TelemetryDetailModalProps> = ({
           <p className="text-xs text-[#c0c7d3] italic">"{item.architectSays}"</p>
         </div>
 
+        {/* How this was determined — the real check/signal behind the finding.
+            Deliberately its own block, separate from both the narrative quote
+            above and the remediation content below. */}
+        {item.determinedBy && (
+          <div>
+            <h4 className="text-xs font-semibold text-[#8a919d] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <Microscope className="w-3.5 h-3.5 text-[#2dd4bf]" />
+              How This Was Determined
+            </h4>
+            <div className="bg-[#101419] p-3 rounded-lg border border-white/5 flex flex-col gap-1.5">
+              <span className="text-[11px] font-mono text-[#2dd4bf]">
+                {item.determinedBy.source}
+              </span>
+              <p className="text-xs text-[#c0c7d3] leading-relaxed">
+                {item.determinedBy.method}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Remediation Step */}
         {item.remediationStep && (
           <div>
@@ -90,6 +125,39 @@ export const TelemetryDetailModal: React.FC<TelemetryDetailModalProps> = ({
             </div>
           </div>
         )}
+
+        {/* Recommended Offer — REAL Sales Offer Engine output (real catalog
+            service, engine-adjusted price, real link to the customer offers
+            page). Honest empty state when no live offer matches this finding. */}
+        <div>
+          <h4 className="text-xs font-semibold text-[#8a919d] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <ShoppingBag className="w-3.5 h-3.5 text-[#f59e0b]" />
+            Recommended Offer
+          </h4>
+          {offer ? (
+            <div className="bg-[#101419] p-3 rounded-lg border border-[#f59e0b]/25 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm font-semibold text-[#e0e2ea]">{offer.serviceName}</span>
+                <span className="text-sm font-bold text-[#34d399] font-mono whitespace-nowrap">
+                  ${Math.round(offer.priceCents / 100).toLocaleString()}
+                </span>
+              </div>
+              {offer.rationale && (
+                <p className="text-[11px] text-[#8a919d] leading-relaxed">{offer.rationale}</p>
+              )}
+              <a
+                href={offer.link}
+                className="inline-flex items-center gap-1 self-start text-[11px] font-semibold text-[#479ef5] hover:underline"
+              >
+                View offer <ArrowUpRight className="w-3 h-3" />
+              </a>
+            </div>
+          ) : (
+            <div className="bg-[#101419] p-3 rounded-lg border border-white/5 text-[11px] text-[#8a919d]">
+              No live offer currently matches this finding.
+            </div>
+          )}
+        </div>
 
         {/* PowerShell Script */}
         {item.powershellSnippet && (

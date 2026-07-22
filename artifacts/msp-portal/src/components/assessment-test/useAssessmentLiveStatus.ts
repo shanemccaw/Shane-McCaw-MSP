@@ -29,6 +29,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import type { CopilotReadinessLive, LicenseWasteSummary } from "./types";
 
 // ── Status payload (mirrors GET /api/portal/assessment/status) ────────────────
 // Same shape as AssessmentWizard.tsx's AssessmentStatus — kept in lockstep.
@@ -87,7 +88,12 @@ export interface AssessmentStatus {
   stats: {
     genuineFindings: number | null;
     licenseWasteMonthlyCents: number | null;
+    /** Cost-engine breakdown behind licenseWasteMonthlyCents (additive field —
+     * this page reads it; the wizard, which shares this payload, ignores it). */
+    licenseWaste: LicenseWasteSummary | null;
   };
+  /** Real Copilot-readiness sub-indicators + weighted overall (additive field). */
+  copilotReadiness: CopilotReadinessLive | null;
   isTestbed: boolean;
 }
 
@@ -151,7 +157,13 @@ export function useAssessmentLiveStatus(): AssessmentLiveStatus {
           data.narrative = { status: "not_started", html: null, generatedAt: null };
         }
         if (!data.stats || typeof data.stats !== "object") {
-          data.stats = { genuineFindings: null, licenseWasteMonthlyCents: null };
+          data.stats = { genuineFindings: null, licenseWasteMonthlyCents: null, licenseWaste: null };
+        }
+        if (data.stats.licenseWaste === undefined) {
+          data.stats.licenseWaste = null;
+        }
+        if (data.copilotReadiness === undefined) {
+          data.copilotReadiness = null;
         }
         if (data.docGeneration === undefined) {
           data.docGeneration = null;

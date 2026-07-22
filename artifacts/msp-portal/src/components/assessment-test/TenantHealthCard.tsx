@@ -1,58 +1,77 @@
 import React from 'react';
-import { TenantHealthData } from './types';
-import { Activity, Shield, Sparkles, CheckCircle2 } from 'lucide-react';
+import { RadarPillarEntry } from './types';
+import { Activity } from 'lucide-react';
 
 interface TenantHealthCardProps {
-  data: TenantHealthData;
+  /** All 7 pillars in canonical order; score:null = not covered by this scan. */
+  pillars: RadarPillarEntry[];
+  /** Real average of covered pillars' scores (same derivation as the page). */
+  unifiedScore: number | null;
   onClick?: () => void;
 }
 
-export const TenantHealthCard: React.FC<TenantHealthCardProps> = ({ data, onClick }) => {
-  const { unifiedScore, metrics } = data;
+/**
+ * Real tenant-health radar over the full 7-pillar set (Security, Governance,
+ * Compliance, Adoption, Copilot, Architecture, Licensing — status.radar.pillars,
+ * package-aware). Honesty rules, matching the gauge row's precedent:
+ *  - only pillars the customer's scanned package genuinely covers get an axis —
+ *    an uncovered pillar never renders a fabricated axis/vertex;
+ *  - a polygon needs 3+ covered axes; with 1–2 the covered pillars render as
+ *    plain bars instead of a degenerate fake radar;
+ *  - uncovered pillars are named in the footer so the omission is explicit.
+ */
+export const TenantHealthCard: React.FC<TenantHealthCardProps> = ({ pillars, unifiedScore, onClick }) => {
+  const covered = pillars.filter(
+    (p): p is RadarPillarEntry & { score: number } => p.score != null,
+  );
+  const uncovered = pillars.filter((p) => p.score == null);
 
-  // Center & radius for 4-axis SVG radar chart
+  // Center & radius for the SVG radar chart
   const cx = 130;
   const cy = 110;
   const radius = 70;
 
-  // 4 axes angles: Top (Security), Right (Governance), Bottom (Compliance), Left (Copilot Readiness)
-  const angles = [-90, 0, 90, 180]; // degrees
-
-  const getCoordinates = (index: number, valPercent: number) => {
-    const angleRad = (angles[index] * Math.PI) / 180;
-    const r = (radius * valPercent) / 100;
-    const x = cx + r * Math.cos(angleRad);
-    const y = cy + r * Math.sin(angleRad);
-    return { x, y };
+  // Per-axis colors, cycled over the covered axes (fixed palette, 7 entries so
+  // every pillar keeps a stable hue whichever subset is covered).
+  const pillarColors = ['#34d399', '#fbbf24', '#60a5fa', '#2dd4bf', '#c084fc', '#818cf8', '#fb923c'];
+  const colorFor = (key: string) => {
+    const idx = pillars.findIndex((p) => p.key === key);
+    return pillarColors[(idx >= 0 ? idx : 0) % pillarColors.length];
   };
 
-  // Generate grid concentric diamond polygons (at 25%, 50%, 75%, 100%)
-  const gridLevels = [0.25, 0.5, 0.75, 1.0];
-  const gridPolygons = gridLevels.map((level) => {
-    return angles
-      .map((deg) => {
-        const rad = (deg * Math.PI) / 180;
-        const x = cx + radius * level * Math.cos(rad);
-        const y = cy + radius * level * Math.sin(rad);
-        return `${x},${y}`;
-      })
-      .join(' ');
-  });
+  // Evenly-distributed axis angles for the covered pillars, starting at top.
+  const angleFor = (index: number) => -90 + (index * 360) / covered.length;
 
-  // Generate data polygon points
-  const dataPoints = metrics.map((m, idx) => getCoordinates(idx, m.score));
+  const pointAt = (index: number, valPercent: number) => {
+    const rad = (angleFor(index) * Math.PI) / 180;
+    const r = (radius * valPercent) / 100;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+
+  // Concentric grid polygons (at 25%, 50%, 75%, 100%)
+  const gridLevels = [0.25, 0.5, 0.75, 1.0];
+  const gridPolygons = gridLevels.map((level) =>
+    covered
+      .map((_, i) => {
+        const rad = (angleFor(i) * Math.PI) / 180;
+        return `${cx + radius * level * Math.cos(rad)},${cy + radius * level * Math.sin(rad)}`;
+      })
+      .join(' '),
+  );
+
+  const dataPoints = covered.map((p, i) => pointAt(i, p.score));
   const dataPolygonString = dataPoints.map((p) => `${p.x},${p.y}`).join(' ');
 
-  // Strength colors for the 4 pillars: Security, Governance, Compliance, Copilot Readiness
-  const pillarColors = ['#34d399', '#fbbf24', '#60a5fa', '#c084fc'];
-
-  // Label offsets
-  const labelPositions = [
-    { x: cx, y: cy - radius - 14, textAnchor: 'middle', label: metrics[0]?.subject || 'Security', val: metrics[0]?.score, color: pillarColors[0] },
-    { x: cx + radius + 12, y: cy + 4, textAnchor: 'start', label: metrics[1]?.subject || 'Governance', val: metrics[1]?.score, color: pillarColors[1] },
-    { x: cx, y: cy + radius + 18, textAnchor: 'middle', label: metrics[2]?.subject || 'Compliance', val: metrics[2]?.score, color: pillarColors[2] },
-    { x: cx - radius - 12, y: cy + 4, textAnchor: 'end', label: metrics[3]?.subject || 'Copilot Readiness', val: metrics[3]?.score, color: pillarColors[3] },
-  ];
+  // Angle-aware label placement (anchor flips by which side of the chart).
+  const labelFor = (index: number) => {
+    const rad = (angleFor(index) * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const lx = cx + (radius + 14) * cos;
+    const ly = cy + (radius + 16) * sin + 4;
+    const anchor = cos > 0.35 ? 'start' : cos < -0.35 ? 'end' : 'middle';
+    return { x: lx, y: ly, anchor };
+  };
 
   return (
     <div
@@ -66,117 +85,154 @@ export const TenantHealthCard: React.FC<TenantHealthCardProps> = ({ data, onClic
             Tenant Health Radar
           </span>
           <div className="text-xs text-[#c0c7d3] mt-0.5">
-            Unified Security & Governance Score
+            Real pillar scores from this scan
           </div>
         </div>
 
-        {/* Unified Score Badge */}
+        {/* Unified Score Badge — real covered-pillar average; em-dash until data exists */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#479ef5]/15 border border-[#479ef5]/30">
           <Activity className="w-3.5 h-3.5 text-[#479ef5]" />
           <span className="text-xs font-bold text-[#e0e2ea] font-mono">
-            {unifiedScore}%
+            {unifiedScore != null ? `${unifiedScore}%` : '—'}
           </span>
         </div>
       </div>
 
-      {/* SVG Spider / Radar Chart */}
-      <div className="flex items-center justify-center relative py-1 my-1">
-        <svg width="260" height="230" className="overflow-visible">
-          <defs>
-            <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#ef4444" stopOpacity="0.35" />
-              <stop offset="35%" stopColor="#fbbf24" stopOpacity="0.25" />
-              <stop offset="70%" stopColor="#34d399" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#c084fc" stopOpacity="0.35" />
-            </linearGradient>
-            <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
+      {covered.length >= 3 ? (
+        /* Full radar — 3+ real axes */
+        <div className="flex items-center justify-center relative py-1 my-1">
+          <svg width="260" height="230" className="overflow-visible">
+            <defs>
+              <linearGradient id="radarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ef4444" stopOpacity="0.35" />
+                <stop offset="35%" stopColor="#fbbf24" stopOpacity="0.25" />
+                <stop offset="70%" stopColor="#34d399" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#c084fc" stopOpacity="0.35" />
+              </linearGradient>
+              <filter id="radarGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="3" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
 
-          {/* Grid Concentric Diamonds */}
-          {gridPolygons.map((polyStr, i) => (
-            <polygon
-              key={i}
-              points={polyStr}
-              fill="none"
-              stroke="rgba(255, 255, 255, 0.08)"
-              strokeWidth="1"
-              strokeDasharray={i === 3 ? 'none' : '2 2'}
-            />
-          ))}
-
-          {/* Axis lines */}
-          {angles.map((deg, i) => {
-            const rad = (deg * Math.PI) / 180;
-            const x2 = cx + radius * Math.cos(rad);
-            const y2 = cy + radius * Math.sin(rad);
-            return (
-              <line
+            {/* Grid concentric polygons */}
+            {gridPolygons.map((polyStr, i) => (
+              <polygon
                 key={i}
-                x1={cx}
-                y1={cy}
-                x2={x2}
-                y2={y2}
-                stroke="rgba(255, 255, 255, 0.12)"
+                points={polyStr}
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.08)"
                 strokeWidth="1"
+                strokeDasharray={i === gridLevels.length - 1 ? 'none' : '2 2'}
               />
-            );
-          })}
+            ))}
 
-          {/* Filled Data Radar Polygon */}
-          <polygon
-            points={dataPolygonString}
-            fill="url(#radarGradient)"
-            stroke="#479ef5"
-            strokeWidth="2"
-            filter="url(#radarGlow)"
-            className="transition-all duration-700 ease-out group-hover:stroke-[#34d399]"
-          />
+            {/* Axis lines */}
+            {covered.map((_, i) => {
+              const rad = (angleFor(i) * Math.PI) / 180;
+              return (
+                <line
+                  key={i}
+                  x1={cx}
+                  y1={cy}
+                  x2={cx + radius * Math.cos(rad)}
+                  y2={cy + radius * Math.sin(rad)}
+                  stroke="rgba(255, 255, 255, 0.12)"
+                  strokeWidth="1"
+                />
+              );
+            })}
 
-          {/* Data Points / Vertices */}
-          {dataPoints.map((pt, i) => (
-            <g key={i}>
+            {/* Filled data polygon */}
+            <polygon
+              points={dataPolygonString}
+              fill="url(#radarGradient)"
+              stroke="#479ef5"
+              strokeWidth="2"
+              filter="url(#radarGlow)"
+              className="transition-all duration-700 ease-out group-hover:stroke-[#34d399]"
+            />
+
+            {/* Data vertices */}
+            {dataPoints.map((pt, i) => (
               <circle
+                key={i}
                 cx={pt.x}
                 cy={pt.y}
                 r="4"
-                fill={pillarColors[i]}
+                fill={colorFor(covered[i].key)}
                 stroke="#101419"
                 strokeWidth="2"
                 className="group-hover:scale-125 transition-transform origin-center"
               />
-            </g>
+            ))}
+
+            {/* Axis labels */}
+            {covered.map((p, i) => {
+              const lbl = labelFor(i);
+              return (
+                <text
+                  key={p.key}
+                  x={lbl.x}
+                  y={lbl.y}
+                  textAnchor={lbl.anchor as 'start' | 'middle' | 'end'}
+                  fill="#c0c7d3"
+                  fontSize="10"
+                  fontWeight="600"
+                  className="font-sans"
+                >
+                  {p.label}{' '}
+                  <tspan fill={colorFor(p.key)} fontWeight="700">
+                    ({p.score}%)
+                  </tspan>
+                </text>
+              );
+            })}
+
+            {/* Center dot */}
+            <circle cx={cx} cy={cy} r="3" fill="#8a919d" />
+          </svg>
+        </div>
+      ) : covered.length > 0 ? (
+        /* 1–2 covered pillars — honest bars, not a degenerate radar polygon */
+        <div className="flex flex-col gap-3 py-4 my-1">
+          {covered.map((p) => (
+            <div key={p.key} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[#e0e2ea] font-medium">{p.label}</span>
+                <span className="font-bold font-mono" style={{ color: colorFor(p.key) }}>
+                  {p.score}%
+                </span>
+              </div>
+              <div className="w-full bg-[#181c21] rounded-full h-1.5">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{ width: `${p.score}%`, backgroundColor: colorFor(p.key) }}
+                />
+              </div>
+            </div>
           ))}
+          <div className="text-[11px] text-[#8a919d]">
+            Radar view needs 3+ covered pillars
+          </div>
+        </div>
+      ) : (
+        /* Nothing covered yet — honest empty state */
+        <div className="flex items-center justify-center h-32 my-1 text-xs text-[#8a919d]">
+          No pillar data from this scan yet
+        </div>
+      )}
 
-          {/* Axis Labels */}
-          {labelPositions.map((lbl, i) => (
-            <text
-              key={i}
-              x={lbl.x}
-              y={lbl.y}
-              textAnchor={lbl.textAnchor as any}
-              fill="#c0c7d3"
-              fontSize="10"
-              fontWeight="600"
-              className="font-sans"
-            >
-              {lbl.label} <tspan fill={lbl.color} fontWeight="700">({lbl.val}%)</tspan>
-            </text>
-          ))}
-
-          {/* Center Dot */}
-          <circle cx={cx} cy={cy} r="3" fill="#8a919d" />
-        </svg>
-      </div>
-
-      {/* Footer Details summary */}
-      <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px] text-[#8a919d]">
-        <span>4 Core Telemetry Pillars</span>
-        <span className="text-[#34d399] font-medium flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3 text-[#34d399]" /> Optimal Baseline
+      {/* Footer — real coverage provenance; uncovered pillars named explicitly */}
+      <div className="flex flex-col gap-0.5 pt-2 border-t border-white/5 text-[11px] text-[#8a919d]">
+        <span>
+          {covered.length} of {pillars.length} pillars covered by this scan
         </span>
+        {uncovered.length > 0 && (
+          <span className="truncate">
+            Not covered: {uncovered.map((p) => p.label).join(', ')}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,18 @@
 import React from 'react';
-import { Sparkles, Activity, ShieldCheck } from 'lucide-react';
+import { Sparkles, Activity, Loader2 } from 'lucide-react';
 
 interface AssessmentHeroProps {
   progressPercentage: number;
   activeStageTitle: string;
   isScanning: boolean;
   onTriggerScan: () => void;
+  /** ⚠️ TEMPORARY DEBUG — mirrors AssessmentWizard's testbed-gated trigger.
+   * True only when the wizard's own render condition holds:
+   * !reportsComplete && status.isTestbed && !status.scan.active.
+   * The endpoint itself is hard-gated server-side to testbed customers. */
+  showDebugTrigger: boolean;
+  debugTriggering: boolean;
+  everScanned: boolean;
 }
 
 export const AssessmentHero: React.FC<AssessmentHeroProps> = ({
@@ -13,6 +20,9 @@ export const AssessmentHero: React.FC<AssessmentHeroProps> = ({
   activeStageTitle,
   isScanning,
   onTriggerScan,
+  showDebugTrigger,
+  debugTriggering,
+  everScanned,
 }) => {
   return (
     <section className="bg-[#242424] rounded-xl card-border p-6 md:p-8 flex flex-col items-center justify-center relative overflow-hidden shadow-xl">
@@ -59,6 +69,21 @@ export const AssessmentHero: React.FC<AssessmentHeroProps> = ({
           </span>
           <span className="text-[#479ef5] font-mono text-sm">{progressPercentage}%</span>
         </div>
+
+        {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only
+            scan trigger, the same real POST /portal/assessment/debug-trigger-scan
+            endpoint (hard-gated server-side) and render condition as
+            AssessmentWizard's [DEBUG] button. */}
+        {showDebugTrigger && (
+          <button
+            onClick={onTriggerScan}
+            disabled={debugTriggering}
+            className="mt-5 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-white/15 text-xs font-medium text-[#c0c7d3] hover:bg-white/5 hover:text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {debugTriggering && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            [DEBUG] {everScanned ? 'Re-trigger scan' : 'Trigger scan'}
+          </button>
+        )}
       </div>
     </section>
   );

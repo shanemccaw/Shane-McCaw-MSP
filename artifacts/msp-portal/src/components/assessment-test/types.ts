@@ -65,17 +65,38 @@ export interface TelemetryItem {
   affectedCount?: number;
   remediationStep?: string;
   powershellSnippet?: string;
+  /** How the finding was determined — the real platform check/signal family
+   * that produces this class of finding (rendered as its own modal section,
+   * distinct from the narrative quote and the remediation content). */
+  determinedBy?: {
+    /** The real monitor-check key(s) behind the finding, e.g. "identity:mfa-registration". */
+    source: string;
+    /** Plain-language description of how that check collects/derives the number. */
+    method: string;
+  };
 }
 
-export interface TenantHealthMetric {
-  subject: string;
-  score: number;
-  fullMark: number;
+/** A real recommended offer from the Sales Offer Engine
+ * (GET /api/portal/assessment/recommended-offers — real catalog service,
+ * real engine-adjusted price, real destination link). */
+export interface RecommendedOffer {
+  serviceId: number;
+  serviceName: string;
+  title: string;
+  rationale: string | null;
+  priceCents: number;
+  /** Health pillars of the signals that fired this offer — used to attach the
+   * offer to the matching telemetry finding category. */
+  pillars: string[];
+  link: string;
 }
 
-export interface TenantHealthData {
-  unifiedScore: number;
-  metrics: TenantHealthMetric[];
+/** One axis of the real tenant-health radar. `score: null` is the honest
+ * "not covered by this scan" state — that pillar renders no fabricated axis. */
+export interface RadarPillarEntry {
+  key: string;
+  label: string;
+  score: number | null;
 }
 
 export interface SecurityCoverageData {
@@ -92,16 +113,42 @@ export interface GroupLifecycleData {
   totalGroups: number;
 }
 
-export interface LicenseOptimizationData {
-  potentialMonthlySavings: number;
-  unassignedCount: number;
-  idleSKUs: number;
-  topSavingsProduct: string;
+/** Real license-waste summary (status.stats.licenseWaste) — the Cost Engine's
+ * seat-count × sku_price_reference breakdown behind licenseWasteMonthlyCents. */
+export interface LicenseWasteSummary {
+  monthlyCents: number;
+  annualCents: number;
+  seatCount: number;
+  skuCount: number;
+  topSku: { displayName: string; count: number; monthlyCents: number } | null;
 }
 
-export interface CopilotReadinessData {
-  readyUsers: number;
-  needsActionUsers: number;
-  totalEligible: number;
-  topBlocker: string;
+/** Real Copilot-readiness block (status.copilotReadiness) — mirrors the
+ * backend's copilot-readiness.ts result. Every score is real or null (honest
+ * "no data"); `basis` distinguishes a true ratio from a risk-band score so the
+ * UI never presents a band score as a coverage percentage. */
+export interface CopilotReadinessIndicator {
+  score: number | null;
+  basis: 'ratio' | 'risk_bands' | null;
+}
+
+export interface CopilotReadinessLive {
+  sharePointTeams: CopilotReadinessIndicator & {
+    oversharedSites: number | null;
+    totalSites: number | null;
+    overshareExposureItems: number | null;
+  };
+  sensitivityLabels: CopilotReadinessIndicator & {
+    unlabeledItems: number | null;
+    labelErrors: number | null;
+  };
+  dlp: CopilotReadinessIndicator & {
+    weakPolicies: number | null;
+    dlpIncidents: number | null;
+  };
+  overall: {
+    score: number | null;
+    weights: { sharePointTeams: number; sensitivityLabels: number; dlp: number };
+    coveredIndicators: string[];
+  };
 }

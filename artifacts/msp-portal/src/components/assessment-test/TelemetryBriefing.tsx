@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TelemetryItem } from './types';
+import { TelemetryItem, RecommendedOffer } from './types';
 import {
   ShieldAlert,
   Users,
@@ -23,6 +23,8 @@ interface TelemetryBriefingProps {
   onSelectItem: (item: TelemetryItem) => void;
   selectedCategory: string;
   setSelectedCategory: (cat: string) => void;
+  /** Real Sales Offer Engine match for a finding (null = honestly no offer). */
+  offerFor: (item: TelemetryItem) => RecommendedOffer | null;
 }
 
 export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
@@ -30,6 +32,7 @@ export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
   onSelectItem,
   selectedCategory,
   setSelectedCategory,
+  offerFor,
 }) => {
   const [isPaused, setIsPaused] = useState(false);
 
@@ -168,6 +171,7 @@ export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
         >
           {displayItems.map((item, idx) => {
             const archTheme = renderArchitectTheme(item, idx);
+            const offer = offerFor(item);
             return (
               <div
                 key={`${item.id}-${idx}`}
@@ -190,9 +194,27 @@ export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
                   <p className="text-xs text-[#c0c7d3] leading-relaxed">
                     {item.description}
                   </p>
-                  <div className="mt-2.5 flex items-center gap-1 text-[11px] font-medium text-[#479ef5] opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>Click to view remediation script</span>
-                    <ChevronRight className="w-3 h-3" />
+                  {/* See Remediation — opens the detail modal, surfacing the
+                      REAL Sales Offer Engine offer (service + engine-adjusted
+                      catalog price) directly on the scrolling card when one
+                      matches this finding's pillar. */}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectItem(item);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#479ef5]/15 border border-[#479ef5]/40 text-[11px] font-semibold text-[#479ef5] hover:bg-[#479ef5]/25 transition-colors cursor-pointer"
+                    >
+                      <span>See Remediation</span>
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                    {offer && (
+                      <span className="text-[10px] text-[#8a919d] truncate max-w-[240px]">
+                        Fix with {offer.serviceName} · $
+                        {Math.round(offer.priceCents / 100).toLocaleString()}
+                      </span>
+                    )}
                   </div>
                 </div>
 

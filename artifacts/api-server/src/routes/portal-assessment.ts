@@ -80,8 +80,11 @@ import { promoteMspUserToCustomer } from "./portal";
 import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
 import { latestCheckProps, extractGroupByCountCounts } from "../lib/dashboard-resolvers";
-import { computeSkuCostBreakdown } from "../lib/cost-engine";
+import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
+import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
+import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
+import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -250,6 +253,20 @@ router.get(
       let pillarCoverage: Awaited<ReturnType<typeof getPillarCoverage>> = [];
       let genuineFindings: number | null = null;
       let licenseWasteMonthlyCents: number | null = null;
+      // Cost-engine breakdown summary behind licenseWasteMonthlyCents — same
+      // computation, richer surface (wasted-seat count, per-SKU count, top SKU
+      // line) so the page's License Optimization card can show real specifics,
+      // not just the total. Null whenever the total is (no real data yet).
+      let licenseWaste: {
+        monthlyCents: number;
+        annualCents: number;
+        seatCount: number;
+        skuCount: number;
+        topSku: { displayName: string; count: number; monthlyCents: number } | null;
+      } | null = null;
+      // Real Copilot-readiness sub-indicators (see copilot-readiness.ts for the
+      // backing checks, band-scoring rationale, and the 50/30/20 weighting).
+      let copilotReadiness: CopilotReadinessResult | null = null;
 
       if (lastCompleted) {
         const runSummary = (lastCompleted.summary as Record<string, unknown> | null | undefined) ?? null;
@@ -268,12 +285,41 @@ router.get(
             const props = await latestCheckProps(lastCompleted.tenantId, "cost:license-waste-estimate");
             const counts = props ? extractGroupByCountCounts(props) : null;
             if (counts) {
-              const breakdown = await computeSkuCostBreakdown(counts);
-              if (breakdown.totalMonthlyCents > 0) licenseWasteMonthlyCents = breakdown.totalMonthlyCents;
+              const breakdown: SkuCostBreakdown = await computeSkuCostBreakdown(counts);
+              if (breakdown.totalMonthlyCents > 0) {
+                licenseWasteMonthlyCents = breakdown.totalMonthlyCents;
+                // Priced lines only — a line with no price on file contributes
+                // nothing to the dollar total, so it must not inflate the seat
+                // count shown next to that total (cost-engine's own honesty rule).
+                const pricedLines = breakdown.lines.filter(
+                  (l): l is typeof l & { totalMonthlyPriceCents: number } => l.totalMonthlyPriceCents != null,
+                );
+                const topLine = [...pricedLines].sort(
+                  (a, b) => b.totalMonthlyPriceCents - a.totalMonthlyPriceCents,
+                )[0];
+                licenseWaste = {
+                  monthlyCents: breakdown.totalMonthlyCents,
+                  annualCents: breakdown.totalAnnualCents,
+                  seatCount: pricedLines.reduce((s, l) => s + l.count, 0),
+                  skuCount: pricedLines.length,
+                  topSku: topLine
+                    ? {
+                        displayName: topLine.displayName,
+                        count: topLine.count,
+                        monthlyCents: topLine.totalMonthlyPriceCents,
+                      }
+                    : null,
+                };
+              }
             }
           } catch (err) {
             log.warn({ err, customerId }, "GET /portal/assessment/status: license waste computation failed");
           }
+
+          copilotReadiness = await computeCopilotReadiness(lastCompleted.tenantId).catch((err) => {
+            log.warn({ err, customerId }, "GET /portal/assessment/status: copilot readiness computation failed");
+            return null;
+          });
         }
       }
 
@@ -375,7 +421,12 @@ router.get(
         stats: {
           genuineFindings,
           licenseWasteMonthlyCents,
+          licenseWaste,
         },
+        // Real Copilot-readiness sub-indicators + weighted overall — every
+        // score traces to genuinely-collected checks (or is null); see
+        // copilot-readiness.ts. Null until a completed scan with a tenant.
+        copilotReadiness,
         // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see note above)
         isTestbed: customerRow?.isTestbed === true,
       });
@@ -625,6 +676,75 @@ router.post(
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/assessment/debug-trigger-scan failed");
       if (!res.headersSent) res.status(500).json({ error: "Failed to trigger scan" });
+    }
+  },
+);
+
+// ── Recommended offers for assessment findings ────────────────────────────────
+//
+//   GET /api/portal/assessment/recommended-offers
+//
+// Runs the REAL Sales Offer Engine (sales-offer-engine.ts — the platform's one
+// offer mechanism: fired tenant signals × configured rule groups × Product
+// Catalog pricing) in pure-compute mode for the caller's own tenant, and maps
+// each candidate to a customer-safe shape. Nothing is persisted and no offer
+// state machine is touched — this is a read-only recommendation surface for
+// the assessment page's telemetry findings, deliberately NOT a second offer
+// mechanism (same engine, same catalog prices, same rationale text the
+// customer-facing /portal/offers surface shows).
+//
+// Each candidate additionally carries the health pillars of the signals that
+// fired it (from the same signal_derivation_rules rows the engine evaluated),
+// so the client can attach the right offer to the right finding category
+// without ever seeing raw internal signal keys beyond the rationale the offer
+// engine itself already writes for customers.
+//
+// Fetched once per page load (NOT polled — the engine walks the full tenant
+// profile, which is far too heavy for the 4s status poll).
+router.get(
+  "/portal/assessment/recommended-offers",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const [customer] = await db
+        .select({ mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
+      const [engineOutput, { rules }] = await Promise.all([
+        runSalesOfferEngineForTenant(customerId, customer?.mspId ?? null),
+        fetchSignalRulesAndGroups(customer?.mspId ?? null),
+      ]);
+
+      const pillarsBySignal = new Map<string, string>();
+      for (const rule of rules) {
+        if (rule.pillar) pillarsBySignal.set(rule.signalKey, rule.pillar);
+      }
+
+      res.json({
+        offers: engineOutput.candidates.map((c) => ({
+          serviceId: c.serviceId,
+          serviceName: c.serviceName,
+          title: c.title,
+          rationale: c.rationale,
+          // The engine's real adjusted catalog price — the same figure a
+          // persisted offer would carry into /portal/offers.
+          priceCents: c.adjustedPriceCents,
+          pillars: [...new Set(c.firedSignalKeys.map((k) => pillarsBySignal.get(k)).filter(Boolean))],
+          // Real destination: the existing customer offers page.
+          link: "/customer-offers",
+        })),
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/assessment/recommended-offers failed");
+      res.status(500).json({ error: "Failed to compute recommended offers" });
     }
   },
 );

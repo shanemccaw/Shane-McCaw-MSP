@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   Scale,
   FileCheck,
-  Lock,
+  Landmark,
+  CreditCard,
 } from 'lucide-react';
 
 interface ScoreGaugeCardProps {
@@ -26,7 +27,8 @@ export const ScoreGaugeCard: React.FC<ScoreGaugeCardProps> = ({ gauge, onSelectG
   const dashOffset = circumference * (1 - gauge.score / 100);
 
   // Color & Authority Profile generator
-  // Security = Green, Governance = Amber, Compliance = Blue, Copilot = Copilot Gradient
+  // Security = Green, Governance = Amber, Compliance = Blue, Adoption = Teal,
+  // Architecture = Indigo, Licensing = Orange, Copilot = Copilot Gradient
   const getProfile = () => {
     const titleLower = gauge.title.toLowerCase();
 
@@ -84,6 +86,63 @@ export const ScoreGaugeCard: React.FC<ScoreGaugeCardProps> = ({ gauge, onSelectG
         numStyle: 'text-[#60a5fa] font-mono',
         cardHover: 'hover:border-[#60a5fa]/60 hover:bg-[#192333]',
         trendColor: 'text-[#60a5fa]',
+      };
+    }
+
+    if (titleLower.includes('adoption')) {
+      return {
+        icon: <TrendingUp className="w-3.5 h-3.5 text-[#2dd4bf]" />,
+        headerColor: 'text-[#2dd4bf]',
+        gradId: 'adoptionGaugeGrad',
+        gradStops: (
+          <linearGradient id="adoptionGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#14b8a6" />
+            <stop offset="100%" stopColor="#2dd4bf" />
+          </linearGradient>
+        ),
+        stroke: 'url(#adoptionGaugeGrad)',
+        glowColor: 'rgba(45, 212, 191, 0.4)',
+        numStyle: 'text-[#2dd4bf] font-mono',
+        cardHover: 'hover:border-[#2dd4bf]/60 hover:bg-[#172726]',
+        trendColor: 'text-[#2dd4bf]',
+      };
+    }
+
+    if (titleLower.includes('architecture')) {
+      return {
+        icon: <Landmark className="w-3.5 h-3.5 text-[#818cf8]" />,
+        headerColor: 'text-[#818cf8]',
+        gradId: 'architectureGaugeGrad',
+        gradStops: (
+          <linearGradient id="architectureGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#818cf8" />
+          </linearGradient>
+        ),
+        stroke: 'url(#architectureGaugeGrad)',
+        glowColor: 'rgba(129, 140, 248, 0.4)',
+        numStyle: 'text-[#818cf8] font-mono',
+        cardHover: 'hover:border-[#818cf8]/60 hover:bg-[#1c1e33]',
+        trendColor: 'text-[#818cf8]',
+      };
+    }
+
+    if (titleLower.includes('licensing')) {
+      return {
+        icon: <CreditCard className="w-3.5 h-3.5 text-[#fb923c]" />,
+        headerColor: 'text-[#fb923c]',
+        gradId: 'licensingGaugeGrad',
+        gradStops: (
+          <linearGradient id="licensingGaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#fb923c" />
+          </linearGradient>
+        ),
+        stroke: 'url(#licensingGaugeGrad)',
+        glowColor: 'rgba(251, 146, 60, 0.4)',
+        numStyle: 'text-[#fb923c] font-mono',
+        cardHover: 'hover:border-[#fb923c]/60 hover:bg-[#2b2018]',
+        trendColor: 'text-[#fb923c]',
       };
     }
 

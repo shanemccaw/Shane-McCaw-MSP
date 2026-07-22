@@ -2,11 +2,8 @@ import {
   AssessmentStage,
   MetricGauge,
   TelemetryItem,
-  TenantHealthData,
   SecurityCoverageData,
   GroupLifecycleData,
-  LicenseOptimizationData,
-  CopilotReadinessData,
 } from './types';
 
 export const initialAssessmentStages: AssessmentStage[] = [
@@ -227,6 +224,12 @@ export const initialGauges: MetricGauge[] = [
   },
 ];
 
+// Item numbers/titles are STILL MOCK (scoping which real findings display is a
+// deliberately-separate later step), but each item's `determinedBy` names the
+// REAL monitor-check key(s) from the platform's metric registry
+// (lib/dashboard-registry/src/metrics.ts) that produce this class of finding,
+// so the modal's "How This Was Determined" section describes the real
+// collection mechanism, not an invented one.
 export const initialTelemetryItems: TelemetryItem[] = [
   {
     id: 'tel-1',
@@ -240,6 +243,11 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 84,
     remediationStep: 'Require MFA for all standard user logins via Conditional Access Policy #CA-004.',
     powershellSnippet: 'Set-MgUserAuthenticationMethod -UserId "user@tenant.com" -MfaRequired $true',
+    determinedBy: {
+      source: 'identity:mfa-registration',
+      method:
+        'The tenant scan reads per-user MFA registration state from Microsoft Graph authentication-method registration details and counts accounts with no strong method registered.',
+    },
   },
   {
     id: 'tel-2',
@@ -253,6 +261,11 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 168,
     remediationStep: 'Enable Microsoft 365 Group lifecycle policy with 180-day automatic renewal prompt.',
     powershellSnippet: 'Set-AzureADMSGroupLifecyclePolicy -GroupLifetimeInDays 180 -ManagedGroupTypes "All"',
+    determinedBy: {
+      source: 'compliance:orphaned-teams · compliance:orphaned-sites',
+      method:
+        'The scan inventories Teams and SharePoint group workspaces via Microsoft Graph and flags those with no owner or no recent activity in the collection window.',
+    },
   },
   {
     id: 'tel-3',
@@ -266,6 +279,11 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 142,
     remediationStep: 'Reclaim 98 unassigned E5 licenses and 44 Visio Plan 2 entitlements.',
     powershellSnippet: 'Set-MgUserLicense -UserId $blockedUser.Id -RemoveLicenses @("SPE_E5")',
+    determinedBy: {
+      source: 'licensing:sku-utilization · cost:license-waste-estimate',
+      method:
+        'The scan compares subscribed SKU seat counts to assigned/active seats from Microsoft Graph; the Cost Engine then prices the surplus per SKU against the platform’s SKU price reference.',
+    },
   },
   {
     id: 'tel-4',
@@ -279,6 +297,11 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 28,
     remediationStep: 'Restricted Access Control (RAC) enforcement on sensitive sites.',
     powershellSnippet: 'Set-SPOSite -Identity "https://tenant.sharepoint.com/sites/Finance" -RestrictedAccessControl $true',
+    determinedBy: {
+      source: 'compliance:overshared-sites · copilot:overshare-exposure',
+      method:
+        'The scan enumerates SharePoint site permissions and flags sites granting broad internal claims such as "Everyone except external users" — the same exposure Copilot’s grounding index would surface.',
+    },
   },
   {
     id: 'tel-5',
@@ -292,6 +315,11 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 14,
     remediationStep: 'Block legacy authentication in Conditional Access and transition scripts to Graph API.',
     powershellSnippet: 'New-MgPolicyConditionalAccessPolicy -DisplayName "Block Legacy Auth"',
+    determinedBy: {
+      source: 'identity:legacy-auth-usage',
+      method:
+        'The scan reads sign-in telemetry from Microsoft Graph and counts successful authentications over legacy protocols (IMAP/POP3/SMTP basic auth) that bypass modern-auth controls.',
+    },
   },
   {
     id: 'tel-6',
@@ -305,18 +333,13 @@ export const initialTelemetryItems: TelemetryItem[] = [
     affectedCount: 11,
     remediationStep: 'Migrate 6 admins to eligible PIM assignments with approval workflows.',
     powershellSnippet: 'Open Entra ID -> Privileged Identity Management -> Roles -> Assign Eligible',
+    determinedBy: {
+      source: 'audit:directory-role-changes',
+      method:
+        'The scan reads Entra ID directory-role assignment records from Microsoft Graph and counts accounts holding permanent (non-PIM-eligible) Global Administrator bindings.',
+    },
   },
 ];
-
-export const mockTenantHealth: TenantHealthData = {
-  unifiedScore: 77,
-  metrics: [
-    { subject: 'Security', score: 72, fullMark: 100 },
-    { subject: 'Governance', score: 85, fullMark: 100 },
-    { subject: 'Compliance', score: 85, fullMark: 100 },
-    { subject: 'Copilot Readiness', score: 65, fullMark: 100 },
-  ],
-};
 
 export const mockSecurityCoverage: SecurityCoverageData = {
   mfaActivePercentage: 88,
@@ -332,16 +355,7 @@ export const mockGroupLifecycle: GroupLifecycleData = {
   totalGroups: 408,
 };
 
-export const mockLicenseOptimization: LicenseOptimizationData = {
-  potentialMonthlySavings: 4250,
-  unassignedCount: 142,
-  idleSKUs: 3,
-  topSavingsProduct: 'Microsoft 365 E5 ($38/mo x 98)',
-};
-
-export const mockCopilotReadiness: CopilotReadinessData = {
-  readyUsers: 412,
-  needsActionUsers: 224,
-  totalEligible: 636,
-  topBlocker: 'Sensitivity label missing on 1,420 OneDrive documents',
-};
+// mockLicenseOptimization and mockCopilotReadiness were deleted when the
+// License Optimization card moved to the real Cost Engine figure
+// (status.stats.licenseWaste) and Copilot Readiness moved to the real
+// three-sub-indicator block (status.copilotReadiness) — no mock fallbacks.

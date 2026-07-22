@@ -1,22 +1,30 @@
 /**
  * /assessment-test — the candidate replacement for /assessment's generating
- * experience, wired to the REAL assessment backend (this task): the same
+ * experience, wired to the REAL assessment backend: the same
  * GET /api/portal/assessment/status poll + diagnostics-run SSE + doc-workflow
  * SSE infrastructure already proven correct in AssessmentGeneratingScreen /
  * AssessmentWizard, via useAssessmentLiveStatus (a direct mirror of that
  * proven wiring — see that file's header for the combined-progress rationale).
  *
- * REAL (this task): hero progress bar + live status text, Assessment Pipeline
- * document stages, the four pillar score gauges, and the Overall M365 Health
- * card. Uncovered pillars render an honest "not covered" state — never a
- * fabricated score.
+ * REAL: hero progress bar + live status text (+ the wizard's same testbed-gated
+ * debug scan trigger), Assessment Pipeline document stages, all SEVEN pillar
+ * score gauges + the full-universe tenant-health radar, Overall M365 Health,
+ * the License Optimization card (Cost Engine dollars via
+ * status.stats.licenseWaste), the Copilot Readiness card (three real
+ * sub-indicators + weighted overall via status.copilotReadiness), and the
+ * per-finding recommended offers (real Sales Offer Engine candidates via
+ * GET /portal/assessment/recommended-offers). Anything without real signal
+ * coverage renders an honest "not covered"/"no data" state — never fabricated.
  *
  * STILL MOCK (deliberately — "wire everything first, then scope what actually
- * displays" is a separate follow-up step): TelemetryBriefing items, the
- * SneakPeekInsights panel, and the modals' mock-only detail content.
+ * displays" is a separate follow-up step): the TelemetryBriefing item list
+ * itself (titles/counts/narratives) and the modals' mock-only detail content.
+ * Each mock item's `determinedBy` does reference the real check keys behind
+ * that class of finding, and the offers attached to items are real.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { useAuth } from '@/lib/auth-context';
 import { AssessmentHero } from '@/components/assessment-test/AssessmentHero';
 import { ScoreGaugeGrid } from '@/components/assessment-test/ScoreGaugeGrid';
 import { TelemetryBriefing } from '@/components/assessment-test/TelemetryBriefing';
@@ -28,32 +36,46 @@ import { ExportReportModal } from '@/components/assessment-test/ExportReportModa
 import { PipelineDocumentModal } from '@/components/assessment-test/PipelineDocumentModal';
 import { useAssessmentLiveStatus } from '@/components/assessment-test/useAssessmentLiveStatus';
 
-import {
-  initialTelemetryItems,
-  mockTenantHealth,
-  mockLicenseOptimization,
-  mockCopilotReadiness,
-} from '@/components/assessment-test/mockData';
+import { initialTelemetryItems } from '@/components/assessment-test/mockData';
 import {
   MetricGauge,
   TelemetryItem,
   AssessmentStage,
   AssessmentStageStatus,
+  RadarPillarEntry,
+  RecommendedOffer,
 } from '@/components/assessment-test/types';
 
-// The four pillar gauges this page shows, in display order. Keys match the
-// backend's real HealthPillar keys (pillar-coverage.ts / health-engine.ts).
+// The full, confirmed 7-pillar universe this page shows — gauge row AND radar —
+// in canonical display order. Keys match the backend's real HealthPillar keys
+// (pillar-coverage.ts / health-engine.ts) plus "security".
 // NOTE: "security" is not part of the backend's HEALTH_PILLARS today (the
 // radar's pillar universe is governance/compliance/adoption/copilot/
-// architecture/licensing), so the Security gauge renders the honest
+// architecture/licensing), so the Security gauge/axis renders the honest
 // "not covered by this scan" state until the backend adds a security pillar —
-// per the no-fabrication rule, never a made-up score.
+// per the no-fabrication rule, never a made-up score. The same rule applies
+// uniformly: ANY pillar the customer's scanned package doesn't genuinely cover
+// renders as not-covered, driven entirely by status.radar.pillars.
 const GAUGE_PILLARS: { key: string; fallbackTitle: string }[] = [
   { key: 'security', fallbackTitle: 'Security Score' },
   { key: 'governance', fallbackTitle: 'Governance' },
   { key: 'compliance', fallbackTitle: 'Compliance' },
+  { key: 'adoption', fallbackTitle: 'Adoption' },
   { key: 'copilot', fallbackTitle: 'Copilot Readiness' },
+  { key: 'architecture', fallbackTitle: 'Architecture' },
+  { key: 'licensing', fallbackTitle: 'Licensing' },
 ];
+
+/** Telemetry finding category → the signal pillars whose offers address it.
+ * Used to attach each real Sales Offer Engine candidate (which carries the
+ * pillars of its fired signals) to the finding it remediates. */
+const TELEMETRY_TYPE_PILLARS: Record<TelemetryItem['type'], string[]> = {
+  security: ['security'],
+  identity: ['security', 'governance'],
+  groups: ['governance', 'compliance'],
+  licenses: ['licensing', 'adoption'],
+  copilot: ['copilot'],
+};
 
 /** Real backend document status → pipeline stage status. Same real status
  * values AssessmentGeneratingScreen maps (pending/generating/approved/
@@ -69,6 +91,7 @@ function docStageStatus(itemStatus: string | undefined): AssessmentStageStatus {
 export default function AssessmentTestPage() {
   const live = useAssessmentLiveStatus();
   const status = live.status;
+  const { fetchWithAuth } = useAuth();
 
   const [telemetryItems, setTelemetryItems] = useState<TelemetryItem[]>(initialTelemetryItems);
 
@@ -79,6 +102,36 @@ export default function AssessmentTestPage() {
   const [selectedGauge, setSelectedGauge] = useState<MetricGauge | null>(null);
   const [selectedPipelineStage, setSelectedPipelineStage] = useState<AssessmentStage | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
+
+  // ── REAL recommended offers — Sales Offer Engine candidates for this tenant.
+  // Fetched once (the engine walks the full tenant profile; far too heavy for
+  // the 4s status poll). Empty array = honestly no live offers.
+  const [offers, setOffers] = useState<RecommendedOffer[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetchWithAuth('/api/portal/assessment/recommended-offers', undefined, {
+          silent: true,
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { offers?: RecommendedOffer[] };
+        if (!cancelled && Array.isArray(data.offers)) setOffers(data.offers);
+      } catch {
+        // best-effort — findings simply show the honest "no offer" state
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchWithAuth]);
+
+  /** Best real offer for a finding: engine candidates arrive score-ranked, so
+   * the first whose signal pillars intersect the finding's category wins. */
+  const offerForItem = (item: TelemetryItem): RecommendedOffer | null => {
+    const pillars = TELEMETRY_TYPE_PILLARS[item.type] ?? [];
+    return offers.find((o) => o.pillars.some((p) => pillars.includes(p))) ?? null;
+  };
 
   // ── REAL pipeline stages — documents.expected × documents.items ────────────
   // `expected` carries every real document title up front (before any items
@@ -102,9 +155,10 @@ export default function AssessmentTestPage() {
         }));
   const activeStageId = stages.find((s) => s.status === 'in_progress')?.id ?? '';
 
-  // ── REAL pillar gauges — status.radar.pillars, package-aware ───────────────
+  // ── REAL pillar gauges + radar axes — status.radar.pillars, package-aware ──
   // Only pillars the customer's actual scanned package genuinely covers carry
-  // a score; the rest render the honest notCovered state.
+  // a score; the rest render the honest notCovered state (gauge) / no axis
+  // (radar). Both surfaces read the same source so they can never disagree.
   const pillars = status?.radar.pillars ?? [];
   const gauges: MetricGauge[] = GAUGE_PILLARS.map(({ key, fallbackTitle }) => {
     const p = pillars.find((pl) => pl.pillar === key);
@@ -112,16 +166,20 @@ export default function AssessmentTestPage() {
       ? { id: `pillar-${key}`, title: p.label, score: p.score }
       : { id: `pillar-${key}`, title: fallbackTitle, score: 0, notCovered: true };
   });
+  const radarPillars: RadarPillarEntry[] = GAUGE_PILLARS.map(({ key, fallbackTitle }) => {
+    const p = pillars.find((pl) => pl.pillar === key);
+    return { key, label: p?.label ?? fallbackTitle, score: p ? p.score : null };
+  });
 
   // ── REAL Overall M365 Health — same derivation as AssessmentGeneratingScreen
-  // (avgScore: average of ALL covered pillars' real scores, not just the four
-  // shown as gauges). Null (honest em-dash card) when nothing is covered yet.
+  // (avgScore: average of ALL covered pillars' real scores). Null (honest
+  // em-dash card) when nothing is covered yet.
   const overallScore =
     pillars.length > 0
       ? Math.round(pillars.reduce((sum, p) => sum + p.score, 0) / pillars.length)
       : null;
 
-  // Filter telemetry items by search query and category (STILL MOCK)
+  // Filter telemetry items by search query and category (item list STILL MOCK)
   const filteredTelemetry = telemetryItems.filter((item) => {
     const matchesCategory = selectedCategory === 'all' || item.type === selectedCategory;
     const matchesQuery =
@@ -145,13 +203,20 @@ export default function AssessmentTestPage() {
       if (g && !g.notCovered) setSelectedGauge(g);
       else setSelectedCategory('security');
     } else if (cardName === 'licenses') {
-      // No real license gauge exists on this page (licensing is a radar pillar
-      // but not one of the four shown) — use the category filter instead.
-      setSelectedCategory('licenses');
+      // Licensing is now one of the seven gauges — open it when covered.
+      const g = gauges.find((item) => item.id === 'pillar-licensing');
+      if (g && !g.notCovered) setSelectedGauge(g);
+      else setSelectedCategory('licenses');
     } else {
       setSelectedCategory(cardName);
     }
   };
+
+  // ⚠️ TEMPORARY DEBUG — same render condition as AssessmentWizard's [DEBUG]
+  // button (testbed customers only; server-side gate is the real enforcement).
+  const showDebugTrigger = Boolean(
+    status && !live.reportsComplete && status.isTestbed && !status.scan.active,
+  );
 
   return (
     <AppShell title="Assessment Test">
@@ -173,9 +238,12 @@ export default function AssessmentTestPage() {
               activeStageTitle={live.activeStageTitle}
               isScanning={Boolean(status?.scan.active) || live.debugTriggering}
               onTriggerScan={() => void live.debugTriggerScan()}
+              showDebugTrigger={showDebugTrigger}
+              debugTriggering={live.debugTriggering}
+              everScanned={Boolean(status?.scan.everScanned)}
             />
 
-            {/* 2. Score Gauges (4 real pillar cards). Overall M365 Health
+            {/* 2. Score Gauges — all 7 real pillar cards. Overall M365 Health
                 lives in the right-column SneakPeekInsights panel, not here. */}
             <ScoreGaugeGrid
               gauges={gauges}
@@ -184,12 +252,14 @@ export default function AssessmentTestPage() {
               }}
             />
 
-            {/* 3. Telemetry Briefing (STILL MOCK — scoped in a later step) */}
+            {/* 3. Telemetry Briefing (item list STILL MOCK — scoped in a later
+                step; the attached recommended offers are REAL) */}
             <TelemetryBriefing
               items={filteredTelemetry}
               onSelectItem={(item) => setSelectedTelemetryItem(item)}
               selectedCategory={selectedCategory}
               setSelectedCategory={setSelectedCategory}
+              offerFor={offerForItem}
             />
 
           </div>
@@ -204,13 +274,14 @@ export default function AssessmentTestPage() {
               onSelectStage={(stage) => setSelectedPipelineStage(stage)}
             />
 
-            {/* Sneak Peek Insights (STILL MOCK — scoped in a later step) */}
+            {/* Sneak Peek Insights — REAL: overall health, 7-pillar radar,
+                Cost Engine license savings, Copilot readiness sub-indicators */}
             <SneakPeekInsights
               overallScore={overallScore}
               pillarCount={pillars.length}
-              tenantHealth={mockTenantHealth}
-              licenseOpt={mockLicenseOptimization}
-              copilotReadiness={mockCopilotReadiness}
+              radarPillars={radarPillars}
+              licenseWaste={status?.stats.licenseWaste ?? null}
+              copilotReadiness={status?.copilotReadiness ?? null}
               onOpenCardDetail={handleOpenSneakPeekDetail}
             />
 
@@ -224,6 +295,7 @@ export default function AssessmentTestPage() {
         item={selectedTelemetryItem}
         onClose={() => setSelectedTelemetryItem(null)}
         onRemediate={handleRemediateItem}
+        offer={selectedTelemetryItem ? offerForItem(selectedTelemetryItem) : null}
       />
 
       <MetricGaugeModal
