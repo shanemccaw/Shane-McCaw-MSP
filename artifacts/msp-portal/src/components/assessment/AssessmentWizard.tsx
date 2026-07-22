@@ -1,577 +1,1469 @@
 /**
- * AssessmentGeneratingScreen.tsx
+ * ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
+ * This file renders a testbed-only debug scan trigger button (see the
+ * "generating" case in StepPanel, guarded by `status.isTestbed`) that exists
+ * only so scan progress can be watched live during development. It calls
+ * POST /portal/assessment/debug-trigger-scan, which is hard-gated server-side to
+ * isTestbed=true customers — this client-side check is only a second layer, not
+ * the real safeguard. Must be fully removed before this flow reaches real
+ * customers. See backlog: [Shane to add ticket].
  *
- * Literal structural translation of the approved Stitch reference mockup for
- * the Assessment wizard's "generating" step, built by hand (not model-inferred)
- * against the real msp-portal design tokens and the real AssessmentStatus data
- * shape already wired in AssessmentWizard.tsx.
+ * AssessmentWizard.tsx
  *
- * UI-FIRST PASS — per direct instruction: get the structure in now, wire the
- * remaining real data sources afterward as a separate step. Every piece below
- * is one of three states, clearly marked:
- *   REAL       — wired to genuine AssessmentStatus fields already available.
- *   PLACEHOLDER — visually complete, but the real backend source doesn't exist
- *                 on this endpoint yet (drift %, license efficiency %, and the
- *                 per-finding "Critical Gaps" list). Marked with a TODO comment
- *                 naming the real system that will eventually feed it (the
- *                 Drift Engine for drift %, msp_diagnostic_findings for the
- *                 gaps grid). NEVER silently presented as real — swap these
- *                 for real props once the backend fields exist.
- *   OMITTED    — the mockup's per-stat "Shane's Analysis"/"Financial Lever"
- *                secondary insight cards have no real distinct data source
- *                (only the one main narrative exists) — left out entirely
- *                rather than fabricated, per the no-fabrication rule.
+ * The Assessment flow container — the locked, sequential step experience that
+ * mounts inside the Assessment shell. This is the *flow-control* surface only
+ * (task 2): it moves the customer from "assessment ordered" through "all reports
+ * finished generating", gating each step on its predecessor. It renders
+ * placeholders where later tasks own the real content (document views, OMG
+ * cards, the SOW selector, payment) — it never renders that content itself.
  *
- * Uses this app's real dark-mode tokens (index.css .dark block) throughout —
- * NOT the mockup's own Material You palette/Hanken Grotesk font/WebGL shader.
+ * What it wires together, all reusing existing platform mechanisms:
+ *   - Live scan progress via the existing diagnostics SSE stream
+ *     (/api/msp/customers/:id/diagnostics/runs/:runId/sse) — the same stream the
+ *     CustomerUser Mission Control scan strip uses.
+ *   - Document-generation wait state via polling GET /api/portal/assessment/status
+ *     (insights documents expose no per-document SSE channel; their status column
+ *     flipping generating → approved/delivered is the platform's completion signal).
+ *   - The mandatory first-login MFA gate (AssessmentMfaEnrollment).
+ *   - The first-login provisioning trigger (POST /portal/first-login/provision).
  */
-import { Quote, Route, ShieldCheck, AlertTriangle, CheckCircle2, FileText, Rocket } from "lucide-react";
-import { Radar as RadarChart, type DistributionWidgetData } from "@workspace/dashboard-canvas";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { useTheme } from "@/lib/theme-context";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
+import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
+import { AssessmentSowSelector } from "./AssessmentSowSelector";
+import { AssessmentPaymentPlan } from "./AssessmentPaymentPlan";
+// Real radar/spider chart renderer from the platform's dashboard web-part
+// system — the same component real dashboards use for pillar-snapshot
+// widgets (engine.pillarSnapshot). Aliased to avoid colliding with the
+// lucide-react "Radar" icon already used as this step's PanelShell icon.
+import { Radar as RadarChart, type DistributionWidgetData } from "@workspace/dashboard-canvas";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Coins,
+  FileText,
+  FileSignature,
+  CreditCard,
+  ListChecks,
+  Loader2,
+  Lock,
+  Quote,
+  Radar,
+  Route,
+  ScrollText,
+  ShieldCheck,
+  AlertTriangle,
+  XCircle,
+} from "lucide-react";
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
+// Mandatory MFA enrollment is a real security requirement — this flag only
+// skips it for active testing. Must be removed/set to false before any real
+// customer reaches this flow. See backlog: [Shane to add ticket].
+const SKIP_MFA_GATE_FOR_TESTING = true;
 
-interface ExpectedDoc {
+// ── Status payload (mirrors GET /api/portal/assessment/status) ────────────────
+
+interface AssessmentDocument {
+  id: number;
   docType: string;
+  category: string;
   title: string;
+  status: string;
 }
 
-interface DocItem {
-  docType: string;
-  status: string; // "generating" | "approved" | "delivered" | "failed" | ...
-}
-
-interface RadarPillar {
-  pillar: string;
-  label: string;
-  score: number;
-}
-
-/** PLACEHOLDER shape — real fields TBD once wired to the Drift Engine. */
-interface DriftStatPlaceholder {
-  currentPct: number;
-  deltaPct: number;
-}
-
-/** PLACEHOLDER shape — real fields TBD, real source is `stats.licenseWasteMonthlyCents` today (dollar figure, not an "efficiency %"; the mockup's specific "94.8% +5.2%" framing has no real equivalent yet). */
-interface LicenseEfficiencyPlaceholder {
-  currentPct: number;
-  deltaPct: number;
-}
-
-/** PLACEHOLDER shape — real source will be top N msp_diagnostic_findings by severity, once that field is added to GET /api/portal/assessment/status. */
-interface CriticalGapPlaceholder {
-  label: string;
-  risk: string;
-  impact: "Critical" | "High" | "Medium" | "Low";
-}
-
-export interface AssessmentGeneratingScreenProps {
-  // REAL — from AssessmentStatus.scan
+interface AssessmentStatus {
   scan: {
     active: boolean;
+    runId: string | null;
+    status: string | null;
+    startedAt: string | null;
     checksTotal: number | null;
     checksOk: number | null;
     checksError: number | null;
     checksLicenseGap: number | null;
+    licenseGapFeatures: string[];
+    lastScanAt: string | null;
+    everScanned: boolean;
   };
-  // REAL — from AssessmentStatus.documents
   documents: {
-    expected: ExpectedDoc[];
-    items: DocItem[];
-    allReady: boolean;
+    items: AssessmentDocument[];
+    // Real titles of every document the assessment service will generate (from
+    // the service's associated-documents mapping), present from the moment the
+    // customer lands here — before any `items` row exists — so the generation
+    // checklist can be rendered by real name up front, not only as rows appear.
+    expected: { docType: string; title: string }[];
+    total: number;
+    generating: number;
+    ready: number;
     failed: number;
+    allReady: boolean;
+    // Live doc-generation workflow run: run ID for the progress SSE stream, and
+    // its status as the reliable terminal signal (failed/cancelled → failure UI).
+    workflowRunId: number | null;
+    workflowStatus: string | null;
   };
-  // REAL — from AssessmentStatus.narrative
+  mfa: { enrolled: boolean };
+  // CIO-Report Narrative — the "senior M365 Architect" narrative of this scan's
+  // real, already-classified findings + real peer-benchmark data, generated by
+  // cio-narrative-generator.ts as soon as the scan completes (independent of how
+  // long document generation still has left). "not_started" until a completed
+  // scan exists to narrate.
   narrative: {
     status: "not_started" | "generating" | "ready" | "failed";
     html: string | null;
+    generatedAt: string | null;
   };
-  // REAL — from AssessmentStatus.radar
+  // Real tenant-health radar — only pillars this customer's actual scanned
+  // package genuinely covers (pillar-coverage.ts on the backend). Empty until
+  // the package has real monitoring_package_checks rows curated for it.
   radar: {
-    pillars: RadarPillar[];
+    packageKey: string | null;
+    pillars: { pillar: string; label: string; score: number }[];
   };
-  // REAL — from AssessmentStatus.stats
+  // Real stat cards — every number traces to this run's own persisted summary
+  // or a live cost-engine query; null means "no real data yet", never a
+  // placeholder.
   stats: {
     genuineFindings: number | null;
     licenseWasteMonthlyCents: number | null;
   };
-  // PLACEHOLDER — see DriftStatPlaceholder doc comment above.
-  driftPlaceholder?: DriftStatPlaceholder;
-  // PLACEHOLDER — see LicenseEfficiencyPlaceholder doc comment above.
-  licenseEfficiencyPlaceholder?: LicenseEfficiencyPlaceholder;
-  // PLACEHOLDER — see CriticalGapPlaceholder doc comment above.
-  criticalGapsPlaceholder?: CriticalGapPlaceholder[];
-  /** Real "prepared by" identity — static branding, not per-customer data. */
-  architectName?: string;
-  /** Real next-step CTA — wire to the wizard's existing real advance action. */
-  onContinue?: () => void;
-  continueLabel?: string;
-  continueDisabled?: boolean;
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  isTestbed: boolean;
 }
 
-// ── Real token color resolution for the Radar chart ─────────────────────────
-// Radar.tsx's gridStroke/tickFill need resolved colors, not raw HSL-var
-// references, per its own documented caveat — resolve against this app's
-// real tokens rather than the mockup's arbitrary palette.
-const RADAR_COLOR = "#479ef5"; // --primary
-const RADAR_GRID_STROKE = "rgba(255,255,255,0.12)";
-const RADAR_TICK_FILL = "rgba(255,255,255,0.54)"; // --muted-foreground equivalent
+// Live diagnostics SSE events (same discriminated union as Mission Control).
+type DiagnosticsSSEEvent =
+  | { type: "diagnostics_progress"; checkKey: string; checkLabel: string; status: string; index: number; total: number }
+  | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; findings: number }
+  | { type: "diagnostics_error"; message: string };
 
-function impactColor(impact: CriticalGapPlaceholder["impact"]): string {
-  switch (impact) {
-    case "Critical":
-      return "bg-primary";
-    case "High":
-      return "bg-destructive";
-    case "Medium":
-      return "bg-accent";
-    default:
-      return "bg-muted-foreground";
+// Live document-generation workflow run SSE events (run-ID-scoped stream).
+type DocWorkflowSSEEvent =
+  | { type: "workflow_run_progress"; message: string; step?: number; total?: number; nodeId?: string }
+  | { type: "workflow_run_complete"; presentationId?: number | string }
+  | { type: "workflow_run_error"; message: string };
+
+const POLL_INTERVAL_MS = 4000;
+
+// ── Step model ────────────────────────────────────────────────────────────────
+
+// "scan" and "reports" are deliberately ONE step ("generating"): the customer
+// watches the deep scan, then every document, then the SOW complete on a single
+// continuous screen with a live checklist — never a separate per-phase wait
+// screen to click through.
+type StepKey = "consent" | "generating" | "review" | "sow" | "payment";
+
+interface StepDef {
+  key: StepKey;
+  title: string;
+  subtitle: string;
+  icon: typeof Radar;
+}
+
+const STEPS: StepDef[] = [
+  { key: "consent", title: "Consent granted", subtitle: "Access authorized", icon: ShieldCheck },
+  { key: "generating", title: "Generating your assessment", subtitle: "Scan, reports & SOW", icon: Radar },
+  { key: "review", title: "Review findings", subtitle: "Your results", icon: ScrollText },
+  { key: "sow", title: "Statement of work", subtitle: "Tailor your scope", icon: FileSignature },
+  { key: "payment", title: "Choose a plan", subtitle: "Sign & pay", icon: CreditCard },
+];
+
+type StepState = "complete" | "current" | "locked";
+
+export function AssessmentWizard() {
+  const { user, accessToken, fetchWithAuth } = useAuth();
+  const customerId = user?.customerId ?? null;
+
+  const [status, setStatus] = useState<AssessmentStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [mfaJustEnrolled, setMfaJustEnrolled] = useState(false);
+  const [selected, setSelected] = useState<number>(1); // default to the generating step
+  const [scanProgress, setScanProgress] = useState<{ index: number; total: number; label: string } | null>(null);
+  const [scanLog, setScanLog] = useState<{ checkKey: string; label: string; status: string }[]>([]);
+  const [scanJustFinished, setScanJustFinished] = useState(false);
+  const [docProgress, setDocProgress] = useState<{ message: string; step?: number; total?: number } | null>(null);
+
+  const prevCurrentRef = useRef<number | null>(null);
+  const provisionFiredRef = useRef(false);
+
+  // ── Load status (polled) ───────────────────────────────────────────────────
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/portal/assessment/status", undefined, { silent: true });
+      if (res.ok) {
+        const data = (await res.json()) as AssessmentStatus;
+        // `documents.expected` was added to this endpoint alongside this wizard's
+        // continuous-generation checklist (both landed together). api-server runs
+        // as its own long-lived process here and isn't guaranteed to have already
+        // restarted onto the code that added this field by the moment this bundle
+        // is served — the wire response is a genuine external boundary, not
+        // something the TS return type actually enforces at runtime. Normalize
+        // once here (not scattered at each read site) so a response from an
+        // older-but-still-live process degrades to "no expected documents known
+        // yet" instead of throwing.
+        if (data.documents && !Array.isArray(data.documents.expected)) {
+          data.documents.expected = [];
+        }
+        // Same "older-but-still-live backend process" boundary as `expected`
+        // above — `narrative` was added alongside this feature, so a response
+        // from a not-yet-restarted process degrades to "nothing to show yet"
+        // instead of throwing.
+        if (!data.narrative || typeof data.narrative !== "object") {
+          data.narrative = { status: "not_started", html: null, generatedAt: null };
+        }
+        // Same "older-but-still-live backend process" boundary as `expected` and
+        // `narrative` above — `stats` was added alongside the richer stat-card
+        // visual pass, so a response from a not-yet-restarted process degrades to
+        // "no real stat data yet" (StatCards' existing `!= null` guards mean it
+        // simply renders no cards) instead of throwing.
+        if (!data.stats || typeof data.stats !== "object") {
+          data.stats = { genuineFindings: null, licenseWasteMonthlyCents: null };
+        }
+        setStatus(data);
+      }
+    } catch {
+      // best-effort; the next poll retries
+    } finally {
+      setLoaded(true);
+    }
+  }, [fetchWithAuth]);
+
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  const [debugTriggering, setDebugTriggering] = useState(false);
+  const debugTriggerScan = useCallback(async () => {
+    setDebugTriggering(true);
+    try {
+      await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      await loadStatus();
+    } finally {
+      setDebugTriggering(false);
+    }
+  }, [fetchWithAuth, loadStatus]);
+
+  useEffect(() => {
+    void loadStatus();
+    const t = setInterval(() => void loadStatus(), POLL_INTERVAL_MS);
+    return () => clearInterval(t);
+  }, [loadStatus]);
+
+  // ── First-login provisioning trigger (fire once on mount) ──────────────────
+  useEffect(() => {
+    if (provisionFiredRef.current) return;
+    provisionFiredRef.current = true;
+    void fetchWithAuth("/api/portal/first-login/provision", { method: "POST" }, { silent: true }).catch(
+      () => {
+        /* provisioning is best-effort and idempotent server-side */
+      },
+    );
+  }, [fetchWithAuth]);
+
+  // ── Derived step completion ────────────────────────────────────────────────
+  // A "failed" run is neither active nor a real completion — without this
+  // exclusion it would render as "scan complete" with a hollow 0-of-0 result
+  // and silently never unlock reports (which need real check data to generate
+  // from), leaving the customer stuck with no honest explanation why.
+  const scanFailed = Boolean(
+    status?.scan.everScanned && !status.scan.active && status.scan.status === "failed",
+  );
+  const scanComplete = Boolean(
+    status?.scan.everScanned && !status.scan.active && status.scan.status !== "failed",
+  );
+  const reportsComplete = Boolean(status?.documents.allReady);
+  // The interactive SOW step unlocks once the consolidated SOW has finished
+  // generating (it's the last document produced by the same generation run).
+  const sowReady = Boolean(
+    status?.documents.items.some(
+      (d) => d.docType === "consolidated_sow" && (d.status === "approved" || d.status === "delivered"),
+    ),
+  );
+
+  // Document generation failed if the workflow run terminated unsuccessfully or a
+  // document row is marked failed. Poll-derived (reliable) — the SSE stream only
+  // makes it feel instant. A failed run must never leave the wizard spinning.
+  const reportsFailed =
+    !reportsComplete &&
+    ((status?.documents.failed ?? 0) > 0 ||
+      status?.documents.workflowStatus === "failed" ||
+      status?.documents.workflowStatus === "cancelled");
+
+  // The first incomplete, unlocked step — the flow's "current" position. Scan
+  // and document generation are one continuous "generating" step (index 1), so
+  // there is no separate wait screen to auto-advance through between them —
+  // only once everything (scan + every document + the SOW) is genuinely done
+  // does the customer move on to review.
+  const currentIndex = !reportsComplete ? 1 : 2;
+
+  // Follow the flow forward when a milestone advances it, but leave the user on
+  // whatever step they clicked to between milestones.
+  useEffect(() => {
+    if (prevCurrentRef.current !== currentIndex) {
+      setSelected(currentIndex);
+      prevCurrentRef.current = currentIndex;
+    }
+  }, [currentIndex]);
+
+  // ── Live scan progress via the existing diagnostics SSE endpoint ───────────
+  const scanActive = status?.scan.active ?? false;
+  const scanRunId = status?.scan.runId ?? null;
+  useEffect(() => {
+    if (!scanActive || !scanRunId || customerId == null || !accessToken) return;
+    const es = new EventSource(
+      `/api/msp/customers/${customerId}/diagnostics/runs/${scanRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+    );
+    setScanLog([]);
+    setScanJustFinished(false);
+    es.onmessage = (event) => {
+      const parsed = JSON.parse(event.data) as DiagnosticsSSEEvent;
+      if (parsed.type === "diagnostics_progress") {
+        setScanProgress({ index: parsed.index, total: parsed.total, label: parsed.checkLabel });
+        setScanLog((prev) => [...prev, { checkKey: parsed.checkKey, label: parsed.checkLabel, status: parsed.status }]);
+      } else if (parsed.type === "diagnostics_complete") {
+        es.close();
+        setScanProgress(null);
+        // The completion landing needs the poll's authoritative status before it
+        // can render (real checksOk/checksTotal, real document state) — this flag
+        // only bridges the ~800ms gap so the UI reads as "wrapping up" instead of
+        // falling back to a stale "scan in progress" message right after finishing.
+        setScanJustFinished(true);
+        setTimeout(() => void loadStatus(), 800);
+      } else if (parsed.type === "diagnostics_error") {
+        es.close();
+        setScanProgress(null);
+        setTimeout(() => void loadStatus(), 800);
+      }
+    };
+    es.onerror = () => es.close();
+    return () => {
+      es.close();
+      setScanProgress(null);
+    };
+  }, [scanActive, scanRunId, customerId, accessToken, loadStatus]);
+
+  // ── Live document-generation progress via the workflow run-ID SSE stream ────
+  // Keyed on the workflow run ID (the only stable handle before the presentation
+  // exists). Live progress only — completion/failure are authoritatively detected
+  // by the status poll (workflowStatus / allReady / failed), so a dropped stream
+  // never strands the wizard. Subscribes only while docs are still generating.
+  const docWorkflowRunId = status?.documents.workflowRunId ?? null;
+  const docGenActive = docWorkflowRunId != null && !reportsComplete && !reportsFailed;
+  useEffect(() => {
+    if (!docGenActive || docWorkflowRunId == null || !accessToken) return;
+    const es = new EventSource(
+      `/api/portal/assessment/doc-workflow/${docWorkflowRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+    );
+    es.onmessage = (event) => {
+      const parsed = JSON.parse(event.data) as DocWorkflowSSEEvent;
+      if (parsed.type === "workflow_run_progress") {
+        setDocProgress({ message: parsed.message, step: parsed.step, total: parsed.total });
+      } else if (parsed.type === "workflow_run_complete") {
+        es.close();
+        setDocProgress(null);
+        setTimeout(() => void loadStatus(), 600);
+      } else if (parsed.type === "workflow_run_error") {
+        es.close();
+        setDocProgress(null);
+        setTimeout(() => void loadStatus(), 600);
+      }
+    };
+    es.onerror = () => es.close();
+    return () => {
+      es.close();
+      setDocProgress(null);
+    };
+  }, [docGenActive, docWorkflowRunId, accessToken, loadStatus]);
+
+  // ── Mandatory MFA gate ─────────────────────────────────────────────────────
+  // Block the entire flow until the customer enrolls a portal-login second factor.
+  if (!SKIP_MFA_GATE_FOR_TESTING && loaded && status && !status.mfa.enrolled && !mfaJustEnrolled) {
+    return (
+      <AssessmentMfaEnrollment
+        onEnrolled={() => {
+          setMfaJustEnrolled(true);
+          void loadStatus();
+        }}
+      />
+    );
   }
-}
 
-function impactTextColor(impact: CriticalGapPlaceholder["impact"]): string {
-  switch (impact) {
-    case "Critical":
-      return "text-primary";
-    case "High":
-      return "text-destructive";
-    case "Medium":
-      return "text-accent";
-    default:
-      return "text-muted-foreground";
-  }
-}
-
-// ── Section 1: Header band ───────────────────────────────────────────────────
-
-function HeaderBand({ architectName = "Shane McCaw" }: { architectName?: string }) {
-  return (
-    <section className="mb-10">
-      <div className="flex flex-col md:flex-row justify-between items-center md:items-end gap-6 mb-3">
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-widest text-primary">
-            Assessment in Progress
-          </span>
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground mt-1">
-            Tenant Governance Snapshot
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-sm font-medium text-muted-foreground">
-              Lead Architect: {architectName}
-            </p>
-          </div>
-        </div>
+  if (!loaded && !status) {
+    return (
+      <div className="mx-auto w-full max-w-4xl px-6 py-10">
+        <Skeleton className="h-72 w-full rounded-2xl" />
       </div>
-      <div className="h-px w-full bg-border" />
-    </section>
+    );
+  }
+
+  const stepState = (index: number): StepState => {
+    if (index === 0) return "complete"; // consent
+    // "generating" — one continuous step spanning scan + every document + SOW.
+    if (index === 1) return reportsComplete ? "complete" : "current";
+    if (index === 2) return reportsComplete ? "current" : "locked"; // review
+    if (index === 3) return reportsComplete && sowReady ? "current" : "locked"; // sow
+    // Payment unlocks alongside the SOW step — the customer settles their scope
+    // there, then chooses a plan and signs here.
+    if (index === 4) return reportsComplete && sowReady ? "current" : "locked"; // payment
+    return "locked";
+  };
+
+  const isUnlocked = (index: number): boolean => stepState(index) !== "locked";
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:flex-row md:px-6">
+      {/* ── Locked, sequential step sidebar ── */}
+      <nav className="md:w-64 md:shrink-0" aria-label="Assessment steps">
+        <ol className="flex gap-2 overflow-x-auto pb-2 md:flex-col md:gap-1 md:overflow-visible md:pb-0">
+          {STEPS.map((step, i) => {
+            const state = stepState(i);
+            const unlocked = state !== "locked";
+            const active = i === selected;
+            const Icon = step.icon;
+            return (
+              <li key={step.key} className="shrink-0 md:shrink">
+                <button
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => unlocked && setSelected(i)}
+                  aria-current={active ? "step" : undefined}
+                  className={[
+                    "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                    active
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-transparent hover:bg-muted/60",
+                    !unlocked ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "flex size-8 shrink-0 items-center justify-center rounded-full",
+                      state === "complete"
+                        ? "bg-status-green/15 text-status-green"
+                        : state === "current"
+                          ? "bg-primary/15 text-primary"
+                          : "bg-muted text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {state === "complete" ? (
+                      <CheckCircle2 className="size-4" />
+                    ) : state === "locked" ? (
+                      <Lock className="size-3.5" />
+                    ) : (
+                      <Icon className="size-4" />
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {step.title}
+                    </span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {step.subtitle}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
+      {/* ── Step content panel ── */}
+      <section className="min-w-0 flex-1">
+        <StepPanel
+          stepKey={STEPS[selected].key}
+          status={status}
+          scanProgress={scanProgress}
+          scanLog={scanLog}
+          scanJustFinished={scanJustFinished}
+          docProgress={docProgress}
+          scanComplete={scanComplete}
+          scanFailed={scanFailed}
+          reportsComplete={reportsComplete}
+          reportsFailed={reportsFailed}
+          sowReady={sowReady}
+          fetchWithAuth={fetchWithAuth}
+          onGoToReview={() => isUnlocked(2) && setSelected(2)}
+          onGoToSow={() => isUnlocked(3) && setSelected(3)}
+          onGoToPayment={() => isUnlocked(4) && setSelected(4)}
+          debugTriggerScan={debugTriggerScan}
+          debugTriggering={debugTriggering}
+        />
+      </section>
+    </div>
   );
 }
 
-// ── Section 2: Path to Remediation timeline ──────────────────────────────────
+// ── Per-step content ───────────────────────────────────────────────────────────
 
-type PhaseState = "complete" | "active" | "planned" | "failed";
-
-function PhaseBadge({ state }: { state: PhaseState }) {
-  const cfg: Record<PhaseState, { label: string; cls: string }> = {
-    complete: { label: "Complete", cls: "bg-primary/10 text-primary border-primary/20" },
-    active: { label: "In Progress", cls: "bg-primary/20 text-primary border-primary/40" },
-    planned: { label: "Planned", cls: "bg-white/5 text-muted-foreground border-white/10" },
-    failed: { label: "Failed", cls: "bg-destructive/15 text-destructive border-destructive/30" },
-  };
-  const { label, cls } = cfg[state];
+function PanelShell({
+  icon: Icon,
+  tone = "primary",
+  title,
+  children,
+}: {
+  icon: typeof Radar;
+  tone?: "primary" | "emerald" | "muted";
+  title: string;
+  children: React.ReactNode;
+}) {
+  const toneCls =
+    tone === "emerald"
+      ? "bg-status-green/10 text-status-green"
+      : tone === "muted"
+        ? "bg-muted text-muted-foreground"
+        : "bg-primary/10 text-primary";
   return (
-    <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border", cls)}>
-      {label}
+    <div className="rounded-2xl border border-border bg-card p-6 md:p-8">
+      <div className="flex items-center gap-3">
+        <div className={`flex size-11 items-center justify-center rounded-2xl ${toneCls}`}>
+          <Icon className="size-5" />
+        </div>
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      </div>
+      <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+// Small primary text (10-14px) fails WCAG AA in light mode (#1a7eef on white
+// ≈ 4.0:1), so everywhere the reference uses small primary-accent type we
+// deepen the same hue in light mode only. Literal class names in this const
+// are what Tailwind's scanner picks up — keep them verbatim.
+const PRIMARY_TEXT_AA = "text-[hsl(212_87%_42%)] dark:text-primary";
+
+// ── Generating-step header band ─────────────────────────────────────────────
+// The reference composition's opening: small-caps accent eyebrow, large bold
+// title, and — right-aligned on the same row — the real "prepared by"
+// identity (Shane McCaw, Lead M365 Architect — the same identity the CIO
+// narrative and document generation already use) with an initials avatar (no
+// headshot asset exists in this app; initials circles are the shell's real
+// avatar convention). Full-width low-opacity divider beneath.
+function AssessmentHeaderBand({ title, dateStr }: { title: string; dateStr: string }) {
+  return (
+    <header>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${PRIMARY_TEXT_AA}`}>
+            Your Microsoft 365 assessment
+          </p>
+          <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-foreground md:text-3xl">{title}</h2>
+        </div>
+        <div className="flex items-center gap-3 md:shrink-0">
+          <div className="min-w-0 md:text-right">
+            <p className="text-sm font-medium text-foreground">Shane McCaw</p>
+            <p className="text-xs text-muted-foreground">Lead M365 Architect · {dateStr}</p>
+          </div>
+          <span
+            aria-hidden
+            className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-primary/15 text-sm font-semibold ${PRIMARY_TEXT_AA}`}
+          >
+            SM
+          </span>
+        </div>
+      </div>
+      <div aria-hidden className="mt-5 h-px w-full bg-border" />
+    </header>
+  );
+}
+
+// ── Generation checklist item status ────────────────────────────────────────
+// Real, not simulated: derived straight from the live scan/document state the
+// wizard already polls + subscribes to via SSE.
+type ChecklistStatus = "complete" | "active" | "failed" | "pending";
+
+/** Resolve a real document row's live status for a given expected docType. */
+function checklistDocStatus(docType: string, items: AssessmentDocument[]): ChecklistStatus {
+  const row = items.find((d) => d.docType === docType);
+  if (!row) return "pending";
+  if (row.status === "approved" || row.status === "delivered") return "complete";
+  if (row.status === "failed") return "failed";
+  return "active"; // "generating" or any other in-flight status
+}
+
+// ── Path to remediation — connected phase timeline ──────────────────────────
+// The generation journey as three connected phases — deep scan, report
+// generation (each real expected document as a live chip), Statement of Work —
+// with glow states, status badges, and a progress connector between phases.
+// Purely a richer presentation of the same real statuses derived by
+// checklistDocStatus; the underlying data and derivation are untouched.
+function phaseStatusLabel(status: ChecklistStatus): string {
+  switch (status) {
+    case "complete":
+      return "Complete";
+    case "active":
+      return "In Progress";
+    case "failed":
+      return "Failed";
+    default:
+      return "Planned";
+  }
+}
+
+interface PhaseDocItem {
+  key: string;
+  label: string;
+  status: ChecklistStatus;
+}
+
+interface PhaseItem {
+  key: string;
+  title: string;
+  blurb: string;
+  status: ChecklistStatus;
+  icon: typeof Radar;
+  /** Per-document live chips (report-generation phase only). */
+  docs?: PhaseDocItem[];
+  /** Optional live-progress slot rendered under the phase body (e.g. the doc workflow's SSE ticker). */
+  live?: React.ReactNode;
+}
+
+// Status pills beside each phase title. Primary-led like the reference
+// (complete and in-progress are both accent-tinted, distinguished by
+// intensity + the live dot); failed is the real red token.
+function PhaseBadge({ status }: { status: ChecklistStatus }) {
+  const toneCls =
+    status === "complete"
+      ? `border-primary/20 bg-primary/10 ${PRIMARY_TEXT_AA}`
+      : status === "failed"
+        ? "border-status-red/40 bg-status-red/10 text-status-red"
+        : status === "active"
+          ? `border-primary/40 bg-primary/20 ${PRIMARY_TEXT_AA}`
+          : "border-border bg-muted/40 text-muted-foreground";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${toneCls}`}
+    >
+      {status === "active" && (
+        <span aria-hidden className="relative flex size-1.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75 motion-reduce:hidden" />
+          <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+        </span>
+      )}
+      {phaseStatusLabel(status)}
     </span>
   );
 }
 
-function PhaseNode({ state, icon: Icon }: { state: PhaseState; icon: React.ElementType }) {
-  if (state === "complete") {
+// Circular icon badges, sized and toned to the reference: complete is a
+// solid-filled accent circle with a soft glow, active is an outlined pulsing
+// ring, planned is muted. Backgrounds are opaque so the connector line
+// passing behind never shows through.
+function PhaseNode({ status, icon: Icon }: { status: ChecklistStatus; icon: typeof Radar }) {
+  if (status === "complete") {
     return (
-      <div className="z-10 flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_rgba(71,158,245,0.35)]">
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)]">
         <CheckCircle2 className="size-5" />
-      </div>
+      </span>
     );
   }
-  if (state === "active") {
+  if (status === "failed") {
     return (
-      <div className="z-10 flex items-center justify-center w-12 h-12 rounded-full bg-card border-2 border-primary animate-pulse">
-        <Icon className="size-5 text-primary" />
-      </div>
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border border-status-red/40 bg-card text-status-red">
+        <XCircle className="size-5" />
+      </span>
     );
   }
-  if (state === "failed") {
+  if (status === "active") {
     return (
-      <div className="z-10 flex items-center justify-center w-12 h-12 rounded-full bg-card border-2 border-destructive">
-        <AlertTriangle className="size-5 text-destructive" />
-      </div>
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card text-primary animate-pulse motion-reduce:animate-none">
+        <Icon className="size-5" />
+      </span>
     );
   }
   return (
-    <div className="z-10 flex items-center justify-center w-12 h-12 rounded-full bg-card border border-border">
-      <Icon className="size-5 text-muted-foreground" />
-    </div>
+    <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+      <Icon className="size-5" />
+    </span>
   );
 }
 
-function DocumentChip({ title, status }: { title: string; status: "pending" | "generating" | "complete" | "failed" }) {
-  const iconCls =
-    status === "complete" ? "text-primary" : status === "failed" ? "text-destructive" : "text-muted-foreground";
+// Live per-document chips inside the report-generation phase — a uniform
+// bordered-card grid like the reference, with the real live status carried by
+// a shape-distinct icon (+ screen-reader text).
+function DocChip({ label, status }: { label: string; status: ChecklistStatus }) {
   return (
-    <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center gap-2">
-      <FileText className={cn("size-4 shrink-0", iconCls)} aria-hidden="true" />
-      <span className="text-[11px] font-mono text-muted-foreground truncate">{title}</span>
-      <span className="sr-only">{status}</span>
-      {status === "complete" && <CheckCircle2 className="size-3.5 text-primary ml-auto shrink-0" />}
-      {status === "failed" && <AlertTriangle className="size-3.5 text-destructive ml-auto shrink-0" />}
-    </div>
+    // title makes a clipped real document name recoverable for sighted users.
+    <span
+      title={label}
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 transition-colors duration-500"
+    >
+      {status === "complete" ? (
+        <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
+      ) : status === "failed" ? (
+        <XCircle className="size-3.5 shrink-0 text-status-red" />
+      ) : status === "active" ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+      ) : (
+        <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
+          <span className="size-1 rounded-full bg-muted-foreground opacity-60" />
+        </span>
+      )}
+      <span className={`truncate text-xs ${status === "pending" ? "text-muted-foreground" : "text-foreground"}`}>
+        {label}
+      </span>
+      {/* The per-document status the old flat checklist showed as visible text —
+          kept in the accessibility tree; sighted users read it from the icon. */}
+      <span className="sr-only">{phaseStatusLabel(status)}</span>
+    </span>
   );
 }
 
-function PathToRemediation({
-  scan,
-  documents,
-}: {
-  scan: AssessmentGeneratingScreenProps["scan"];
-  documents: AssessmentGeneratingScreenProps["documents"];
-}) {
-  // REAL derivation, matching checklistDocStatus's existing rollup convention
-  // (failed wins over complete; a live row never reads Failed while generating).
-  const scanState: PhaseState = scan.active ? "active" : (scan.checksTotal ?? 0) > 0 ? "complete" : "planned";
-  const docsState: PhaseState =
-    documents.failed > 0 ? "failed" : documents.allReady ? "complete" : scanState === "complete" ? "active" : "planned";
-  const sowExpected = documents.expected.find((d) => d.docType === "sow" || d.docType === "consolidated_sow");
-  const sowItem = sowExpected
-    ? documents.items.find((i) => i.docType === sowExpected.docType)
-    : undefined;
-  const sowState: PhaseState =
-    sowItem?.status === "failed"
-      ? "failed"
-      : sowItem?.status === "approved" || sowItem?.status === "delivered"
-        ? "complete"
-        : docsState === "active" && sowItem
-          ? "active"
-          : "planned";
-
-  function docChipStatus(doc: ExpectedDoc): "pending" | "generating" | "complete" | "failed" {
-    const item = documents.items.find((i) => i.docType === doc.docType);
-    if (!item) return "pending";
-    if (item.status === "failed") return "failed";
-    if (item.status === "approved" || item.status === "delivered") return "complete";
-    return "generating";
-  }
-
+function PhaseTimeline({ phases, settled }: { phases: PhaseItem[]; settled: boolean }) {
+  // Connector segments between consecutive nodes, shaded so the whole run
+  // reads as the reference's single line: accent at the top, fading toward
+  // what's still ahead (or staying accent once everything is settled). A
+  // failed endpoint overrides the positional shading — the line must never
+  // show bright "progress" flowing out of or into a failed phase.
+  const segmentCls = (i: number): string => {
+    const from = phases[i].status;
+    const to = phases[i + 1]?.status;
+    if (from === "failed") return "from-status-red/40 to-border";
+    if (to === "failed") return "from-primary/60 to-status-red/40";
+    const t0 = i / (phases.length - 1 || 1);
+    if (settled) return t0 < 0.5 ? "from-primary to-primary/60" : "from-primary/60 to-primary/40";
+    return t0 < 0.5 ? "from-primary to-primary/50" : "from-primary/50 to-border";
+  };
   return (
-    <section className="mb-10 max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 mb-8">
-        <Route className="size-7 text-primary" />
-        <h2 className="text-2xl font-semibold text-foreground">The Path to Remediation</h2>
-      </div>
-      <div className="relative flex flex-col gap-6">
-        <div className="absolute left-6 top-8 bottom-8 w-px bg-gradient-to-b from-primary via-primary/50 to-border" />
-
-        {/* Phase 1 — Scan */}
-        <div className="relative flex gap-6 items-start">
-          <PhaseNode state={scanState} icon={ShieldCheck} />
-          <div className="flex-1 pt-2">
-            <div className="flex items-center gap-3 mb-1">
-              <h6 className="text-sm font-bold uppercase tracking-wide text-foreground">Phase 1: Scan &amp; Analysis</h6>
-              <PhaseBadge state={scanState} />
+    <ol>
+      {phases.map((phase, i) => (
+        <li key={phase.key} className={`relative flex gap-4 ${i < phases.length - 1 ? "pb-8" : ""}`}>
+          {i < phases.length - 1 && (
+            <span
+              aria-hidden
+              className={`absolute bottom-0 left-6 top-12 w-px -translate-x-1/2 bg-gradient-to-b ${segmentCls(i)}`}
+            />
+          )}
+          <PhaseNode status={phase.status} icon={phase.icon} />
+          <div className="min-w-0 flex-1 pt-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p
+                className={`text-sm font-bold uppercase tracking-wide ${
+                  phase.status === "active"
+                    ? PRIMARY_TEXT_AA
+                    : phase.status === "pending"
+                      ? "text-muted-foreground"
+                      : phase.status === "failed"
+                        ? // Dark status-red is a hair under AA at this size on
+                          // the page background — lighten it there only.
+                          "text-status-red dark:text-[hsl(3_75%_65%)]"
+                        : "text-foreground"
+                }`}
+              >
+                {phase.title}
+              </p>
+              <PhaseBadge status={phase.status} />
             </div>
-            <p className="text-sm text-muted-foreground">
-              {scan.checksTotal != null
-                ? `${scan.checksOk ?? 0} passed${(scan.checksLicenseGap ?? 0) > 0 ? `, ${scan.checksLicenseGap} licensing-gap` : ""}${(scan.checksError ?? 0) > 0 ? `, ${scan.checksError} need attention` : ""} of ${scan.checksTotal} checks.`
-                : "Reading your tenant's real configuration, security posture, and licensing."}
-            </p>
-          </div>
-        </div>
-
-        {/* Phase 2 — Document generation */}
-        <div className="relative flex gap-6 items-start">
-          <PhaseNode state={docsState} icon={FileText} />
-          <div className="flex-1 pt-2">
-            <div className="flex items-center gap-3 mb-1">
-              <h6 className={cn("text-sm font-bold uppercase tracking-wide", docsState === "active" ? "text-primary" : "text-foreground")}>
-                Phase 2: Document Generation
-              </h6>
-              <PhaseBadge state={docsState} />
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">Each report is written from your scan's real findings.</p>
-            {documents.expected.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                {documents.expected
-                  .filter((d) => d.docType !== "sow" && d.docType !== "consolidated_sow")
-                  .map((d) => (
-                    <DocumentChip key={d.docType} title={d.title} status={docChipStatus(d)} />
-                  ))}
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{phase.blurb}</p>
+            {phase.docs && phase.docs.length > 0 && (
+              // 3-up only from lg: at md the docked step sidebar leaves this
+              // column ~440px — three columns there would truncate every real
+              // document title.
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {phase.docs.map((d) => (
+                  <DocChip key={d.key} label={d.label} status={d.status} />
+                ))}
               </div>
             )}
+            {phase.live && <div className="mt-3">{phase.live}</div>}
           </div>
-        </div>
-
-        {/* Phase 3 — SOW */}
-        <div className="relative flex gap-6 items-start">
-          <PhaseNode state={sowState} icon={Rocket} />
-          <div className="flex-1 pt-2">
-            <div className="flex items-center gap-3 mb-1">
-              <h6 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Phase 3: Statement of Work</h6>
-              <PhaseBadge state={sowState} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Tailored to your real findings — you'll fine-tune the scope before anything is signed.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
+        </li>
+      ))}
+    </ol>
   );
 }
 
-// ── Section 3: Narrative + Radar ─────────────────────────────────────────────
+// ── Live-progress primitives ────────────────────────────────────────────────
 
-function NarrativeAndRadar({
-  narrative,
-  radar,
-}: {
-  narrative: AssessmentGeneratingScreenProps["narrative"];
-  radar: AssessmentGeneratingScreenProps["radar"];
-}) {
-  if (narrative.status === "not_started" && radar.pillars.length === 0) return null;
+/** The shared Progress bar with a shimmer sweep while work is in flight. */
+function ShimmerProgress({ value }: { value: number }) {
+  return (
+    <div className="relative overflow-hidden rounded-full">
+      <Progress value={value} className="h-1.5" />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shimmer-sweep bg-gradient-to-r from-transparent via-primary/25 to-transparent motion-reduce:hidden dark:via-white/25"
+      />
+    </div>
+  );
+}
 
-  // REAL derivation — average of real pillar scores. Never fabricated; simply
-  // omitted (no score line rendered) if no pillars are covered.
-  const avgScore =
-    radar.pillars.length > 0
-      ? Math.round(radar.pillars.reduce((sum, p) => sum + p.score, 0) / radar.pillars.length)
-      : null;
-
-  const radarData: DistributionWidgetData = radar.pillars.map((p) => ({
-    id: p.label,
-    label: p.label,
-    value: p.score,
-  })) as unknown as DistributionWidgetData;
+/** The live per-check feed from the diagnostics SSE stream, styled as a
+ *  telemetry readout: mono type, entrance per row, pinned to the newest entry. */
+function ScanLogFeed({ log }: { log: { checkKey: string; label: string; status: string }[] }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  // Keep the newest check in view as entries stream in — but only while the
+  // user is already at (or near) the bottom. Never yank the scroll position
+  // away from someone reading earlier entries; scrolls only this box, never
+  // the page. The threshold absorbs the row(s) just appended, since this runs
+  // after the DOM update.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 64;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [log.length]);
 
   return (
-    <section className="mb-10 max-w-5xl mx-auto">
-      <div className="bg-card border border-border rounded-2xl p-8 flex flex-col md:flex-row gap-8 items-center">
-        <div className="w-full md:w-1/2 space-y-4 order-2 md:order-1">
-          <div className="flex items-center gap-2 text-primary">
-            <Quote className="size-4" />
-            <span className="text-xs font-semibold uppercase tracking-widest">Architect's Perspective</span>
+    <div className="overflow-hidden rounded-xl border border-border bg-background/50">
+      <div className="border-b border-border px-3 py-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-foreground/65">Live check feed</p>
+      </div>
+      <div ref={boxRef} className="max-h-44 space-y-1 overflow-y-auto p-3">
+        {log.map((entry, i) => (
+          <div
+            key={`${entry.checkKey}-${i}`}
+            className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
+          >
+            {entry.status === "ok" ? (
+              <CheckCircle2 className="size-3.5 shrink-0 text-status-green" />
+            ) : (
+              <XCircle className="size-3.5 shrink-0 text-status-red" />
+            )}
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{entry.label}</span>
           </div>
-          {narrative.status === "ready" && narrative.html ? (
-            <div
-              className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground"
-              dangerouslySetInnerHTML={{ __html: narrative.html }}
-            />
-          ) : narrative.status === "failed" ? (
-            <p className="text-sm text-muted-foreground">
-              We couldn't put together your narrative summary this time — your real findings and documents below are unaffected.
-            </p>
-          ) : (
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span className="inline-block size-4 rounded-full border-2 border-primary/40 border-t-primary animate-spin" />
-                Writing up what matters most from your real results…
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Real stat cards ──────────────────────────────────────────────────────────
+// Every number here traces to a real, already-computed source (this run's own
+// persisted summary counts, or a live cost-engine query against real pricing
+// data) — never a placeholder. A stat with no real data behind it (null) is
+// simply omitted, not shown as zero or "—".
+function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefined }) {
+  // Defense-in-depth against the same "older-but-still-live backend process" /
+  // deploy-skew boundary `loadStatus` already normalizes for (see its `stats`
+  // guard above) — this component must never assume its caller's normalization
+  // ran, so it degrades to "no real stat data yet" instead of throwing.
+  if (!stats) return null;
+  const cards: { label: string; value: string; icon: typeof Radar; iconCls: string }[] = [];
+  if (stats.genuineFindings != null) {
+    cards.push({
+      label: stats.genuineFindings === 1 ? "Finding to review" : "Findings to review",
+      value: String(stats.genuineFindings),
+      icon: ListChecks,
+      // Zero genuine findings is good news — let the icon say so.
+      iconCls:
+        stats.genuineFindings > 0
+          ? "bg-status-amber/15 text-status-amber"
+          : "bg-status-green/15 text-status-green",
+    });
+  }
+  if (stats.licenseWasteMonthlyCents != null) {
+    cards.push({
+      label: "License waste, per month",
+      value: `$${Math.round(stats.licenseWasteMonthlyCents / 100).toLocaleString()}`,
+      icon: Coins,
+      iconCls: "bg-status-violet/15 text-status-violet",
+    });
+  }
+  if (cards.length === 0) return null;
+
+  // The reference pairs each stat card with a delta/trend, a mini bar chart,
+  // and a per-stat "analysis" insight card. None of those have a real data
+  // source on this endpoint (no historical series, no per-stat commentary) —
+  // so per the no-fabrication rule they are deliberately absent: label + real
+  // number + icon only.
+  return (
+    <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards motion-reduce:animate-none">
+      {cards.map((c) => {
+        const CardIcon = c.icon;
+        return (
+          <div key={c.label} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/65">{c.label}</p>
+                <p className="mt-1.5 min-w-0 break-words text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+                  {c.value}
+                </p>
               </div>
+              <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${c.iconCls}`}>
+                <CardIcon className="size-4" />
+              </span>
             </div>
-          )}
-        </div>
-        <div className="w-full md:w-1/2 bg-secondary rounded-xl p-6 flex flex-col items-center order-1 md:order-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Tenant Health Axes
-          </h4>
-          <p className="text-[11px] text-muted-foreground/70 mb-3 text-center">
-            Real coverage from this scan's package — only pillars with real signal data are plotted.
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Tenant health axes — real radar, real coverage only ─────────────────────
+// The same "Package-Aware Pillar Rings" concept, built as a radar instead of
+// individual rings: only pillars this customer's actual scanned package
+// genuinely covers (traced server-side through monitoring_package_checks →
+// signal_derivation_rules pillar weights — see pillar-coverage.ts) ever appear
+// as an axis. A package with real coverage for only 3 of 7 pillars renders 3
+// axes, never 7 with fabricated "perfect" scores on the rest. Nivo's own Radar
+// renderer already refuses to render below 3 dimensions, but we hide the
+// panel entirely rather than show a near-empty/broken-looking chart.
+function PillarRadarPanel({
+  radar,
+  scoreText,
+}: {
+  radar: AssessmentStatus["radar"];
+  /** Real score line rendered under the chart (the reference's "Current
+   *  Score" treatment) — pass null when there's no real reading to show. */
+  scoreText?: string | null;
+}) {
+  // This app's --border/--muted-foreground CSS vars hold raw HSL triples the
+  // Nivo theme can't consume as colors, and light/dark want different resolved
+  // values — so the chart's grid/tick/series colors are resolved here,
+  // theme-aware, and passed to the shared renderer explicitly.
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  if (radar.pillars.length < 3) return null;
+
+  const data: DistributionWidgetData = {
+    shape: "distribution",
+    label: "This tenant",
+    slices: radar.pillars.map((p) => ({ name: p.label, value: p.score })),
+  };
+
+  return (
+    <div className="flex h-full flex-col rounded-xl border border-border bg-background/50 p-4 animate-in fade-in zoom-in-95 duration-700 delay-200 fill-mode-backwards motion-reduce:animate-none">
+      <p className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/65">
+        Tenant health axes
+      </p>
+      <div className="mt-1 flex h-56 min-h-0 flex-1">
+        <RadarChart
+          data={data}
+          color={isDark ? "#479ef5" : "#1a7eef"}
+          gridStroke={isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)"}
+          tickFill={isDark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)"}
+        />
+      </div>
+      {scoreText && (
+        <p className={`mt-1 text-center text-sm font-bold ${PRIMARY_TEXT_AA}`}>{scoreText}</p>
+      )}
+      <p className="mt-2 text-center text-[11px] leading-relaxed text-muted-foreground">
+        Real coverage from this scan's package — only pillars with real signal data are plotted.
+      </p>
+    </div>
+  );
+}
+
+// ── CIO-Report Narrative ────────────────────────────────────────────────────
+// The architect-voice narrative leads the "generating" step once the scan is
+// done — real findings + real peer-benchmark data, written up by
+// cio-narrative-generator.ts. The checklist below it becomes supporting
+// evidence, not the main event. Renders nothing until a completed scan has
+// actually started producing (or finished) a narrative.
+function CioNarrativePanel({ narrative }: { narrative: AssessmentStatus["narrative"] }) {
+  if (narrative.status === "not_started") return null;
+
+  return (
+    <div className="min-w-0">
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <Quote className="size-3.5" />
+        </span>
+        <div className="min-w-0">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${PRIMARY_TEXT_AA}`}>
+            Architect's perspective
           </p>
-          {radar.pillars.length > 0 ? (
-            <>
-              <div className="relative w-full aspect-square max-w-[280px]">
-                <RadarChart
-                  data={radarData}
-                  color={RADAR_COLOR}
-                  gridStroke={RADAR_GRID_STROKE}
-                  tickFill={RADAR_TICK_FILL}
+          <p className="text-xs text-muted-foreground">From Shane McCaw, your M365 architect</p>
+        </div>
+      </div>
+      {narrative.status === "ready" && narrative.html ? (
+        // The generator's real output opens with an h3 headline followed by
+        // h4/p/strong/ul substructure (see cio-narrative-generator.ts) — the
+        // overrides below present that real structure as the reference does:
+        // the opening headline as a large italic pull-quote over a divider,
+        // h4 section leads as small-caps accent labels. If a particular
+        // narrative lacks those elements the overrides simply don't apply.
+        <div
+          className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground [&>h3:first-of-type]:text-xl [&>h3:first-of-type]:font-semibold [&>h3:first-of-type]:italic [&>h3:first-of-type]:leading-snug [&>h3:first-of-type]:tracking-tight [&>h3:first-of-type]:border-b [&>h3:first-of-type]:border-border [&>h3:first-of-type]:pb-4 [&>h3:first-of-type]:mb-4 prose-h4:text-[11px] prose-h4:font-semibold prose-h4:uppercase prose-h4:tracking-[0.14em] prose-h4:text-[hsl(212_87%_42%)] dark:prose-h4:text-primary animate-in fade-in duration-500 motion-reduce:animate-none"
+          dangerouslySetInnerHTML={{ __html: narrative.html }}
+        />
+      ) : narrative.status === "failed" ? (
+        <p className="text-sm text-muted-foreground">
+          We couldn't put together your narrative summary this time — your real findings and documents are unaffected.
+        </p>
+      ) : (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            Shane is reviewing your results and writing up what matters most…
+          </div>
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-5/6" />
+          <Skeleton className="h-3.5 w-4/6" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepPanel({
+  stepKey,
+  status,
+  scanProgress,
+  scanLog,
+  scanJustFinished,
+  docProgress,
+  scanComplete,
+  scanFailed,
+  reportsComplete,
+  reportsFailed,
+  sowReady,
+  fetchWithAuth,
+  onGoToReview,
+  onGoToSow,
+  onGoToPayment,
+  debugTriggerScan,
+  debugTriggering,
+}: {
+  stepKey: StepKey;
+  status: AssessmentStatus | null;
+  scanProgress: { index: number; total: number; label: string } | null;
+  scanLog: { checkKey: string; label: string; status: string }[];
+  scanJustFinished: boolean;
+  docProgress: { message: string; step?: number; total?: number } | null;
+  scanComplete: boolean;
+  scanFailed: boolean;
+  reportsComplete: boolean;
+  reportsFailed: boolean;
+  sowReady: boolean;
+  fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"];
+  onGoToReview: () => void;
+  onGoToSow: () => void;
+  onGoToPayment: () => void;
+  // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ (see file header note)
+  debugTriggerScan: () => Promise<void>;
+  debugTriggering: boolean;
+}) {
+  if (!status) return null;
+
+  switch (stepKey) {
+    case "consent":
+      return (
+        <PanelShell icon={ShieldCheck} tone="emerald" title="Consent granted">
+          <p className="text-sm text-muted-foreground">
+            Thanks — you authorized read access to your Microsoft&nbsp;365 tenant. That's
+            everything we need to begin. Your deep scan runs next; you don't have to do
+            anything else.
+          </p>
+        </PanelShell>
+      );
+
+    // One continuous screen for the entire generation phase — scan, then every
+    // real document, then the SOW — with a live checklist. The customer never
+    // clicks through a separate per-phase wait screen; this step only ever
+    // hands off (auto-advances to "review") once genuinely everything is done.
+    case "generating": {
+      const anyFailed = scanFailed || reportsFailed;
+
+      // The same real per-item statuses the flat checklist used, grouped for
+      // presentation into three connected phases: deep scan → report generation
+      // (one live chip per real expected document) → Statement of Work. The
+      // underlying derivation (checklistDocStatus) is untouched — only how
+      // those statuses are laid out changed.
+      const docItems: PhaseDocItem[] = status.documents.expected.map((d) => ({
+        key: `doc:${d.docType}`,
+        label: d.title,
+        status: !scanComplete ? ("pending" as ChecklistStatus) : checklistDocStatus(d.docType, status.documents.items),
+      }));
+      const scanPhaseStatus: ChecklistStatus = scanFailed ? "failed" : scanComplete ? "complete" : "active";
+      // Phase-level rollup of those same per-document statuses (presentation
+      // only), ordered so a contradiction can never render: a failed document
+      // always wins over "complete" (the server's allReady deliberately
+      // tolerates a failed row among ready ones, so "every ready" and "one
+      // failed" can be true at once), and a run whose workflow died can't sit
+      // "in progress" forever.
+      const workflowDead =
+        status.documents.workflowStatus === "failed" || status.documents.workflowStatus === "cancelled";
+      const docsPhaseStatus: ChecklistStatus = !scanComplete
+        ? "pending"
+        : docItems.some((d) => d.status === "failed")
+          ? "failed"
+          : docItems.length > 0
+            ? docItems.every((d) => d.status === "complete")
+              ? "complete"
+              : workflowDead
+                ? "failed"
+                : "active"
+            : reportsComplete
+              ? "complete"
+              : workflowDead
+                ? "failed"
+                : "active";
+      // The SOW phase reads its own real row status. A missing row is "failed"
+      // only when the workflow genuinely died before producing it — never just
+      // because some other document failed (reportsFailed can latch on a stale
+      // failed row while the run is still alive and the SOW still on its way).
+      // Once every report is done and the run is alive, the missing-row window
+      // reads "active": the SOW is generated last, so that window is its turn.
+      const sowDocStatus: ChecklistStatus = !scanComplete
+        ? "pending"
+        : checklistDocStatus("consolidated_sow", status.documents.items);
+      const sowPhaseStatus: ChecklistStatus =
+        sowDocStatus !== "pending"
+          ? sowDocStatus
+          : !scanComplete
+            ? "pending"
+            : workflowDead
+              ? "failed"
+              : docsPhaseStatus === "complete" && !reportsComplete
+                ? "active"
+                : "pending";
+
+      // Real scan-outcome facts, shared by the completed-scan phase blurb and
+      // the under-radar score line. Same counts, same license-gap honesty as
+      // always — license gaps are named and explicitly not failures.
+      const total = status.scan.checksTotal ?? 0;
+      const ok = status.scan.checksOk ?? 0;
+      const licenseGap = status.scan.checksLicenseGap ?? 0;
+      const genuineError = status.scan.checksError ?? 0;
+      const licenseGapFeatures = status.scan.licenseGapFeatures ?? [];
+      const evaluable = ok + genuineError;
+      const scanResultLead = (() => {
+        const parts: string[] = [];
+        if (ok > 0) parts.push(`${ok} check${ok === 1 ? "" : "s"} passed`);
+        if (genuineError > 0) parts.push(`${genuineError} couldn't complete`);
+        return parts.length > 0 ? `${parts.join(" · ")}.` : "Scan complete.";
+      })();
+      const licenseGapNote =
+        licenseGap > 0
+          ? ` ${licenseGap} check${licenseGap === 1 ? "" : "s"} couldn't run because your tenant doesn't have ${
+              licenseGapFeatures.length > 0 ? licenseGapFeatures.join(" or ") : "certain Microsoft 365 add-ons"
+            } — that's a licensing gap, not a security issue.`
+          : "";
+
+      // Live scan telemetry (SSE progress bar + per-check feed) — embedded in
+      // the deep-scan phase row while it runs, the same way the report phase
+      // carries its chips: phase-specific content lives under its own phase.
+      const scanLive =
+        !anyFailed && !scanComplete ? (
+          <div className="space-y-3">
+            {scanProgress ? (
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+                    {scanProgress.label}
+                  </p>
+                  <p className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-foreground">
+                    {scanProgress.index}/{scanProgress.total}
+                  </p>
+                </div>
+                <ShimmerProgress
+                  value={scanProgress.total > 0 ? Math.round((scanProgress.index / scanProgress.total) * 100) : 0}
                 />
               </div>
-              {avgScore != null && (
-                <p className="text-sm font-bold text-primary mt-3">Current Score: {avgScore}/100</p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground py-8">No pillars covered by this scan's package yet.</p>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                {scanJustFinished
+                  ? "Finalizing…"
+                  : status.scan.everScanned
+                    ? "Scan in progress…"
+                    : "Starting your scan…"}
+              </div>
+            )}
+            {scanLog.length > 0 && <ScanLogFeed log={scanLog} />}
+          </div>
+        ) : null;
+
+      // Live doc-generation ticker (the workflow SSE stream + poll fallback,
+      // exactly the same message logic as before) — attached to whichever
+      // phase is actually in progress, so it can never sit under a phase
+      // badged "Complete" (in every successful run's final window the ticker's
+      // "Generating 1 document…" is the SOW itself).
+      const liveTicker =
+        scanComplete && !anyFailed && !reportsComplete ? (
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 font-mono text-[11px] text-muted-foreground">
+              <Loader2 className="mt-px size-3.5 shrink-0 animate-spin text-primary" />
+              <span className="min-w-0">
+                {docProgress?.message
+                  ? docProgress.message
+                  : status.documents.generating > 0
+                    ? `Generating ${status.documents.generating} document${status.documents.generating === 1 ? "" : "s"}…`
+                    : "Preparing your documents…"}
+              </span>
+            </div>
+            {docProgress?.total != null && docProgress.total > 0 && (
+              <ShimmerProgress
+                value={Math.min(100, Math.round(((docProgress.step ?? 0) / docProgress.total) * 100))}
+              />
+            )}
+          </div>
+        ) : null;
+
+      const phases: PhaseItem[] = [
+        {
+          key: "scan",
+          title: "Deep scan of your tenant",
+          // Once the scan settles, its row describes the real outcome — the
+          // same counts and named license-gap honesty as always.
+          blurb: scanFailed
+            ? "The scan couldn't finish automatically — our team has been notified and this page keeps checking."
+            : scanComplete && total > 0
+              ? `${scanResultLead}${licenseGapNote}`
+              : "Reading your tenant's real configuration, security posture, and licensing.",
+          status: scanPhaseStatus,
+          icon: Radar,
+          live: scanLive,
+        },
+        {
+          key: "docs",
+          title: "Report generation",
+          blurb: "Each report is written from your scan's real findings.",
+          status: docsPhaseStatus,
+          icon: FileText,
+          docs: docItems,
+          live: docsPhaseStatus === "active" ? liveTicker : null,
+        },
+        {
+          key: "sow",
+          title: "Statement of Work",
+          blurb: "Tailored to your results — you'll fine-tune the scope before anything is signed.",
+          status: sowPhaseStatus,
+          icon: FileSignature,
+          live: docsPhaseStatus !== "active" && sowPhaseStatus === "active" ? liveTicker : null,
+        },
+      ];
+
+      // ── Unified render, structured to the reference composition ──
+      // Header band → failure callout (only when real) → "The path to
+      // remediation" timeline (with per-phase live content) → narrative+radar
+      // split card → stat cards → closing summary + CTA. One render path for
+      // in-progress, failed, and settled — every piece is state-gated.
+      const headerTitle = anyFailed
+        ? "We hit a snag"
+        : reportsComplete
+          ? "Your assessment is ready"
+          : "Generating your assessment";
+      // Real date context for the header band: the scan's own timestamp once
+      // one exists, otherwise today (this is a live screen).
+      const dateStr = new Date(status.scan.lastScanAt ?? Date.now()).toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      const readyCount = status.documents.ready;
+      // The reference's "Current Score" line under the radar, with real data
+      // only: checks passed over checks we could actually evaluate (license
+      // gaps are excluded — they're unavailable, not failures, so they never
+      // drag the result down).
+      const scoreText = evaluable > 0 ? `Scan result: ${ok}/${evaluable} checks passed` : null;
+      const hasNarrative = status.narrative.status !== "not_started";
+      const hasRadar = status.radar.pillars.length >= 3;
+      const narrativeReady = status.narrative.status === "ready" && Boolean(status.narrative.html);
+      // Under a failure banner only a *finished* narrative renders — a live
+      // "Shane is writing…" skeleton or the narrative-failed fallback would
+      // contradict the banner. Otherwise any started narrative shows its live
+      // state. Deliberately NOT gated on scanComplete: the status endpoint
+      // keeps serving the last completed run's narrative/radar/stats during an
+      // active re-scan (its own documented contract), and blanking real data
+      // mid-re-scan would contradict the settled header and CTA that remain.
+      const showNarrativeCol = anyFailed ? narrativeReady : hasNarrative;
+
+      // The reference also has a "Critical Gaps" findings grid and per-stat
+      // trend/insight layers. This endpoint exposes no per-finding severity
+      // list, no historical series, and no per-stat commentary — so those
+      // sections are deliberately absent rather than filled with placeholders.
+      return (
+        <div className="space-y-8">
+          <AssessmentHeaderBand title={headerTitle} dateStr={dateStr} />
+
+          {/* Honest failure — a failed scan or doc run is never silently hung
+              or treated as success; the timeline below still shows exactly
+              what did and didn't finish. */}
+          {anyFailed && (
+            <div className="rounded-2xl border border-status-red/30 bg-status-red/5 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-status-red" />
+                <div className="min-w-0 space-y-3">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Something went wrong while {scanFailed ? "reading your Microsoft 365 environment" : "preparing your assessment documents"}, and we couldn't finish automatically. This is on us — nothing you did caused it{scanFailed ? "" : ", and your scan data is safe"}.
+                  </p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Our team has been notified automatically and will get this sorted. This page keeps
+                    checking, so you can leave it open — it'll update the moment things are ready.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
-    </section>
-  );
-}
 
-// ── Section 4: Stat card pairs ────────────────────────────────────────────────
-// REAL: genuineFindings. PLACEHOLDER: drift %, license-efficiency %. Secondary
-// "insight" commentary cards omitted entirely — no real per-stat source exists.
-
-function MiniBarChart({ heights }: { heights: number[] }) {
-  return (
-    <div className="h-20 w-full flex items-end gap-1 px-1">
-      {heights.map((h, i) => (
-        <div
-          key={i}
-          className="bg-primary rounded-t-sm w-full"
-          style={{ height: `${h}%`, opacity: 0.3 + (i / (heights.length - 1)) * 0.7 }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function StatCardPairs({
-  stats,
-  driftPlaceholder,
-}: {
-  stats: AssessmentGeneratingScreenProps["stats"];
-  driftPlaceholder?: DriftStatPlaceholder;
-  licenseEfficiencyPlaceholder?: LicenseEfficiencyPlaceholder;
-}) {
-  const wasteDisplay =
-    stats.licenseWasteMonthlyCents != null ? `$${(stats.licenseWasteMonthlyCents / 100).toLocaleString()}/mo` : null;
-
-  return (
-    <section className="mb-10 max-w-5xl mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* TODO: real source = Drift Engine (drift.* findings). Currently placeholder. */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex justify-between items-start mb-3">
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Configuration Drift</p>
-              <h4 className="text-2xl font-semibold text-foreground">
-                {driftPlaceholder?.currentPct ?? "—"}%{" "}
-                {driftPlaceholder && (
-                  <span className={cn("text-sm font-normal", driftPlaceholder.deltaPct <= 0 ? "text-destructive" : "text-primary")}>
-                    {driftPlaceholder.deltaPct > 0 ? "+" : ""}
-                    {driftPlaceholder.deltaPct}%
-                  </span>
-                )}
-              </h4>
+          {/* ── The path to remediation — connected vertical timeline. Live
+              scan telemetry sits inside phase 1 while it runs; the real
+              document chips and generation ticker inside phases 2/3 — each
+              phase carries its own live content. ── */}
+          <section aria-label="The path to remediation">
+            <div className="mb-6 flex items-center gap-3">
+              <Route className="size-5 text-primary" />
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">The path to remediation</h3>
             </div>
-          </div>
-          <MiniBarChart heights={[60, 45, 25]} />
-        </div>
+            <PhaseTimeline phases={phases} settled={reportsComplete} />
+          </section>
 
-        {/* REAL — genuineFindings stat, presented in the mockup's visual style */}
-        <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex justify-between items-start mb-3">
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Findings to Review</p>
-              <h4 className="text-2xl font-semibold text-foreground">{stats.genuineFindings ?? "—"}</h4>
-            </div>
-            <ShieldCheck className="size-5 text-primary" />
-          </div>
-          {wasteDisplay && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Plus <span className="text-primary font-semibold">{wasteDisplay}</span> in real license waste identified.
+          {/* ── Architect's perspective + tenant health axes — one card split
+              two ways on desktop (narrative left, radar inset right); radar
+              first on mobile, like the reference. ── */}
+          {(showNarrativeCol || hasRadar) && (
+            <section className="rounded-2xl border border-border bg-card p-6 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none md:p-7">
+              {showNarrativeCol && hasRadar ? (
+                <div className="flex flex-col gap-6 md:flex-row md:items-stretch md:gap-8">
+                  <div className="order-1 w-full md:order-2 md:w-2/5 md:shrink-0">
+                    <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
+                  </div>
+                  <div className="order-2 min-w-0 flex-1 md:order-1">
+                    <CioNarrativePanel narrative={status.narrative} />
+                  </div>
+                </div>
+              ) : showNarrativeCol ? (
+                <CioNarrativePanel narrative={status.narrative} />
+              ) : (
+                <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
+              )}
+            </section>
+          )}
+
+          <StatCards stats={status.stats} />
+
+          {reportsComplete && (
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              We've finished generating your assessment{" "}
+              {readyCount > 0 ? (
+                <>
+                  — <span className="font-medium text-foreground">{readyCount} document{readyCount === 1 ? "" : "s"}</span>{" "}
+                  including your tailored Statement of Work.
+                </>
+              ) : (
+                "documents, including your tailored Statement of Work."
+              )}{" "}
+              Review the findings that matter most, then tailor your scope and choose a plan.
             </p>
           )}
+
+          {/* ── Closing CTA — the real next action, pill-shaped and prominent
+              like the reference; only rendered once genuinely unlocked. ── */}
+          {reportsComplete && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="lg" className="rounded-full px-7" onClick={onGoToReview}>
+                Review findings <ChevronRight className="ml-1 size-4" />
+              </Button>
+              {sowReady && (
+                <Button size="lg" variant="outline" className="rounded-full px-6" onClick={onGoToSow}>
+                  View statement of work
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note.
+              !reportsComplete keeps it off the settled screen, matching where it rendered before the unified layout. */}
+          {!reportsComplete && status.isTestbed && !status.scan.active ? (
+            <Button
+              variant="outline"
+              onClick={() => void debugTriggerScan()}
+              disabled={debugTriggering}
+            >
+              {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
+              [DEBUG] {status.scan.everScanned ? "Re-trigger scan" : "Trigger scan"}
+            </Button>
+          ) : null}
         </div>
-      </div>
-    </section>
-  );
-}
+      );
+    }
 
-// ── Section 5: Critical Gaps ──────────────────────────────────────────────────
-// PLACEHOLDER — real source will be top-N msp_diagnostic_findings by severity,
-// once exposed on GET /api/portal/assessment/status. Only renders if given
-// real data — never fabricates findings to fill the section.
-
-function CriticalGaps({ gaps }: { gaps?: CriticalGapPlaceholder[] }) {
-  if (!gaps || gaps.length === 0) return null;
-  return (
-    <section className="mb-10 max-w-5xl mx-auto">
-      <div className="bg-card border border-border rounded-2xl p-8 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-destructive/10 blur-[100px] -mr-32 -mt-32 rounded-full pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-5">
-            <AlertTriangle className="size-7 text-destructive" />
-            <h2 className="text-2xl font-semibold text-foreground">Critical Governance Gaps</h2>
+    case "review": {
+      if (!reportsComplete) {
+        return (
+          <PanelShell icon={ScrollText} tone="muted" title="Review findings">
+            <p className="text-sm text-muted-foreground">
+              This unlocks once your reports have finished generating.
+            </p>
+          </PanelShell>
+        );
+      }
+      // The SOW is surfaced interactively in its own dedicated step below — keep it
+      // out of the read-only findings viewer so it isn't shown twice.
+      const findingsDocs = status.documents.items.filter((d) => d.docType !== "consolidated_sow");
+      return (
+        <PanelShell icon={ScrollText} tone="emerald" title="Review findings">
+          <p className="text-sm text-muted-foreground">
+            Your reports are ready. Each opens with the findings that matter most, followed
+            by the full report.
+          </p>
+          <div className="mt-5">
+            <AssessmentDocumentViewer documents={findingsDocs} fetchWithAuth={fetchWithAuth} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {gaps.map((gap) => (
-              <div key={gap.label} className="space-y-3">
-                <div className={cn("h-1 w-full rounded-full", impactColor(gap.impact))} />
-                <h5 className="text-sm font-bold uppercase tracking-wide text-foreground">{gap.label}</h5>
-                <p className="text-sm text-muted-foreground">
-                  <strong className="text-foreground">The Risk:</strong> {gap.risk}
-                </p>
-                <p className={cn("text-xs font-mono", impactTextColor(gap.impact))}>Impact: {gap.impact}</p>
-              </div>
-            ))}
+          {sowReady && (
+            <Button className="mt-6" onClick={onGoToSow}>
+              Continue to your statement of work <ChevronRight className="ml-1 size-4" />
+            </Button>
+          )}
+        </PanelShell>
+      );
+    }
+
+    case "sow": {
+      if (!(reportsComplete && sowReady)) {
+        return (
+          <PanelShell icon={FileSignature} tone="muted" title="Statement of work">
+            <p className="text-sm text-muted-foreground">
+              Once your reports finish generating, you'll see a tailored statement of work
+              here — with the flexibility to adjust its scope before you proceed.
+            </p>
+          </PanelShell>
+        );
+      }
+      return (
+        <PanelShell icon={FileSignature} tone="primary" title="Your statement of work">
+          <p className="text-sm text-muted-foreground">
+            Here's the plan we recommend, tailored to what we found. Fine-tune the scope to fit
+            your priorities — the price updates as you go.
+          </p>
+          <div className="mt-5">
+            <AssessmentSowSelector fetchWithAuth={fetchWithAuth} />
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+          <a
+            href="/assessment/compare"
+            className="mt-3 inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Compare this scope with a previous version
+          </a>
+          <Button className="mt-6" onClick={onGoToPayment}>
+            Continue to choose a plan <ChevronRight className="ml-1 size-4" />
+          </Button>
+        </PanelShell>
+      );
+    }
 
-// ── Section 6: CTA ─────────────────────────────────────────────────────────────
+    case "payment": {
+      if (!(reportsComplete && sowReady)) {
+        return (
+          <PanelShell icon={CreditCard} tone="muted" title="Choose a plan">
+            <p className="text-sm text-muted-foreground">
+              Once your statement of work is ready, you'll choose how to pay — in full or phase by
+              phase — and sign here.
+            </p>
+          </PanelShell>
+        );
+      }
+      return (
+        <PanelShell icon={CreditCard} tone="primary" title="Choose a plan">
+          <p className="text-sm text-muted-foreground">
+            You've settled your scope — now choose how you'd like to proceed and sign to confirm.
+          </p>
+          <div className="mt-5">
+            <AssessmentPaymentPlan fetchWithAuth={fetchWithAuth} />
+          </div>
+        </PanelShell>
+      );
+    }
 
-function ContinueCta({
-  onContinue,
-  label = "Continue",
-  disabled,
-}: {
-  onContinue?: () => void;
-  label?: string;
-  disabled?: boolean;
-}) {
-  if (!onContinue) return null;
-  return (
-    <section className="mb-6 text-center">
-      <Button
-        size="lg"
-        onClick={onContinue}
-        disabled={disabled}
-        className="rounded-full px-8 py-6 text-sm font-bold"
-      >
-        {label}
-      </Button>
-    </section>
-  );
-}
-
-// ── Root component ────────────────────────────────────────────────────────────
-
-export function AssessmentGeneratingScreen({
-  scan,
-  documents,
-  narrative,
-  radar,
-  stats,
-  driftPlaceholder,
-  licenseEfficiencyPlaceholder,
-  criticalGapsPlaceholder,
-  architectName,
-  onContinue,
-  continueLabel,
-  continueDisabled,
-}: AssessmentGeneratingScreenProps) {
-  return (
-    <div className="relative">
-      <HeaderBand architectName={architectName} />
-      <PathToRemediation scan={scan} documents={documents} />
-      <NarrativeAndRadar narrative={narrative} radar={radar} />
-      <StatCardPairs
-        stats={stats}
-        driftPlaceholder={driftPlaceholder}
-        licenseEfficiencyPlaceholder={licenseEfficiencyPlaceholder}
-      />
-      <CriticalGaps gaps={criticalGapsPlaceholder} />
-      <ContinueCta onContinue={onContinue} label={continueLabel} disabled={continueDisabled} />
-    </div>
-  );
+    default:
+      return null;
+  }
 }
