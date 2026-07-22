@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { HeaderHeroBand } from './components/HeaderHeroBand';
-import { IdentityRiskDistribution } from './components/IdentityRiskDistribution';
-import { PrivilegedExposureCard } from './components/PrivilegedExposureCard';
-import { AlertVolumeCard } from './components/AlertVolumeCard';
-import { TopSecurityRisks } from './components/TopSecurityRisks';
-import { SecurityAutomation } from './components/SecurityAutomation';
-import { RiskDetailDrawer } from './components/RiskDetailDrawer';
-import { ToastContainer } from './components/ToastContainer';
+import { AppShell } from '@/components/app-shell';
+import { IdentityRiskDistribution } from '@/components/security-overview/IdentityRiskDistribution';
+import { PrivilegedExposureCard } from '@/components/security-overview/PrivilegedExposureCard';
+import { AlertVolumeCard } from '@/components/security-overview/AlertVolumeCard';
+import { TopSecurityRisks } from '@/components/security-overview/TopSecurityRisks';
+import { SecurityAutomation } from '@/components/security-overview/SecurityAutomation';
+import { RiskDetailDrawer } from '@/components/security-overview/RiskDetailDrawer';
+import { ToastContainer } from '@/components/security-overview/ToastContainer';
 
 import {
   initialMetrics,
@@ -16,7 +16,7 @@ import {
   initialAlertVolume,
   initialSecurityRisks,
   initialAutomationPolicies,
-} from './data/mockData';
+} from '@/components/security-overview/mockData';
 
 import {
   SecurityMetrics,
@@ -25,9 +25,9 @@ import {
   SecurityRiskItem,
   AutomationPolicy,
   ToastMessage,
-} from './types';
+} from '@/components/security-overview/types';
 
-export default function App() {
+export default function SecurityOverviewPage() {
   const [metrics, setMetrics] = useState<SecurityMetrics>(initialMetrics);
   const [riskDistribution, setRiskDistribution] = useState<RiskDistribution>(initialRiskDistribution);
   const [signInTrend, setSignInTrend] = useState(initialSignInTrend);
@@ -136,19 +136,12 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Security Intelligence">
     <div className="tech-grid min-h-screen p-4 md:p-6 lg:p-8 font-body">
       <main className="max-w-[1440px] mx-auto space-y-4 md:space-y-6">
         {/* Row 1: Header Hero Band + Identity Risk Distribution */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          <div className="lg:col-span-8">
-            <HeaderHeroBand
-              metrics={metrics}
-              timeframe={timeframe}
-              onTimeframeChange={handleTimeframeChange}
-              onRefresh={handleRefresh}
-              isRefreshing={isRefreshing}
-            />
-          </div>
+          <div className="lg:col-span-8"></div>
           <div className="lg:col-span-4">
             <IdentityRiskDistribution
               distribution={riskDistribution}
@@ -195,5 +188,6 @@ export default function App() {
       {/* Action Feedback Toast Messages */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
+    </AppShell>
   );
 }

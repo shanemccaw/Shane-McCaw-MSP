@@ -1,16 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { Header } from './components/Header';
-import { HeroBand } from './components/HeroBand';
-import { LabelCoverageCard } from './components/LabelCoverageCard';
-import { SensitivityTrendCard } from './components/SensitivityTrendCard';
-import { RetentionCoverageCard } from './components/RetentionCoverageCard';
-import { DlpEffectivenessCard } from './components/DlpEffectivenessCard';
-import { AuditHeatmapCard } from './components/AuditHeatmapCard';
-import { TopRisksCard } from './components/TopRisksCard';
-import { AutomationPotentialSection } from './components/AutomationPotentialSection';
-import { RiskDetailModal } from './components/RiskDetailModal';
-import { PatchModal } from './components/PatchModal';
-import { Footer } from './components/Footer';
+import { AppShell } from '@/components/app-shell';
+import { HeroBand } from '@/components/compliance/HeroBand';
+import { LabelCoverageCard } from '@/components/compliance/LabelCoverageCard';
+import { SensitivityTrendCard } from '@/components/compliance/SensitivityTrendCard';
+import { RetentionCoverageCard } from '@/components/compliance/RetentionCoverageCard';
+import { DlpEffectivenessCard } from '@/components/compliance/DlpEffectivenessCard';
+import { AuditHeatmapCard } from '@/components/compliance/AuditHeatmapCard';
+import { TopRisksCard } from '@/components/compliance/TopRisksCard';
+import { AutomationPotentialSection } from '@/components/compliance/AutomationPotentialSection';
+import { RiskDetailModal } from '@/components/compliance/RiskDetailModal';
+import { PatchModal } from '@/components/compliance/PatchModal';
 
 import {
   initialMetricSummary,
@@ -21,11 +20,11 @@ import {
   initialAuditMatrix,
   initialRisks,
   initialPatches
-} from './data/initialData';
+} from '@/components/compliance/initialData';
 
-import { ComplianceRisk, AutomationPatch } from './types';
+import { ComplianceRisk, AutomationPatch } from '@/components/compliance/types';
 
-export default function App() {
+export default function CompliancePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [metrics, setMetrics] = useState(initialMetricSummary);
   const [labelBreakdown, setLabelBreakdown] = useState(initialLabelBreakdown);
@@ -117,14 +116,8 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Compliance">
     <div className="font-['Inter'] text-[#e2e2e2] technical-grid min-h-screen flex flex-col justify-between">
-      {/* Header Bar */}
-      <Header
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        unreadCount={risks.length}
-      />
-
       {/* Main Container */}
       <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-6 w-full flex-1">
         {/* SECTION 1: HERO BAND */}
@@ -176,9 +169,7 @@ export default function App() {
         onClose={() => setSelectedPatch(null)}
         onApply={handleApplyPatch}
       />
-
-      {/* Footer */}
-      <Footer />
     </div>
+    </AppShell>
   );
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Zap, Wrench, Radio, Check, Play } from 'lucide-react';
-import { AutomationTarget } from '../types';
+import { AutomationTarget } from './types';
 
 interface AutomationPotentialProps {
   targets: AutomationTarget[];

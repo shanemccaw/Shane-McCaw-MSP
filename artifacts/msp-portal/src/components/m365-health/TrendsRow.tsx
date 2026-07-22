@@ -7,7 +7,7 @@ import {
   TrendingDown,
   CheckCircle,
 } from 'lucide-react';
-import { SecurityTrendPoint, AdoptionMetricItem } from '../types';
+import { SecurityTrendPoint, AdoptionMetricItem } from './types';
 
 interface TrendsRowProps {
   securityTrends: SecurityTrendPoint[];

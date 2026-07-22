@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { RoleDensity, RoleMatrix } from '../types';
+import { RoleDensity, RoleMatrix } from './types';
 
 interface IdentityRoleDensityProps {
   roles: RoleDensity[];

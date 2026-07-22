@@ -1,5 +1,5 @@
 import React from 'react';
-import { HygieneDeptRow } from '../types';
+import { HygieneDeptRow } from './types';
 import { Grid, ShieldAlert, ArrowUpRight } from 'lucide-react';
 
 interface AssignmentHygieneProps {

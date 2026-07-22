@@ -1,5 +1,5 @@
 import React from 'react';
-import { GovernanceRisk, ThreatLandscapeInfo } from '../types';
+import { GovernanceRisk, ThreatLandscapeInfo } from './types';
 import { AlertCircle, ChevronRight } from 'lucide-react';
 
 interface TopGovernanceRisksProps {

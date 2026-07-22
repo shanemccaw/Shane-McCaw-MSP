@@ -1,5 +1,5 @@
 import React from 'react';
-import { ToastMessage } from '../types';
+import { ToastMessage } from './types';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 interface ToastContainerProps {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HeatMapRow, IntensityLevel, Department } from '../types';
+import { HeatMapRow, IntensityLevel, Department } from './types';
 import { Info } from 'lucide-react';
 
 interface TeamsHeatMapProps {

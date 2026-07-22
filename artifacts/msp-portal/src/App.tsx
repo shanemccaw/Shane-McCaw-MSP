@@ -92,6 +92,14 @@ import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
 import OverviewTestPage from "@/pages/overview-test";
 import AssessmentTestPage from "@/pages/assessment-test";
+import M365HealthPage from "@/pages/m365-health";
+import SecurityOverviewPage from "@/pages/security-overview";
+import GovernancePage from "@/pages/governance";
+import CompliancePage from "@/pages/compliance";
+import AdoptionPage from "@/pages/adoption";
+import CopilotPage from "@/pages/copilot";
+import ArchitecturePage from "@/pages/architecture";
+import LicensingPage from "@/pages/licensing";
 import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
@@ -371,6 +379,33 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />
+      </Route>
+      {/* M365 Health Suite — 8 isolated, structure-only pages wired into the
+          real AppShell, matching the /overview-test and /assessment-test
+          precedent. Mock data only; real backend wiring is a later task. */}
+      <Route path="/m365-health">
+        <ProtectedRoute component={M365HealthPage} />
+      </Route>
+      <Route path="/security-overview">
+        <ProtectedRoute component={SecurityOverviewPage} />
+      </Route>
+      <Route path="/governance">
+        <ProtectedRoute component={GovernancePage} />
+      </Route>
+      <Route path="/compliance">
+        <ProtectedRoute component={CompliancePage} />
+      </Route>
+      <Route path="/adoption">
+        <ProtectedRoute component={AdoptionPage} />
+      </Route>
+      <Route path="/copilot">
+        <ProtectedRoute component={CopilotPage} />
+      </Route>
+      <Route path="/architecture">
+        <ProtectedRoute component={ArchitecturePage} />
+      </Route>
+      <Route path="/licensing">
+        <ProtectedRoute component={LicensingPage} />
       </Route>
       {/* Executive Mode — Simplified Leadership View: 5-tile stripped-down
           alternate to the full Mission Control dashboard, fenced off from it. */}

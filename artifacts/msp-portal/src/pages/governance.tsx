@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { HeroMetrics } from './components/HeroMetrics';
-import { RoleInventory } from './components/RoleInventory';
-import { AdminExposureMatrix } from './components/AdminExposureMatrix';
-import { GroupSprawl } from './components/GroupSprawl';
-import { PolicyDriftTrend } from './components/PolicyDriftTrend';
-import { TopGovernanceRisks } from './components/TopGovernanceRisks';
-import { AutomationPotential } from './components/AutomationPotential';
-import { RiskDetailModal } from './components/RiskDetailModal';
-import { Footer } from './components/Footer';
+import { AppShell } from '@/components/app-shell';
+import { HeroMetrics } from '@/components/governance/HeroMetrics';
+import { RoleInventory } from '@/components/governance/RoleInventory';
+import { AdminExposureMatrix } from '@/components/governance/AdminExposureMatrix';
+import { GroupSprawl } from '@/components/governance/GroupSprawl';
+import { PolicyDriftTrend } from '@/components/governance/PolicyDriftTrend';
+import { TopGovernanceRisks } from '@/components/governance/TopGovernanceRisks';
+import { AutomationPotential } from '@/components/governance/AutomationPotential';
+import { RiskDetailModal } from '@/components/governance/RiskDetailModal';
 
 import {
   initialHealthData,
@@ -20,12 +19,12 @@ import {
   initialGovernanceRisks,
   initialAutomations,
   threatLandscapeInfo
-} from './data/governanceData';
+} from '@/components/governance/governanceData';
 
-import { GovernanceRisk, HeatmapCell, GovernanceAutomation } from './types';
+import { GovernanceRisk, HeatmapCell, GovernanceAutomation } from '@/components/governance/types';
 import { CheckCircle2 } from 'lucide-react';
 
-export default function App() {
+export default function GovernancePage() {
   const [healthData, setHealthData] = useState(initialHealthData);
   const [roles] = useState(initialRoleInventory);
   const [exposureMetrics] = useState(initialAdminExposure);
@@ -90,6 +89,7 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Governance">
     <div className="technical-grid min-h-screen text-[#e2e2e2] relative font-body selection:bg-[#479ef5]/30 selection:text-white">
       {/* Scanner Animation Line when auditing */}
       {isScanning && <div className="scanner-line"></div>}
@@ -107,14 +107,6 @@ export default function App() {
       )}
 
       <main className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 relative z-10">
-        {/* Header */}
-        <Header
-          latency={latency}
-          status="SECURE_OPERATIONAL"
-          isScanning={isScanning}
-          onRefresh={handleRunAudit}
-        />
-
         {/* Section 1: Hero Metrics */}
         <HeroMetrics
           data={healthData}
@@ -154,9 +146,6 @@ export default function App() {
           automations={automations}
           onExecute={handleExecuteAutomation}
         />
-
-        {/* Footer */}
-        <Footer />
       </main>
 
       {/* Risk Detail / Cell Detail Modal */}
@@ -170,5 +159,6 @@ export default function App() {
         onRemediateSuccess={handleRemediateSuccess}
       />
     </div>
+    </AppShell>
   );
 }

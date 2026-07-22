@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
-import { ComplianceRisk } from '../types';
+import { ComplianceRisk } from './types';
 
 interface TopRisksCardProps {
   risks: ComplianceRisk[];

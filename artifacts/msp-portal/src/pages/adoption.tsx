@@ -1,30 +1,30 @@
 import React, { useState } from 'react';
-import { 
-  TimeFrame, 
-  Department, 
-  Opportunity, 
-  AutomationAction 
-} from './types';
-import { 
-  INITIAL_HEATMAP_DATA, 
-  COLLABORATION_TREND_DATA, 
-  COPILOT_USAGE_DATA, 
-  TOP_OPPORTUNITIES, 
-  AUTOMATION_ACTIONS 
-} from './data/mockData';
+import { AppShell } from '@/components/app-shell';
+import {
+  TimeFrame,
+  Department,
+  Opportunity,
+  AutomationAction
+} from '@/components/adoption/types';
+import {
+  INITIAL_HEATMAP_DATA,
+  COLLABORATION_TREND_DATA,
+  COPILOT_USAGE_DATA,
+  TOP_OPPORTUNITIES,
+  AUTOMATION_ACTIONS
+} from '@/components/adoption/mockData';
 
-import { Header } from './components/Header';
-import { HeroBand } from './components/HeroBand';
-import { TeamsHeatMap } from './components/TeamsHeatMap';
-import { CollaborationTrend } from './components/CollaborationTrend';
-import { EmailProductivity } from './components/EmailProductivity';
-import { CopilotUsage } from './components/CopilotUsage';
-import { TopOpportunities } from './components/TopOpportunities';
-import { AutomationPotential } from './components/AutomationPotential';
-import { ActionModal } from './components/ActionModal';
-import { NotificationToast, ToastMessage } from './components/NotificationToast';
+import { HeroBand } from '@/components/adoption/HeroBand';
+import { TeamsHeatMap } from '@/components/adoption/TeamsHeatMap';
+import { CollaborationTrend } from '@/components/adoption/CollaborationTrend';
+import { EmailProductivity } from '@/components/adoption/EmailProductivity';
+import { CopilotUsage } from '@/components/adoption/CopilotUsage';
+import { TopOpportunities } from '@/components/adoption/TopOpportunities';
+import { AutomationPotential } from '@/components/adoption/AutomationPotential';
+import { ActionModal } from '@/components/adoption/ActionModal';
+import { NotificationToast, ToastMessage } from '@/components/adoption/NotificationToast';
 
-export default function App() {
+export default function AdoptionPage() {
   const [timeframe, setTimeframe] = useState<TimeFrame>('30d');
   const [selectedDepartment, setSelectedDepartment] = useState<Department>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -166,21 +166,9 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Adoption">
     <div className="grid-overlay min-h-screen p-4 sm:p-6 lg:p-8 font-body">
       <main className="max-w-[1440px] mx-auto space-y-6">
-        {/* Header */}
-        <Header
-          timeframe={timeframe}
-          setTimeframe={setTimeframe}
-          selectedDepartment={selectedDepartment}
-          setSelectedDepartment={setSelectedDepartment}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onRefreshData={handleRefreshData}
-          onExportReport={handleExportReport}
-          isRefreshing={isRefreshing}
-        />
-
         {/* SECTION 1: HERO BAND */}
         <HeroBand
           score={currentMetrics.score}
@@ -250,5 +238,6 @@ export default function App() {
         onDismiss={() => setToast(null)}
       />
     </div>
+    </AppShell>
   );
 }

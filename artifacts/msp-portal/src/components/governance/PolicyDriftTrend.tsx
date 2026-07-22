@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PolicyDriftPoint } from '../types';
+import { PolicyDriftPoint } from './types';
 import { Activity } from 'lucide-react';
 
 interface PolicyDriftTrendProps {

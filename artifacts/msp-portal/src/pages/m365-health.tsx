@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { HeroHealthScore } from './components/HeroHealthScore';
-import { IntelligenceCore } from './components/IntelligenceCore';
-import { PillarGrid } from './components/PillarGrid';
-import { CostAndRiskRow } from './components/CostAndRiskRow';
-import { TrendsRow } from './components/TrendsRow';
-import { IntelligenceSignals } from './components/IntelligenceSignals';
-import { ExecutiveCtaBar } from './components/ExecutiveCtaBar';
-import { PillarDetailModal } from './components/PillarDetailModal';
-import { RemediationModal } from './components/RemediationModal';
-import { Footer } from './components/Footer';
+import { AppShell } from '@/components/app-shell';
+import { HeroHealthScore } from '@/components/m365-health/HeroHealthScore';
+import { IntelligenceCore } from '@/components/m365-health/IntelligenceCore';
+import { PillarGrid } from '@/components/m365-health/PillarGrid';
+import { CostAndRiskRow } from '@/components/m365-health/CostAndRiskRow';
+import { TrendsRow } from '@/components/m365-health/TrendsRow';
+import { IntelligenceSignals } from '@/components/m365-health/IntelligenceSignals';
+import { ExecutiveCtaBar } from '@/components/m365-health/ExecutiveCtaBar';
+import { PillarDetailModal } from '@/components/m365-health/PillarDetailModal';
+import { RemediationModal } from '@/components/m365-health/RemediationModal';
 
 import {
   INITIAL_PILLARS,
@@ -18,11 +17,11 @@ import {
   COST_EFFICIENCY_ITEMS,
   SECURITY_TRENDS,
   ADOPTION_METRICS,
-} from './data/mockData';
-import { PillarData, IntelligenceSignal, RiskHeatmapCell, TimeFrame } from './types';
+} from '@/components/m365-health/mockData';
+import { PillarData, IntelligenceSignal, RiskHeatmapCell, TimeFrame } from '@/components/m365-health/types';
 import { CheckCircle2, Info, Sparkles } from 'lucide-react';
 
-export default function App() {
+export default function M365HealthPage() {
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('24h');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -186,26 +185,13 @@ export default function App() {
   });
 
   return (
+    <AppShell title="M365 Health">
     <div className="min-h-screen relative selection:bg-[#479ef5]/30 selection:text-[#a0c9ff]">
       {/* Background Grid Pattern Overlay */}
       <div className="fixed inset-0 grid-overlay pointer-events-none z-0" />
 
       {/* Main Container */}
       <main className="relative z-10 max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
-        {/* Header Navigation & Global Bar */}
-        <Header
-          timeFrame={timeFrame}
-          setTimeFrame={setTimeFrame}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onRefresh={handleRefresh}
-          isRefreshing={isRefreshing}
-          lastUpdated={lastUpdated}
-          onExport={handleExport}
-          liveSync={liveSync}
-          setLiveSync={setLiveSync}
-        />
-
         {/* Section 1: Hero Band */}
         <HeroHealthScore
           pillars={pillars}
@@ -271,9 +257,6 @@ export default function App() {
             })
           }
         />
-
-        {/* Footer */}
-        <Footer />
       </main>
 
       {/* Modals & Dialogs */}
@@ -304,5 +287,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </AppShell>
   );
 }

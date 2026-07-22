@@ -1,5 +1,5 @@
 import React from 'react';
-import { AutomationTask } from '../types';
+import { AutomationTask } from './types';
 
 interface AutomationPotentialProps {
   tasks: AutomationTask[];
@@ -54,6 +54,8 @@ export const AutomationPotential: React.FC<AutomationPotentialProps> = ({
             block
           </span>
         );
+      default:
+        return null;
     }
   };
 

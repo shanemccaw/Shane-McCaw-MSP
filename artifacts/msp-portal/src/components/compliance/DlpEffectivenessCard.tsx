@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DlpActionCategory } from '../types';
+import { DlpActionCategory } from './types';
 
 interface DlpEffectivenessCardProps {
   dlpData: DlpActionCategory[];

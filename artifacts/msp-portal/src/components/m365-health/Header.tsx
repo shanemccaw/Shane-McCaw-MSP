@@ -10,7 +10,7 @@ import {
   Clock,
   Building2,
 } from 'lucide-react';
-import { TimeFrame } from '../types';
+import { TimeFrame } from './types';
 
 interface HeaderProps {
   timeFrame: TimeFrame;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Share2, Cloud, Mail, Users, ArrowUpRight, X } from 'lucide-react';
-import { WorkloadRetention } from '../types';
+import { WorkloadRetention } from './types';
 
 interface RetentionCoverageCardProps {
   workloads: WorkloadRetention[];

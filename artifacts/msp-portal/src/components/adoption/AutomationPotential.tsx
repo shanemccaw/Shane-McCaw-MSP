@@ -1,5 +1,5 @@
 import React from 'react';
-import { AutomationAction } from '../types';
+import { AutomationAction } from './types';
 import { Megaphone, Zap, Sparkles, ArrowRight } from 'lucide-react';
 
 interface AutomationPotentialProps {

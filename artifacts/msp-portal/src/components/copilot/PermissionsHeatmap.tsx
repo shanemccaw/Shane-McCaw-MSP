@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HeatmapEntity } from '../types';
+import { HeatmapEntity } from './types';
 
 interface PermissionsHeatmapProps {
   entities: HeatmapEntity[];

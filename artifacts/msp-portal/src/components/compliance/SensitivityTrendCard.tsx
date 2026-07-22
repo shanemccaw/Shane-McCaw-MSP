@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TrendDataPoint } from '../types';
+import { TrendDataPoint } from './types';
 
 interface SensitivityTrendCardProps {
   trendData: TrendDataPoint[];

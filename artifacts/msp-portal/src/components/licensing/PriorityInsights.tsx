@@ -1,5 +1,5 @@
 import React from 'react';
-import { PriorityInsight } from '../types';
+import { PriorityInsight } from './types';
 import { Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 
 interface PriorityInsightsProps {

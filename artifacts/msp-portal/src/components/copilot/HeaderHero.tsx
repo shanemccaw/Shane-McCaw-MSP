@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExecutiveMetrics } from '../types';
+import { ExecutiveMetrics } from './types';
 
 interface HeaderHeroProps {
   metrics: ExecutiveMetrics;

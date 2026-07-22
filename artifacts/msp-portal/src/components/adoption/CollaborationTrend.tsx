@@ -8,7 +8,7 @@ import {
   Tooltip, 
   Legend 
 } from 'recharts';
-import { CollaborationTrendPoint } from '../types';
+import { CollaborationTrendPoint } from './types';
 
 interface CollaborationTrendProps {
   data: CollaborationTrendPoint[];

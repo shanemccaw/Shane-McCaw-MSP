@@ -8,7 +8,7 @@ import {
   CollabItem,
   ArchitectureRisk,
   AutomationTarget,
-} from '../types';
+} from './types';
 
 export const initialTenantScore: TenantScore = {
   overall: 88,

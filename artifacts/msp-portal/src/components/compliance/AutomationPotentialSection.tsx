@@ -1,6 +1,6 @@
 import React from 'react';
 import { Zap, Tag, Shield, History, Rocket } from 'lucide-react';
-import { AutomationPatch } from '../types';
+import { AutomationPatch } from './types';
 
 interface AutomationPotentialSectionProps {
   patches: AutomationPatch[];

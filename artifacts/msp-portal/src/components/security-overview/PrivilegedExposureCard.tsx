@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PrivilegedMetrics } from '../types';
+import { PrivilegedMetrics } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 interface PrivilegedExposureCardProps {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { SecurityRiskItem } from '../types';
+import { SecurityRiskItem } from './types';
 import { AlertOctagon, ExternalLink, ShieldAlert } from 'lucide-react';
 
 interface TopSecurityRisksProps {

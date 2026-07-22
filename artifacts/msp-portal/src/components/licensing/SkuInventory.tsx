@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SkuItem } from '../types';
+import { SkuItem } from './types';
 import { Layers, ChevronRight, BarChart2, CheckCircle2 } from 'lucide-react';
 
 interface SkuInventoryProps {

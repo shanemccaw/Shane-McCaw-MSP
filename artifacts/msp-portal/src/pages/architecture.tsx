@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { ScoreOverview } from './components/ScoreOverview';
-import { TenantTopology } from './components/TenantTopology';
-import { IdentityRoleDensity } from './components/IdentityRoleDensity';
-import { ConditionalAccessMap } from './components/ConditionalAccessMap';
-import { AppRegistrationInventory } from './components/AppRegistrationInventory';
-import { OAuthPermissionRisk } from './components/OAuthPermissionRisk';
-import { CollaborationMap } from './components/CollaborationMap';
-import { TopRisks } from './components/TopRisks';
-import { AutomationPotential } from './components/AutomationPotential';
-import { ScanModal } from './components/ScanModal';
-import { DetailModal } from './components/DetailModal';
-import { Footer } from './components/Footer';
+import { AppShell } from '@/components/app-shell';
+import { ScoreOverview } from '@/components/architecture/ScoreOverview';
+import { TenantTopology } from '@/components/architecture/TenantTopology';
+import { IdentityRoleDensity } from '@/components/architecture/IdentityRoleDensity';
+import { ConditionalAccessMap } from '@/components/architecture/ConditionalAccessMap';
+import { AppRegistrationInventory } from '@/components/architecture/AppRegistrationInventory';
+import { OAuthPermissionRisk } from '@/components/architecture/OAuthPermissionRisk';
+import { CollaborationMap } from '@/components/architecture/CollaborationMap';
+import { TopRisks } from '@/components/architecture/TopRisks';
+import { AutomationPotential } from '@/components/architecture/AutomationPotential';
+import { ScanModal } from '@/components/architecture/ScanModal';
+import { DetailModal } from '@/components/architecture/DetailModal';
 
 import {
   initialTenantScore,
@@ -23,7 +22,7 @@ import {
   initialCollabItems,
   initialRisks,
   initialAutomationTargets,
-} from './data/mockData';
+} from '@/components/architecture/mockData';
 
 import {
   TenantScore,
@@ -31,9 +30,9 @@ import {
   ArchitectureRisk,
   CAPolicy,
   CollabItem,
-} from './types';
+} from '@/components/architecture/types';
 
-export default function App() {
+export default function ArchitecturePage() {
   const [environment, setEnvironment] = useState('TENANT-01 PRODUCTION');
   const [lastAnalysis, setLastAnalysis] = useState('Today, 04:12 AM');
   const [isScanning, setIsScanning] = useState(false);
@@ -249,6 +248,7 @@ export default function App() {
   const isRemediated = score.overall > initialTenantScore.overall;
 
   return (
+    <AppShell title="Architecture">
     <div className="min-h-screen bg-[#121414] text-[#e2e2e2] antialiased selection:bg-[#479ef5] selection:text-[#001c37] p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto">
       {/* Toast Notification */}
       {toastMessage && (
@@ -256,17 +256,6 @@ export default function App() {
           {toastMessage}
         </div>
       )}
-
-      {/* Header */}
-      <Header
-        currentEnvironment={environment}
-        onSelectEnvironment={setEnvironment}
-        lastAnalysisTime={lastAnalysis}
-        isScanning={isScanning}
-        onRunScan={handleRunScan}
-        isRemediated={isRemediated}
-        onReset={handleReset}
-      />
 
       {/* Top Score Row */}
       <ScoreOverview
@@ -317,9 +306,6 @@ export default function App() {
         />
       </div>
 
-      {/* Footer */}
-      <Footer />
-
       {/* Analysis Scan Modal */}
       <ScanModal
         isOpen={isScanModalOpen}
@@ -337,5 +323,6 @@ export default function App() {
         content={modalConfig.content}
       />
     </div>
+    </AppShell>
   );
 }

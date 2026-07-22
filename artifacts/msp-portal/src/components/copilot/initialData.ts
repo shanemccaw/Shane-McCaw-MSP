@@ -6,7 +6,7 @@ import {
   EnablementControl,
   ReadinessBlocker,
   AutomationTask
-} from '../types';
+} from './types';
 
 export const initialMetrics: ExecutiveMetrics = {
   aggregateReadiness: 82,

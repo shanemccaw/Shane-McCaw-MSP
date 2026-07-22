@@ -6,7 +6,7 @@ import {
   Unlink,
   Users,
 } from 'lucide-react';
-import { ArchitectureRisk } from '../types';
+import { ArchitectureRisk } from './types';
 
 interface TopRisksProps {
   risks: ArchitectureRisk[];

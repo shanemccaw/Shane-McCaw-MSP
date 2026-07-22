@@ -1,5 +1,5 @@
 import React from 'react';
-import { FilterState } from '../types';
+import { FilterState } from './types';
 import { RefreshCw, Download, ChevronDown, Check, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { RoleInventoryItem } from '../types';
+import { RoleInventoryItem } from './types';
 import { BadgeCheck } from 'lucide-react';
 
 interface RoleInventoryProps {

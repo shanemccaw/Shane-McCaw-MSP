@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuditRow, AuditCell } from '../types';
+import { AuditRow, AuditCell } from './types';
 
 interface AuditHeatmapCardProps {
   matrix: AuditRow[];

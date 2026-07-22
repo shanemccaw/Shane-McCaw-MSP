@@ -1,4 +1,4 @@
-import { SkuItem, HygieneDeptRow, PriorityInsight, AutomationCandidate, AffectedUser } from '../types';
+import { SkuItem, HygieneDeptRow, PriorityInsight, AutomationCandidate, AffectedUser } from './types';
 
 export const INITIAL_SKUS: SkuItem[] = [
   {

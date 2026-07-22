@@ -1,5 +1,5 @@
 import React from 'react';
-import { CAPolicy } from '../types';
+import { CAPolicy } from './types';
 
 interface ConditionalAccessMapProps {
   policies: CAPolicy[];

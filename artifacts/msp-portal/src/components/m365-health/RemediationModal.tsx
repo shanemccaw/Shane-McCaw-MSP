@@ -36,6 +36,7 @@ export const RemediationModal: React.FC<RemediationModalProps> = ({
         clearTimeout(t3);
       };
     }
+    return undefined;
   }, [isOpen]);
 
   if (!isOpen) return null;

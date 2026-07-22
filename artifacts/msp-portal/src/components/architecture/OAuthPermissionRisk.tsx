@@ -1,5 +1,5 @@
 import React from 'react';
-import { OAuthRisk } from '../types';
+import { OAuthRisk } from './types';
 
 interface OAuthPermissionRiskProps {
   oauthRisk: OAuthRisk;

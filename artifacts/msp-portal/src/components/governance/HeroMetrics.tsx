@@ -1,5 +1,5 @@
 import React from 'react';
-import { GovernanceHealth } from '../types';
+import { GovernanceHealth } from './types';
 import { TrendingUp, Users, AlertOctagon, ShieldAlert } from 'lucide-react';
 
 interface HeroMetricsProps {

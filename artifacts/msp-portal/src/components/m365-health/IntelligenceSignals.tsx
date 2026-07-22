@@ -13,7 +13,7 @@ import {
   Filter,
   Sparkles,
 } from 'lucide-react';
-import { IntelligenceSignal } from '../types';
+import { IntelligenceSignal } from './types';
 
 interface IntelligenceSignalsProps {
   signals: IntelligenceSignal[];

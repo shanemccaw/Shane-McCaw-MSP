@@ -14,7 +14,7 @@ import {
   TrendingUp,
   Target,
 } from 'lucide-react';
-import { PillarData } from '../types';
+import { PillarData } from './types';
 
 interface PillarDetailModalProps {
   pillar: PillarData | null;

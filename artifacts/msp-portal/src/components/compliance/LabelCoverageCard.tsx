@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Info, X, Shield, FileCheck, AlertTriangle } from 'lucide-react';
-import { LabelBreakdown } from '../types';
+import { LabelBreakdown } from './types';
 
 interface LabelCoverageCardProps {
   data: LabelBreakdown;

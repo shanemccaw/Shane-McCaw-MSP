@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AdminExposureMetric } from '../types';
+import { AdminExposureMetric } from './types';
 import { Shield } from 'lucide-react';
 
 interface AdminExposureMatrixProps {

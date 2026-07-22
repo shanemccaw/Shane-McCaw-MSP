@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SecurityRiskItem } from '../types';
+import { SecurityRiskItem } from './types';
 import { X, ShieldAlert, CheckCircle2, Lock, RefreshCw, UserX } from 'lucide-react';
 
 interface RiskDetailDrawerProps {

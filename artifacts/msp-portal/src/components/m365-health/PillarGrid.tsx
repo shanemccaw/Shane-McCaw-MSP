@@ -12,7 +12,7 @@ import {
   Minus,
   ChevronRight,
 } from 'lucide-react';
-import { PillarData } from '../types';
+import { PillarData } from './types';
 
 interface PillarGridProps {
   pillars: PillarData[];

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DailyAlertVolume, SeverityLevel } from '../types';
+import { DailyAlertVolume, SeverityLevel } from './types';
 import { Clock, Sliders } from 'lucide-react';
 
 interface AlertVolumeCardProps {

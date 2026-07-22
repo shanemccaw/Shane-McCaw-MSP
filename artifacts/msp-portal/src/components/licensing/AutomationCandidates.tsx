@@ -1,5 +1,5 @@
 import React from 'react';
-import { AutomationCandidate } from '../types';
+import { AutomationCandidate } from './types';
 import { Zap, Rocket, Wand2, Bot, CheckCircle2 } from 'lucide-react';
 
 interface AutomationCandidatesProps {

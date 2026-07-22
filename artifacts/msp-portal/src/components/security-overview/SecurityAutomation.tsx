@@ -1,5 +1,5 @@
 import React from 'react';
-import { AutomationPolicy } from '../types';
+import { AutomationPolicy } from './types';
 import { Zap, Activity, CheckCircle2, RefreshCw } from 'lucide-react';
 
 interface SecurityAutomationProps {

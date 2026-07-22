@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TrendingUp, ArrowUpRight, Target, Info } from 'lucide-react';
-import { PillarData } from '../types';
+import { PillarData } from './types';
 
 interface HeroHealthScoreProps {
   pillars: PillarData[];

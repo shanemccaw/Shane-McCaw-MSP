@@ -1,5 +1,5 @@
 import React from 'react';
-import { GovernanceAutomation } from '../types';
+import { GovernanceAutomation } from './types';
 import { Bot, UserPlus, UserMinus, ShieldCheck, Zap, Check, Loader2 } from 'lucide-react';
 
 interface AutomationPotentialProps {

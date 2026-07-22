@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AffectedUser } from '../types';
+import { AffectedUser } from './types';
 import { X, Search, ShieldAlert, UserCheck, Filter, ArrowRight } from 'lucide-react';
 
 interface UserInspectModalProps {

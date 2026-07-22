@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExecutiveMetrics, HeatmapEntity, ReadinessBlocker } from '../types';
+import { ExecutiveMetrics, HeatmapEntity, ReadinessBlocker } from './types';
 
 interface ExportReportModalProps {
   isOpen: boolean;

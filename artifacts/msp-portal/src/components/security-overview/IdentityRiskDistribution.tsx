@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RiskDistribution, SignInTrendPoint } from '../types';
+import { RiskDistribution, SignInTrendPoint } from './types';
 import { Fingerprint, TrendingUp } from 'lucide-react';
 
 interface IdentityRiskDistributionProps {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AutomationCandidate } from '../types';
+import { AutomationCandidate } from './types';
 import { X, Play, ShieldAlert, CheckCircle2, ArrowRight, Loader2, Sparkles } from 'lucide-react';
 
 interface PatchModalProps {

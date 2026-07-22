@@ -7,7 +7,7 @@ import {
   AuditRow,
   ComplianceRisk,
   AutomationPatch
-} from '../types';
+} from './types';
 
 export const initialMetricSummary: MetricSummary = {
   healthScore: 81,

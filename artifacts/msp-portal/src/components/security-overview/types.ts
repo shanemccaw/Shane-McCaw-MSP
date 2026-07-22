@@ -67,7 +67,7 @@ export interface AutomationPolicy {
   subtext: string;
   actionText: string;
   actionType: 'ENFORCE' | 'SYNC' | 'REVIEW';
-  status: 'idle' | 'enforcing' | 'synced' | 'reviewed';
+  status: 'idle' | 'enforcing' | 'synced' | 'reviewed' | 'enforced';
   borderClass: string;
   btnBgClass: string;
   btnHoverClass: string;

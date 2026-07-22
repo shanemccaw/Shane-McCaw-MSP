@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Rocket, X, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import { AutomationPatch } from '../types';
+import { AutomationPatch } from './types';
 
 interface PatchModalProps {
   patch: AutomationPatch | null;

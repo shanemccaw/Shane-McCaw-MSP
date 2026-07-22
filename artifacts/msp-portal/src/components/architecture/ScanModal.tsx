@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Terminal, CheckCircle2, RefreshCw, X } from 'lucide-react';
-import { ScanLog } from '../types';
+import { ScanLog } from './types';
 
 interface ScanModalProps {
   isOpen: boolean;

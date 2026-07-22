@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Opportunity, AutomationAction } from '../types';
+import { Opportunity, AutomationAction } from './types';
 import { X, CheckCircle2, ShieldAlert, Sparkles, Send, ArrowRight } from 'lucide-react';
 
 interface ActionModalProps {

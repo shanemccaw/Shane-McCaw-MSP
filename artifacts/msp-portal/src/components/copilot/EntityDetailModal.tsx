@@ -1,5 +1,5 @@
 import React from 'react';
-import { HeatmapEntity } from '../types';
+import { HeatmapEntity } from './types';
 
 interface EntityDetailModalProps {
   entity: HeatmapEntity | null;

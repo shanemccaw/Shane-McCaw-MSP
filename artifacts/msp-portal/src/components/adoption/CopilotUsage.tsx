@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sparkles, Mail, Video, FileText, Code } from 'lucide-react';
-import { CopilotBreakdownItem } from '../types';
+import { CopilotBreakdownItem } from './types';
 
 interface CopilotUsageProps {
   data?: CopilotBreakdownItem[];

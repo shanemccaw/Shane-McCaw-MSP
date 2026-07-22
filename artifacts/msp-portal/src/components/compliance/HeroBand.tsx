@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, CheckCircle, Database, ShieldCheck } from 'lucide-react';
-import { MetricSummary } from '../types';
+import { MetricSummary } from './types';
 
 interface HeroBandProps {
   metrics: MetricSummary;

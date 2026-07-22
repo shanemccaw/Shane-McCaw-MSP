@@ -1,4 +1,4 @@
-import { SecurityMetrics, RiskDistribution, SignInTrendPoint, PrivilegedMetrics, DailyAlertVolume, SecurityRiskItem, AutomationPolicy } from '../types';
+import { SecurityMetrics, RiskDistribution, SignInTrendPoint, PrivilegedMetrics, DailyAlertVolume, SecurityRiskItem, AutomationPolicy } from './types';
 
 export const initialMetrics: SecurityMetrics = {
   healthScore: 78,

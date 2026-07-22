@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExecutiveMetrics } from '../types';
+import { ExecutiveMetrics } from './types';
 
 interface FooterBarProps {
   metrics: ExecutiveMetrics;

@@ -24,6 +24,7 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({
       }, 4000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [toast, onDismiss]);
 
   if (!toast) return null;

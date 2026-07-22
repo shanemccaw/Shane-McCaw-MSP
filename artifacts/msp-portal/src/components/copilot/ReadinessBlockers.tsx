@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ReadinessBlocker } from '../types';
+import { ReadinessBlocker } from './types';
 
 interface ReadinessBlockersProps {
   blockers: ReadinessBlocker[];

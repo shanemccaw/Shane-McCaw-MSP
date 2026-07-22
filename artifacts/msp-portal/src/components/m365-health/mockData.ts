@@ -5,7 +5,7 @@ import {
   CostBreakdownItem,
   SecurityTrendPoint,
   AdoptionMetricItem,
-} from '../types';
+} from './types';
 
 export const INITIAL_PILLARS: PillarData[] = [
   {

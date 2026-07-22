@@ -1,5 +1,5 @@
 import React from 'react';
-import { Opportunity, OpportunitySeverity } from '../types';
+import { Opportunity, OpportunitySeverity } from './types';
 import { ChevronRight, AlertTriangle, ArrowUpRight } from 'lucide-react';
 
 interface TopOpportunitiesProps {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GroupStat, HeatmapCell } from '../types';
+import { GroupStat, HeatmapCell } from './types';
 import { Users, UserMinus, AlertTriangle, Globe, Grid } from 'lucide-react';
 
 interface GroupSprawlProps {

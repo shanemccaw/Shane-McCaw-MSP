@@ -1,5 +1,5 @@
 import React from 'react';
-import { SecurityMetrics, TimeFrame } from '../types';
+import { SecurityMetrics, TimeFrame } from './types';
 import { TrendingUp, Shield, RefreshCw, Activity } from 'lucide-react';
 
 interface HeaderHeroBandProps {

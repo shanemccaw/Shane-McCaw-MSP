@@ -1,5 +1,5 @@
 import React from 'react';
-import { AppInventory } from '../types';
+import { AppInventory } from './types';
 
 interface AppRegistrationInventoryProps {
   inventory: AppInventory;

@@ -135,7 +135,7 @@ export const SafetyRadarChart: React.FC<SafetyRadarChartProps> = ({ data }) => {
 
             // Axis Label positioning with offset
             const labelCoord = getCoordinates(i, data.length, 122);
-            let textAnchor = 'middle';
+            let textAnchor: 'start' | 'middle' | 'end' = 'middle';
             if (labelCoord.x > cx + 20) textAnchor = 'start';
             if (labelCoord.x < cx - 20) textAnchor = 'end';
 

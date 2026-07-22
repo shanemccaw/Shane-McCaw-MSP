@@ -1,5 +1,5 @@
 import React from 'react';
-import { TimeFrame, Department } from '../types';
+import { TimeFrame, Department } from './types';
 import { 
   Building2, 
   RotateCcw, 

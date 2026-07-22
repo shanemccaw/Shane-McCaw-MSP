@@ -8,7 +8,7 @@ import {
   GovernanceRisk,
   GovernanceAutomation,
   ThreatLandscapeInfo
-} from '../types';
+} from './types';
 
 export const initialHealthData: GovernanceHealth = {
   score: 74,

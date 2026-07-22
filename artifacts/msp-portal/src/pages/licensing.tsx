@@ -1,16 +1,15 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { HeroBand } from './components/HeroBand';
-import { SkuInventory } from './components/SkuInventory';
-import { AssignmentHygiene } from './components/AssignmentHygiene';
-import { WasteDistribution } from './components/WasteDistribution';
-import { CopilotEngagement } from './components/CopilotEngagement';
-import { PriorityInsights } from './components/PriorityInsights';
-import { AutomationCandidates } from './components/AutomationCandidates';
-import { PatchModal } from './components/PatchModal';
-import { UserInspectModal } from './components/UserInspectModal';
-import { ToastContainer, ToastMessage } from './components/Toast';
-import { Footer } from './components/Footer';
+import { AppShell } from '@/components/app-shell';
+import { HeroBand } from '@/components/licensing/HeroBand';
+import { SkuInventory } from '@/components/licensing/SkuInventory';
+import { AssignmentHygiene } from '@/components/licensing/AssignmentHygiene';
+import { WasteDistribution } from '@/components/licensing/WasteDistribution';
+import { CopilotEngagement } from '@/components/licensing/CopilotEngagement';
+import { PriorityInsights } from '@/components/licensing/PriorityInsights';
+import { AutomationCandidates } from '@/components/licensing/AutomationCandidates';
+import { PatchModal } from '@/components/licensing/PatchModal';
+import { UserInspectModal } from '@/components/licensing/UserInspectModal';
+import { ToastContainer, ToastMessage } from '@/components/licensing/Toast';
 
 import {
   INITIAL_SKUS,
@@ -18,7 +17,7 @@ import {
   INITIAL_PRIORITY_INSIGHTS,
   INITIAL_AUTOMATION_CANDIDATES,
   SAMPLE_AFFECTED_USERS,
-} from './data/mockData';
+} from '@/components/licensing/mockData';
 
 import {
   FilterState,
@@ -26,9 +25,9 @@ import {
   PriorityInsight,
   AffectedUser,
   SkuItem,
-} from './types';
+} from '@/components/licensing/types';
 
-export default function App() {
+export default function LicensingPage() {
   const [filter, setFilter] = useState<FilterState>({
     timeRange: '30d',
     department: 'All',
@@ -178,6 +177,7 @@ export default function App() {
   };
 
   return (
+    <AppShell title="Licensing">
     <div className="min-h-screen technical-grid pb-12 pt-8 text-[#e2e2e2]">
       {/* Atmosphere radial background light */}
       <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
@@ -186,15 +186,6 @@ export default function App() {
       </div>
 
       <main className="max-w-[1440px] mx-auto px-6 space-y-6">
-        {/* Header */}
-        <Header
-          filter={filter}
-          onFilterChange={handleFilterChange}
-          onRefresh={handleRefresh}
-          onExport={handleExport}
-          isRefreshing={isRefreshing}
-        />
-
         {/* Section 1: Hero Band */}
         <HeroBand
           efficiencyScore={efficiencyScore}
@@ -243,9 +234,6 @@ export default function App() {
         />
       </main>
 
-      {/* Footer */}
-      <Footer />
-
       {/* Interactive Modals */}
       {selectedPatch && (
         <PatchModal
@@ -270,5 +258,6 @@ export default function App() {
       {/* Toast System */}
       <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
     </div>
+    </AppShell>
   );
 }

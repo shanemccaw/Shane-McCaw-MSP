@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, CheckCircle2 } from 'lucide-react';
-import { TenantScore } from '../types';
+import { TenantScore } from './types';
 
 interface ScoreOverviewProps {
   score: TenantScore;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GovernanceRisk, HeatmapCell } from '../types';
+import { GovernanceRisk, HeatmapCell } from './types';
 import { X, ShieldAlert, Terminal, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 
 interface RiskDetailModalProps {

@@ -9,7 +9,7 @@ import {
   AlertTriangle,
   Zap,
 } from 'lucide-react';
-import { PillarData, RiskHeatmapCell, CostBreakdownItem } from '../types';
+import { PillarData, RiskHeatmapCell, CostBreakdownItem } from './types';
 
 interface IntelligenceCoreProps {
   pillars: PillarData[];

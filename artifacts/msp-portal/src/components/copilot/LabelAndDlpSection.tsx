@@ -1,5 +1,5 @@
 import React from 'react';
-import { LabelCoverageData, DlpMetric } from '../types';
+import { LabelCoverageData, DlpMetric } from './types';
 
 interface LabelAndDlpSectionProps {
   labelCoverage: LabelCoverageData;

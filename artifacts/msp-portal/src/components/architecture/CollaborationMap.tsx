@@ -1,6 +1,6 @@
 import React from 'react';
 import { Users, Folder, Unlink, Cloud } from 'lucide-react';
-import { CollabItem } from '../types';
+import { CollabItem } from './types';
 
 interface CollaborationMapProps {
   items: CollabItem[];

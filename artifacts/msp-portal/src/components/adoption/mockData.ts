@@ -1,4 +1,4 @@
-import { HeatMapRow, CollaborationTrendPoint, CopilotBreakdownItem, Opportunity, AutomationAction } from '../types';
+import { HeatMapRow, CollaborationTrendPoint, CopilotBreakdownItem, Opportunity, AutomationAction } from './types';
 
 export const INITIAL_HEATMAP_DATA: HeatMapRow[] = [
   { department: 'Sales', meetings: 'High', chats: 'Mid', channels: 'High', meetingScore: 88, chatScore: 62, channelScore: 91 },

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { EnablementControl } from '../types';
+import { EnablementControl } from './types';
 
 interface EnablementControlsProps {
   controls: EnablementControl[];
