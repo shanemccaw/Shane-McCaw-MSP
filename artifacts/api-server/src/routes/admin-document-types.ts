@@ -46,6 +46,10 @@ const createSchema = z.object({
   requiresSowHtml: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
+  serviceId: z.number().int().positive().nullable().optional(),
+  includedProfileKeyPatterns: z.array(z.string()).default([]),
+  includedSignalCategories: z.array(z.string()).default([]),
+  pipelineCategory: z.enum(["standalone", "pipeline_output"]).default("standalone"),
 });
 
 const updateSchema = createSchema
@@ -189,13 +193,13 @@ router.post("/admin/document-types", requireAdmin, async (req: Request, res: Res
     res.status(400).json({ error: "Validation error", details: parsed.error.flatten() });
     return;
   }
-  const { key, label, category, sectionHints, requiresSowHtml, sortOrder, isActive } = parsed.data;
+  const { key, label, category, sectionHints, requiresSowHtml, sortOrder, isActive, serviceId, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory } = parsed.data;
 
   try {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx
         .insert(documentTypesTable)
-        .values({ key, label, category, sectionHints: sectionHints ?? null, requiresSowHtml, sortOrder, isActive })
+        .values({ key, label, category, sectionHints: sectionHints ?? null, requiresSowHtml, sortOrder, isActive, serviceId: serviceId ?? null, includedProfileKeyPatterns, includedSignalCategories, pipelineCategory })
         .returning();
 
       const promptKey = `insights-${category}-${key}`;
