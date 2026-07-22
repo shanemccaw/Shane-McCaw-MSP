@@ -35,6 +35,48 @@ import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream
 import { ensureOpportunityForSow } from "./crm-pipeline";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { getDocumentTypeLabel, getDocumentTypeSectionHints, documentTypeRequiresSowHtml } from "./document-types";
+import { recordAiUsage } from "./ai-billing";
+
+// ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
+// Disables real AI spend during active testing. Must be removed/re-enabled
+// before any real customer reaches this flow. See backlog: [Shane to add ticket].
+const AI_KILL_SWITCH_ENABLED = false;
+
+// ── Usage telemetry (fire-and-forget) ─────────────────────────────────────────
+// Mirrors omg-card-extractor.ts's trackUsage(): resolves the billing MSP via the
+// msp_users bridge (userId → mspId), keyed off clientUserId — the only identity
+// this module carries (there is no request-scoped acting user; generation is
+// triggered by kanban-auto-fire.ts or an admin Test Draft call).
+function trackUsage(opts: {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+  clientUserId: number;
+  documentId: number;
+  docType: string;
+}): void {
+  void (async () => {
+    try {
+      const [mspUser] = await db
+        .select({ mspId: mspUsersTable.mspId })
+        .from(mspUsersTable)
+        .where(eq(mspUsersTable.userId, opts.clientUserId))
+        .limit(1);
+
+      await recordAiUsage({
+        mspId: mspUser?.mspId ?? null,
+        nodeType: "document_generator",
+        feature: `assessment_document:${opts.docType}:document:${opts.documentId}`,
+        promptTokens: opts.inputTokens,
+        completionTokens: opts.outputTokens,
+        costOwner: "msp",
+        model: opts.model,
+      });
+    } catch (err) {
+      log.warn({ err, documentId: opts.documentId }, "document-generator: usage telemetry failed (non-fatal)");
+    }
+  })();
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -739,6 +781,9 @@ export async function generateAndDeliverDocument(
 
   // All document types can be very long for complex customers — use the full
   // 16 000-token budget so no report is ever cut off mid-section.
+  if (AI_KILL_SWITCH_ENABLED) {
+    throw new Error("AI generation disabled by testing kill-switch (document-generator.ts)");
+  }
   const docStylePrefix = await getDocumentStylePrefix();
   const aiResponse = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
@@ -763,6 +808,16 @@ export async function generateAndDeliverDocument(
   const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
 
   if (testMode) {
+    // Real Anthropic spend still occurred even though the document itself is
+    // never persisted — bill it same as any other call.
+    trackUsage({
+      inputTokens: aiResponse.usage?.input_tokens ?? 0,
+      outputTokens: aiResponse.usage?.output_tokens ?? 0,
+      model: aiResponse.model || "claude-sonnet-4-6",
+      clientUserId,
+      documentId: -1,
+      docType,
+    });
     log.info(
       { clientUserId, projectId, category, docType },
       "document-generator: test-draft generation complete (no persistence)",
@@ -780,6 +835,15 @@ export async function generateAndDeliverDocument(
     pdfUrl:          null,
     sowPricingLines: sowLines.length > 0 ? sowLines : null,
     sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+  });
+
+  trackUsage({
+    inputTokens: aiResponse.usage?.input_tokens ?? 0,
+    outputTokens: aiResponse.usage?.output_tokens ?? 0,
+    model: aiResponse.model || "claude-sonnet-4-6",
+    clientUserId,
+    documentId: doc.id,
+    docType,
   });
 
   void emitWorkflowEvent("document.generated", {

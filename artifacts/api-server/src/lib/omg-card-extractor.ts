@@ -45,6 +45,11 @@ const log = logger.child({ channel: "workflow.doc-pipeline" });
 const OMG_MODEL = "claude-haiku-4-5";
 const OMG_MAX_TOKENS = 1500;
 
+// ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
+// Disables real AI spend during active testing. Must be removed/re-enabled
+// before any real customer reaches this flow. See backlog: [Shane to add ticket].
+const AI_KILL_SWITCH_ENABLED = false;
+
 // ── Card shape ──────────────────────────────────────────────────────────────
 
 export const OmgCardSchema = z.object({
@@ -207,6 +212,9 @@ export async function extractAndStoreOmgCards(doc: OmgExtractionDoc): Promise<Om
 
   let cards: OmgCard[] = [];
   try {
+    if (AI_KILL_SWITCH_ENABLED) {
+      throw new Error("AI generation disabled by testing kill-switch (omg-card-extractor.ts)");
+    }
     const message = await anthropic.messages.create({
       model: OMG_MODEL,
       max_tokens: OMG_MAX_TOKENS,

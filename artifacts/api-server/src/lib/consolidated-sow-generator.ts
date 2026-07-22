@@ -60,6 +60,48 @@ import {
   broadcastPresentationDocsChange,
 } from "./sse-channels";
 import { pushSowDebugLog, setSowDebugSignals, startSowDebugRun, finishSowDebugRun } from "./sow-debug-log-buffer";
+import { recordAiUsage } from "./ai-billing";
+
+// ⚠️ TEMPORARY TESTING KILL-SWITCH — REMOVE BEFORE PRODUCTION ⚠️
+// Disables real AI spend during active testing. Must be removed/re-enabled
+// before any real customer reaches this flow. See backlog: [Shane to add ticket].
+const AI_KILL_SWITCH_ENABLED = false;
+
+// ── Usage telemetry (fire-and-forget) ─────────────────────────────────────────
+// Mirrors omg-card-extractor.ts's trackUsage(): resolves the billing MSP via the
+// msp_users bridge (userId → mspId), keyed off clientUserId. Resolved
+// independently of the signal-eval block above (whose own mspId lookup only
+// runs on the DB-evaluation path, not the signalsOverride path) so billing
+// attribution never silently depends on which signal path was taken.
+function trackUsage(opts: {
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+  clientUserId: number;
+  docId: number;
+}): void {
+  void (async () => {
+    try {
+      const [mspUser] = await db
+        .select({ mspId: mspUsersTable.mspId })
+        .from(mspUsersTable)
+        .where(eq(mspUsersTable.userId, opts.clientUserId))
+        .limit(1);
+
+      await recordAiUsage({
+        mspId: mspUser?.mspId ?? null,
+        nodeType: "consolidated_sow_generator",
+        feature: `assessment_consolidated_sow:document:${opts.docId}`,
+        promptTokens: opts.inputTokens,
+        completionTokens: opts.outputTokens,
+        costOwner: "msp",
+        model: opts.model,
+      });
+    } catch (err) {
+      log.warn({ err, docId: opts.docId }, "consolidated-sow-generator: usage telemetry failed (non-fatal)");
+    }
+  })();
+}
 
 export function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tier02" | "Tier03" | "Tier04" {
   const n = typeof totalUsers === "number" ? totalUsers : Number(totalUsers);
@@ -949,6 +991,9 @@ export async function generateConsolidatedSowDocument(
   log.info({ ...logCtx, docId }, "consolidated-sow-generator: starting AI generation");
 
   try {
+  if (AI_KILL_SWITCH_ENABLED) {
+    throw new Error("AI generation disabled by testing kill-switch (consolidated-sow-generator.ts)");
+  }
   const docStylePrefix = await getDocumentStylePrefix();
   const stream = anthropic.messages.stream({
     model: "claude-opus-4-8",
@@ -959,6 +1004,14 @@ export async function generateConsolidatedSowDocument(
   if (aiResponse.stop_reason === "max_tokens") {
     log.warn({ ...logCtx, docId }, "consolidated-sow-generator: output hit max_tokens — document may be truncated");
   }
+
+  trackUsage({
+    inputTokens: aiResponse.usage?.input_tokens ?? 0,
+    outputTokens: aiResponse.usage?.output_tokens ?? 0,
+    model: aiResponse.model || "claude-opus-4-8",
+    clientUserId,
+    docId,
+  });
 
   const rawHtmlContent = extractAiHtml(aiResponse);
   const { workstreamLines: rawWs, adjustmentLines: rawAdj } = parseSowAllPricing(rawHtmlContent);
