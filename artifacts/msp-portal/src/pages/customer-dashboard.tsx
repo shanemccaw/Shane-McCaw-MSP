@@ -29,7 +29,7 @@ import { CustomerDashboardExtras, M365UptimeCard, NeedHelpCard, WelcomeHeader } 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { CustomerOverViewScreen } from "@/pages/CustomerOverviewScreen";
+import { CustomerOverviewScreen } from "@/pages/CustomerOverviewScreen";
 import {
   Dialog,
   DialogContent,
@@ -199,7 +199,7 @@ export default function CustomerDashboardPage() {
           <>
             <WelcomeHeader />
             <MissionControl />
-            <CustomerOverViewScreen />
+            <CustomerOverviewScreen />
             <CustomerDashboardExtras />
             <M365UptimeCard />
             <ExecutiveSummaryCard />
