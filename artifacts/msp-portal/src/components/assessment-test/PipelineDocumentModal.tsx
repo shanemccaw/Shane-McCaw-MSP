@@ -19,7 +19,7 @@ import {
   Building2,
   Calendar,
 } from 'lucide-react';
-import { AssessmentStage } from '../types';
+import { AssessmentStage } from './types';
 
 interface PipelineDocumentModalProps {
   stage: AssessmentStage | null;

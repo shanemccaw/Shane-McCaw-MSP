@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MetricGauge } from '../types';
+import { MetricGauge } from './types';
 import {
   Info,
   TrendingUp,

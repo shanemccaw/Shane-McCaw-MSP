@@ -4,7 +4,7 @@ import {
   TenantHealthData,
   LicenseOptimizationData,
   CopilotReadinessData,
-} from '../types';
+} from './types';
 import { TenantHealthCard } from './TenantHealthCard';
 import {
   ShieldCheck,

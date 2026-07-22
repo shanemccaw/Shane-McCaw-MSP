@@ -1,5 +1,5 @@
 import React from 'react';
-import { MetricGauge } from '../types';
+import { MetricGauge } from './types';
 import { X, ShieldCheck, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface MetricGaugeModalProps {

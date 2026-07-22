@@ -1,5 +1,5 @@
 import React from 'react';
-import { MetricGauge } from '../types';
+import { MetricGauge } from './types';
 import { ScoreGaugeCard } from './ScoreGaugeCard';
 
 interface ScoreGaugeGridProps {

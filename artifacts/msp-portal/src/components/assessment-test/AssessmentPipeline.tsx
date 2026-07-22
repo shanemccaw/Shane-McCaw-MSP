@@ -1,5 +1,5 @@
 import React from 'react';
-import { AssessmentStage } from '../types';
+import { AssessmentStage } from './types';
 import { Check, FileText, ChevronRight } from 'lucide-react';
 
 interface AssessmentPipelineProps {

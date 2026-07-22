@@ -91,6 +91,7 @@ import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
 import CustomerDashboardPage from "@/pages/customer-dashboard";
 import OverviewTestPage from "@/pages/overview-test";
+import AssessmentTestPage from "@/pages/assessment-test";
 import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
@@ -370,6 +371,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />
+      </Route>
+      <Route path="/assessment-test">
+        <ProtectedRoute component={AssessmentTestPage} />
       </Route>
       {/* Executive Mode — Simplified Leadership View: 5-tile stripped-down
           alternate to the full Mission Control dashboard, fenced off from it. */}

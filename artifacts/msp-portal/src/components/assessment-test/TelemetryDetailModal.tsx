@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TelemetryItem } from '../types';
+import { TelemetryItem } from './types';
 import { X, Copy, Check, Terminal, Brain, ShieldAlert, ArrowRight, Play } from 'lucide-react';
 
 interface TelemetryDetailModalProps {

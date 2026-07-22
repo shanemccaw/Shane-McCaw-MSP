@@ -7,7 +7,7 @@ import {
   GroupLifecycleData,
   LicenseOptimizationData,
   CopilotReadinessData,
-} from '../types';
+} from './types';
 
 export const initialAssessmentStages: AssessmentStage[] = [
   {

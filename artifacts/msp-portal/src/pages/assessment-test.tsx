@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { AssessmentHero } from './components/AssessmentHero';
-import { ScoreGaugeGrid } from './components/ScoreGaugeGrid';
-import { TelemetryBriefing } from './components/TelemetryBriefing';
-import { AssessmentPipeline } from './components/AssessmentPipeline';
-import { SneakPeekInsights } from './components/SneakPeekInsights';
-import { TelemetryDetailModal } from './components/TelemetryDetailModal';
-import { MetricGaugeModal } from './components/MetricGaugeModal';
-import { ExportReportModal } from './components/ExportReportModal';
-import { PipelineDocumentModal } from './components/PipelineDocumentModal';
+import { AppShell } from '@/components/app-shell';
+import { AssessmentHero } from '@/components/assessment-test/AssessmentHero';
+import { ScoreGaugeGrid } from '@/components/assessment-test/ScoreGaugeGrid';
+import { TelemetryBriefing } from '@/components/assessment-test/TelemetryBriefing';
+import { AssessmentPipeline } from '@/components/assessment-test/AssessmentPipeline';
+import { SneakPeekInsights } from '@/components/assessment-test/SneakPeekInsights';
+import { TelemetryDetailModal } from '@/components/assessment-test/TelemetryDetailModal';
+import { MetricGaugeModal } from '@/components/assessment-test/MetricGaugeModal';
+import { ExportReportModal } from '@/components/assessment-test/ExportReportModal';
+import { PipelineDocumentModal } from '@/components/assessment-test/PipelineDocumentModal';
 
 import {
   initialAssessmentStages,
@@ -18,10 +18,10 @@ import {
   mockTenantHealth,
   mockLicenseOptimization,
   mockCopilotReadiness,
-} from './data/mockData';
-import { MetricGauge, TelemetryItem, AssessmentStage } from './types';
+} from '@/components/assessment-test/mockData';
+import { MetricGauge, TelemetryItem, AssessmentStage } from '@/components/assessment-test/types';
 
-export default function App() {
+export default function AssessmentTestPage() {
   const [stages, setStages] = useState<AssessmentStage[]>(initialAssessmentStages);
   const [gauges, setGauges] = useState<MetricGauge[]>(initialGauges);
   const [telemetryItems, setTelemetryItems] = useState<TelemetryItem[]>(initialTelemetryItems);
@@ -81,12 +81,8 @@ export default function App() {
   const currentStage = stages.find((s) => s.id === activeStageId) || stages[3];
 
   return (
+    <AppShell title="Assessment Test">
     <div className="min-h-screen flex flex-col bg-[#101419] text-[#e0e2ea] antialiased">
-      
-      {/* Top Header */}
-      <Header
-        onExport={() => setIsExportOpen(true)}
-      />
 
       {/* Main Content Layout */}
       <main className="flex-grow pb-12 px-4 md:px-8 w-full max-w-[1440px] mx-auto py-6">
@@ -174,5 +170,6 @@ export default function App() {
       />
 
     </div>
+    </AppShell>
   );
 }

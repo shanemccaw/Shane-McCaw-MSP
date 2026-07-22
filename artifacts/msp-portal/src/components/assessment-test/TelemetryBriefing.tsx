@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TelemetryItem } from '../types';
+import { TelemetryItem } from './types';
 import {
   ShieldAlert,
   Users,

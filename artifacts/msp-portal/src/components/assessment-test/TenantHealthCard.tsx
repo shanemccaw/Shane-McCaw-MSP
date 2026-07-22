@@ -1,5 +1,5 @@
 import React from 'react';
-import { TenantHealthData } from '../types';
+import { TenantHealthData } from './types';
 import { Activity, Shield, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface TenantHealthCardProps {
