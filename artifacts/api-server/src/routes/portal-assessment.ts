@@ -25,6 +25,10 @@
  *                      the established polling signal (insights docs have no
  *                      per-document SSE channel), so the wizard can show the
  *                      "reports generating" wait state and unlock review when done.
+ *                      Also carries `expected` — the real titles of every document
+ *                      the assessment service will generate (from the service's
+ *                      associated-documents mapping), so the wizard can render its
+ *                      full generation checklist before any document row exists.
  *         • mfa       : whether the customer has enrolled portal-login MFA, so the
  *                      wizard can enforce the mandatory first-login MFA gate.
  *
@@ -156,6 +160,30 @@ router.get(
       ).length;
       const failedCount = documents.filter((d) => d.status === "failed").length;
 
+      // ── Expected document set (users.id space) ────────────────────────────
+      // The customer's assessment-tier service's associated-documents mapping —
+      // the same source `find_object "service"` reads for the generation
+      // workflow's `documentsToGenerate` — resolved the same way
+      // `assessment_doc_gate` resolves the assessment serviceId (client_services
+      // joined to services where deliveryType='assessment'). Exposed so the
+      // wizard can render the full generation checklist by real title from the
+      // moment the customer lands here, not only once each document row exists.
+      // Excludes the SOW type (always generated last, listed separately) and any
+      // customerVisible:false entry (internal-only docs the customer never sees —
+      // same filter `build_doc_list` uses for the final presentation); those
+      // internal docs still count toward `allReady` below since that reads the
+      // real doc rows, not this list.
+      const [assessmentService] = await db
+        .select({ associatedDocuments: servicesTable.associatedDocuments })
+        .from(clientServicesTable)
+        .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+        .where(and(eq(clientServicesTable.clientUserId, userId), eq(servicesTable.deliveryType, "assessment")))
+        .limit(1);
+      const isSowDocType = (dt: string) => dt === "sow" || dt === "consolidated_sow" || dt === "scoped_sow";
+      const expectedDocuments = (assessmentService?.associatedDocuments ?? [])
+        .filter((d) => d && typeof d.docType === "string" && d.customerVisible !== false && !isSowDocType(d.docType))
+        .map((d) => ({ docType: d.docType, title: d.title }));
+
       // ── Doc-generation workflow run (for live progress + terminal state) ──
       // Match the seeded workflow's most recent run for this customer via the
       // trigger payload: diagnostics.run_completed carries customerId (msp_customers.id),
@@ -230,6 +258,7 @@ router.get(
             title: d.title,
             status: d.status,
           })),
+          expected: expectedDocuments,
           total: documents.length,
           generating: generatingCount,
           ready: readyCount,
