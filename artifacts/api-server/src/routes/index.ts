@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import versionRouter from "./version";
 import adminArticlesRouter from "./admin-articles";
 import adminServicesRouter from "./admin-services";
 import adminWorkflowTemplatesRouter from "./admin-workflow-templates";
@@ -162,6 +163,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 router.use(healthRouter);
+router.use(versionRouter);
 router.use(adminArticlesRouter);
 router.use(adminServicesRouter);
 router.use(adminWorkflowTemplatesRouter);

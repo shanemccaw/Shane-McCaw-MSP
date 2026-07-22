@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import versionInfo from "@/generated/version.json";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
@@ -1872,10 +1873,13 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               </span>
             </span>
           </div>
-          <span className="shrink-0">
-            Powered by{" "}
-            <span className="text-foreground font-medium">Shane McCaw Consulting</span>
-          </span>
+          <div className="flex flex-col items-end shrink-0">
+            <span>
+              Powered by{" "}
+              <span className="text-foreground font-medium">Shane McCaw Consulting</span>
+            </span>
+            <span className="text-muted-foreground">v{versionInfo.display}</span>
+          </div>
         </div>
       </footer>
     </>

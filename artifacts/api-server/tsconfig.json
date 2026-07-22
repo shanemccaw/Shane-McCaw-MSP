@@ -6,7 +6,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
   "include": ["src"],
   "references": [
