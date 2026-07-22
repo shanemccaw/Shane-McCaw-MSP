@@ -222,6 +222,9 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
 
       // 2. Mark all non-revoked monitor profile rows for this tenant as consent_revoked
       //    so the MSP portal can surface "re-authorize" without waiting for a re-run.
+      //    Rows already classified "license_gap" are excluded — that's a confirmed
+      //    SKU limitation from a different check in the same run, not a consent
+      //    problem, and must not be stomped by an unrelated consent revocation.
       await tx
         .update(tenantMonitorProfilesTable)
         .set({ status: "consent_revoked" })
@@ -229,6 +232,7 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
           and(
             eq(tenantMonitorProfilesTable.tenantId, tenantId),
             ne(tenantMonitorProfilesTable.status, "consent_revoked"),
+            ne(tenantMonitorProfilesTable.status, "license_gap"),
           ),
         );
     });

@@ -315,9 +315,11 @@ describe("classifyGraphError", () => {
 // ── markTenantConsentRevoked standalone tests ─────────────────────────────────
 
 describe("markTenantConsentRevoked", () => {
+  let txUpdateWhere: Mock;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    const txUpdateWhere = vi.fn().mockResolvedValue([]);
+    txUpdateWhere = vi.fn().mockResolvedValue([]);
     const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
     mockDb.tx.update.mockReturnValue({ set: txUpdateSet });
     mockDb.transaction.mockImplementation(async (cb: (tx: { update: Mock }) => Promise<void>) => {
@@ -342,6 +344,14 @@ describe("markTenantConsentRevoked", () => {
     await markTenantConsentRevoked("tenant-direct");
     const setCalls = getTxSetCalls();
     expect(setCalls.some((c) => c?.status === "consent_revoked")).toBe(true);
+  });
+
+  it("excludes already-classified license_gap rows from the monitor-profile bulk update", async () => {
+    await markTenantConsentRevoked("tenant-direct");
+    // tenantConsentTable is updated first, tenantMonitorProfilesTable second — same order as the source.
+    const monitorWhereCall = txUpdateWhere.mock.calls[1]?.[0] as { op: string; args: Array<{ op: string; b: unknown }> };
+    expect(monitorWhereCall.op).toBe("and");
+    expect(monitorWhereCall.args.some((c) => c.op === "ne" && c.b === "license_gap")).toBe(true);
   });
 
   it("emits audit log with system actor and autoRevoked=true", async () => {
