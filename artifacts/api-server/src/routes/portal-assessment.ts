@@ -55,6 +55,7 @@ import {
   assessmentSowAgreementsTable,
   wfRunsTable,
   wfDefinitionsTable,
+  presentationDocViewsTable,
 } from "@workspace/db";
 
 /**
@@ -596,6 +597,63 @@ router.get(
     } catch (err) {
       log.error({ err, userId, documentId }, "GET /portal/assessment/documents/:id failed");
       res.status(500).json({ error: "Failed to load document" });
+    }
+  },
+);
+
+// ── Document view tracking ──────────────────────────────────────────────────
+//
+// Reuses presentation_doc_views (presentationId: null is the documented
+// non-presentation case — see the /public/documents/:shareToken/doc-views and
+// /portal/documents/:id/share routes in portal.ts, which record the same
+// non-presentation event shape for share-link views) rather than inventing a
+// second, pipeline-only tracking table. Fired once per real document open;
+// the modal's per-session "read" checkmarks are a client-side derivation on
+// top of this, not a separate source of truth.
+router.post(
+  "/portal/assessment/documents/:id/view",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const userId = req.user?.id;
+    if (userId == null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const documentId = Number(req.params.id);
+    if (!Number.isInteger(documentId) || documentId <= 0) {
+      res.status(400).json({ error: "Invalid document id" });
+      return;
+    }
+
+    try {
+      const [doc] = await db
+        .select({ id: insightsGeneratedDocumentsTable.id, title: insightsGeneratedDocumentsTable.title })
+        .from(insightsGeneratedDocumentsTable)
+        .where(
+          and(
+            eq(insightsGeneratedDocumentsTable.id, documentId),
+            eq(insightsGeneratedDocumentsTable.customerId, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!doc) {
+        res.status(404).json({ error: "Document not found" });
+        return;
+      }
+
+      await db.insert(presentationDocViewsTable).values({
+        presentationId: null,
+        documentId: doc.id,
+        documentTitle: doc.title,
+        eventType: "view",
+      });
+
+      res.status(204).end();
+    } catch (err) {
+      log.error({ err, userId, documentId }, "POST /portal/assessment/documents/:id/view failed");
+      res.status(500).json({ error: "Failed to record view" });
     }
   },
 );

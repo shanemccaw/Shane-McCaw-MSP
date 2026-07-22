@@ -30,6 +30,11 @@ export interface AssessmentStage {
   completedAt?: string;
   description?: string;
   documentData?: PipelineDocumentData;
+  /** The real insights_generated_documents.id backing this stage, once the
+   * document exists (GET /api/portal/assessment/documents/:id fetchable only
+   * when status is 'done' — approved/delivered). Undefined for expected-but-
+   * not-yet-generated stages. */
+  documentId?: number;
 }
 
 // Widened for real data (same real-data-first discipline as /overview-test's

@@ -147,11 +147,13 @@ export default function AssessmentTestPage() {
           id: d.docType,
           title: d.title,
           status: docStageStatus(docItems.find((i) => i.docType === d.docType)?.status),
+          documentId: docItems.find((i) => i.docType === d.docType)?.id,
         }))
       : docItems.map((d) => ({
           id: d.docType,
           title: d.title,
           status: docStageStatus(d.status),
+          documentId: d.id,
         }));
   const activeStageId = stages.find((s) => s.status === 'in_progress')?.id ?? '';
 
@@ -309,10 +311,15 @@ export default function AssessmentTestPage() {
       />
 
       {/* Real stages are server-derived — the mock "accept plan" local
-          mutation no longer applies, so no onAcceptPlan is passed. */}
+          mutation no longer applies, so no onAcceptPlan is passed. `stages`
+          is passed through so the modal's document navigator can move
+          between every real generated document for this assessment. */}
       <PipelineDocumentModal
         stage={selectedPipelineStage}
+        stages={stages}
         onClose={() => setSelectedPipelineStage(null)}
+        onSelectStage={(stage) => setSelectedPipelineStage(stage)}
+        fetchWithAuth={fetchWithAuth}
       />
 
     </div>
