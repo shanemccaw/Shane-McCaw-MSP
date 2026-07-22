@@ -354,6 +354,25 @@ describe("markTenantConsentRevoked", () => {
     expect(monitorWhereCall.args.some((c) => c.op === "ne" && c.b === "license_gap")).toBe(true);
   });
 
+  it("excludes already-classified error rows from the monitor-profile bulk update", async () => {
+    // Same-bug-class follow-up: a genuine, unrelated `error` classification on one
+    // check (e.g. a malformed request URL) must not be stomped by a consent revoke
+    // thrown by a different check in the same run.
+    await markTenantConsentRevoked("tenant-direct");
+    const monitorWhereCall = txUpdateWhere.mock.calls[1]?.[0] as { op: string; args: Array<{ op: string; b: unknown }> };
+    expect(monitorWhereCall.op).toBe("and");
+    expect(monitorWhereCall.args.some((c) => c.op === "ne" && c.b === "error")).toBe(true);
+  });
+
+  it("excludes already-classified requires_script rows from the monitor-profile bulk update", async () => {
+    // requires_script is also a confirmed, independent fact (the check only runs via
+    // customer script) decided before any Graph call — not an uncertain state.
+    await markTenantConsentRevoked("tenant-direct");
+    const monitorWhereCall = txUpdateWhere.mock.calls[1]?.[0] as { op: string; args: Array<{ op: string; b: unknown }> };
+    expect(monitorWhereCall.op).toBe("and");
+    expect(monitorWhereCall.args.some((c) => c.op === "ne" && c.b === "requires_script")).toBe(true);
+  });
+
   it("emits audit log with system actor and autoRevoked=true", async () => {
     await markTenantConsentRevoked("tenant-direct");
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
