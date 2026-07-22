@@ -37,6 +37,7 @@ import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import { AssessmentSowSelector } from "./AssessmentSowSelector";
 import { AssessmentPaymentPlan } from "./AssessmentPaymentPlan";
+import { AssessmentGeneratingScreen } from "./AssessmentGeneratingScreen";
 // Real radar/spider chart renderer from the platform's dashboard web-part
 // system — the same component real dashboards use for pillar-snapshot
 // widgets (engine.pillarSnapshot). Aliased to avoid colliding with the
@@ -1271,108 +1272,15 @@ function StepPanel({
       // list, no historical series, and no per-stat commentary — so those
       // sections are deliberately absent rather than filled with placeholders.
       return (
-        <div className="space-y-8">
-          <AssessmentHeaderBand title={headerTitle} dateStr={dateStr} />
-
-          {/* Honest failure — a failed scan or doc run is never silently hung
-              or treated as success; the timeline below still shows exactly
-              what did and didn't finish. */}
-          {anyFailed && (
-            <div className="rounded-2xl border border-status-red/30 bg-status-red/5 p-5">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-status-red" />
-                <div className="min-w-0 space-y-3">
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Something went wrong while {scanFailed ? "reading your Microsoft 365 environment" : "preparing your assessment documents"}, and we couldn't finish automatically. This is on us — nothing you did caused it{scanFailed ? "" : ", and your scan data is safe"}.
-                  </p>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    Our team has been notified automatically and will get this sorted. This page keeps
-                    checking, so you can leave it open — it'll update the moment things are ready.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── The path to remediation — connected vertical timeline. Live
-              scan telemetry sits inside phase 1 while it runs; the real
-              document chips and generation ticker inside phases 2/3 — each
-              phase carries its own live content. ── */}
-          <section aria-label="The path to remediation">
-            <div className="mb-6 flex items-center gap-3">
-              <Route className="size-5 text-primary" />
-              <h3 className="text-lg font-semibold tracking-tight text-foreground">The path to remediation</h3>
-            </div>
-            <PhaseTimeline phases={phases} settled={reportsComplete} />
-          </section>
-
-          {/* ── Architect's perspective + tenant health axes — one card split
-              two ways on desktop (narrative left, radar inset right); radar
-              first on mobile, like the reference. ── */}
-          {(showNarrativeCol || hasRadar) && (
-            <section className="rounded-2xl border border-border bg-card p-6 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none md:p-7">
-              {showNarrativeCol && hasRadar ? (
-                <div className="flex flex-col gap-6 md:flex-row md:items-stretch md:gap-8">
-                  <div className="order-1 w-full md:order-2 md:w-2/5 md:shrink-0">
-                    <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
-                  </div>
-                  <div className="order-2 min-w-0 flex-1 md:order-1">
-                    <CioNarrativePanel narrative={status.narrative} />
-                  </div>
-                </div>
-              ) : showNarrativeCol ? (
-                <CioNarrativePanel narrative={status.narrative} />
-              ) : (
-                <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
-              )}
-            </section>
-          )}
-
-          <StatCards stats={status.stats} />
-
-          {reportsComplete && (
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              We've finished generating your assessment{" "}
-              {readyCount > 0 ? (
-                <>
-                  — <span className="font-medium text-foreground">{readyCount} document{readyCount === 1 ? "" : "s"}</span>{" "}
-                  including your tailored Statement of Work.
-                </>
-              ) : (
-                "documents, including your tailored Statement of Work."
-              )}{" "}
-              Review the findings that matter most, then tailor your scope and choose a plan.
-            </p>
-          )}
-
-          {/* ── Closing CTA — the real next action, pill-shaped and prominent
-              like the reference; only rendered once genuinely unlocked. ── */}
-          {reportsComplete && (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button size="lg" className="rounded-full px-7" onClick={onGoToReview}>
-                Review findings <ChevronRight className="ml-1 size-4" />
-              </Button>
-              {sowReady && (
-                <Button size="lg" variant="outline" className="rounded-full px-6" onClick={onGoToSow}>
-                  View statement of work
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note.
-              !reportsComplete keeps it off the settled screen, matching where it rendered before the unified layout. */}
-          {!reportsComplete && status.isTestbed && !status.scan.active ? (
-            <Button
-              variant="outline"
-              onClick={() => void debugTriggerScan()}
-              disabled={debugTriggering}
-            >
-              {debugTriggering ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
-              [DEBUG] {status.scan.everScanned ? "Re-trigger scan" : "Trigger scan"}
-            </Button>
-          ) : null}
-        </div>
+        <AssessmentGeneratingScreen
+          scan={status.scan}
+          documents={status.documents}
+          narrative={status.narrative}
+          radar={status.radar}
+          stats={status.stats}
+          onContinue={reportsComplete ? onGoToReview : undefined}
+          continueLabel="Review findings"
+        />
       );
     }
 
