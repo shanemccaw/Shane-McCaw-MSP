@@ -136,6 +136,20 @@ const CONSULTING_SECTION_HINTS: Record<string, string> = {
   identity_modernization_plan: "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission",
 };
 
+function resolveSectionHints(
+  sections: { id: string; heading: string; guidance: string }[] | null | undefined,
+  legacySectionHints: string | null | undefined,
+  fallback: string,
+): string {
+  if (sections && sections.length > 0) {
+    return sections
+      .map(s => (s.guidance?.trim() ? `${s.heading} (${s.guidance.trim()})` : s.heading))
+      .join(", ");
+  }
+  if (legacySectionHints && legacySectionHints.trim() !== "") return legacySectionHints;
+  return fallback;
+}
+
 // ── Tier 02 Pricing Formula (verbatim — embedded into every SOW prompt) ───────
 
 const TIER_02_PRICING_FORMULA = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
@@ -668,7 +682,12 @@ export async function generateAndDeliverDocument(
   const scoresBlock = formatScoresBlock(realScores);
 
   const [docTypeScopeConfig] = await db
-    .select({ includedProfileKeyPatterns: documentTypesTable.includedProfileKeyPatterns })
+    .select({
+      label: documentTypesTable.label,
+      sectionHints: documentTypesTable.sectionHints,
+      sections: documentTypesTable.sections,
+      includedProfileKeyPatterns: documentTypesTable.includedProfileKeyPatterns,
+    })
     .from(documentTypesTable)
     .where(eq(documentTypesTable.key, docType))
     .limit(1);
@@ -697,7 +716,7 @@ export async function generateAndDeliverDocument(
   let prompt: string;
 
   if (category === "report") {
-    const docLabel = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
+    const docLabel = docTypeScopeConfig?.label ?? REPORT_DOC_TYPE_LABELS[docType] ?? docType;
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent or infer findings, and do NOT render a findings table — if there are genuinely no findings, say so plainly and positively (e.g. \"No critical issues were identified in this assessment\").";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations were recorded. Do NOT fabricate recommendations — omit the recommendations section, or state that none are outstanding.";
 
@@ -733,10 +752,14 @@ export async function generateAndDeliverDocument(
       priorDocsSummary,
     });
   } else {
-    const typeLabel = CONSULTING_TYPE_LABELS[docType] ?? docType;
+    const typeLabel = docTypeScopeConfig?.label ?? CONSULTING_TYPE_LABELS[docType] ?? docType;
     const findingsInline = findings.slice(0, 10).join("; ") || "None recorded for this client — do NOT invent findings or recommendations; write only what the tenant facts and scope below genuinely support.";
     const recommendationsInline = recommendations.slice(0, 8).join("; ") || "None recorded for this client — do NOT invent findings or recommendations; write only what the tenant facts and scope below genuinely support.";
-    const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include relevant sections for this type of consulting deliverable";
+    const sectionHints = resolveSectionHints(
+      docTypeScopeConfig?.sections,
+      docTypeScopeConfig?.sectionHints,
+      CONSULTING_SECTION_HINTS[docType] ?? "Include relevant sections for this type of consulting deliverable",
+    );
 
     const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);
 
