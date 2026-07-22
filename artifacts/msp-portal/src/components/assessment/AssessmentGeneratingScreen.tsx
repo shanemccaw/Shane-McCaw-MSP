@@ -351,11 +351,11 @@ function NarrativeAndRadar({
       ? Math.round(radar.pillars.reduce((sum, p) => sum + p.score, 0) / radar.pillars.length)
       : null;
 
-  const radarData: DistributionWidgetData = radar.pillars.map((p) => ({
-    id: p.label,
-    label: p.label,
-    value: p.score,
-  })) as unknown as DistributionWidgetData;
+const radarData: DistributionWidgetData = {
+  shape: "distribution",
+  label: "Pillar Score",
+  slices: radar.pillars.map((p) => ({ name: p.label, value: p.score })),
+};
 
   return (
     <section className="mb-10 max-w-5xl mx-auto">
