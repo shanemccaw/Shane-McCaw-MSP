@@ -13,7 +13,9 @@
  * or touches CustomerUser's shell/sidebar code. It reuses the shared UI
  * primitives (Avatar, DropdownMenu, Button) and the live ThemeProvider.
  */
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +30,14 @@ import {
 import { Award, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { AssessmentWizard } from "@/components/assessment/AssessmentWizard";
 
+interface MspProfile {
+  id: number;
+  name: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  status: string;
+}
+
 function initials(name?: string | null, email?: string): string {
   if (name && name.trim()) {
     const parts = name.trim().split(/\s+/);
@@ -39,9 +49,32 @@ function initials(name?: string | null, email?: string): string {
 }
 
 export default function AssessmentShellPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, fetchWithAuth } = useAuth();
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
+  const slug = useMspSlug();
+  const [profile, setProfile] = useState<MspProfile | null>(null);
+
+  // Fetch MSP profile for real white-label branding — same real, proven
+  // pattern AppShell uses (GET /api/msp/profile, ?slug= for PlatformAdmin).
+  useEffect(() => {
+    if (!user) return;
+    const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+    const url =
+      isPlatformAdmin && slug
+        ? `/api/msp/profile?slug=${encodeURIComponent(slug)}`
+        : "/api/msp/profile";
+    fetchWithAuth(url)
+      .then(async (res) => {
+        if (res.ok) {
+          setProfile((await res.json()) as MspProfile);
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.mspId, slug]);
+
+  const brandName = profile?.name ?? "";
 
   return (
     <div className="flex h-screen max-h-screen flex-col overflow-hidden bg-background">
@@ -50,7 +83,7 @@ export default function AssessmentShellPage() {
         <div className="flex items-center gap-2.5 min-w-0">
           <ShieldCheck className="size-5 text-primary shrink-0" />
           <div className="min-w-0 leading-tight">
-            <p className="text-sm font-semibold text-foreground truncate">Assessment</p>
+            <p className="text-sm font-semibold text-foreground truncate">{brandName || "Assessment"}</p>
             <p className="text-[10px] text-muted-foreground truncate hidden sm:block">
               Your security &amp; modernization assessment
             </p>
