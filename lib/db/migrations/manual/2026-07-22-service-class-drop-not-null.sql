@@ -1,0 +1,30 @@
+-- 2026-07-22-service-class-drop-not-null.sql
+--
+-- Root cause: services.service_class is enforced NOT NULL in the live database,
+-- but the Drizzle schema (lib/db/src/schema/index.ts) declares it nullable by
+-- design, with the documented convention "null / missing row = treated as
+-- add_on" (direct checkout, no SOW). This is not a data gap: productTypeConfig's
+-- PRODUCT_TYPE_TEMPLATES deliberately sets serviceClass: null for the
+-- "assessment", "retainer", and "document_product" product types, and
+-- msp-marketplace-purchase.ts / portal-checkout.ts / msp-sow.ts all coalesce
+-- `svc.serviceClass ?? "add_on"` rather than treating null as an error state.
+--
+-- Any older service row saved before serviceClass existed (e.g. assessment
+-- products like "License Waste Audit", services.id = 15) legitimately has
+-- service_class = NULL. The live NOT NULL constraint was added out-of-band
+-- (no migration in this repo added it) and contradicts the application's
+-- intended nullable design, so ANY update to such a row -- not just edits to
+-- serviceClass itself -- fails with:
+--   null value in column "service_class" of relation "services" violates
+--   not-null constraint
+-- because a full-row UPDATE re-validates every column, including one already
+-- NULL before the constraint existed.
+--
+-- Fix: drop the NOT NULL constraint so the column matches its intended,
+-- documented semantics. No default/backfill value is applied -- NULL is the
+-- correct, meaningful value for these rows (equivalent to "add_on"), not a
+-- placeholder to be replaced.
+--
+-- Safe to run even if the column is already nullable (no-op in that case).
+
+ALTER TABLE "services" ALTER COLUMN "service_class" DROP NOT NULL;
