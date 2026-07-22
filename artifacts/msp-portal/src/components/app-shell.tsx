@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import versionInfo from "@/generated/version.json";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
@@ -1554,6 +1554,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   });
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
+  const versionInfo = useVersionInfo();
 
   const mspRole = user?.mspRole;
   // Support chat is tenant-scoped and not available to PlatformAdmin (the

@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Bell, Volume2, VolumeX, SquareTerminal, Mail } from "lucide-react";
 import { Link } from "wouter";
-import versionInfo from "@/generated/version.json";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 
 // Persistent bottom status bar — the one place visual boldness is spent.
 // Segmented LED-style dots per live signal; cyan means "live right now".
@@ -56,6 +56,7 @@ export default function StatusBar({
   onToggleConsole,
   rightExtra,
 }: StatusBarProps) {
+  const versionInfo = useVersionInfo();
   return (
     <footer className="h-6 shrink-0 flex items-center bg-card border-t border-border px-2 gap-0 font-mono text-[11px] text-muted-foreground select-none overflow-x-auto whitespace-nowrap">
       {/* Location segment */}

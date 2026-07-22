@@ -1,13 +1,14 @@
 import { Link } from "wouter";
 import { ShieldCheck } from "lucide-react";
 import { ChatCTA } from "./ChatCTA";
-import versionInfo from "@/generated/version.json";
+import { useVersionInfo } from "@/hooks/useVersionInfo";
 
 // Quiz is demoted to a recovery/SEO-feeder role (website-rebuild-reference-v2.md §1/§5) —
 // listed here in the footer, not the primary header nav.
 const QUIZ_HUB_HREF = "/quiz";
 
 export function Footer() {
+  const versionInfo = useVersionInfo();
   return (
     <footer className="bg-charcoal-0 border-t border-white/[0.08] py-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
