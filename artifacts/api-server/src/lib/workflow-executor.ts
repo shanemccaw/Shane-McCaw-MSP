@@ -75,7 +75,7 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
-import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
@@ -3690,13 +3690,7 @@ async function executeNode(
               .orderBy(desc(scriptRunResultsTable.createdAt))
               .limit(50),
               gtsTenantId
-                ? db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
-                    checkKey: tenantMonitorProfilesTable.checkKey,
-                    extractedProperties: tenantMonitorProfilesTable.extractedProperties,
-                  })
-                  .from(tenantMonitorProfilesTable)
-                  .where(eq(tenantMonitorProfilesTable.tenantId, gtsTenantId))
-                  .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt))
+                ? fetchLatestMonitorProfileRows(gtsTenantId)
                 : Promise.resolve([]),
             ]);
 
@@ -3709,14 +3703,22 @@ async function executeNode(
             Object.assign(mergedProfile, (profileRow[0]?.profile as Record<string, unknown> | null) ?? {});
 
             // Monitor data merged in last so it wins on key collision (it's the
-            // fresher, modern pipeline). Each check contributes a synthetic
-            // `${checkKey}__itemCount` key that "threshold" rules read.
-            for (const row of monitorRows) {
-              const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
-              mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
-            }
+            // fresher, modern pipeline) — via the SAME shared helpers
+            // buildTenantProfile and the SOW generator use: full extracted
+            // properties (every DB-configured mapping targetField, e.g.
+            // mfaEnforced / hasAADP1orP2), `${checkKey}__itemCount` for
+            // "threshold" rules, and the legacy-vocabulary bridge. Previously
+            // only __itemCount was merged here, so Graph-only assessment
+            // tenants fired zero non-threshold signals from this node — the
+            // exact known limitation documented on the seeded workflows.
+            mergeMonitorProfileRows(mergedProfile, monitorRows);
 
-            const allFindings = [...new Set(scriptRuns.flatMap(r => (r.parsedFindings as string[] | null) ?? []))];
+            // Script findings + real severity-matched monitor findings, so
+            // findings_keyword rules have a Graph path for script-less tenants.
+            const allFindings = [...new Set([
+              ...scriptRuns.flatMap(r => (r.parsedFindings as string[] | null) ?? []),
+              ...deriveMonitorFindings(monitorRows),
+            ])];
 
             const [signalRules, signalGroups, disabledSignalKeys] = await Promise.all([
               db.select().from(signalDerivationRulesTable).orderBy(signalDerivationRulesTable.sortOrder),

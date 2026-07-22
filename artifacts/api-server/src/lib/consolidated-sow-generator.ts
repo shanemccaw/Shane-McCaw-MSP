@@ -10,10 +10,9 @@ import {
   quickWinPresentationsTable,
   mspUsersTable,
   mspCustomersTable,
-  tenantMonitorProfilesTable,
 } from "@workspace/db";
 import { eq, ne, desc, and, inArray, isNull, sql } from "drizzle-orm";
-import { computeTenantSignals, getProjectSignalDefinitions, getAdjustmentSignalDefinitions, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
+import { computeTenantSignals, getProjectSignalDefinitions, getAdjustmentSignalDefinitions, projectMatchesSignals, getDisabledSignalKeys, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import {
   fetchSignalRulesAndGroups,
@@ -567,22 +566,20 @@ export async function generateConsolidatedSowDocument(
     const slaResolvedMspId = slaCustomerRow?.mspId ?? null;
     const slaResolvedTenantId = slaCustomerRow?.tenantId ?? null;
 
-    // Merge monitor-derived item counts into the signal-evaluation profile,
-    // exactly as tenant-signals.ts:buildTenantProfile does for the engines, so
-    // threshold-type signals have their `<checkKey>__itemCount` inputs. Keyed by
-    // the resolved tenantId; a null tenant means no monitor data can contribute.
+    // Merge the tenant's real Graph-derived monitor state into the
+    // signal-evaluation profile via the SAME shared helpers
+    // tenant-signals.ts:buildTenantProfile uses: full extracted properties
+    // (every DB-configured mapping targetField), `<checkKey>__itemCount` for
+    // threshold rules, the legacy-vocabulary bridge, and severity-matched
+    // monitor findings for findings_keyword rules. Keyed by the resolved
+    // tenantId; a null tenant means no monitor data can contribute.
+    // (Before this, only __itemCount was merged here — Graph-only assessment
+    // tenants fired zero non-threshold signals in SOW generation.)
     if (slaResolvedTenantId) {
-      const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
-        checkKey: tenantMonitorProfilesTable.checkKey,
-        extractedProperties: tenantMonitorProfilesTable.extractedProperties,
-      })
-        .from(tenantMonitorProfilesTable)
-        .where(eq(tenantMonitorProfilesTable.tenantId, slaResolvedTenantId))
-        .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
-
-      for (const row of monitorRows) {
-        const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
-        mergedSowProfileForSignals[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+      const monitorRows = await fetchLatestMonitorProfileRows(slaResolvedTenantId);
+      mergeMonitorProfileRows(mergedSowProfileForSignals, monitorRows);
+      for (const monitorFinding of deriveMonitorFindings(monitorRows)) {
+        if (!allFindingsForSignals.includes(monitorFinding)) allFindingsForSignals.push(monitorFinding);
       }
       signalsLog.info(
         { ...logCtx, tenantId: slaResolvedTenantId, monitorCheckKeys: monitorRows.length },

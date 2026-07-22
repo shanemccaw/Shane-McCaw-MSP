@@ -55,7 +55,12 @@ vi.mock("./sla-engine", () => ({
 }));
 
 import { db } from "@workspace/db";
-import { buildTenantProfile } from "./tenant-signals.ts";
+import {
+  buildTenantProfile,
+  mergeMonitorProfileRows,
+  deriveMonitorFindings,
+  type TenantMonitorProfileRow,
+} from "./tenant-signals.ts";
 
 // ── Table-aware db mock ────────────────────────────────────────────────────────
 //
@@ -194,5 +199,119 @@ describe("buildTenantProfile — id-space resolution", () => {
     expect(result.mergedProfile["onlyBase"]).toBe(true);
     // No tenantId → no monitor keys merged at all.
     expect(result.mergedProfile["wouldNotApply__itemCount"]).toBeUndefined();
+  });
+
+  it("merges FULL extracted properties, applies Graph-wins precedence, and bridges monitor findings", async () => {
+    makeDb({
+      mspCustomers: [{ tenantId: "tenant-abc", mspId: 9 }],
+      mspUsers: [{ userId: 777 }],
+      clientM365Profiles: [{ profile: { mfaEnforced: true } }], // stale script-era claim
+      scriptRunResults: [{ parsedFindings: ["script-finding"], profileUpdates: {} }],
+      tenantMonitorProfiles: [
+        // Graph pipeline says MFA is NOT enforced — fresher data must win.
+        { checkKey: "identity:mfa-state", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 3, mfaEnforced: false } },
+        { checkKey: "license_gap", status: "license_gap", severityMatched: null, extractedProperties: { _licenseGap: true, hasAADP1orP2: false, hasDefender: false } },
+      ],
+    });
+
+    const result = await buildTenantProfile(42);
+
+    // Full extracted-properties merge — the license-gap upsell flags and any
+    // DB-configured mapping targetField reach the profile, not just __itemCount.
+    expect(result.mergedProfile["hasAADP1orP2"]).toBe(false);
+    expect(result.mergedProfile["hasDefender"]).toBe(false);
+    // Precedence: monitor (fresh Graph) beats the script-era profile claim.
+    expect(result.mergedProfile["mfaEnforced"]).toBe(false);
+    // Script findings retained AND real severity-matched monitor findings bridged.
+    expect(result.findings).toContain("script-finding");
+    expect(result.findings.some(f => f.startsWith("identity:mfa-state: warning severity"))).toBe(true);
+    // license_gap row is NOT a finding (status != ok).
+    expect(result.findings.some(f => f.startsWith("license_gap"))).toBe(false);
+  });
+});
+
+// ─── mergeMonitorProfileRows — legacy-vocabulary bridge (pure) ────────────────
+
+describe("mergeMonitorProfileRows — legacy key bridge", () => {
+  const row = (checkKey: string, status: string, props: Record<string, unknown> | null, severityMatched: string | null = null): TenantMonitorProfileRow =>
+    ({ checkKey, status, severityMatched, extractedProperties: props });
+
+  it("aliases producer spelling conditionalAccessPoliciesCount → rules' conditionalAccessPolicyCount", () => {
+    const profile: Record<string, unknown> = { conditionalAccessPoliciesCount: 4 };
+    mergeMonitorProfileRows(profile, []);
+    expect(profile["conditionalAccessPolicyCount"]).toBe(4);
+  });
+
+  it("aliases rules' spelling back to producer spelling", () => {
+    const profile: Record<string, unknown> = { conditionalAccessPolicyCount: 2 };
+    mergeMonitorProfileRows(profile, []);
+    expect(profile["conditionalAccessPoliciesCount"]).toBe(2);
+  });
+
+  it("derives CA policy count from identity:ca-policy-count's _itemCount (ok row only)", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [row("identity:ca-policy-count", "ok", { _itemCount: 0 })]);
+    // 0 is a REAL measured zero from a successful check — the eq-0 gap rule may fire.
+    expect(profile["conditionalAccessPolicyCount"]).toBe(0);
+    expect(profile["conditionalAccessPoliciesCount"]).toBe(0);
+  });
+
+  it("does NOT derive CA count from an errored check — unknown must not read as zero policies", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [row("identity:ca-policy-count", "error", null)]);
+    expect("conditionalAccessPolicyCount" in profile).toBe(false);
+    // __itemCount synthetic key still stamps 0 (pre-existing threshold-rule contract).
+    expect(profile["identity:ca-policy-count__itemCount"]).toBe(0);
+  });
+
+  it("derives securityScore as a percent from security:secure-score currentScore/maxScore", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [row("security:secure-score", "ok", { currentScore: 33, maxScore: 100, _itemCount: 1 })]);
+    expect(profile["securityScore"]).toBe(33);
+  });
+
+  it("falls back to a stored percentage field, mirroring dashboard-resolvers", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [row("security:secure-score", "ok", { percentage: 41.6 })]);
+    expect(profile["securityScore"]).toBe(42);
+  });
+
+  it("never overwrites an explicitly-present securityScore (absent-only derivation)", () => {
+    const profile: Record<string, unknown> = { securityScore: 88 };
+    mergeMonitorProfileRows(profile, [row("security:secure-score", "ok", { currentScore: 10, maxScore: 100 })]);
+    expect(profile["securityScore"]).toBe(88);
+  });
+
+  it("does not derive securityScore from a license-gapped secure-score row", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [row("security:secure-score", "license_gap", { _licenseGap: true })]);
+    expect("securityScore" in profile).toBe(false);
+  });
+
+  it("does not fabricate keys with no real producer (mfaEnforced/governanceScore stay absent)", () => {
+    const profile: Record<string, unknown> = {};
+    mergeMonitorProfileRows(profile, [
+      row("identity:mfa-registration", "ok", { registeredCount: 5, _itemCount: 20 }),
+      row("identity:ca-mfa-coverage", "ok", { _itemCount: 0 }),
+    ]);
+    expect("mfaEnforced" in profile).toBe(false);
+    expect("governanceScore" in profile).toBe(false);
+  });
+});
+
+// ─── deriveMonitorFindings — real problem findings only (pure) ────────────────
+
+describe("deriveMonitorFindings", () => {
+  it("bridges only severity-matched ok rows; errors and license gaps are state-unknown, not findings", () => {
+    const findings = deriveMonitorFindings([
+      { checkKey: "sharepoint:anonymous-links", status: "ok", severityMatched: "warning", extractedProperties: { _itemCount: 7 } },
+      { checkKey: "identity:global-admin-count", status: "ok", severityMatched: null, extractedProperties: { _itemCount: 2 } }, // passed — no finding
+      { checkKey: "exchange:auto-forwarding-rules", status: "error", severityMatched: null, extractedProperties: null },
+      { checkKey: "identity:risky-users", status: "license_gap", severityMatched: null, extractedProperties: { _licenseGap: true } },
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toBe("sharepoint:anonymous-links: warning severity condition matched on latest monitoring scan (7 items)");
+    // The checkKey carries the keyword surface findings_keyword rules match on.
+    expect(findings[0]!.toLowerCase()).toContain("sharepoint");
   });
 });

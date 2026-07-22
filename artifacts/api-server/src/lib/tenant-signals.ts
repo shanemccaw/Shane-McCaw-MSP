@@ -101,12 +101,195 @@ export async function resolveCustomerPortalUserId(customerId: number): Promise<n
   return row?.userId ?? null;
 }
 
+// ─── Monitor-profile merge (shared by every signal-evaluation assembly site) ──
+//
+// The Graph-based diagnostics/monitoring pipeline writes one
+// `tenant_monitor_profiles` row per check execution; the latest row per
+// checkKey is the tenant's current, real Graph-derived state. The helpers
+// below are THE bridge from that data into the `mergedProfile` / `findings`
+// that `evaluateRule()` consumes. Three call sites assemble a signal-eval
+// profile — `buildTenantProfile()` below, the consolidated SOW generator's
+// DB-evaluation path, and the workflow executor's `get_tenant_signals` node
+// (the one the seeded Assessment workflow actually uses) — and all three MUST
+// route through these helpers. They used to hand-roll the merge separately:
+// commit a068f631 added the full extracted-properties merge to
+// buildTenantProfile only, leaving the other two merging nothing but
+// `__itemCount`, which is why Graph-only assessment tenants fired zero
+// signals and produced empty SOW workstream lists.
+//
+// PRECEDENCE (deliberate, documented): monitor/Graph-derived values are
+// merged LAST, so on a key collision they win over `client_m365_profiles` and
+// `script_run_results.profileUpdates`. Rationale: monitor rows are refreshed
+// continuously by scheduled checks and per-run diagnostics, while script
+// uploads are stale point-in-time one-shots; the fresher pipeline is the
+// truth. (This was already buildTenantProfile's order and get_tenant_signals'
+// stated intent — it is now the single documented contract for all sites.)
+
+export interface TenantMonitorProfileRow {
+  checkKey: string;
+  status?: string | null;
+  severityMatched?: string | null;
+  extractedProperties: Record<string, unknown> | null;
+}
+
+/** Latest row per checkKey for a tenant — the standard monitor-state fetch. */
+export async function fetchLatestMonitorProfileRows(tenantId: string): Promise<TenantMonitorProfileRow[]> {
+  return db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
+    checkKey: tenantMonitorProfilesTable.checkKey,
+    status: tenantMonitorProfilesTable.status,
+    severityMatched: tenantMonitorProfilesTable.severityMatched,
+    extractedProperties: tenantMonitorProfilesTable.extractedProperties,
+  })
+    .from(tenantMonitorProfilesTable)
+    .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
+    .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
+}
+
+/** First numeric value among the given keys — mirrors dashboard-resolvers' firstNumber. */
+function firstNumericProp(props: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const v = props[key];
+    if (typeof v === "number" && !isNaN(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v))) return Number(v);
+  }
+  return null;
+}
+
+/**
+ * Legacy-vocabulary bridge: derives the handful of script-era profile keys that
+ * real seeded `signal_derivation_rules` reference but that the Graph pipeline
+ * expresses differently. Runs AFTER the raw merge, and every derivation is
+ * absent-only — an explicitly mapped/script-written value always wins.
+ *
+ * What IS bridged (each has a real, code-verified Graph producer):
+ *   • `conditionalAccessPolicyCount` ⇄ `conditionalAccessPoliciesCount` — the
+ *     seeded rules use the singular spelling; the M365 script parser and AI
+ *     analyzer write the plural. Whichever is present is aliased to the other,
+ *     fixing rules that read a key nothing ever wrote.
+ *   • CA policy count from `identity:ca-policy-count` — that check fetches the
+ *     tenant's CA policies, so its `_itemCount` IS the policy count. Derived
+ *     only from a status="ok" row: an errored/license-gapped check must never
+ *     be read as "0 policies" (that would falsely fire the eq-0 gap rules).
+ *   • `securityScore` from `security:secure-score` — Microsoft Secure Score as
+ *     a 0–100 percent, using the exact field fallbacks the dashboard resolver
+ *     already uses (currentScore/maxScore → percentage/scorePct). Nothing else
+ *     in the platform produces `securityScore`, so the `profile_key_lt
+ *     securityScore 60` rules could never fire for any customer before this.
+ *
+ * What is deliberately NOT bridged (no real producer — fabricating would
+ * violate the platform's anti-fabrication stance):
+ *   • `mfaEnforced` — `identity:mfa-registration` measures registration, not
+ *     enforcement, and deriving enforcement from `identity:ca-mfa-coverage`
+ *     would false-flag security-defaults tenants. If the live
+ *     `monitor_checks.mapping` emits `mfaEnforced` (PLATFORM_BUILD documents it
+ *     as a real targetField), the raw merge above delivers it as-is.
+ *   • `governanceScore` — no governance:* check is in the baseline package and
+ *     no real score source exists; rules on it stay dormant until one does.
+ *   • `dlpPoliciesCount` / `totalUserCount` / `sharepointSiteCount` /
+ *     `copilotLicenseCount` — same: raw merge delivers them if a live mapping
+ *     emits them; nothing is invented here.
+ */
+function bridgeLegacyProfileKeys(
+  mergedProfile: Record<string, unknown>,
+  monitorRows: TenantMonitorProfileRow[],
+): void {
+  const rowByKey = new Map(monitorRows.map(r => [r.checkKey, r]));
+  const okProps = (checkKey: string): Record<string, unknown> | null => {
+    const row = rowByKey.get(checkKey);
+    if (!row || row.status !== "ok") return null;
+    return row.extractedProperties ?? {};
+  };
+
+  // conditionalAccessPolicyCount (rules' spelling) ⇄ conditionalAccessPoliciesCount (producers' spelling)
+  const RULE_CA_KEY = "conditionalAccessPolicyCount";
+  const PRODUCER_CA_KEY = "conditionalAccessPoliciesCount";
+  if (RULE_CA_KEY in mergedProfile && !(PRODUCER_CA_KEY in mergedProfile)) {
+    mergedProfile[PRODUCER_CA_KEY] = mergedProfile[RULE_CA_KEY];
+  } else if (PRODUCER_CA_KEY in mergedProfile && !(RULE_CA_KEY in mergedProfile)) {
+    mergedProfile[RULE_CA_KEY] = mergedProfile[PRODUCER_CA_KEY];
+  } else if (!(RULE_CA_KEY in mergedProfile)) {
+    const caProps = okProps("identity:ca-policy-count");
+    const caCount = caProps ? firstNumericProp(caProps, ["_itemCount"]) : null;
+    if (caCount != null) {
+      mergedProfile[RULE_CA_KEY] = caCount;
+      mergedProfile[PRODUCER_CA_KEY] = caCount;
+    }
+  }
+
+  // securityScore from Microsoft Secure Score (absent-only; ok row only).
+  if (!("securityScore" in mergedProfile)) {
+    const ssProps = okProps("security:secure-score");
+    if (ssProps) {
+      const current = firstNumericProp(ssProps, ["currentScore", "secureScore", "current"]);
+      const max = firstNumericProp(ssProps, ["maxScore", "maxSecureScore", "max"]);
+      if (current != null && max != null && max > 0) {
+        mergedProfile["securityScore"] = Math.round((current / max) * 100);
+      } else {
+        const pct = firstNumericProp(ssProps, ["percentage", "scorePct"]);
+        if (pct != null) mergedProfile["securityScore"] = Math.round(pct);
+      }
+    }
+  }
+}
+
+/**
+ * Merges the latest monitor rows into a signal-evaluation profile: full
+ * extracted properties (so every DB-configured `monitor_checks.mapping`
+ * targetField — e.g. mfaEnforced, globalAdminCount, dlpPoliciesCount — reaches
+ * `evaluateRule()`), the synthetic `<checkKey>__itemCount` keys that
+ * `threshold` rules read, and the legacy-vocabulary bridge above.
+ */
+export function mergeMonitorProfileRows(
+  mergedProfile: Record<string, unknown>,
+  monitorRows: TenantMonitorProfileRow[],
+): void {
+  for (const row of monitorRows) {
+    const props = row.extractedProperties ?? {};
+    Object.assign(mergedProfile, props);
+    mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
+  }
+  bridgeLegacyProfileKeys(mergedProfile, monitorRows);
+}
+
+/**
+ * Real, Graph-derived finding strings for `findings_keyword` rules — one per
+ * check whose latest run genuinely evaluated (status "ok") AND matched a
+ * severity condition. This gives keyword rules (e.g. "SharePoint") a real
+ * path for Graph-only customers, whose script-run `parsedFindings` are empty.
+ *
+ * Only severity-matched ok rows qualify, deliberately: an errored or
+ * license-gapped check is "state unknown", not a finding — bridging e.g.
+ * "Check error: sharepoint:anonymous-links" would falsely fire
+ * `hasSharePointIssues` off a transient Graph error. The checkKey is included
+ * in the string because it carries the real keyword surface
+ * ("sharepoint:anonymous-links" → keyword "SharePoint").
+ */
+export function deriveMonitorFindings(monitorRows: TenantMonitorProfileRow[]): string[] {
+  const findings: string[] = [];
+  for (const row of monitorRows) {
+    if (row.status !== "ok") continue;
+    const severity = row.severityMatched?.trim();
+    if (!severity) continue;
+    const props = row.extractedProperties ?? {};
+    const itemCount = firstNumericProp(props, ["_itemCount"]);
+    findings.push(
+      `${row.checkKey}: ${severity} severity condition matched on latest monitoring scan` +
+      (itemCount != null ? ` (${itemCount} item${itemCount === 1 ? "" : "s"})` : ""),
+    );
+  }
+  return findings;
+}
+
 // ─── Tenant profile builder (single source of truth for signal evaluation) ────
 //
 // Builds the merged M365 profile + findings list a tenant's signals are
-// evaluated against. This is the ONE place that assembles this profile — every
-// engine (priority, pricing, drift, forecasting, security, sales_offer, health,
-// crm) and the SOW generator call this so they can never drift.
+// evaluated against. Every engine (priority, pricing, drift, forecasting,
+// security, sales_offer, health, crm) calls this directly. The consolidated
+// SOW generator and the workflow executor's get_tenant_signals node operate in
+// users.id space and assemble their own base profile, but route the monitor
+// half through the SAME shared helpers above (fetchLatestMonitorProfileRows /
+// mergeMonitorProfileRows / deriveMonitorFindings) so no site can drift on the
+// Graph-data merge again.
 //
 // The input is a *customer id* (`mspCustomersTable.id`) — the id every real
 // engine caller already carries (runForTenant / admin-engines testbed flow).
@@ -175,21 +358,15 @@ export async function buildTenantProfile(customerId: number): Promise<{
     );
   }
 
-  // monitor-derived threshold inputs — keyed by tenantId off the customer row.
+  // monitor-derived inputs — keyed by tenantId off the customer row. Shared
+  // helpers: full extracted-properties merge (monitor wins on collision — see
+  // precedence contract above), legacy-vocabulary bridge, and real
+  // severity-matched monitor findings so findings_keyword rules can fire for
+  // Graph-only customers.
   if (tenantId) {
-    const monitorRows = await db.selectDistinctOn([tenantMonitorProfilesTable.checkKey], {
-      checkKey: tenantMonitorProfilesTable.checkKey,
-      extractedProperties: tenantMonitorProfilesTable.extractedProperties,
-    })
-      .from(tenantMonitorProfilesTable)
-      .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
-      .orderBy(tenantMonitorProfilesTable.checkKey, desc(tenantMonitorProfilesTable.collectedAt));
-
-    for (const row of monitorRows) {
-      const props = (row.extractedProperties as Record<string, unknown> | null) ?? {};
-      Object.assign(mergedProfile, props);
-      mergedProfile[`${row.checkKey}__itemCount`] = props["_itemCount"] ?? 0;
-    }
+    const monitorRows = await fetchLatestMonitorProfileRows(tenantId);
+    mergeMonitorProfileRows(mergedProfile, monitorRows);
+    findings = [...new Set([...findings, ...deriveMonitorFindings(monitorRows)])];
   } else {
     log.warn(
       { customerId },
