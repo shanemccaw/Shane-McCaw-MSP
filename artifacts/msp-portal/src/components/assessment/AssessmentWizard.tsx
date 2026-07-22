@@ -283,9 +283,8 @@ export function AssessmentWizard() {
   const scanRunId = status?.scan.runId ?? null;
   useEffect(() => {
     if (!scanActive || !scanRunId || customerId == null || !accessToken) return;
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     const es = new EventSource(
-      `${base}/api/msp/customers/${customerId}/diagnostics/runs/${scanRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+      `/api/msp/customers/${customerId}/diagnostics/runs/${scanRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
     );
     setScanLog([]);
     setScanJustFinished(false);
@@ -325,9 +324,8 @@ export function AssessmentWizard() {
   const docGenActive = docWorkflowRunId != null && !reportsComplete && !reportsFailed;
   useEffect(() => {
     if (!docGenActive || docWorkflowRunId == null || !accessToken) return;
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     const es = new EventSource(
-      `${base}/api/portal/assessment/doc-workflow/${docWorkflowRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
+      `/api/portal/assessment/doc-workflow/${docWorkflowRunId}/sse?jwt=${encodeURIComponent(accessToken)}`,
     );
     es.onmessage = (event) => {
       const parsed = JSON.parse(event.data) as DocWorkflowSSEEvent;
