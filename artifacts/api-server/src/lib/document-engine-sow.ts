@@ -12,6 +12,7 @@ import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
+import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
 
@@ -181,6 +182,10 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       { clientUserId, projectId, documentId: inserted.id, docTypeKey, testMode },
       "document-engine-sow: SOW document generated",
     );
+
+    void generateOmgCardsFromTelemetry(inserted.id).catch((err) => {
+      log.warn({ err, documentId: inserted.id }, "document-engine-sow: OMG card generation failed (non-fatal)");
+    });
 
     return { documentId: inserted.id, htmlContent };
   } catch (err) {
