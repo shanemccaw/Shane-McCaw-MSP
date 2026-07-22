@@ -214,6 +214,14 @@ export function AssessmentWizard() {
         if (!data.narrative || typeof data.narrative !== "object") {
           data.narrative = { status: "not_started", html: null, generatedAt: null };
         }
+        // Same "older-but-still-live backend process" boundary as `expected` and
+        // `narrative` above — `stats` was added alongside the richer stat-card
+        // visual pass, so a response from a not-yet-restarted process degrades to
+        // "no real stat data yet" (StatCards' existing `!= null` guards mean it
+        // simply renders no cards) instead of throwing.
+        if (!data.stats || typeof data.stats !== "object") {
+          data.stats = { genuineFindings: null, licenseWasteMonthlyCents: null };
+        }
         setStatus(data);
       }
     } catch {
