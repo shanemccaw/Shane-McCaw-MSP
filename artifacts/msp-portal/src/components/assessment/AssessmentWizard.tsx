@@ -637,7 +637,12 @@ function PhaseTimeline({
 // persisted summary counts, or a live cost-engine query against real pricing
 // data) — never a placeholder. A stat with no real data behind it (null) is
 // simply omitted, not shown as zero or "—".
-function StatCards({ stats }: { stats: AssessmentStatus["stats"] }) {
+function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefined }) {
+  // Defense-in-depth against the same "older-but-still-live backend process" /
+  // deploy-skew boundary `loadStatus` already normalizes for (see its `stats`
+  // guard above) — this component must never assume its caller's normalization
+  // ran, so it degrades to "no real stat data yet" instead of throwing.
+  if (!stats) return null;
   const cards: { label: string; value: string }[] = [];
   if (stats.genuineFindings != null) {
     cards.push({
