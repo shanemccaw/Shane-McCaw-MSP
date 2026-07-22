@@ -2991,6 +2991,26 @@ export const leadOfferPricingConfigTable = pgTable("lead_offer_pricing_config", 
 export type InsertLeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferInsert;
 export type LeadOfferPricingConfig = typeof leadOfferPricingConfigTable.$inferSelect;
 
+export const documentTypeDefinitionsTable = pgTable("document_type_definitions", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  includedProfileKeyPatterns: jsonb("included_profile_key_patterns").$type<string[]>().notNull().default([]),
+  includedSignalCategories: jsonb("included_signal_categories").$type<string[]>().notNull().default([]),
+  sections: jsonb("sections").$type<{ id: string; heading: string; guidance: string }[]>().notNull().default([]),
+  aiPromptKey: text("ai_prompt_key").notNull(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  keyActiveIdx: index("document_type_definitions_key_active_idx").on(table.key, table.isActive),
+}));
+
+export type InsertDocumentTypeDefinition = typeof documentTypeDefinitionsTable.$inferInsert;
+export type DocumentTypeDefinition = typeof documentTypeDefinitionsTable.$inferSelect;
+
 export const engagementOfferRulesTable = pgTable("engagement_offer_rules", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
