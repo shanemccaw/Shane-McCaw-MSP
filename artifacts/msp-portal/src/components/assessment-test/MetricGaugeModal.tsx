@@ -35,32 +35,41 @@ export const MetricGaugeModal: React.FC<MetricGaugeModalProps> = ({ gauge, onClo
           </button>
         </div>
 
-        {/* Overview */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#8a919d] uppercase tracking-wider mb-1">
-            Analysis Overview
-          </h4>
-          <p className="text-sm text-[#c0c7d3] leading-relaxed">{gauge.description}</p>
-        </div>
-
-        {/* Benchmark & Trend */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-[#101419] p-3 rounded-lg border border-white/5">
-            <div className="text-[11px] text-[#8a919d] mb-1">Benchmark Position</div>
-            <div className="text-xs font-semibold text-[#34d399] flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{gauge.benchmark}</span>
-            </div>
+        {/* Overview — only when real descriptive data exists for this gauge */}
+        {gauge.description && (
+          <div>
+            <h4 className="text-xs font-semibold text-[#8a919d] uppercase tracking-wider mb-1">
+              Analysis Overview
+            </h4>
+            <p className="text-sm text-[#c0c7d3] leading-relaxed">{gauge.description}</p>
           </div>
+        )}
 
-          <div className="bg-[#101419] p-3 rounded-lg border border-white/5">
-            <div className="text-[11px] text-[#8a919d] mb-1">30-Day Velocity</div>
-            <div className="text-xs font-semibold text-[#479ef5] flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>{gauge.trendValue}</span>
-            </div>
+        {/* Benchmark & Trend — real pillar gauges have no benchmark/velocity
+            source yet, so these cells only render when the data exists */}
+        {(gauge.benchmark || gauge.trendValue) && (
+          <div className="grid grid-cols-2 gap-3">
+            {gauge.benchmark && (
+              <div className="bg-[#101419] p-3 rounded-lg border border-white/5">
+                <div className="text-[11px] text-[#8a919d] mb-1">Benchmark Position</div>
+                <div className="text-xs font-semibold text-[#34d399] flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{gauge.benchmark}</span>
+                </div>
+              </div>
+            )}
+
+            {gauge.trendValue && (
+              <div className="bg-[#101419] p-3 rounded-lg border border-white/5">
+                <div className="text-[11px] text-[#8a919d] mb-1">30-Day Velocity</div>
+                <div className="text-xs font-semibold text-[#479ef5] flex items-center gap-1">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>{gauge.trendValue}</span>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Action recommendations */}
         <div>

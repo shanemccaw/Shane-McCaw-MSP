@@ -1,6 +1,6 @@
 import React from 'react';
 import { AssessmentStage } from './types';
-import { Check, FileText, ChevronRight } from 'lucide-react';
+import { Check, FileText, ChevronRight, AlertTriangle } from 'lucide-react';
 
 interface AssessmentPipelineProps {
   stages: AssessmentStage[];
@@ -35,6 +35,7 @@ export const AssessmentPipeline: React.FC<AssessmentPipelineProps> = ({
         {stages.map((stage) => {
           const isDone = stage.status === 'done';
           const isInProgress = stage.status === 'in_progress';
+          const isFailed = stage.status === 'failed';
 
           return (
             <li
@@ -60,7 +61,13 @@ export const AssessmentPipeline: React.FC<AssessmentPipelineProps> = ({
                 </div>
               )}
 
-              {!isDone && !isInProgress && (
+              {isFailed && (
+                <div className="w-5 h-5 rounded-full bg-[#f87171]/15 flex items-center justify-center mr-3 text-[#f87171] flex-shrink-0 border border-[#f87171]/50">
+                  <AlertTriangle className="w-3 h-3 stroke-[2.5]" />
+                </div>
+              )}
+
+              {!isDone && !isInProgress && !isFailed && (
                 <div className="w-5 h-5 rounded-full bg-[#181c21] flex items-center justify-center mr-3 text-[#8a919d] flex-shrink-0 border border-white/10">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#8a919d]" />
                 </div>
@@ -72,7 +79,10 @@ export const AssessmentPipeline: React.FC<AssessmentPipelineProps> = ({
                   className={`text-xs font-medium truncate transition-colors flex items-center gap-1.5 ${
                     isInProgress
                       ? 'text-[#e0e2ea] font-semibold'
-                      : 'text-[#e0e2ea] group-hover:text-[#479ef5]'
+                      : isDone || isFailed
+                        ? 'text-[#e0e2ea] group-hover:text-[#479ef5]'
+                        : /* pending — visibly greyed-out waiting state */
+                          'text-[#8a919d] group-hover:text-[#c0c7d3]'
                   }`}
                 >
                   <span>{stage.title}</span>
@@ -89,7 +99,8 @@ export const AssessmentPipeline: React.FC<AssessmentPipelineProps> = ({
                 <div className="text-[11px] font-semibold">
                   {isDone && <span className="text-[#8a919d]">Done</span>}
                   {isInProgress && <span className="text-[#479ef5]">In Progress</span>}
-                  {!isDone && !isInProgress && <span className="text-[#8a919d]/60">Pending</span>}
+                  {isFailed && <span className="text-[#f87171]">Failed</span>}
+                  {!isDone && !isInProgress && !isFailed && <span className="text-[#8a919d]/60">Pending</span>}
                 </div>
                 <ChevronRight className="w-3.5 h-3.5 text-[#8a919d] group-hover:text-white group-hover:translate-x-0.5 transition-all" />
               </div>

@@ -110,6 +110,38 @@ export const ScoreGaugeCard: React.FC<ScoreGaugeCardProps> = ({ gauge, onSelectG
 
   const profile = getProfile();
 
+  // Honest "not covered" state — the customer's scanned package genuinely
+  // doesn't cover this pillar, so no score exists. Renders a muted card that
+  // says so plainly instead of a fabricated gauge value.
+  if (gauge.notCovered) {
+    return (
+      <div className="bg-[#242424] rounded-xl card-border p-4 flex flex-col items-center justify-center relative overflow-hidden shadow-md opacity-70">
+        <div className="flex items-center gap-1.5 mb-2">
+          {profile.icon}
+          <span className="text-[11px] font-bold uppercase tracking-wider text-center text-[#8a919d]">
+            {gauge.title}
+          </span>
+        </div>
+        <div className="relative flex items-center justify-center w-24 h-24 my-1">
+          <svg className="w-full h-full" viewBox="0 0 100 100">
+            <circle
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth="8"
+            />
+          </svg>
+          <span className="absolute text-xl font-extrabold tracking-tight text-[#8a919d] font-mono">—</span>
+        </div>
+        <div className="mt-1 text-[11px] font-medium text-[#8a919d] text-center">
+          Not covered by this scan
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={() => onSelectGauge?.(gauge)}
@@ -170,13 +202,16 @@ export const ScoreGaugeCard: React.FC<ScoreGaugeCardProps> = ({ gauge, onSelectG
         </span>
       </div>
 
-      {/* Trend indicator footer */}
-      <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#8a919d]">
-        {gauge.trend === 'up' && <TrendingUp className={`w-3 h-3 ${profile.trendColor}`} />}
-        {gauge.trend === 'down' && <TrendingDown className="w-3 h-3 text-[#f59e0b]" />}
-        {gauge.trend === 'neutral' && <Minus className="w-3 h-3 text-[#8a919d]" />}
-        <span className="truncate max-w-[120px]">{gauge.benchmark}</span>
-      </div>
+      {/* Trend indicator footer — only when real trend/benchmark data exists
+          (real pillar gauges have no benchmark source yet; never fabricated) */}
+      {(gauge.trend || gauge.benchmark) && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#8a919d]">
+          {gauge.trend === 'up' && <TrendingUp className={`w-3 h-3 ${profile.trendColor}`} />}
+          {gauge.trend === 'down' && <TrendingDown className="w-3 h-3 text-[#f59e0b]" />}
+          {gauge.trend === 'neutral' && <Minus className="w-3 h-3 text-[#8a919d]" />}
+          {gauge.benchmark && <span className="truncate max-w-[120px]">{gauge.benchmark}</span>}
+        </div>
+      )}
     </div>
   );
 };
