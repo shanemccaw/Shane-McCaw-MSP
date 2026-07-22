@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AppShell } from '@/components/app-shell';
 import {
   initialMetrics,
   initialHeatmapEntities,
@@ -9,24 +8,26 @@ import {
   initialEnablementControls,
   initialBlockers,
   initialAutomationTasks
-} from '@/components/copilot/initialData';
+} from './data/initialData';
 import {
   ExecutiveMetrics,
   HeatmapEntity,
   ReadinessBlocker,
   AutomationTask
-} from '@/components/copilot/types';
+} from './types';
 
-import { PermissionsHeatmap } from '@/components/copilot/PermissionsHeatmap';
-import { LabelAndDlpSection } from '@/components/copilot/LabelAndDlpSection';
-import { SafetyRadarChart } from '@/components/copilot/SafetyRadarChart';
-import { EnablementControls } from '@/components/copilot/EnablementControls';
-import { ReadinessBlockers } from '@/components/copilot/ReadinessBlockers';
-import { AutomationPotential } from '@/components/copilot/AutomationPotential';
-import { EntityDetailModal } from '@/components/copilot/EntityDetailModal';
-import { ExportReportModal } from '@/components/copilot/ExportReportModal';
+import { HeaderHero } from './components/HeaderHero';
+import { PermissionsHeatmap } from './components/PermissionsHeatmap';
+import { LabelAndDlpSection } from './components/LabelAndDlpSection';
+import { SafetyRadarChart } from './components/SafetyRadarChart';
+import { EnablementControls } from './components/EnablementControls';
+import { ReadinessBlockers } from './components/ReadinessBlockers';
+import { AutomationPotential } from './components/AutomationPotential';
+import { FooterBar } from './components/FooterBar';
+import { EntityDetailModal } from './components/EntityDetailModal';
+import { ExportReportModal } from './components/ExportReportModal';
 
-export default function CopilotPage() {
+export default function App() {
   const [metrics, setMetrics] = useState<ExecutiveMetrics>(initialMetrics);
   const [entities, setEntities] = useState<HeatmapEntity[]>(
     initialHeatmapEntities
@@ -217,7 +218,6 @@ export default function CopilotPage() {
   };
 
   return (
-    <AppShell title="Copilot">
     <div className="min-h-screen bg-[#1a1a1a] text-[#f0f0f0] relative selection:bg-[#479ef5]/30 selection:text-sky-200">
       {/* Technical Grid Overlay */}
       <div className="fixed inset-0 technical-grid pointer-events-none z-0" />
@@ -242,6 +242,9 @@ export default function CopilotPage() {
 
       {/* Main Container */}
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8">
+        {/* SECTION 1: HERO BAND */}
+        <HeaderHero metrics={metrics} />
+
         {/* SECTION 2: HEAT MAP TABLE */}
         <PermissionsHeatmap
           entities={entities}
@@ -271,6 +274,13 @@ export default function CopilotPage() {
           tasks={automationTasks}
           onExecuteAutomation={handleExecuteAutomation}
         />
+
+        {/* FOOTER */}
+        <FooterBar
+          metrics={metrics}
+          onToggleLiveFeed={handleToggleLiveFeed}
+          onOpenExportReport={() => setIsExportOpen(true)}
+        />
       </main>
 
       {/* Modals */}
@@ -288,6 +298,5 @@ export default function CopilotPage() {
         blockers={blockers}
       />
     </div>
-    </AppShell>
   );
 }
