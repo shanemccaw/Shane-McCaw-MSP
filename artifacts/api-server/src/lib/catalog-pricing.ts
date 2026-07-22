@@ -91,6 +91,58 @@ export function resolveCatalogPricing(item: CatalogPricingInput): CatalogPricing
 }
 
 /**
+ * Effective retail price of a catalog service in integer cents.
+ *
+ * The catalog carries TWO price representations: the canonical integer
+ * `priceCents` (what the modern admin "create service" API writes) and the
+ * legacy decimal `price` / `basePrice` columns (dollars, written only by the
+ * older update path). A service created the modern way has `price`/`basePrice`
+ * NULL with the real price living ONLY in `priceCents`. Any "is this free?"
+ * decision that reads only the legacy columns therefore treats a paid,
+ * modern-created service as free — the exact defect behind the Stripe-bypass
+ * bug where a paid assessment reached the free-checkout endpoint. Every
+ * free/paid gate MUST resolve price through this helper so the canonical
+ * `priceCents` is never ignored.
+ *
+ * Precedence: a positive `priceCents` wins; otherwise the legacy decimal
+ * `price` ?? `basePrice` (dollars, converted to cents). Returns 0 only when no
+ * field carries a positive price.
+ */
+export function resolveServicePriceCents(s: {
+  priceCents?: number | null;
+  price?: string | number | null;
+  basePrice?: string | number | null;
+}): number {
+  const cents = s.priceCents != null ? Number(s.priceCents) : NaN;
+  if (!isNaN(cents) && cents > 0) return Math.round(cents);
+  const legacy = s.price ?? s.basePrice;
+  if (legacy != null) {
+    const dollars = parseFloat(String(legacy));
+    if (!isNaN(dollars) && dollars > 0) return Math.round(dollars * 100);
+  }
+  return 0;
+}
+
+/**
+ * A catalog service is genuinely free only when it is explicitly flagged
+ * `isFreeOffering` OR carries no positive price via ANY pricing field (see
+ * {@link resolveServicePriceCents}). This is the single source of truth for the
+ * free-vs-paid decision that routes checkout to the Stripe-free path — kept here
+ * rather than duplicated per call site so the frontend routing gate and the
+ * server-side provisioning guard can never drift apart again, which is what
+ * allowed a paid item to reach the free-checkout endpoint.
+ */
+export function isServiceFree(s: {
+  isFreeOffering?: boolean | null;
+  priceCents?: number | null;
+  price?: string | number | null;
+  basePrice?: string | number | null;
+}): boolean {
+  if (s.isFreeOffering) return true;
+  return resolveServicePriceCents(s) === 0;
+}
+
+/**
  * Resolves catalog pricing for a **sales offer**, using the offer's
  * `adjustedPriceCents` as the retail price (MSPs may customise the price
  * per customer) and the service's `internalCostCents` as the wholesale base.

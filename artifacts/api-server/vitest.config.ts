@@ -39,6 +39,7 @@ export default defineConfig({
       "src/routes/msp-portal.test.ts",
       "src/routes/msp-onboarding.test.ts",
       "src/lib/resolve-fulfillment.test.ts",
+      "src/lib/__tests__/catalog-pricing.test.ts",
       "src/lib/__tests__/msp-subscription.test.ts",
       "src/lib/__tests__/msp-financial-aggregator.test.ts",
       "src/lib/__tests__/msp-financial-aggregator-overlord.test.ts",

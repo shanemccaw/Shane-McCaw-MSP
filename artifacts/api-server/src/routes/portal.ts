@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
-import { resolveCatalogPricing } from "../lib/catalog-pricing.ts";
+import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -10317,6 +10317,10 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
   const missingPrices = services.filter(s => {
     if (contractFinalPrices.get(s.id) != null) return false;
     if (s.price || s.basePrice) return false;
+    // Canonical price field — a service created via the modern admin API carries
+    // its price only in priceCents (legacy price/basePrice NULL). Without this
+    // check such a service would be reported as "no price configured".
+    if (s.priceCents != null && Number(s.priceCents) > 0) return false;
     const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
     if (ta.pricePerUserMonth) return false;
     return true;
@@ -10430,7 +10434,17 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     } else {
       const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
       const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
-      rawPriceCents.set(s.id, Math.round(ppu * resolvedSeats * 100));
+      if (ppu > 0) {
+        rawPriceCents.set(s.id, Math.round(ppu * resolvedSeats * 100));
+      } else {
+        // Canonical priceCents fallback — services created via the modern admin
+        // API carry their price only here (legacy price/basePrice NULL). Without
+        // this the Stripe amount would be $0 for such a service.
+        rawPriceCents.set(
+          s.id,
+          s.priceCents != null && Number(s.priceCents) > 0 ? Math.round(Number(s.priceCents)) : 0,
+        );
+      }
     }
   }
   const totalCartCents = [...rawPriceCents.values()].reduce((a, b) => a + b, 0);
@@ -13878,11 +13892,22 @@ async function provisionFreeOnboarding(opts: {
     if (fetchedServices.length === 0) return { ok: false, status: 400, error: "Services not found" };
     const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
     const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
-    const totalPrice = orderedServices.reduce((sum, s) => {
-      const priceVal = s.price ?? s.basePrice;
-      return sum + (priceVal ? parseFloat(String(priceVal)) : 0);
-    }, 0);
-    if (totalPrice > 0) {
+    // Server-side price guard — the free path must NEVER provision a paid
+    // service. This resolves price through the canonical `priceCents` (via
+    // isServiceFree/resolveServicePriceCents), NOT just the legacy price/basePrice
+    // columns: a service created via the modern admin API has price/basePrice
+    // NULL with the real price only in priceCents, so the previous legacy-only
+    // sum read $0 and let a paid item slip through the free checkout — the
+    // Stripe-bypass bug. A service is free-eligible only when isServiceFree() is
+    // true (explicit isFreeOffering flag, or zero price across every field).
+    // This is a second, independent enforcement point behind the frontend's
+    // isFree routing and holds even if that routing is ever wrong again.
+    const paidService = orderedServices.find(s => !isServiceFree(s));
+    if (paidService) {
+      reqLog.warn(
+        { serviceId: paidService.id, priceCents: resolveServicePriceCents(paidService) },
+        "free-checkout: rejected paid service reaching the free-checkout path",
+      );
       return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
     }
     // Real catalog convention (see portal-marketplace.ts ASSESSMENT_SERVICE_TYPES):

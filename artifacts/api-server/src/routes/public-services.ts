@@ -8,7 +8,7 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
-import { resolveCatalogPricing } from "../lib/catalog-pricing";
+import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
 import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
 
 const router: IRouter = Router();
@@ -305,10 +305,26 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
       .orderBy(asc(servicesTable.sortOrder));
 
     const assessmentOffers = rows.map((r) => {
-      const priceVal = r.price ?? r.basePrice;
-      const isFree = r.isFreeOffering || priceVal == null || Number(priceVal) === 0;
+      // Free-vs-paid MUST consider the canonical `priceCents`, not just the
+      // legacy decimal price/basePrice columns. A paid assessment created via
+      // the modern admin API has price/basePrice NULL with the real price only
+      // in priceCents; deriving isFree from the legacy columns alone wrongly
+      // marks it free, which routes the frontend to the Stripe-free checkout and
+      // delivers a paid product for $0. isServiceFree() is the single source of
+      // truth (shared with the server-side free-checkout guard).
+      const isFree = isServiceFree(r);
+      // Surface the real retail price for display when the legacy decimal
+      // columns are null but priceCents is set, so the checkout page shows the
+      // true price (e.g. "$250") for a modern-priced paid assessment rather than
+      // "$0". Genuinely-free offers (priceCents 0/null) keep price = null.
+      const price =
+        r.price ??
+        (r.priceCents != null && r.priceCents > 0
+          ? (r.priceCents / 100).toFixed(2)
+          : r.price);
       return {
         ...r,
+        price,
         isFree,
         associatedDocuments: toPublicAssociatedDocuments(r.associatedDocuments),
         ...resolveCatalogPricing({
