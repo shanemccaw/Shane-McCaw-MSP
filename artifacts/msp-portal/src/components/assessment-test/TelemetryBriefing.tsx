@@ -161,6 +161,18 @@ export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
 
       {/* Vertical Scrolling Container */}
       <div className="flex-grow overflow-hidden relative z-10 mask-image-vertical">
+        {filteredItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center gap-1.5 px-6">
+            <p className="text-xs font-semibold text-[#c0c7d3]">
+              No findings {selectedCategory === 'all' ? 'yet' : `in "${selectedCategory}"`}
+            </p>
+            <p className="text-[11px] text-[#8a919d]">
+              {selectedCategory === 'all'
+                ? "Nothing to show here yet — check back once the scan has more to report."
+                : 'Try a different category, or select "All Signals" to see everything found so far.'}
+            </p>
+          </div>
+        ) : (
         <div
           className={`flex flex-col gap-4 absolute w-full top-0 ${
             isPaused ? '' : 'animate-scroll-vertical'
@@ -234,6 +246,7 @@ export const TelemetryBriefing: React.FC<TelemetryBriefingProps> = ({
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

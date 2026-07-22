@@ -8,6 +8,14 @@ interface ScoreGaugeGridProps {
 }
 
 export const ScoreGaugeGrid: React.FC<ScoreGaugeGridProps> = ({ gauges, onSelectGauge }) => {
+  if (gauges.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-white/10 p-6 text-center text-xs text-[#8a919d]">
+        No pillar scores available yet.
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {gauges.map((gauge) => (

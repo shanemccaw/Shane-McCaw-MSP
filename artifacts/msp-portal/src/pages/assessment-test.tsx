@@ -1,10 +1,13 @@
 /**
- * /assessment-test — the candidate replacement for /assessment's generating
- * experience, wired to the REAL assessment backend: the same
- * GET /api/portal/assessment/status poll + diagnostics-run SSE + doc-workflow
- * SSE infrastructure already proven correct in AssessmentGeneratingScreen /
- * AssessmentWizard, via useAssessmentLiveStatus (a direct mirror of that
- * proven wiring — see that file's header for the combined-progress rationale).
+ * Now served at /assessment (promoted in place; the file/component name and
+ * its internal "/assessment-test" references are historical, from when this
+ * was the candidate replacement). Wired to the REAL assessment backend: the
+ * same GET /api/portal/assessment/status poll + diagnostics-run SSE +
+ * doc-workflow SSE infrastructure already proven correct in
+ * AssessmentGeneratingScreen / AssessmentWizard, via useAssessmentLiveStatus
+ * (a direct mirror of that proven wiring — see that file's header for the
+ * combined-progress rationale). The prior /assessment experience
+ * (AssessmentShellPage / AssessmentWizard) is preserved at /assessment-legacy.
  *
  * REAL: hero progress bar + live status text (+ the wizard's same testbed-gated
  * debug scan trigger), Assessment Pipeline document stages, all SEVEN pillar
@@ -23,6 +26,7 @@
  * that class of finding, and the offers attached to items are real.
  */
 import React, { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { useAuth } from '@/lib/auth-context';
 import { AssessmentHero } from '@/components/assessment-test/AssessmentHero';
@@ -244,6 +248,46 @@ export default function AssessmentTestPage() {
               debugTriggering={live.debugTriggering}
               everScanned={Boolean(status?.scan.everScanned)}
             />
+
+            {/* 1b. Honest failure/blocked callouts — same reassurance pattern
+                as AssessmentWizard's scan/document failure banner: a real,
+                calm "this part didn't work" state that never blanks the rest
+                of the page. Everything below (gauges/pipeline/telemetry)
+                keeps rendering whatever real data it already has. */}
+            {(live.scanFailed || live.reportsFailed) && (
+              <div className="rounded-xl border border-[#f87171]/30 bg-[#f87171]/5 p-4 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-[#f87171] flex-shrink-0 mt-0.5" />
+                <div className="text-xs leading-relaxed text-[#c0c7d3]">
+                  <p className="font-semibold text-[#f87171] mb-1">
+                    {live.scanFailed
+                      ? "We couldn't finish reading your Microsoft 365 environment."
+                      : "We couldn't finish preparing your assessment documents."}
+                  </p>
+                  <p>
+                    This is on us — nothing you did caused it
+                    {live.scanFailed ? '' : ', and your scan data is safe'}. Our team has
+                    been notified and this page keeps checking automatically, so anything
+                    already completed below is real and safe to use.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!live.scanFailed && !live.reportsFailed && status?.docGeneration?.blocked && (
+              <div className="rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-4 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-[#f59e0b] flex-shrink-0 mt-0.5" />
+                <div className="text-xs leading-relaxed text-[#c0c7d3]">
+                  <p className="font-semibold text-[#f59e0b] mb-1">
+                    Not enough of your tenant scanned to safely generate documents yet.
+                  </p>
+                  <p>
+                    Your scan finished, but too few checks came back with real data to
+                    write an accurate report. The gauges and findings below show exactly
+                    what we do have — nothing fabricated to fill the gap.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* 2. Score Gauges — all 7 real pillar cards. Overall M365 Health
                 lives in the right-column SneakPeekInsights panel, not here. */}

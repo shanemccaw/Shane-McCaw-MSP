@@ -372,17 +372,23 @@ function SlugInnerSwitch() {
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />
       </Route>
-      <Route path="/assessment-test">
-        <ProtectedRoute component={AssessmentTestPage} />
-      </Route>
       {/* Executive Mode — Simplified Leadership View: 5-tile stripped-down
           alternate to the full Mission Control dashboard, fenced off from it. */}
       <Route path="/executive-mode">
         <ProtectedRoute component={ExecutiveModePage} />
       </Route>
-      {/* Assessment-role landing shell (RBAC-foundation placeholder — real
-          assessment surfaces are later tasks). */}
+      {/* /assessment now serves the real, standard-AppShell assessment
+          experience (real portal nav incl. Marketplace, same as every other
+          role) — /assessment-test's former content, promoted in place. The
+          prior self-contained "no left nav" shell + wizard is preserved,
+          untouched and fully reachable, at /assessment-legacy below. */}
       <Route path="/assessment">
+        <ProtectedRoute component={AssessmentTestPage} />
+      </Route>
+      {/* Legacy Assessment-role landing shell (RBAC-foundation placeholder) —
+          kept reachable for its proven debug trigger + real SSE wiring
+          patterns, which may still be referenced or reverted to later. */}
+      <Route path="/assessment-legacy">
         <ProtectedRoute component={AssessmentShellPage} />
       </Route>
       {/* Assessment Comparison Mode — side-by-side SOW scope versions, read-only

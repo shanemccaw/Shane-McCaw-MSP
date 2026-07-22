@@ -1,6 +1,10 @@
 /**
  * assessment-shell.tsx
  *
+ * Now served at /assessment-legacy (moved from /assessment when /assessment
+ * was promoted to the standard-AppShell assessment-test page) — kept intact
+ * and reachable for its real, proven debug trigger + SSE wiring patterns.
+ *
  * Landing shell for the Assessment role. The self-contained "no left nav" chrome
  * (top bar + account/profile menu + footer) was the task-1 RBAC-foundation
  * scaffold; task 2 mounts the real Assessment wizard inside its body
