@@ -1,5 +1,5 @@
 import React from 'react';
-import { IdentityMetrics } from '../types';
+import { IdentityMetrics } from './types';
 
 interface IdentityAccessProps {
   metrics: IdentityMetrics;

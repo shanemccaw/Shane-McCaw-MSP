@@ -8,7 +8,7 @@ import {
   AlertCircle,
   Info,
 } from 'lucide-react';
-import { ScoreDriverCategory } from '../types';
+import { ScoreDriverCategory } from './types';
 
 interface ScoreDriversProps {
   categories: ScoreDriverCategory[];

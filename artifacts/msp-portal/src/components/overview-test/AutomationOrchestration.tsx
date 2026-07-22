@@ -9,7 +9,7 @@ import {
   Eye,
   ArrowRight,
 } from 'lucide-react';
-import { AutomationTask } from '../types';
+import { AutomationTask } from './types';
 
 interface AutomationOrchestrationProps {
   tasks: AutomationTask[];

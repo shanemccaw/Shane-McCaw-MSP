@@ -9,7 +9,7 @@ import {
   Zap,
   ShieldAlert,
 } from 'lucide-react';
-import { CriticalFinding } from '../types';
+import { CriticalFinding } from './types';
 
 interface FindingDetailModalProps {
   finding: CriticalFinding;

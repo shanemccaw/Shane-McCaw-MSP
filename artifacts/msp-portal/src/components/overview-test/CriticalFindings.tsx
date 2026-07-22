@@ -9,7 +9,7 @@ import {
   CheckCircle,
   Wrench,
 } from 'lucide-react';
-import { CriticalFinding, SeverityLevel } from '../types';
+import { CriticalFinding, SeverityLevel } from './types';
 
 interface CriticalFindingsProps {
   findings: CriticalFinding[];

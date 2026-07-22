@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertCircle, ShieldCheck } from 'lucide-react';
-import { ComplianceData } from '../types';
+import { ComplianceData } from './types';
 
 interface ComplianceDistributionProps {
   compliance: ComplianceData;

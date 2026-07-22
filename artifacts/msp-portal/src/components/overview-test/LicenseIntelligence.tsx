@@ -1,6 +1,6 @@
 import React from 'react';
 import { DollarSign, Sparkles, TrendingDown, ArrowUpRight } from 'lucide-react';
-import { LicenseMetric } from '../types';
+import { LicenseMetric } from './types';
 
 interface LicenseIntelligenceProps {
   metrics: LicenseMetric;

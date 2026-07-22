@@ -12,7 +12,7 @@ import {
   Factory,
   Landmark,
 } from 'lucide-react';
-import { ScoreCardData } from '../types';
+import { ScoreCardData } from './types';
 
 interface HeroSnapshotProps {
   scoreCards: ScoreCardData[];
@@ -175,9 +175,15 @@ export const HeroSnapshot: React.FC<HeroSnapshotProps> = ({
             </span>
             <div className="h-4 w-px bg-white/10 hidden sm:block" />
             <div className="flex items-center gap-4 text-slate-400">
-              <Building className="w-4 h-4 hover:text-white transition-colors" title="Corporate Enterprises" />
-              <Factory className="w-4 h-4 hover:text-white transition-colors" title="Manufacturing & Industrial" />
-              <Landmark className="w-4 h-4 hover:text-white transition-colors" title="Financial & Government" />
+              <span title="Corporate Enterprises">
+                <Building className="w-4 h-4 hover:text-white transition-colors" />
+              </span>
+              <span title="Manufacturing & Industrial">
+                <Factory className="w-4 h-4 hover:text-white transition-colors" />
+              </span>
+              <span title="Financial & Government">
+                <Landmark className="w-4 h-4 hover:text-white transition-colors" />
+              </span>
             </div>
           </div>
         </div>

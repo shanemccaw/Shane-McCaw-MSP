@@ -1,24 +1,19 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { HeroSnapshot } from './components/HeroSnapshot';
-import { CriticalFindings } from './components/CriticalFindings';
-import { ScoreDrivers } from './components/ScoreDrivers';
-import { LicenseIntelligence } from './components/LicenseIntelligence';
-import { IdentityAccess } from './components/IdentityAccess';
-import { ComplianceDistribution } from './components/ComplianceDistribution';
-import { AutomationOrchestration } from './components/AutomationOrchestration';
-import { FindingDetailModal } from './components/FindingDetailModal';
-import { SOWModal } from './components/SOWModal';
-import { ReportModal } from './components/ReportModal';
-import { DriftScheduleModal } from './components/DriftScheduleModal';
-import { PortfolioView } from './components/PortfolioView';
-import { AnalyticsView } from './components/AnalyticsView';
-import { ComplianceView } from './components/ComplianceView';
-import { Footer } from './components/Footer';
-import { ToastContainer, ToastMessage } from './components/Toast';
+import { AppShell } from '@/components/app-shell';
+import { HeroSnapshot } from '@/components/overview-test/HeroSnapshot';
+import { CriticalFindings } from '@/components/overview-test/CriticalFindings';
+import { ScoreDrivers } from '@/components/overview-test/ScoreDrivers';
+import { LicenseIntelligence } from '@/components/overview-test/LicenseIntelligence';
+import { IdentityAccess } from '@/components/overview-test/IdentityAccess';
+import { ComplianceDistribution } from '@/components/overview-test/ComplianceDistribution';
+import { AutomationOrchestration } from '@/components/overview-test/AutomationOrchestration';
+import { FindingDetailModal } from '@/components/overview-test/FindingDetailModal';
+import { SOWModal } from '@/components/overview-test/SOWModal';
+import { ReportModal } from '@/components/overview-test/ReportModal';
+import { DriftScheduleModal } from '@/components/overview-test/DriftScheduleModal';
+import { ToastContainer, ToastMessage } from '@/components/overview-test/Toast';
 
 import {
-  initialTenantConfig,
   initialScoreCards,
   initialCriticalFindings,
   scoreDriverCategories,
@@ -26,16 +21,14 @@ import {
   identityMetrics,
   complianceData,
   automationTasks,
-} from './data/mockData';
-import { CriticalFinding, AutomationTask, ScoreCardData } from './types';
+} from '@/components/overview-test/mockData';
+import { CriticalFinding, AutomationTask, ScoreCardData } from '@/components/overview-test/types';
 
-export default function App() {
-  const [tenantConfig, setTenantConfig] = useState(initialTenantConfig);
+export default function OverviewTestPage() {
   const [scoreCards, setScoreCards] = useState<ScoreCardData[]>(initialScoreCards);
   const [criticalFindings, setCriticalFindings] = useState<CriticalFinding[]>(
     initialCriticalFindings
   );
-  const [activeTab, setActiveTab] = useState('Overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const [selectedFinding, setSelectedFinding] = useState<CriticalFinding | null>(null);
@@ -43,7 +36,6 @@ export default function App() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showDriftModal, setShowDriftModal] = useState(false);
 
-  const [isScanning, setIsScanning] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast Helper
@@ -57,25 +49,6 @@ export default function App() {
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Trigger Instant Live Tenant Scan
-  const handleRefreshScan = () => {
-    setIsScanning(true);
-    addToast('Initiating real-time Graph API & Intune tenant scan...', 'info');
-
-    setTimeout(() => {
-      setIsScanning(false);
-      setTenantConfig((prev) => ({ ...prev, lastScanMinutesAgo: 0 }));
-      setScoreCards((prev) =>
-        prev.map((card) => {
-          if (card.category === 'health') return { ...card, score: 94, change: '+4.4%' };
-          if (card.category === 'copilot') return { ...card, score: 68, change: '+16%' };
-          return card;
-        })
-      );
-      addToast('Tenant scan completed! Posture scores updated.', 'success');
-    }, 2500);
   };
 
   // Handle Finding Remediation
@@ -121,101 +94,65 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#101419] text-[#e0e2ea] font-sans selection:bg-[#479ef5]/30 selection:text-[#479ef5] flex flex-col justify-between">
-      
-      <div>
-        {/* Top Header */}
-        <Header
-          tenantConfig={tenantConfig}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onRefreshScan={handleRefreshScan}
-          isScanning={isScanning}
-          addToast={addToast}
+    <AppShell title="Overview Test">
+    <div className="min-h-screen bg-[#101419] text-[#e0e2ea] font-sans selection:bg-[#479ef5]/30 selection:text-[#479ef5]">
+      <div className="px-4 sm:px-6 lg:px-8 animate-in fade-in duration-300">
+
+        {/* Hero Snapshot */}
+        <HeroSnapshot
+          scoreCards={scoreCards}
+          onViewFindings={handleScrollToFindings}
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
         />
 
-        {/* Main Content Area */}
-        <main className="px-4 sm:px-6 lg:px-8">
-          
-          {activeTab === 'Overview' && (
-            <div className="animate-in fade-in duration-300">
-              
-              {/* Hero Snapshot */}
-              <HeroSnapshot
-                scoreCards={scoreCards}
-                onViewFindings={handleScrollToFindings}
-                selectedCategory={selectedCategory}
-                setSelectedCategory={setSelectedCategory}
-              />
+        {/* Critical Findings Panel */}
+        <CriticalFindings
+          findings={criticalFindings}
+          onSelectFinding={(f) => setSelectedFinding(f)}
+          selectedCategory={selectedCategory}
+        />
 
-              {/* Critical Findings Panel */}
-              <CriticalFindings
-                findings={criticalFindings}
-                onSelectFinding={(f) => setSelectedFinding(f)}
-                selectedCategory={selectedCategory}
-              />
+        {/* Score Drivers */}
+        <ScoreDrivers
+          categories={scoreDriverCategories}
+          onOpenDriverDetail={(title) => {
+            addToast(`Inspecting ${title} health drivers`, 'info');
+            handleScrollToFindings();
+          }}
+        />
 
-              {/* Score Drivers */}
-              <ScoreDrivers
-                categories={scoreDriverCategories}
-                onOpenDriverDetail={(title) => {
-                  addToast(`Inspecting ${title} health drivers`, 'info');
-                  handleScrollToFindings();
-                }}
-              />
+        {/* License & Cost Intelligence */}
+        <LicenseIntelligence
+          metrics={licenseMetrics}
+          onOptimizeClick={() => setShowSOWModal(true)}
+        />
 
-              {/* License & Cost Intelligence */}
-              <LicenseIntelligence
-                metrics={licenseMetrics}
-                onOptimizeClick={() => setShowSOWModal(true)}
-              />
+        {/* Identity & Access */}
+        <IdentityAccess
+          metrics={identityMetrics}
+          onViewIdentityDetails={() => {
+            if (criticalFindings.length > 0) {
+              setSelectedFinding(criticalFindings[0]);
+            }
+          }}
+        />
 
-              {/* Identity & Access */}
-              <IdentityAccess
-                metrics={identityMetrics}
-                onViewIdentityDetails={() => {
-                  if (criticalFindings.length > 0) {
-                    setSelectedFinding(criticalFindings[0]);
-                  }
-                }}
-              />
+        {/* Compliance Distribution */}
+        <ComplianceDistribution
+          compliance={complianceData}
+          onFixDriftClick={() => {
+            addToast('Pushed automated Intune compliance sync to 12 iOS devices', 'success');
+          }}
+        />
 
-              {/* Compliance Distribution */}
-              <ComplianceDistribution
-                compliance={complianceData}
-                onFixDriftClick={() => {
-                  addToast('Pushed automated Intune compliance sync to 12 iOS devices', 'success');
-                }}
-              />
+        {/* Automation & Orchestration */}
+        <AutomationOrchestration
+          tasks={automationTasks}
+          onTriggerTaskAction={handleTaskAction}
+        />
 
-              {/* Automation & Orchestration */}
-              <AutomationOrchestration
-                tasks={automationTasks}
-                onTriggerTaskAction={handleTaskAction}
-              />
-
-            </div>
-          )}
-
-          {activeTab === 'Portfolio' && (
-            <PortfolioView
-              onSelectTenant={(name) => {
-                setTenantConfig((prev) => ({ ...prev, name }));
-                setActiveTab('Overview');
-                addToast(`Switched active context to ${name}`, 'info');
-              }}
-            />
-          )}
-
-          {activeTab === 'Analytics' && <AnalyticsView />}
-
-          {activeTab === 'Compliance' && <ComplianceView />}
-
-        </main>
       </div>
-
-      {/* Footer */}
-      <Footer />
 
       {/* Modals */}
       {selectedFinding && (
@@ -242,5 +179,6 @@ export default function App() {
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
     </div>
+    </AppShell>
   );
 }

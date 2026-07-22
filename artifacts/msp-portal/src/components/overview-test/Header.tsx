@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react';
-import { TenantConfig } from '../types';
+import { TenantConfig } from './types';
 
 interface HeaderProps {
   tenantConfig: TenantConfig;

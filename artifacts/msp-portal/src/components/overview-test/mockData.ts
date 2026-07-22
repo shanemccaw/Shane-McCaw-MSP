@@ -7,7 +7,7 @@ import {
   ComplianceData,
   AutomationTask,
   TenantConfig,
-} from '../types';
+} from './types';
 
 export const initialTenantConfig: TenantConfig = {
   name: 'Contoso Enterprise Global',
