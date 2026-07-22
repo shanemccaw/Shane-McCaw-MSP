@@ -1970,6 +1970,24 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   }>>(),
   /** When omgCards was populated — set alongside omgCards, cleared implicitly when a regenerated document overwrites the row. */
   omgCardsGeneratedAt: timestamp("omg_cards_generated_at"),
+  // The real, structured, scoped data actually used to generate this document —
+  // scoped profile entries, scoped findings, and (for pipeline_output documents
+  // like SOW) the real Sales Offer Engine candidates used. Populated at
+  // generation time going forward; null for documents generated before this
+  // existed (no retroactive backfill). This is what lets downstream generation
+  // (SOW reading prior documents, OMG card generation) read real structured
+  // truth directly instead of re-parsing rendered HTML content.
+  generationInput: jsonb("generation_input").$type<{
+    scopedProfile: Record<string, unknown>;
+    scopedFindings: string[];
+    salesOfferCandidates?: {
+      serviceId: number;
+      serviceName: string;
+      rationale: string;
+      adjustedPriceCents: number;
+      firedSignalKeys: string[];
+    }[];
+  }>(),
   /**
    * Populated at SOW generation time by the signal conflict detector.
    * Indicates whether signal filtering ran cleanly or had conflicting rules
