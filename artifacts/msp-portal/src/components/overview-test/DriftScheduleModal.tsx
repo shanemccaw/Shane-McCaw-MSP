@@ -22,29 +22,29 @@ export const DriftScheduleModal: React.FC<DriftScheduleModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in">
-      <div className="bg-[#1c2025] border border-white/10 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative my-8">
-        
+      <div className="bg-card border border-border rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative my-8">
+
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
+        <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20">
+            <div className="p-2.5 rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
               <BellRing className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white tracking-tight">Weekly Drift Alert Settings</h3>
-              <p className="text-xs text-slate-400">Configure configuration baseline triggers</p>
+              <h3 className="text-xl font-bold text-foreground tracking-tight">Weekly Drift Alert Settings</h3>
+              <p className="text-xs text-muted-foreground">Configure configuration baseline triggers</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white">
+          <button onClick={onClose} className="p-2 text-muted-foreground hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Options */}
-        <div className="py-6 space-y-5 text-xs text-slate-300">
-          
+        <div className="py-6 space-y-5 text-xs text-muted-foreground">
+
           <div>
-            <label className="block font-bold text-white mb-1.5">Scan & Notification Frequency</label>
+            <label className="block font-bold text-foreground mb-1.5">Scan & Notification Frequency</label>
             <div className="grid grid-cols-3 gap-2">
               {['daily', 'weekly', 'realtime'].map((freq) => (
                 <button
@@ -53,8 +53,8 @@ export const DriftScheduleModal: React.FC<DriftScheduleModalProps> = ({
                   onClick={() => setFrequency(freq)}
                   className={`py-2 px-3 rounded-xl capitalize font-semibold border transition-all ${
                     frequency === freq
-                      ? 'bg-[#479ef5]/20 border-[#479ef5] text-[#479ef5]'
-                      : 'bg-[#101419] border-white/10 text-slate-400 hover:text-white'
+                      ? 'bg-primary/20 border-primary text-primary'
+                      : 'bg-background border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   {freq === 'realtime' ? 'Real-Time' : freq}
@@ -64,31 +64,31 @@ export const DriftScheduleModal: React.FC<DriftScheduleModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold text-white mb-2">Delivery Channels</label>
+            <label className="block font-bold text-foreground mb-2">Delivery Channels</label>
             <div className="space-y-2">
-              <label className="flex items-center justify-between p-3 bg-[#101419] rounded-xl border border-white/10 cursor-pointer">
+              <label className="flex items-center justify-between p-3 bg-background rounded-xl border border-border cursor-pointer">
                 <div className="flex items-center gap-2.5">
-                  <Mail className="w-4 h-4 text-[#479ef5]" />
-                  <span className="font-semibold text-white">Email Digest to Security Lead</span>
+                  <Mail className="w-4 h-4 text-primary" />
+                  <span className="font-semibold text-foreground">Email Digest to Security Lead</span>
                 </div>
                 <input
                   type="checkbox"
                   checked={emailAlerts}
                   onChange={(e) => setEmailAlerts(e.target.checked)}
-                  className="rounded border-white/20 text-[#479ef5] focus:ring-0 accent-[#479ef5]"
+                  className="rounded border-border text-primary focus:ring-0 accent-primary"
                 />
               </label>
 
-              <label className="flex items-center justify-between p-3 bg-[#101419] rounded-xl border border-white/10 cursor-pointer">
+              <label className="flex items-center justify-between p-3 bg-background rounded-xl border border-border cursor-pointer">
                 <div className="flex items-center gap-2.5">
-                  <MessageSquare className="w-4 h-4 text-purple-300" />
-                  <span className="font-semibold text-white">Microsoft Teams Webhook Channel</span>
+                  <MessageSquare className="w-4 h-4 text-accent" />
+                  <span className="font-semibold text-foreground">Microsoft Teams Webhook Channel</span>
                 </div>
                 <input
                   type="checkbox"
                   checked={teamsWebhook}
                   onChange={(e) => setTeamsWebhook(e.target.checked)}
-                  className="rounded border-white/20 text-[#479ef5] focus:ring-0 accent-[#479ef5]"
+                  className="rounded border-border text-primary focus:ring-0 accent-primary"
                 />
               </label>
             </div>
@@ -100,10 +100,10 @@ export const DriftScheduleModal: React.FC<DriftScheduleModalProps> = ({
                 type="checkbox"
                 checked={criticalOnly}
                 onChange={(e) => setCriticalOnly(e.target.checked)}
-                className="rounded border-white/20 text-[#479ef5] focus:ring-0 accent-[#479ef5]"
+                className="rounded border-border text-primary focus:ring-0 accent-primary"
               />
-              <span className="text-slate-300 font-medium">
-                Only notify if health score drops below <span className="font-bold text-white">80%</span>
+              <span className="text-muted-foreground font-medium">
+                Only notify if health score drops below <span className="font-bold text-foreground">80%</span>
               </span>
             </label>
           </div>
@@ -111,17 +111,17 @@ export const DriftScheduleModal: React.FC<DriftScheduleModalProps> = ({
         </div>
 
         {/* Actions */}
-        <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+        <div className="pt-4 border-t border-border flex items-center justify-between">
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl bg-[#242830] hover:bg-[#2c313c] text-xs font-semibold text-slate-300"
+            className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/70 text-xs font-semibold text-muted-foreground"
           >
             Cancel
           </button>
 
           <button
             onClick={handleSave}
-            className="px-6 py-2.5 rounded-xl bg-[#479ef5] hover:bg-[#3b82f6] text-xs font-bold text-slate-950 flex items-center gap-2 shadow-lg shadow-[#479ef5]/20"
+            className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-xs font-bold text-primary-foreground flex items-center gap-2 shadow-lg shadow-primary/20"
           >
             <Check className="w-4 h-4" />
             <span>Save Notification Preferences</span>

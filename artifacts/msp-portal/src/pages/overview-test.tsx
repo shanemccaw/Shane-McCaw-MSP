@@ -95,7 +95,7 @@ export default function OverviewTestPage() {
 
   return (
     <AppShell title="Overview Test">
-    <div className="min-h-screen bg-[#101419] text-[#e0e2ea] font-sans selection:bg-[#479ef5]/30 selection:text-[#479ef5]">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/30 selection:text-primary">
       <div className="px-4 sm:px-6 lg:px-8 animate-in fade-in duration-300">
 
         {/* Hero Snapshot */}

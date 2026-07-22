@@ -258,7 +258,7 @@ export const automationTasks: AutomationTask[] = [
     description: 'Comprehensive audit of tenant state across all M365 workloads.',
     actionText: 'Download PDF',
     icon: 'file-text',
-    colorClass: 'text-[#479ef5]',
+    colorClass: 'text-primary',
     actionType: 'pdf',
   },
   {
@@ -267,7 +267,7 @@ export const automationTasks: AutomationTask[] = [
     description: 'Scope of work based on current identified tenant security gaps.',
     actionText: 'Generate Now',
     icon: 'edit-3',
-    colorClass: 'text-[#d6bbf8]',
+    colorClass: 'text-accent',
     actionType: 'sow',
   },
   {
@@ -276,7 +276,7 @@ export const automationTasks: AutomationTask[] = [
     description: 'Step-by-step instructions for closing critical tenant findings.',
     actionText: 'Review Plan',
     icon: 'wrench',
-    colorClass: 'text-[#ffb95c]',
+    colorClass: 'text-[hsl(40,65%,55%)]',
     actionType: 'plan',
   },
   {
@@ -285,9 +285,9 @@ export const automationTasks: AutomationTask[] = [
     description: 'Automated notifications when configuration deviates from baseline.',
     actionText: 'Manage Schedule',
     icon: 'bell-ring',
-    colorClass: 'text-[#ffb4ab]',
+    colorClass: 'text-destructive',
     badge: 'Active',
-    badgeColor: 'bg-emerald-500/20 text-emerald-400',
+    badgeColor: 'bg-[hsl(149,36%,49%)]/20 text-[hsl(149,36%,49%)]',
     actionType: 'alerts',
   },
 ];

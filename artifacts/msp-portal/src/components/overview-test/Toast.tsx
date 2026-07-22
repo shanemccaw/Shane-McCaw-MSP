@@ -18,20 +18,20 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onRemove }) => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto bg-[#1c2025] border border-white/10 rounded-xl p-3.5 shadow-2xl flex items-center justify-between gap-3 text-xs text-white animate-in fade-in slide-in-from-bottom-2"
+          className="pointer-events-auto bg-card border border-border rounded-xl p-3.5 shadow-2xl flex items-center justify-between gap-3 text-xs text-foreground animate-in fade-in slide-in-from-bottom-2"
         >
           <div className="flex items-center gap-2.5">
             {toast.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-[hsl(149,36%,49%)] flex-shrink-0" />
             ) : (
-              <Info className="w-4 h-4 text-[#479ef5] flex-shrink-0" />
+              <Info className="w-4 h-4 text-primary flex-shrink-0" />
             )}
             <span className="font-medium leading-snug">{toast.text}</span>
           </div>
 
           <button
             onClick={() => onRemove(toast.id)}
-            className="text-slate-400 hover:text-white p-1"
+            className="text-muted-foreground hover:text-foreground p-1"
           >
             <X className="w-3.5 h-3.5" />
           </button>
