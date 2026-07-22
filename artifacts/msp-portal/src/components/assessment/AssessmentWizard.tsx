@@ -33,7 +33,6 @@ import { useTheme } from "@/lib/theme-context";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScoreRing, type ScoreRingColor } from "@/components/ui/score-ring";
 import { AssessmentMfaEnrollment } from "./AssessmentMfaEnrollment";
 import { AssessmentDocumentViewer } from "./AssessmentDocumentViewer";
 import { AssessmentSowSelector } from "./AssessmentSowSelector";
@@ -55,6 +54,7 @@ import {
   Lock,
   Quote,
   Radar,
+  Route,
   ScrollText,
   ShieldCheck,
   AlertTriangle,
@@ -529,50 +529,44 @@ function PanelShell({
   );
 }
 
-// ── Generating-step shell ────────────────────────────────────────────────────
-// A richer stage for the one screen a paying customer stares at the longest:
-// the same card language as PanelShell, plus an ambient accent glow, an
-// eyebrow line, and a larger title. Purely presentational — `tone` tracks the
-// same derived states (in progress / complete / failed) the step already
-// computes, it never derives anything of its own.
-function GeneratingShell({
-  icon: Icon,
-  tone,
-  eyebrow,
-  title,
-  children,
-}: {
-  icon: typeof Radar;
-  tone: "progress" | "complete" | "failed";
-  eyebrow: string;
-  title: string;
-  children: React.ReactNode;
-}) {
-  const chipCls =
-    tone === "complete"
-      ? "bg-status-green/15 text-status-green"
-      : tone === "failed"
-        ? "bg-status-red/15 text-status-red"
-        : "bg-primary/15 text-primary";
-  const orbCls =
-    tone === "complete" ? "bg-status-green/10" : tone === "failed" ? "bg-status-red/10" : "bg-primary/10";
+// Small primary text (10-14px) fails WCAG AA in light mode (#1a7eef on white
+// ≈ 4.0:1), so everywhere the reference uses small primary-accent type we
+// deepen the same hue in light mode only. Literal class names in this const
+// are what Tailwind's scanner picks up — keep them verbatim.
+const PRIMARY_TEXT_AA = "text-[hsl(212_87%_42%)] dark:text-primary";
+
+// ── Generating-step header band ─────────────────────────────────────────────
+// The reference composition's opening: small-caps accent eyebrow, large bold
+// title, and — right-aligned on the same row — the real "prepared by"
+// identity (Shane McCaw, Lead M365 Architect — the same identity the CIO
+// narrative and document generation already use) with an initials avatar (no
+// headshot asset exists in this app; initials circles are the shell's real
+// avatar convention). Full-width low-opacity divider beneath.
+function AssessmentHeaderBand({ title, dateStr }: { title: string; dateStr: string }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 md:p-8">
-      <div
-        aria-hidden
-        className={`pointer-events-none absolute -right-24 -top-24 size-64 rounded-full blur-3xl ${orbCls}`}
-      />
-      <div className="relative flex items-center gap-4">
-        <div className={`flex size-12 shrink-0 items-center justify-center rounded-2xl ${chipCls}`}>
-          <Icon className="size-5" />
-        </div>
+    <header>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/65">{eyebrow}</p>
-          <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-foreground md:text-2xl">{title}</h2>
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${PRIMARY_TEXT_AA}`}>
+            Your Microsoft 365 assessment
+          </p>
+          <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-foreground md:text-3xl">{title}</h2>
+        </div>
+        <div className="flex items-center gap-3 md:shrink-0">
+          <div className="min-w-0 md:text-right">
+            <p className="text-sm font-medium text-foreground">Shane McCaw</p>
+            <p className="text-xs text-muted-foreground">Lead M365 Architect · {dateStr}</p>
+          </div>
+          <span
+            aria-hidden
+            className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-primary/15 text-sm font-semibold ${PRIMARY_TEXT_AA}`}
+          >
+            SM
+          </span>
         </div>
       </div>
-      <div className="relative mt-6">{children}</div>
-    </div>
+      <div aria-hidden className="mt-5 h-px w-full bg-border" />
+    </header>
   );
 }
 
@@ -627,18 +621,21 @@ interface PhaseItem {
   live?: React.ReactNode;
 }
 
+// Status pills beside each phase title. Primary-led like the reference
+// (complete and in-progress are both accent-tinted, distinguished by
+// intensity + the live dot); failed is the real red token.
 function PhaseBadge({ status }: { status: ChecklistStatus }) {
   const toneCls =
     status === "complete"
-      ? "border-status-green/30 bg-status-green/10 text-status-green"
+      ? `border-primary/20 bg-primary/10 ${PRIMARY_TEXT_AA}`
       : status === "failed"
-        ? "border-status-red/30 bg-status-red/10 text-status-red"
+        ? "border-status-red/40 bg-status-red/10 text-status-red"
         : status === "active"
-          ? "border-primary/30 bg-primary/10 text-primary"
+          ? `border-primary/40 bg-primary/20 ${PRIMARY_TEXT_AA}`
           : "border-border bg-muted/40 text-muted-foreground";
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${toneCls}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${toneCls}`}
     >
       {status === "active" && (
         <span aria-hidden className="relative flex size-1.5">
@@ -651,76 +648,63 @@ function PhaseBadge({ status }: { status: ChecklistStatus }) {
   );
 }
 
+// Circular icon badges, sized and toned to the reference: complete is a
+// solid-filled accent circle with a soft glow, active is an outlined pulsing
+// ring, planned is muted. Backgrounds are opaque so the connector line
+// passing behind never shows through.
 function PhaseNode({ status, icon: Icon }: { status: ChecklistStatus; icon: typeof Radar }) {
   if (status === "complete") {
     return (
-      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-status-green/30 bg-status-green/10 text-status-green">
-        <CheckCircle2 className="size-4" />
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.3)]">
+        <CheckCircle2 className="size-5" />
       </span>
     );
   }
   if (status === "failed") {
     return (
-      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-status-red/30 bg-status-red/10 text-status-red">
-        <XCircle className="size-4" />
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border border-status-red/40 bg-card text-status-red">
+        <XCircle className="size-5" />
       </span>
     );
   }
   if (status === "active") {
     return (
-      <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-primary shadow-[0_0_18px_-4px_hsl(var(--primary)/0.6)]">
-        <span
-          aria-hidden
-          className="absolute inset-0 animate-ping rounded-full border border-primary/40 [animation-duration:2.6s] motion-reduce:hidden"
-        />
-        <Icon className="size-4" />
+      <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border-2 border-primary bg-card text-primary animate-pulse motion-reduce:animate-none">
+        <Icon className="size-5" />
       </span>
     );
   }
   return (
-    <span className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-muted/40 text-muted-foreground">
-      <Icon className="size-4" />
+    <span className="relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+      <Icon className="size-5" />
     </span>
   );
 }
 
-/** Connector segment between two phases — colored by both endpoints so the
- *  line reads as progress flowing down the timeline. */
-function connectorCls(from: ChecklistStatus, to: ChecklistStatus): string {
-  if (from === "complete") {
-    if (to === "complete") return "bg-status-green/40";
-    if (to === "active") return "bg-gradient-to-b from-status-green/40 to-primary/40";
-    if (to === "failed") return "bg-gradient-to-b from-status-green/40 to-status-red/40";
-    return "bg-gradient-to-b from-status-green/40 to-border";
-  }
-  if (from === "active") return "bg-gradient-to-b from-primary/40 to-border";
-  if (from === "failed") return "bg-gradient-to-b from-status-red/40 to-border";
-  return "bg-border";
-}
-
+// Live per-document chips inside the report-generation phase — a uniform
+// bordered-card grid like the reference, with the real live status carried by
+// a shape-distinct icon (+ screen-reader text).
 function DocChip({ label, status }: { label: string; status: ChecklistStatus }) {
-  const toneCls =
-    status === "complete"
-      ? "border-status-green/25 bg-status-green/5 text-foreground"
-      : status === "failed"
-        ? "border-status-red/30 bg-status-red/5 text-foreground"
-        : status === "active"
-          ? "border-primary/30 bg-primary/5 text-foreground"
-          : "border-border bg-muted/30 text-muted-foreground";
   return (
-    <span className={`flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors duration-500 ${toneCls}`}>
+    // title makes a clipped real document name recoverable for sighted users.
+    <span
+      title={label}
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2 transition-colors duration-500"
+    >
       {status === "complete" ? (
-        <CheckCircle2 className="size-3.5 shrink-0 text-status-green" />
+        <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
       ) : status === "failed" ? (
         <XCircle className="size-3.5 shrink-0 text-status-red" />
       ) : status === "active" ? (
         <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
       ) : (
         <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center">
-          <span className="size-1 rounded-full bg-current opacity-60" />
+          <span className="size-1 rounded-full bg-muted-foreground opacity-60" />
         </span>
       )}
-      <span className="truncate text-xs">{label}</span>
+      <span className={`truncate text-xs ${status === "pending" ? "text-muted-foreground" : "text-foreground"}`}>
+        {label}
+      </span>
       {/* The per-document status the old flat checklist showed as visible text —
           kept in the accessibility tree; sighted users read it from the icon. */}
       <span className="sr-only">{phaseStatusLabel(status)}</span>
@@ -728,28 +712,57 @@ function DocChip({ label, status }: { label: string; status: ChecklistStatus }) 
   );
 }
 
-function PhaseTimeline({ phases }: { phases: PhaseItem[] }) {
+function PhaseTimeline({ phases, settled }: { phases: PhaseItem[]; settled: boolean }) {
+  // Connector segments between consecutive nodes, shaded so the whole run
+  // reads as the reference's single line: accent at the top, fading toward
+  // what's still ahead (or staying accent once everything is settled). A
+  // failed endpoint overrides the positional shading — the line must never
+  // show bright "progress" flowing out of or into a failed phase.
+  const segmentCls = (i: number): string => {
+    const from = phases[i].status;
+    const to = phases[i + 1]?.status;
+    if (from === "failed") return "from-status-red/40 to-border";
+    if (to === "failed") return "from-primary/60 to-status-red/40";
+    const t0 = i / (phases.length - 1 || 1);
+    if (settled) return t0 < 0.5 ? "from-primary to-primary/60" : "from-primary/60 to-primary/40";
+    return t0 < 0.5 ? "from-primary to-primary/50" : "from-primary/50 to-border";
+  };
   return (
     <ol>
       {phases.map((phase, i) => (
-        <li key={phase.key} className={`relative flex gap-4 ${i < phases.length - 1 ? "pb-7" : ""}`}>
+        <li key={phase.key} className={`relative flex gap-4 ${i < phases.length - 1 ? "pb-8" : ""}`}>
           {i < phases.length - 1 && (
             <span
               aria-hidden
-              className={`absolute bottom-0 left-5 top-10 w-px -translate-x-1/2 ${connectorCls(phase.status, phases[i + 1].status)}`}
+              className={`absolute bottom-0 left-6 top-12 w-px -translate-x-1/2 bg-gradient-to-b ${segmentCls(i)}`}
             />
           )}
           <PhaseNode status={phase.status} icon={phase.icon} />
-          <div className="min-w-0 flex-1 pt-0.5">
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <p className={`text-sm font-semibold ${phase.status === "pending" ? "text-muted-foreground" : "text-foreground"}`}>
+          <div className="min-w-0 flex-1 pt-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p
+                className={`text-sm font-bold uppercase tracking-wide ${
+                  phase.status === "active"
+                    ? PRIMARY_TEXT_AA
+                    : phase.status === "pending"
+                      ? "text-muted-foreground"
+                      : phase.status === "failed"
+                        ? // Dark status-red is a hair under AA at this size on
+                          // the page background — lighten it there only.
+                          "text-status-red dark:text-[hsl(3_75%_65%)]"
+                        : "text-foreground"
+                }`}
+              >
                 {phase.title}
               </p>
               <PhaseBadge status={phase.status} />
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{phase.blurb}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{phase.blurb}</p>
             {phase.docs && phase.docs.length > 0 && (
-              <div className="mt-3 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              // 3-up only from lg: at md the docked step sidebar leaves this
+              // column ~440px — three columns there would truncate every real
+              // document title.
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {phase.docs.map((d) => (
                   <DocChip key={d.key} label={d.label} status={d.status} />
                 ))}
@@ -852,19 +865,28 @@ function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefi
   }
   if (cards.length === 0) return null;
 
+  // The reference pairs each stat card with a delta/trend, a mini bar chart,
+  // and a per-stat "analysis" insight card. None of those have a real data
+  // source on this endpoint (no historical series, no per-stat commentary) —
+  // so per the no-fabrication rule they are deliberately absent: label + real
+  // number + icon only.
   return (
-    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards motion-reduce:animate-none">
+    <div className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-backwards motion-reduce:animate-none">
       {cards.map((c) => {
         const CardIcon = c.icon;
         return (
-          <div key={c.label} className="rounded-xl border border-border bg-background/50 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 break-words text-2xl font-semibold tabular-nums tracking-tight text-foreground">{c.value}</p>
-              <span className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${c.iconCls}`}>
-                <CardIcon className="size-3.5" />
+          <div key={c.label} className="rounded-xl border border-border bg-card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/65">{c.label}</p>
+                <p className="mt-1.5 min-w-0 break-words text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+                  {c.value}
+                </p>
+              </div>
+              <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${c.iconCls}`}>
+                <CardIcon className="size-4" />
               </span>
             </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">{c.label}</p>
           </div>
         );
       })}
@@ -881,7 +903,15 @@ function StatCards({ stats }: { stats: AssessmentStatus["stats"] | null | undefi
 // axes, never 7 with fabricated "perfect" scores on the rest. Nivo's own Radar
 // renderer already refuses to render below 3 dimensions, but we hide the
 // panel entirely rather than show a near-empty/broken-looking chart.
-function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
+function PillarRadarPanel({
+  radar,
+  scoreText,
+}: {
+  radar: AssessmentStatus["radar"];
+  /** Real score line rendered under the chart (the reference's "Current
+   *  Score" treatment) — pass null when there's no real reading to show. */
+  scoreText?: string | null;
+}) {
   // This app's --border/--muted-foreground CSS vars hold raw HSL triples the
   // Nivo theme can't consume as colors, and light/dark want different resolved
   // values — so the chart's grid/tick/series colors are resolved here,
@@ -898,12 +928,11 @@ function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-background/50 p-5 animate-in fade-in zoom-in-95 duration-700 delay-200 fill-mode-backwards motion-reduce:animate-none">
-      <p className="text-sm font-medium text-foreground">Tenant health axes</p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Real coverage from this scan's package — only pillars with real signal data are plotted.
+    <div className="flex h-full flex-col rounded-xl border border-border bg-background/50 p-4 animate-in fade-in zoom-in-95 duration-700 delay-200 fill-mode-backwards motion-reduce:animate-none">
+      <p className="text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground/65">
+        Tenant health axes
       </p>
-      <div className="mt-2 flex h-60 min-h-0">
+      <div className="mt-1 flex h-56 min-h-0 flex-1">
         <RadarChart
           data={data}
           color={isDark ? "#479ef5" : "#1a7eef"}
@@ -911,6 +940,12 @@ function PillarRadarPanel({ radar }: { radar: AssessmentStatus["radar"] }) {
           tickFill={isDark ? "rgba(255,255,255,0.55)" : "rgba(0,0,0,0.55)"}
         />
       </div>
+      {scoreText && (
+        <p className={`mt-1 text-center text-sm font-bold ${PRIMARY_TEXT_AA}`}>{scoreText}</p>
+      )}
+      <p className="mt-2 text-center text-[11px] leading-relaxed text-muted-foreground">
+        Real coverage from this scan's package — only pillars with real signal data are plotted.
+      </p>
     </div>
   );
 }
@@ -925,32 +960,32 @@ function CioNarrativePanel({ narrative }: { narrative: AssessmentStatus["narrati
   if (narrative.status === "not_started") return null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/[0.04] to-transparent p-5 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none md:p-6">
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-primary via-primary/40 to-transparent"
-      />
+    <div className="min-w-0">
       <div className="mb-4 flex items-center gap-2.5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
           <Quote className="size-3.5" />
         </span>
         <div className="min-w-0">
-          {/* Light primary (#1a7eef) is below AA at this size on the tinted
-              panel — deepen the same hue in light mode only. */}
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(212_87%_42%)] dark:text-primary">
+          <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${PRIMARY_TEXT_AA}`}>
             Architect's perspective
           </p>
           <p className="text-xs text-muted-foreground">From Shane McCaw, your M365 architect</p>
         </div>
       </div>
       {narrative.status === "ready" && narrative.html ? (
+        // The generator's real output opens with an h3 headline followed by
+        // h4/p/strong/ul substructure (see cio-narrative-generator.ts) — the
+        // overrides below present that real structure as the reference does:
+        // the opening headline as a large italic pull-quote over a divider,
+        // h4 section leads as small-caps accent labels. If a particular
+        // narrative lacks those elements the overrides simply don't apply.
         <div
-          className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground animate-in fade-in duration-500 motion-reduce:animate-none"
+          className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-strong:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground [&>h3:first-of-type]:text-xl [&>h3:first-of-type]:font-semibold [&>h3:first-of-type]:italic [&>h3:first-of-type]:leading-snug [&>h3:first-of-type]:tracking-tight [&>h3:first-of-type]:border-b [&>h3:first-of-type]:border-border [&>h3:first-of-type]:pb-4 [&>h3:first-of-type]:mb-4 prose-h4:text-[11px] prose-h4:font-semibold prose-h4:uppercase prose-h4:tracking-[0.14em] prose-h4:text-[hsl(212_87%_42%)] dark:prose-h4:text-primary animate-in fade-in duration-500 motion-reduce:animate-none"
           dangerouslySetInnerHTML={{ __html: narrative.html }}
         />
       ) : narrative.status === "failed" ? (
         <p className="text-sm text-muted-foreground">
-          We couldn't put together your narrative summary this time — your real findings and documents below are unaffected.
+          We couldn't put together your narrative summary this time — your real findings and documents are unaffected.
         </p>
       ) : (
         <div className="space-y-2.5">
@@ -1080,6 +1115,62 @@ function StepPanel({
                 ? "active"
                 : "pending";
 
+      // Real scan-outcome facts, shared by the completed-scan phase blurb and
+      // the under-radar score line. Same counts, same license-gap honesty as
+      // always — license gaps are named and explicitly not failures.
+      const total = status.scan.checksTotal ?? 0;
+      const ok = status.scan.checksOk ?? 0;
+      const licenseGap = status.scan.checksLicenseGap ?? 0;
+      const genuineError = status.scan.checksError ?? 0;
+      const licenseGapFeatures = status.scan.licenseGapFeatures ?? [];
+      const evaluable = ok + genuineError;
+      const scanResultLead = (() => {
+        const parts: string[] = [];
+        if (ok > 0) parts.push(`${ok} check${ok === 1 ? "" : "s"} passed`);
+        if (genuineError > 0) parts.push(`${genuineError} couldn't complete`);
+        return parts.length > 0 ? `${parts.join(" · ")}.` : "Scan complete.";
+      })();
+      const licenseGapNote =
+        licenseGap > 0
+          ? ` ${licenseGap} check${licenseGap === 1 ? "" : "s"} couldn't run because your tenant doesn't have ${
+              licenseGapFeatures.length > 0 ? licenseGapFeatures.join(" or ") : "certain Microsoft 365 add-ons"
+            } — that's a licensing gap, not a security issue.`
+          : "";
+
+      // Live scan telemetry (SSE progress bar + per-check feed) — embedded in
+      // the deep-scan phase row while it runs, the same way the report phase
+      // carries its chips: phase-specific content lives under its own phase.
+      const scanLive =
+        !anyFailed && !scanComplete ? (
+          <div className="space-y-3">
+            {scanProgress ? (
+              <div className="space-y-2">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
+                    {scanProgress.label}
+                  </p>
+                  <p className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-foreground">
+                    {scanProgress.index}/{scanProgress.total}
+                  </p>
+                </div>
+                <ShimmerProgress
+                  value={scanProgress.total > 0 ? Math.round((scanProgress.index / scanProgress.total) * 100) : 0}
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                {scanJustFinished
+                  ? "Finalizing…"
+                  : status.scan.everScanned
+                    ? "Scan in progress…"
+                    : "Starting your scan…"}
+              </div>
+            )}
+            {scanLog.length > 0 && <ScanLogFeed log={scanLog} />}
+          </div>
+        ) : null;
+
       // Live doc-generation ticker (the workflow SSE stream + poll fallback,
       // exactly the same message logic as before) — attached to whichever
       // phase is actually in progress, so it can never sit under a phase
@@ -1110,9 +1201,16 @@ function StepPanel({
         {
           key: "scan",
           title: "Deep scan of your tenant",
-          blurb: "Reading your tenant's real configuration, security posture, and licensing.",
+          // Once the scan settles, its row describes the real outcome — the
+          // same counts and named license-gap honesty as always.
+          blurb: scanFailed
+            ? "The scan couldn't finish automatically — our team has been notified and this page keeps checking."
+            : scanComplete && total > 0
+              ? `${scanResultLead}${licenseGapNote}`
+              : "Reading your tenant's real configuration, security posture, and licensing.",
           status: scanPhaseStatus,
           icon: Radar,
+          live: scanLive,
         },
         {
           key: "docs",
@@ -1133,26 +1231,106 @@ function StepPanel({
         },
       ];
 
-      // Once reports finish, this step reads as "complete" (the customer may
-      // have navigated back to it) — a settled recap instead of a live checklist.
-      if (reportsComplete) {
-        const readyCount = status.documents.ready;
-        return (
-          <GeneratingShell
-            icon={FileText}
-            tone="complete"
-            eyebrow="Your Microsoft 365 assessment"
-            title="Your assessment is ready"
-          >
-            {status.narrative.status === "ready" && status.narrative.html && (
-              <div className="mb-5">
-                <CioNarrativePanel narrative={status.narrative} />
+      // ── Unified render, structured to the reference composition ──
+      // Header band → failure callout (only when real) → "The path to
+      // remediation" timeline (with per-phase live content) → narrative+radar
+      // split card → stat cards → closing summary + CTA. One render path for
+      // in-progress, failed, and settled — every piece is state-gated.
+      const headerTitle = anyFailed
+        ? "We hit a snag"
+        : reportsComplete
+          ? "Your assessment is ready"
+          : "Generating your assessment";
+      // Real date context for the header band: the scan's own timestamp once
+      // one exists, otherwise today (this is a live screen).
+      const dateStr = new Date(status.scan.lastScanAt ?? Date.now()).toLocaleDateString(undefined, {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      const readyCount = status.documents.ready;
+      // The reference's "Current Score" line under the radar, with real data
+      // only: checks passed over checks we could actually evaluate (license
+      // gaps are excluded — they're unavailable, not failures, so they never
+      // drag the result down).
+      const scoreText = evaluable > 0 ? `Scan result: ${ok}/${evaluable} checks passed` : null;
+      const hasNarrative = status.narrative.status !== "not_started";
+      const hasRadar = status.radar.pillars.length >= 3;
+      const narrativeReady = status.narrative.status === "ready" && Boolean(status.narrative.html);
+      // Under a failure banner only a *finished* narrative renders — a live
+      // "Shane is writing…" skeleton or the narrative-failed fallback would
+      // contradict the banner. Otherwise any started narrative shows its live
+      // state. Deliberately NOT gated on scanComplete: the status endpoint
+      // keeps serving the last completed run's narrative/radar/stats during an
+      // active re-scan (its own documented contract), and blanking real data
+      // mid-re-scan would contradict the settled header and CTA that remain.
+      const showNarrativeCol = anyFailed ? narrativeReady : hasNarrative;
+
+      // The reference also has a "Critical Gaps" findings grid and per-stat
+      // trend/insight layers. This endpoint exposes no per-finding severity
+      // list, no historical series, and no per-stat commentary — so those
+      // sections are deliberately absent rather than filled with placeholders.
+      return (
+        <div className="space-y-8">
+          <AssessmentHeaderBand title={headerTitle} dateStr={dateStr} />
+
+          {/* Honest failure — a failed scan or doc run is never silently hung
+              or treated as success; the timeline below still shows exactly
+              what did and didn't finish. */}
+          {anyFailed && (
+            <div className="rounded-2xl border border-status-red/30 bg-status-red/5 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-status-red" />
+                <div className="min-w-0 space-y-3">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Something went wrong while {scanFailed ? "reading your Microsoft 365 environment" : "preparing your assessment documents"}, and we couldn't finish automatically. This is on us — nothing you did caused it{scanFailed ? "" : ", and your scan data is safe"}.
+                  </p>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Our team has been notified automatically and will get this sorted. This page keeps
+                    checking, so you can leave it open — it'll update the moment things are ready.
+                  </p>
+                </div>
               </div>
-            )}
-            <div className="mb-5 space-y-4">
-              <StatCards stats={status.stats} />
-              <PillarRadarPanel radar={status.radar} />
             </div>
+          )}
+
+          {/* ── The path to remediation — connected vertical timeline. Live
+              scan telemetry sits inside phase 1 while it runs; the real
+              document chips and generation ticker inside phases 2/3 — each
+              phase carries its own live content. ── */}
+          <section aria-label="The path to remediation">
+            <div className="mb-6 flex items-center gap-3">
+              <Route className="size-5 text-primary" />
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">The path to remediation</h3>
+            </div>
+            <PhaseTimeline phases={phases} settled={reportsComplete} />
+          </section>
+
+          {/* ── Architect's perspective + tenant health axes — one card split
+              two ways on desktop (narrative left, radar inset right); radar
+              first on mobile, like the reference. ── */}
+          {(showNarrativeCol || hasRadar) && (
+            <section className="rounded-2xl border border-border bg-card p-6 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none md:p-7">
+              {showNarrativeCol && hasRadar ? (
+                <div className="flex flex-col gap-6 md:flex-row md:items-stretch md:gap-8">
+                  <div className="order-1 w-full md:order-2 md:w-2/5 md:shrink-0">
+                    <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
+                  </div>
+                  <div className="order-2 min-w-0 flex-1 md:order-1">
+                    <CioNarrativePanel narrative={status.narrative} />
+                  </div>
+                </div>
+              ) : showNarrativeCol ? (
+                <CioNarrativePanel narrative={status.narrative} />
+              ) : (
+                <PillarRadarPanel radar={status.radar} scoreText={scoreText} />
+              )}
+            </section>
+          )}
+
+          <StatCards stats={status.stats} />
+
+          {reportsComplete && (
             <p className="text-sm leading-relaxed text-muted-foreground">
               We've finished generating your assessment{" "}
               {readyCount > 0 ? (
@@ -1165,164 +1343,27 @@ function StepPanel({
               )}{" "}
               Review the findings that matter most, then tailor your scope and choose a plan.
             </p>
-            <div className="mt-6">
-              <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/65">
-                Path to remediation
-              </p>
-              <PhaseTimeline phases={phases} />
-            </div>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Button onClick={onGoToReview}>
+          )}
+
+          {/* ── Closing CTA — the real next action, pill-shaped and prominent
+              like the reference; only rendered once genuinely unlocked. ── */}
+          {reportsComplete && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="lg" className="rounded-full px-7" onClick={onGoToReview}>
                 Review findings <ChevronRight className="ml-1 size-4" />
               </Button>
               {sowReady && (
-                <Button variant="outline" onClick={onGoToSow}>
+                <Button size="lg" variant="outline" className="rounded-full px-6" onClick={onGoToSow}>
                   View statement of work
                 </Button>
               )}
             </div>
-          </GeneratingShell>
-        );
-      }
-
-      const total = status.scan.checksTotal ?? 0;
-      const ok = status.scan.checksOk ?? 0;
-      const licenseGap = status.scan.checksLicenseGap ?? 0;
-      const genuineError = status.scan.checksError ?? 0;
-      const licenseGapFeatures = status.scan.licenseGapFeatures ?? [];
-      // Score over checks we could actually evaluate. License gaps are
-      // "unavailable" (the tenant lacks the add-on), NOT failures, so they don't
-      // drag the passed-rate down — a tenant without Defender/Entra Premium
-      // shouldn't read as "31% healthy" when everything checkable passed.
-      const evaluable = ok + genuineError;
-      const pct = evaluable > 0 ? Math.round((ok / evaluable) * 100) : total > 0 ? 100 : 0;
-      const ringColor: ScoreRingColor = evaluable === 0 ? "blue" : pct >= 85 ? "green" : pct >= 60 ? "amber" : "red";
-      // Honest one-line summary: what passed, what genuinely needs a look, and
-      // what we simply couldn't check because the licensing isn't there (named).
-      const scanSummary = (() => {
-        const parts: string[] = [];
-        if (ok > 0) parts.push(`${ok} check${ok === 1 ? "" : "s"} passed`);
-        if (genuineError > 0) parts.push(`${genuineError} couldn't complete`);
-        const lead = parts.length > 0 ? parts.join(" · ") : "Scan complete";
-        const gap =
-          licenseGap > 0
-            ? ` ${licenseGap} check${licenseGap === 1 ? "" : "s"} couldn't run because your tenant doesn't have ${
-                licenseGapFeatures.length > 0 ? licenseGapFeatures.join(" or ") : "certain Microsoft 365 add-ons"
-              } — that's a licensing gap, not a security issue.`
-            : "";
-        return `${lead}. Now writing up your findings and Statement of Work.${gap}`;
-      })();
-
-      return (
-        <GeneratingShell
-          icon={anyFailed ? AlertTriangle : Radar}
-          tone={anyFailed ? "failed" : "progress"}
-          eyebrow="Your Microsoft 365 assessment"
-          title={anyFailed ? "We hit a snag" : "Generating your assessment"}
-        >
-          {/* Honest failure — a failed scan or doc run is never silently hung or
-              treated as success; the timeline below still shows exactly what did
-              and didn't finish. */}
-          {anyFailed ? (
-            <>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Something went wrong while {scanFailed ? "reading your Microsoft 365 environment" : "preparing your assessment documents"}, and we couldn't finish automatically. This is on us — nothing you did caused it{scanFailed ? "" : ", and your scan data is safe"}.
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                Our team has been notified automatically and will get this sorted. This page keeps
-                checking, so you can leave it open — it'll update the moment things are ready.
-              </p>
-            </>
-          ) : scanComplete ? (
-            // The narrative leads once the scan is done — it's the value-delivery
-            // moment while documents are still generating, not a second wait
-            // screen. The stat cards, radar, and scan-result ring stagger in
-            // underneath it as supporting evidence, not the headline.
-            <div className="space-y-4">
-              <CioNarrativePanel narrative={status.narrative} />
-              <StatCards stats={status.stats} />
-              <PillarRadarPanel radar={status.radar} />
-              <div className="flex items-center gap-4 rounded-xl border border-border bg-background/50 p-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-backwards motion-reduce:animate-none">
-                <ScoreRing value={pct} color={ringColor} size={56} strokeWidth={5} className="shrink-0" />
-                <div className="min-w-0 space-y-0.5">
-                  <p className="text-sm font-medium text-foreground">Your scan results</p>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    {total > 0 ? scanSummary : "Now writing up your findings and Statement of Work."}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            // Scan still running — a quiet sonar motif carries the "actively
-            // reading your tenant" feeling; the live bar + check feed below it
-            // are the real telemetry.
-            <div className="flex items-center gap-4">
-              <div aria-hidden className="relative flex size-14 shrink-0 items-center justify-center">
-                <span className="absolute inset-0 animate-ping rounded-full border border-primary/30 [animation-duration:2.8s] motion-reduce:hidden" />
-                <span className="absolute inset-1.5 animate-ping rounded-full border border-primary/20 [animation-duration:2.8s] [animation-delay:0.9s] motion-reduce:hidden" />
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
-                  <Radar className="size-4.5" />
-                </span>
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">
-                  {scanJustFinished ? "Your scan just finished" : "Reading your Microsoft 365 environment"}
-                </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                  {scanJustFinished
-                    ? "We're finalizing your results now."
-                    : "Configuration and security posture first, then your findings and a tailored Statement of Work — all on this page."}
-                </p>
-              </div>
-            </div>
           )}
 
-          {/* ── Live scan progress — the bar + per-check telemetry feed ── */}
-          {!anyFailed && !scanComplete && (
-            <div className="mt-6 space-y-3">
-              {scanProgress ? (
-                <div className="space-y-2">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
-                      {scanProgress.label}
-                    </p>
-                    <p className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-foreground">
-                      {scanProgress.index}/{scanProgress.total}
-                    </p>
-                  </div>
-                  <ShimmerProgress
-                    value={scanProgress.total > 0 ? Math.round((scanProgress.index / scanProgress.total) * 100) : 0}
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
-                  {scanJustFinished
-                    ? "Finalizing…"
-                    : status.scan.everScanned
-                      ? "Scan in progress…"
-                      : "Starting your scan…"}
-                </div>
-              )}
-              {scanLog.length > 0 && <ScanLogFeed log={scanLog} />}
-            </div>
-          )}
-
-          {/* ── Path to remediation — the same real items and statuses, as a
-              connected phase timeline. During document generation the reports
-              phase carries the live chips + workflow ticker, so the timeline
-              doubles as the live progress display. ── */}
-          <div className="mt-7">
-            <p className="mb-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-              Path to remediation
-            </p>
-            <PhaseTimeline phases={phases} />
-          </div>
-
-          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note */}
-          {status.isTestbed && !status.scan.active ? (
+          {/* ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️ testbed-only trigger button, see file header note.
+              !reportsComplete keeps it off the settled screen, matching where it rendered before the unified layout. */}
+          {!reportsComplete && status.isTestbed && !status.scan.active ? (
             <Button
-              className="mt-5"
               variant="outline"
               onClick={() => void debugTriggerScan()}
               disabled={debugTriggering}
@@ -1331,7 +1372,7 @@ function StepPanel({
               [DEBUG] {status.scan.everScanned ? "Re-trigger scan" : "Trigger scan"}
             </Button>
           ) : null}
-        </GeneratingShell>
+        </div>
       );
     }
 
