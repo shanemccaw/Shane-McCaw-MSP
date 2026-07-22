@@ -23,6 +23,7 @@ import {
   engagementProjectsTable,
   mspUsersTable,
   mspCustomersTable,
+  documentTypesTable,
 } from "@workspace/db";
 import { eq, and, desc, ne } from "drizzle-orm";
 import { buildTenantProfile } from "./tenant-signals";
@@ -666,8 +667,29 @@ export async function generateAndDeliverDocument(
 
   const scoresBlock = formatScoresBlock(realScores);
 
-  const profileSample = Object.entries(mergedProfile).length > 0
-    ? Object.entries(mergedProfile).map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
+  const [docTypeScopeConfig] = await db
+    .select({ includedProfileKeyPatterns: documentTypesTable.includedProfileKeyPatterns })
+    .from(documentTypesTable)
+    .where(eq(documentTypesTable.key, docType))
+    .limit(1);
+
+  function matchesProfilePattern(key: string, pattern: string): boolean {
+    if (pattern.endsWith("*")) return key.toLowerCase().startsWith(pattern.slice(0, -1).toLowerCase());
+    return key.toLowerCase() === pattern.toLowerCase();
+  }
+
+  const profilePatterns = docTypeScopeConfig?.includedProfileKeyPatterns ?? [];
+  const scopedProfileEntries = profilePatterns.length > 0
+    ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some(p => matchesProfilePattern(k, p)))
+    : Object.entries(mergedProfile);
+
+  log.info(
+    { docType, patternsConfigured: profilePatterns.length, totalProfileKeys: Object.keys(mergedProfile).length, scopedProfileKeys: scopedProfileEntries.length },
+    "document-generator: profile scoping applied",
+  );
+
+  const profileSample = scopedProfileEntries.length > 0
+    ? scopedProfileEntries.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
     : "  No configuration telemetry was captured for this client. Do NOT invent configuration values, counts, or settings — omit any statement that depends on telemetry rather than fabricating one.";
 
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
