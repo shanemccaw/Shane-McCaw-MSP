@@ -704,6 +704,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 
 - Total length: 800-1500 words of body content`,
   },
@@ -741,6 +742,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 
 - Total length: 800-1500 words of body content`,
   },
@@ -778,6 +780,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 
 - Total length: 800-1500 words of body content`,
   },
@@ -815,6 +818,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 
 - Total length: 800-1500 words of body content`,
   },
@@ -852,6 +856,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 
 - Total length: 800-1500 words of body content`,
   },
@@ -889,6 +894,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 - Total length: 800-1500 words of body content
 
 METRIC FORMATTING — REQUIRED (the client portal dashboard reads these exact text patterns to populate summary cards; all four must appear as visible plain text in the document body):
@@ -936,6 +942,7 @@ INSTRUCTIONS:
 - Each major section as <h2> with a horizontal rule separator
 - In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style="margin:6px 0">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: The tenant telemetry / prior-documents blocks above may state that no data was collected. When they do, scope this SOW ONLY from the signal-gated engagement projects and the TENANT FACTS block (which uses "unknown" for genuinely-unavailable values). Do NOT invent specific findings, metrics, gaps, or configuration details to justify a phase — the phase list is already authoritative on its own. Keep narrative scope general where telemetry is silent rather than fabricating specifics.
 
 - Total length: 2000-3500 words`,
   },
@@ -973,6 +980,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1050,6 +1058,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1086,6 +1095,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1122,6 +1132,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1158,6 +1169,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1194,6 +1206,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },
@@ -1237,6 +1250,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states data is absent (e.g. "None recorded for this client", "No configuration telemetry"), do NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 
 - Total length: 1000-2000 words`,
   },

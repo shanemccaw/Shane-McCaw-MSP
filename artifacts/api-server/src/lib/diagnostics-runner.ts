@@ -33,6 +33,7 @@ import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { generateCioNarrative } from "./cio-narrative-generator";
+import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -770,11 +771,15 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
     // CIO-Report Narrative — fire as soon as the scan itself completes, well
     // before documents finish generating, so the wait between "scan done" and
-    // "documents done" becomes the narrative's value-delivery moment. Only on a
-    // genuinely completed run (matches assessment_doc_gate's own bar) with a
-    // known customer (benchmark/cost lookups need customerId). Fire-and-forget —
-    // a narrative failure must never fail or slow down the diagnostics run itself.
-    if (finalStatus === "completed" && customerId != null) {
+    // "documents done" becomes the narrative's value-delivery moment. Gated on
+    // the SAME graded evaluable-check coverage as assessment_doc_gate (see
+    // doc-gate-coverage.ts), so a partial-status run with real majority signal
+    // still gets its narrative — and a near-dark scan does not get a narrative
+    // written over mostly-absent data. Needs a known customer (benchmark/cost
+    // lookups need customerId). Fire-and-forget — a narrative failure must never
+    // fail or slow down the diagnostics run itself.
+    const narrativeCoverage = evaluateDocGateCoverage({ checksOk, checksLicenseGap, checksError, checksTotal });
+    if (narrativeCoverage.proceed && customerId != null) {
       void generateCioNarrative({
         runId,
         customerId,

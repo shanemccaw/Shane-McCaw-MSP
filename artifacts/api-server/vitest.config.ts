@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [
+      "src/lib/doc-gate-coverage.test.ts",
       "src/lib/lead-intent.test.ts",
       "src/lib/sse-channels.test.ts",
       "src/lib/sse-hub-firehose.test.ts",

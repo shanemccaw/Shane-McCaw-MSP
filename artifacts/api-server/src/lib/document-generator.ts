@@ -229,6 +229,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "No findings were recorded", "No M365 health score data", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section, or state plainly and positively that it is not yet available. A shorter, honest document is always correct over a padded one. This overrides any instruction above to include a findings/scores table or to "reference actual findings".
 - Total length: 800-1500 words of body content
 - CRITICAL: Output the HTML document and then STOP. Do NOT add any text, summary, commentary, or explanation after the closing </html> tag. The response must end exactly at </html>.`;
 
@@ -255,6 +256,7 @@ INSTRUCTIONS:
 - Use inline CSS: white background, #0078D4 accent, professional enterprise typography
 - Write in first person as Shane McCaw with expert consulting tone
 - Be specific and actionable — reference client's actual environment data
+- EMPTY-DATA HONESTY — NEVER FABRICATE: If any data block above states that data is absent (e.g. "None recorded for this client", "No configuration telemetry"), you MUST NOT invent, estimate, or infer values to fill it. Omit that section or state plainly that it is not yet available — never manufacture findings, metrics, or configuration details. A shorter, honest deliverable is always correct over a padded one.
 - Include a professional header ("Shane McCaw Consulting") and footer
 - Total length: 1000-2000 words
 - CRITICAL: Output the HTML document and then STOP. Do NOT add any text, summary, commentary, or explanation after the closing </html> tag. The response must end exactly at </html>.`;
@@ -357,7 +359,7 @@ async function fetchRealScores(clientUserId: number): Promise<RealScores> {
 
 function formatScoresBlock(s: RealScores): string {
   if (!s.hasData) {
-    return "No M365 health scores on record yet — assessment runs are pending.";
+    return "No M365 health score data exists for this client yet (this is normal for a Graph-only assessment with no PowerShell script runs). Do NOT invent, estimate, or display any numeric health scores or score cards — omit the scores / health-overview section entirely, or state plainly that scores are pending. Never fabricate a number here.";
   }
   return [
     `- Security Posture:      ${s.security}/100`,
@@ -666,7 +668,7 @@ export async function generateAndDeliverDocument(
 
   const profileSample = Object.entries(mergedProfile).length > 0
     ? Object.entries(mergedProfile).map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
-    : "  No telemetry captured yet.";
+    : "  No configuration telemetry was captured for this client. Do NOT invent configuration values, counts, or settings — omit any statement that depends on telemetry rather than fabricating one.";
 
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
@@ -674,8 +676,8 @@ export async function generateAndDeliverDocument(
 
   if (category === "report") {
     const docLabel = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
-    const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
-    const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
+    const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent or infer findings, and do NOT render a findings table — if there are genuinely no findings, say so plainly and positively (e.g. \"No critical issues were identified in this assessment\").";
+    const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations were recorded. Do NOT fabricate recommendations — omit the recommendations section, or state that none are outstanding.";
 
     const rawTemplate = promptOverride ?? await getPrompt(`insights-report-${docType}`, REPORT_PROMPT_FALLBACK);
     prompt = substituteTokens(rawTemplate, {
@@ -694,7 +696,7 @@ export async function generateAndDeliverDocument(
     });
   } else if (docType === "task_execution_guide") {
     const taskList = formatTaskList(projectTasks);
-    const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+    const findingsInline = findings.slice(0, 10).join("; ") || "None recorded for this client — do NOT invent findings or recommendations; write only what the tenant facts and scope below genuinely support.";
     const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);
     const rawTemplate = promptOverride ?? await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_PROMPT);
     prompt = substituteTokens(rawTemplate, {
@@ -710,8 +712,8 @@ export async function generateAndDeliverDocument(
     });
   } else {
     const typeLabel = CONSULTING_TYPE_LABELS[docType] ?? docType;
-    const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
-    const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
+    const findingsInline = findings.slice(0, 10).join("; ") || "None recorded for this client — do NOT invent findings or recommendations; write only what the tenant facts and scope below genuinely support.";
+    const recommendationsInline = recommendations.slice(0, 8).join("; ") || "None recorded for this client — do NOT invent findings or recommendations; write only what the tenant facts and scope below genuinely support.";
     const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include relevant sections for this type of consulting deliverable";
 
     const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);

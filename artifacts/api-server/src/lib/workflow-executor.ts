@@ -98,6 +98,7 @@ import { handleM365HealthSample } from "./m365-health-sample.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
+import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
 import { persistSowPricing } from "./sow-pricing-persist.js";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
 
@@ -2585,17 +2586,36 @@ async function executeNode(
               .where(and(eq(gSessions.userId, gClientUserId), eq(gSessions.sessionType, "standard")))
               .limit(1);
 
-            // 3) Completed-scan signal — DB source of truth, scoped by customer/tenant.
+            // 3) Coverage-graded scan signal — DB source of truth, scoped by
+            //    customer/tenant. Replaces the old hard status='completed' gate:
+            //    the most-recent FINISHED run (completed OR partial) is graded on
+            //    its real evaluable-check coverage (checksOk + checksLicenseGap
+            //    over checksTotal) via evaluateDocGateCoverage(). A partial-status
+            //    run whose only failures are a couple of technical errors amid
+            //    mostly-real signal now proceeds; a near-dark scan does not.
             let gScanDone = false;
+            let gCoverage: CoverageDecision | null = null;
             const gScanScope = [];
             if (!isNaN(gCustomerId)) gScanScope.push(eq(gRuns.customerId, gCustomerId));
             if (gTenantId) gScanScope.push(eq(gRuns.tenantId, gTenantId));
             if (gScanScope.length > 0) {
-              const [gsr] = await db.select({ id: gRuns.id })
+              const [gsr] = await db.select({
+                  checksOk: gRuns.checksOk,
+                  checksLicenseGap: gRuns.checksLicenseGap,
+                  checksError: gRuns.checksError,
+                  checksTotal: gRuns.checksTotal,
+                })
                 .from(gRuns)
-                .where(and(eq(gRuns.status, "completed"), gScanScope.length === 1 ? gScanScope[0] : or(...gScanScope)))
+                .where(and(
+                  inArray(gRuns.status, ["completed", "partial"]),
+                  gScanScope.length === 1 ? gScanScope[0] : or(...gScanScope),
+                ))
+                .orderBy(desc(gRuns.createdAt))
                 .limit(1);
-              gScanDone = gsr != null;
+              if (gsr != null) {
+                gCoverage = evaluateDocGateCoverage(gsr);
+                gScanDone = gCoverage.proceed;
+              }
             }
 
             // 4) Idempotency — skip if this customer already has a delivered SOW
@@ -2628,10 +2648,16 @@ async function executeNode(
 
             const gIsAssessment = gAssess != null;
             const gLoggedIn = gLogin != null;
+            // A finished-but-insufficient scan is a distinct terminal state from a
+            // still-in-flight scan: we must NOT generate documents, but we also
+            // must report honestly WHY rather than silently waiting forever.
+            const gScanFinished = gCoverage != null;
+            const gScanInsufficient = gCoverage != null && !gCoverage.proceed;
             const gEligible = gIsAssessment && gLoggedIn && gScanDone && !gAlreadyDone;
             const gReason = !gIsAssessment ? "not an assessment-tier order"
               : !gLoggedIn ? "customer has not logged in yet — waiting for first login"
-              : !gScanDone ? "scan not completed yet — waiting for diagnostics.run_completed"
+              : !gScanFinished ? "scan not completed yet — waiting for diagnostics.run_completed"
+              : gScanInsufficient ? gCoverage!.reason
               : gAlreadyDone ? "documents already generated (or generating) — idempotent skip"
               : "eligible";
 
@@ -2645,8 +2671,18 @@ async function executeNode(
               tenantId: gTenantId,
               clientName: gUserRow?.company ?? gUserRow?.name ?? "Valued Client",
               clientEmail: gUserRow?.email ?? "",
+              // Coverage decision — null until a scan finishes. `docGenerationBlocked`
+              // is the honest "scan finished but too dark to generate" terminal
+              // signal (distinct from still-waiting), so downstream/UX can report
+              // it instead of hanging.
+              coverageBand: gCoverage?.band ?? null,
+              coveragePct: gCoverage?.coveragePct ?? null,
+              evaluableChecks: gCoverage?.evaluableChecks ?? null,
+              totalChecks: gCoverage?.totalChecks ?? null,
+              docGenerationBlocked: gIsAssessment && gScanInsufficient,
             };
-            log.info({ runId, clientUserId: gClientUserId, eligible: gEligible, reason: gReason },
+            log.info({ runId, clientUserId: gClientUserId, eligible: gEligible, reason: gReason,
+                       coverageBand: gCoverage?.band ?? null, coveragePct: gCoverage?.coveragePct ?? null },
               "assessment_doc_gate evaluated");
           }
         } else if (actionType === "sql_query") {

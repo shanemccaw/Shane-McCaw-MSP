@@ -219,6 +219,7 @@ INSTRUCTIONS:
 - Each major section as <h2> with a horizontal rule separator
 - In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style="margin:6px 0">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- EMPTY-DATA HONESTY — NEVER FABRICATE: The tenant telemetry / prior-documents blocks above may state that no data was collected. When they do, scope this SOW ONLY from the signal-gated engagement projects and the TENANT FACTS block (which uses "unknown" for genuinely-unavailable values). Do NOT invent specific findings, metrics, gaps, or configuration details to justify a phase — the phase list is already authoritative on its own. Keep narrative scope general where telemetry is silent rather than fabricating specifics.
 - Total length: 2000-3500 words`;
 
 export async function syncPresentationDocIds(
@@ -422,7 +423,7 @@ export async function generateConsolidatedSowDocument(
           .replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 600);
         return `[Document ${i + 1}] ${d.title} (${d.docType})\n${excerpt}`;
       }).join("\n\n---\n\n")
-    : "No prior documents found for this client — generate from scratch using best practices.";
+    : "No prior assessment documents exist for this client yet. Base this SOW ONLY on the signal-gated engagement projects and the TENANT FACTS below — do NOT invent findings, gaps, or remediation items that the projects and telemetry provided do not support. Where telemetry is silent, keep scope statements general rather than fabricating specific findings.";
 
   // ── Signal-based project filtering ──────────────────────────────────────────
   const mergedSowProfileForSignals: Record<string, unknown> = {};
@@ -871,7 +872,7 @@ export async function generateConsolidatedSowDocument(
 
   const tenantTelemetryBlock = telemetryLines.length > 0
     ? telemetryLines.join("\n")
-    : "No tenant telemetry collected yet — generate this SOW after running assessment scripts.";
+    : "No detailed tenant telemetry was collected for this client (normal for a Graph-only assessment). Scope and price this SOW from the signal-gated engagement projects and the TENANT FACTS block below (which shows 'unknown' where a value is genuinely unavailable). Do NOT invent specific findings, metrics, or configuration details that are not present in the data provided.";
 
   const sp = mergedSowProfile;
   const computedTier = computeTenantTier(sp.totalUserCount);

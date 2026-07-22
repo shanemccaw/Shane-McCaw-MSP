@@ -81,6 +81,7 @@ import { randomUUID } from "crypto";
 import { getPillarCoverage } from "../lib/pillar-coverage";
 import { latestCheckProps, extractGroupByCountCounts } from "../lib/dashboard-resolvers";
 import { computeSkuCostBreakdown } from "../lib/cost-engine";
+import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -331,6 +332,32 @@ router.get(
           workflowRunId: docWfRun?.id ?? null,
           workflowStatus: docWfRun?.status ?? null,
         },
+        // ── Document-generation coverage decision (honest, never a silent hang) ─
+        // Grades the last completed run's real evaluable-check coverage with the
+        // SAME helper the doc gate uses. `blocked` is the honest terminal signal
+        // that a scan finished but was too dark (below DOC_GATE_MIN_COVERAGE_PCT)
+        // to responsibly generate documents — so the wizard can say so plainly
+        // instead of waiting forever for documents that will never come. Null
+        // until a scan finishes; never `blocked` once real documents exist.
+        docGeneration: lastCompleted
+          ? (() => {
+              const cov = evaluateDocGateCoverage({
+                checksOk: lastCompleted.checksOk ?? 0,
+                checksLicenseGap: lastCompleted.checksLicenseGap ?? 0,
+                checksError: lastCompleted.checksError ?? 0,
+                checksTotal: lastCompleted.checksTotal ?? 0,
+              });
+              return {
+                blocked:
+                  !cov.proceed && readyCount === 0 && generatingCount === 0,
+                band: cov.band,
+                coveragePct: cov.coveragePct,
+                evaluableChecks: cov.evaluableChecks,
+                totalChecks: cov.totalChecks,
+                minRequiredPct: DOC_GATE_MIN_COVERAGE_PCT,
+              };
+            })()
+          : null,
         mfa: {
           enrolled: mfaEnrolled,
         },
