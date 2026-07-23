@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchServices, type PublicService, type PublicAssociatedDocument } from "./useServices";
+import { fetchServices, resolvePublicServicePriceCents, type PublicService, type PublicAssociatedDocument } from "./useServices";
 
 export type { PublicService };
 
@@ -70,6 +70,11 @@ export interface MspTier {
   fulfillmentTypeKey: string | null;
   serviceType: string | null;
   typeAttributes: Record<string, unknown> | null;
+  // Free platform tiers (e.g. the seeded $0 Starter) must skip Stripe entirely.
+  // Checkout's tierToService() only ever found `isFree` on AssessmentOffer, so
+  // before MSP tiers resolved at all this was unreachable; now that they do,
+  // a $0 tier would otherwise be sent to Stripe as a $0 subscription.
+  isFree: boolean;
 }
 
 export interface ConfigPackTier {
@@ -188,6 +193,10 @@ function toRetainerTier(s: PublicService): RetainerTier {
 }
 
 function toMspTier(s: PublicService): MspTier {
+  // Canonical free detection (catalog-pricing mirror) — never a raw
+  // parseFloat(price) read, which is NULL on modern cents-only tier rows.
+  // /msp/signup/tiers already serialises the resolved price into `price`.
+  const cents = resolvePublicServicePriceCents(s);
   return {
     id: s.id,
     slug: s.slug,
@@ -197,6 +206,7 @@ function toMspTier(s: PublicService): MspTier {
     price: s.price,
     basePrice: s.basePrice,
     maxPrice: s.maxPrice,
+    isFree: s.isFreeOffering === true || cents === 0,
     features: s.features,
     inclusions: s.inclusions,
     badge: s.badge,
@@ -235,6 +245,28 @@ function toConfigPackTier(s: PublicService): ConfigPackTier {
   };
 }
 
+// MSP platform tiers MUST come from the same endpoint the /msp page lists them
+// from, or the storefront and the checkout resolver drift apart.
+//
+// This previously called fetchServices("msp") → GET /api/services?type=msp,
+// which filters on `service_type = 'msp'`. That is not a real product-type key
+// (the canonical value is 'platform_subscription_tier' — see
+// PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS), and `service_type` is a free-text
+// column, so the filter matched ZERO rows silently instead of erroring.
+// mspTiers was therefore always [], and every MSP tier slug the /msp page
+// handed to /checkout/:slug fell through to "Service not found" — for free and
+// paid tiers alike.
+//
+// /api/services also filters `visibility = 'public'` while /msp/signup/tiers
+// does not, so even the corrected service_type could still list a tier that
+// checkout refused to resolve. Sharing one endpoint closes both gaps.
+async function fetchMspTiers(): Promise<PublicService[]> {
+  const res = await fetch("/api/msp/signup/tiers");
+  if (!res.ok) throw new Error("msp/signup/tiers fetch failed");
+  const data = (await res.json()) as { tiers?: PublicService[] } | PublicService[];
+  return Array.isArray(data) ? data : data.tiers ?? [];
+}
+
 export function useCatalog(): CatalogState {
   const [monitoringTiers, setMonitoringTiers] = useState<MonitoringTier[]>([]);
   const [retainerTiers, setRetainerTiers] = useState<RetainerTier[]>([]);
@@ -251,7 +283,7 @@ export function useCatalog(): CatalogState {
     Promise.all([
       fetchServices("monitoring_tier"),
       fetchServices("retainer"),
-      fetchServices("msp"),
+      fetchMspTiers(),
       fetchServices("config_pack"),
       fetch("/api/catalog/assessments").then((r) => {
         if (!r.ok) throw new Error("catalog/assessments fetch failed");
