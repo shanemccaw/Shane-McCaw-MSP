@@ -1331,19 +1331,35 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
           AND id NOT IN (SELECT COALESCE(group_id, -1) FROM signal_derivation_rules WHERE group_id IS NOT NULL)
       `);
 
-      // Insert new rules — groupId from JSON is ignored (flat import, no group re-creation)
+      // Insert new rules — groupId from JSON is ignored (flat import, no group re-creation).
+      // Intelligence fields present on each rule object are written through
+      // (previously they were silently dropped, resetting to column defaults);
+      // missing fields fall back to the inert defaults via parseIntelligenceFields.
       for (let i = 0; i < importedRules.length; i++) {
         const r = importedRules[i]!;
+        const { values: rIntel, error: intelError } = parseIntelligenceFields(r);
+        if (intelError) throw new Error(`rules[${i}]: ${intelError}`);
         await tx.execute(sql`
-          INSERT INTO signal_derivation_rules
-            (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+          INSERT INTO signal_derivation_rules (
+            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+            governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+            architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+            severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+            crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+          )
           VALUES (
             ${signalKey}, null,
             ${(r.ruleType ?? r.rule_type) as string},
             ${(r.sourceKey ?? r.source_key) as string},
             ${(r.compareValue ?? r.compare_value ?? null) as string | null},
             ${(r.description ?? null) as string | null},
-            ${((r.sortOrder ?? r.sort_order ?? i) as number)}
+            ${((r.sortOrder ?? r.sort_order ?? i) as number)},
+            ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
+            ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
+            ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
+            ${rIntel.severity}, ${rIntel.category}, ${rIntel.pillar}, ${rIntel.crmFitContribution}, ${rIntel.crmPainContribution},
+            ${rIntel.crmMaturityContribution}, ${rIntel.crmIntentContribution}, ${rIntel.crmUrgencyContribution}
           )
         `);
       }
@@ -1359,7 +1375,7 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
     res.json({ imported: importedRules.length, signalKey });
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules/:signalKey/import failed");
-    res.status(500).json({ error: "Import failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
 });
 
@@ -1416,18 +1432,45 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
         ON CONFLICT (key) DO NOTHING
       `);
 
+      // Write through any intelligence fields present on the bundle's group/rules
+      // (previously silently dropped, resetting to column defaults); missing
+      // fields fall back to the inert defaults via parseIntelligenceFields.
+      const { values: gIntel, error: gIntelError } = parseIntelligenceFields(grp);
+      if (gIntelError) throw new Error(`group: ${gIntelError}`);
       const grpRes = await tx.execute(sql`
-        INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
-        VALUES (${signalKey}, ${logic}, ${label}, ${groupSortOrder})
+        INSERT INTO signal_rule_groups (
+          signal_key, logic, label, sort_order,
+          priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+          governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+          architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+          severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+          crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+        )
+        VALUES (
+          ${signalKey}, ${logic}, ${label}, ${groupSortOrder},
+          ${gIntel.priority}, ${gIntel.weight}, ${gIntel.pricingImpact}, ${gIntel.priorityScoreContribution}, ${gIntel.pricingValueContribution},
+          ${gIntel.governanceImpact}, ${gIntel.securityImpact}, ${gIntel.complianceImpact}, ${gIntel.adoptionImpact}, ${gIntel.copilotImpact},
+          ${gIntel.architectureImpact}, ${gIntel.trendValue}, ${gIntel.trendDirection}, ${gIntel.decayRate}, ${gIntel.ttlDays}, ${gIntel.confidence},
+          ${gIntel.severity}, ${gIntel.category}, ${gIntel.pillar}, ${gIntel.crmFitContribution}, ${gIntel.crmPainContribution},
+          ${gIntel.crmMaturityContribution}, ${gIntel.crmIntentContribution}, ${gIntel.crmUrgencyContribution}
+        )
         RETURNING id
       `);
       newGroupId = ((grpRes.rows as Array<{ id: number }>)[0]!).id;
 
       for (let i = 0; i < rules.length; i++) {
         const r = rules[i]!;
+        const { values: rIntel, error: rIntelError } = parseIntelligenceFields(r);
+        if (rIntelError) throw new Error(`rules[${i}]: ${rIntelError}`);
         await tx.execute(sql`
-          INSERT INTO signal_derivation_rules
-            (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+          INSERT INTO signal_derivation_rules (
+            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+            governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+            architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+            severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+            crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+          )
           VALUES (
             ${signalKey},
             ${newGroupId},
@@ -1435,7 +1478,12 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
             ${(r.sourceKey ?? r.source_key) as string},
             ${(r.compareValue ?? r.compare_value ?? null) as string | null},
             ${(r.description ?? null) as string | null},
-            ${((r.sortOrder ?? r.sort_order ?? i) as number)}
+            ${((r.sortOrder ?? r.sort_order ?? i) as number)},
+            ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
+            ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
+            ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
+            ${rIntel.severity}, ${rIntel.category}, ${rIntel.pillar}, ${rIntel.crmFitContribution}, ${rIntel.crmPainContribution},
+            ${rIntel.crmMaturityContribution}, ${rIntel.crmIntentContribution}, ${rIntel.crmUrgencyContribution}
           )
         `);
         imported++;
@@ -1456,7 +1504,7 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
     res.json({ signalKey, groupId: newGroupId, imported });
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules/import-bundle failed");
-    res.status(500).json({ error: "Bundle import failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Bundle import failed" });
   }
 });
 
@@ -1531,9 +1579,28 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
       const groupIdMap = new Map<number, number>();
       if (Array.isArray(snapshot.groups)) {
         for (const g of snapshot.groups as Array<Record<string, unknown>>) {
+          // Snapshots are captured via getAllGroups() → INTELLIGENCE_FIELDS_SELECT, so
+          // every intelligence field is present in camelCase. Previously this INSERT
+          // wrote only the base columns, silently resetting all intelligence data to
+          // column defaults on every restore.
+          const { values: gIntel } = parseIntelligenceFields(g);
           const result = await tx.execute(sql`
-            INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order, msp_id)
-            VALUES (${g.signalKey as string}, ${(g.logic ?? "OR") as string}, ${g.label ?? null}, ${(g.sortOrder ?? 0) as number}, NULL)
+            INSERT INTO signal_rule_groups (
+              signal_key, logic, label, sort_order, msp_id,
+              priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+              governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+              architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+              severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+              crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+            )
+            VALUES (
+              ${g.signalKey as string}, ${(g.logic ?? "OR") as string}, ${g.label ?? null}, ${(g.sortOrder ?? 0) as number}, NULL,
+              ${gIntel.priority}, ${gIntel.weight}, ${gIntel.pricingImpact}, ${gIntel.priorityScoreContribution}, ${gIntel.pricingValueContribution},
+              ${gIntel.governanceImpact}, ${gIntel.securityImpact}, ${gIntel.complianceImpact}, ${gIntel.adoptionImpact}, ${gIntel.copilotImpact},
+              ${gIntel.architectureImpact}, ${gIntel.trendValue}, ${gIntel.trendDirection}, ${gIntel.decayRate}, ${gIntel.ttlDays}, ${gIntel.confidence},
+              ${gIntel.severity}, ${gIntel.category}, ${gIntel.pillar}, ${gIntel.crmFitContribution}, ${gIntel.crmPainContribution},
+              ${gIntel.crmMaturityContribution}, ${gIntel.crmIntentContribution}, ${gIntel.crmUrgencyContribution}
+            )
             RETURNING id
           `);
           const newId = (result.rows[0] as { id: number }).id;
@@ -1545,10 +1612,27 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
         for (const r of snapshot.rules as Array<Record<string, unknown>>) {
           const originalGroupId = r.groupId;
           const mappedGroupId = originalGroupId ? (groupIdMap.get(Number(originalGroupId)) ?? null) : null;
+          // Same truncation fix as groups above — snapshot rules carry the full
+          // camelCase intelligence field set from getAllRules().
+          const { values: rIntel } = parseIntelligenceFields(r);
           await tx.execute(sql`
-            INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id)
-            VALUES (${r.signalKey as string}, ${mappedGroupId}, ${r.ruleType as string}, ${r.sourceKey as string},
-                    ${r.compareValue ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number}, NULL)
+            INSERT INTO signal_derivation_rules (
+              signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id,
+              priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+              governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+              architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+              severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+              crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+            )
+            VALUES (
+              ${r.signalKey as string}, ${mappedGroupId}, ${r.ruleType as string}, ${r.sourceKey as string},
+              ${r.compareValue ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number}, NULL,
+              ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
+              ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
+              ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
+              ${rIntel.severity}, ${rIntel.category}, ${rIntel.pillar}, ${rIntel.crmFitContribution}, ${rIntel.crmPainContribution},
+              ${rIntel.crmMaturityContribution}, ${rIntel.crmIntentContribution}, ${rIntel.crmUrgencyContribution}
+            )
           `);
           ruleCount++;
         }
