@@ -86,7 +86,7 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
 
   const callbackUrl = getCallbackUrl(req);
   const tenantHint = tenantId?.trim() || "common";
-  const consentUrl = buildAdminConsentUrl(tenantHint, token, callbackUrl);
+  const consentUrl = buildAdminConsentUrl(tenantHint, token, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
 
   await createAuditLog({
     actorUserId: req.user!.id,
@@ -145,7 +145,7 @@ router.post("/portal/consent/reconsent-link", requireRole("Assessment"), async (
 
   const callbackUrl = getCallbackUrl(req);
   const tenantHint = customerRow?.tenantId?.trim() || "common";
-  const consentUrl = buildAdminConsentUrl(tenantHint, token, callbackUrl);
+  const consentUrl = buildAdminConsentUrl(tenantHint, token, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
 
   await createAuditLog({
     actorUserId: req.user!.id,

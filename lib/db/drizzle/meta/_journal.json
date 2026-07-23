@@ -1432,6 +1432,13 @@
       "when": 1784391454340,
       "tag": "0200_add_test_suites",
       "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1784391454341,
+      "tag": "0202_tenant_write_consent",
+      "breakpoints": true
     }
   ]
 }

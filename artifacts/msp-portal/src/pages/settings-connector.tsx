@@ -55,6 +55,7 @@ interface MailboxConnectorStatus {
   mtAppConfigured: boolean;
   connector: MailboxConnector | null;
   automatedCustomerEmailsEnabled: boolean;
+  writeBackEnabled: boolean;
 }
 
 const CONNECTOR_MODES = [
@@ -92,6 +93,7 @@ export default function SettingsConnectorPage() {
   const [connectingMailbox, setConnectingMailbox] = useState(false);
   const [disconnectingMailbox, setDisconnectingMailbox] = useState(false);
   const [savingAutomatedEmails, setSavingAutomatedEmails] = useState(false);
+  const [savingWriteBack, setSavingWriteBack] = useState(false);
 
   // Show toast for OAuth callback result in URL params
   useEffect(() => {
@@ -252,6 +254,27 @@ export default function SettingsConnectorPage() {
       }
     } finally {
       setSavingAutomatedEmails(false);
+    }
+  }
+
+  async function handleToggleWriteBack(enabled: boolean) {
+    setSavingWriteBack(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/settings/connector/mailbox/write-back", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { writeBackEnabled: boolean };
+        toast.success(data.writeBackEnabled ? "Write-back enabled" : "Write-back disabled");
+        setMailboxStatus((s) => s ? { ...s, writeBackEnabled: data.writeBackEnabled } : s);
+      } else {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Update failed");
+      }
+    } finally {
+      setSavingWriteBack(false);
     }
   }
 
@@ -524,6 +547,30 @@ export default function SettingsConnectorPage() {
                 <Switch checked={false} disabled />
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Write-Back */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Write-back operations</CardTitle>
+            <CardDescription className="text-xs">
+              Allow the platform to perform write-back (mutating) operations against your customers' tenants.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">
+                  {mailboxStatus?.writeBackEnabled ? "Enabled" : "Disabled"}
+                </p>
+              </div>
+              <Switch
+                checked={mailboxStatus?.writeBackEnabled ?? false}
+                disabled={savingWriteBack}
+                onCheckedChange={(checked) => void handleToggleWriteBack(checked)}
+              />
+            </div>
           </CardContent>
         </Card>
 

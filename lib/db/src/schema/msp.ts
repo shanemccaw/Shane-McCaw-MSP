@@ -54,6 +54,7 @@ export const mspsTable = pgTable("msps", {
   // Gates any platform-initiated email to a customer_user. Functionally inert
   // (no send occurs) unless the MSP also has an active mspMailboxConnectorsTable row.
   automatedCustomerEmailsEnabled: boolean("automated_customer_emails_enabled").notNull().default(true),
+  writeBackEnabled: boolean("write_back_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -655,6 +656,31 @@ export const tenantConsentTable = pgTable("tenant_consent", {
 
 export type TenantConsent = typeof tenantConsentTable.$inferSelect;
 export type InsertTenantConsent = typeof tenantConsentTable.$inferInsert;
+
+// ── Tenant Write Consent ───────────────────────────────────────────────────────
+// Separate consent record for write-back scopes, distinct from the read-only
+// tenantConsentTable above. One row per customer Azure AD tenant.
+
+export const tenantWriteConsentTable = pgTable("tenant_write_consent", {
+  tenantId: text("tenant_id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  consentStatus: text("consent_status", {
+    enum: ["pending", "granted", "declined", "revoked"],
+  }).notNull().default("pending"),
+  consentedAt: timestamp("consented_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  adminEmail: text("admin_email"),
+  adminDisplayName: text("admin_display_name"),
+  scopesGranted: jsonb("scopes_granted").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("tenant_write_consent_customer_id_idx").on(t.customerId),
+  index("tenant_write_consent_status_idx").on(t.consentStatus),
+]);
+
+export type TenantWriteConsent = typeof tenantWriteConsentTable.$inferSelect;
+export type InsertTenantWriteConsent = typeof tenantWriteConsentTable.$inferInsert;
 
 // ── Consent Invite Tokens ──────────────────────────────────────────────────────
 // Single-use expiring tokens that wrap the admin-consent redirect URL.

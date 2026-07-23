@@ -233,6 +233,7 @@ describe("graph.ts — multi-tenant helpers", () => {
         "contoso.onmicrosoft.com",
         "tok-abc",
         "https://app.example.com/api/consent/callback",
+        "mt-client-id",
       );
       expect(url).toContain("login.microsoftonline.com");
       expect(url).toContain("adminconsent");
@@ -242,12 +243,12 @@ describe("graph.ts — multi-tenant helpers", () => {
     });
 
     it("encodes the tenant hint", () => {
-      const url = buildAdminConsentUrl("contoso.onmicrosoft.com", "t", "https://x.com/cb");
+      const url = buildAdminConsentUrl("contoso.onmicrosoft.com", "t", "https://x.com/cb", "mt-client-id");
       expect(url).toContain(encodeURIComponent("contoso.onmicrosoft.com"));
     });
 
     it("uses 'common' as the tenant hint when passed", () => {
-      const url = buildAdminConsentUrl("common", "t", "https://x.com/cb");
+      const url = buildAdminConsentUrl("common", "t", "https://x.com/cb", "mt-client-id");
       expect(url).toContain("/common/adminconsent");
     });
   });

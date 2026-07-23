@@ -264,13 +264,14 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
  * @param tenantHint  - Azure AD tenant ID (GUID), domain, or "common"
  * @param state       - opaque state blob echoed back in the callback (use invite token)
  * @param redirectUri - absolute URL the OAuth callback lands on
+ * @param clientId    - Azure AD app registration client ID to request consent for
  */
 export function buildAdminConsentUrl(
   tenantHint: string,
   state: string,
   redirectUri: string,
+  clientId: string,
 ): string {
-  const clientId = process.env.MT_APP_CLIENT_ID ?? "";
   const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state });
   return `https://login.microsoftonline.com/${encodeURIComponent(tenantHint)}/adminconsent?${params.toString()}`;
 }

@@ -1262,7 +1262,10 @@ router.get("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (re
     .limit(1);
 
   const [msp] = await db
-    .select({ automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled })
+    .select({
+      automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled,
+      writeBackEnabled: mspsTable.writeBackEnabled,
+    })
     .from(mspsTable)
     .where(eq(mspsTable.id, mspId))
     .limit(1);
@@ -1272,6 +1275,7 @@ router.get("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (re
     mtAppConfigured: mtAppCredentialsPresent(),
     connector: row ?? null,
     automatedCustomerEmailsEnabled: msp?.automatedCustomerEmailsEnabled ?? true,
+    writeBackEnabled: msp?.writeBackEnabled ?? false,
   });
 });
 
@@ -1317,7 +1321,7 @@ router.post("/msp/settings/connector/mailbox/connect", requireRole("MSPAdmin"), 
   const callbackUrl = `${callbackBase}/api/msp/settings/connector/mailbox/callback`;
 
   // We use "common" as the tenant hint so the MSP's admin can use their own tenant login
-  const consentUrl = buildAdminConsentUrl("common", state, callbackUrl);
+  const consentUrl = buildAdminConsentUrl("common", state, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
 
   await writeAuditLog({
     req,
@@ -1477,6 +1481,42 @@ router.patch("/msp/settings/connector/mailbox/automated-emails", requireRole("MS
   });
 
   res.json({ automatedCustomerEmailsEnabled: updated.automatedCustomerEmailsEnabled });
+});
+
+// ── PATCH /api/msp/settings/connector/mailbox/write-back ───────────────────────
+// Toggles whether write-back (mutating) Graph operations are permitted for this
+// MSP's tenants. Schema/parameter only — no enforcement logic reads this flag yet.
+
+const writeBackSchema = z.object({ enabled: z.boolean() });
+
+router.patch("/msp/settings/connector/mailbox/write-back", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspIdStrict(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const parsed = writeBackSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  const [updated] = await db
+    .update(mspsTable)
+    .set({ writeBackEnabled: parsed.data.enabled, updatedAt: new Date() })
+    .where(eq(mspsTable.id, mspId))
+    .returning({ writeBackEnabled: mspsTable.writeBackEnabled });
+
+  if (!updated) { apiError(res, 404, "MSP not found"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "msp.write_back.update",
+    entityType: "msp",
+    entityId: String(mspId),
+    mspId,
+    metadata: { enabled: parsed.data.enabled },
+  });
+
+  res.json({ writeBackEnabled: updated.writeBackEnabled });
 });
 
 // ── Sessions ──────────────────────────────────────────────────────────────────
