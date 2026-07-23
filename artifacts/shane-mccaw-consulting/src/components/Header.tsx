@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Menu, X, ChevronDown, ArrowRight, ShieldCheck,
   Brain, Lock, Shield, Share2, Zap, Users, GitMerge, Activity,
-  Package, Compass, LogIn,
+  Package, Compass, LogIn, Info, MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatCTA } from "./ChatCTA";
@@ -179,8 +179,18 @@ export function Header() {
               </button>
               {openDropdown === "company" && (
                 <div className="absolute top-full right-0 w-52 mt-1 menu-panel rounded-2xl p-2 z-50">
-                  <Link href="/about" onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">About</Link>
-                  <ChatCTA onClick={() => setOpenDropdown(null)} className="block px-3 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-white/[0.06]" data-track="nav">Contact</ChatCTA>
+                  <Link href="/about" onClick={() => setOpenDropdown(null)} className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.06] transition-colors group" data-track="nav">
+                    <div className="p-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-accent-blue shrink-0">
+                      <Info className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">About</span>
+                  </Link>
+                  <ChatCTA onClick={() => setOpenDropdown(null)} className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-white/[0.06] transition-colors group" data-track="nav">
+                    <div className="p-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-accent-blue shrink-0">
+                      <MessageCircle className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors">Contact</span>
+                  </ChatCTA>
                 </div>
               )}
             </div>
