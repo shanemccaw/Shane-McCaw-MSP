@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { useVersionInfo } from "@/hooks/useVersionInfo";
+import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
@@ -1893,7 +1893,10 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               Powered by{" "}
               <span className="text-foreground font-medium">Shane McCaw Consulting</span>
             </span>
-            <span className="text-muted-foreground">v{versionInfo.display}</span>
+            <span className="text-muted-foreground">
+              v{versionInfo.display}
+              {formatRunningSince(versionInfo.startedAt) ? ` — ${formatRunningSince(versionInfo.startedAt)}` : ""}
+            </span>
           </div>
         </div>
       </footer>

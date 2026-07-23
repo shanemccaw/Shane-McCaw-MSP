@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { ShieldCheck } from "lucide-react";
 import { ChatCTA } from "./ChatCTA";
-import { useVersionInfo } from "@/hooks/useVersionInfo";
+import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 
 // Quiz is demoted to a recovery/SEO-feeder role (website-rebuild-reference-v2.md §1/§5) —
 // listed here in the footer, not the primary header nav.
@@ -89,7 +89,10 @@ export function Footer() {
         <div className="pt-8 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-text-secondary text-xs">
             &copy; {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.
-            <span className="block sm:inline sm:ml-2">v{versionInfo.display}</span>
+            <span className="block sm:inline sm:ml-2">
+              v{versionInfo.display}
+              {formatRunningSince(versionInfo.startedAt) ? ` — ${formatRunningSince(versionInfo.startedAt)}` : ""}
+            </span>
           </p>
           <Link href="/privacy" className="text-text-secondary text-xs block py-1.5 -my-1.5 sm:py-0 sm:my-0 hover:text-text-primary transition-colors">
             Privacy Policy

@@ -13,6 +13,10 @@ const MINOR = 0;
 
 const repoRoot = path.resolve(process.cwd(), "../..");
 
+// Captured once, at the moment this module first computes the version —
+// i.e. real server-process startup — not the commit's own git timestamp.
+const startedAt = new Date().toISOString();
+
 function computeVersionInfo() {
   try {
     const build = execFileSync("git", ["rev-list", "--count", "HEAD"], {
@@ -34,6 +38,7 @@ function computeVersionInfo() {
       hash,
       version,
       display: `${version} (${hash})`,
+      startedAt,
     };
   } catch {
     const version = `${MAJOR}.${MINOR}.0`;
@@ -44,6 +49,7 @@ function computeVersionInfo() {
       hash: "unknown",
       version,
       display: `${version} (unknown)`,
+      startedAt,
     };
   }
 }

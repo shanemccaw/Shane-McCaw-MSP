@@ -7,6 +7,7 @@ export interface VersionInfo {
   hash: string;
   version: string;
   display: string;
+  startedAt: string | null;
 }
 
 const FALLBACK_VERSION_INFO: VersionInfo = {
@@ -16,7 +17,21 @@ const FALLBACK_VERSION_INFO: VersionInfo = {
   hash: "unknown",
   version: "1.0.0",
   display: "1.0.0 (unknown)",
+  startedAt: null,
 };
+
+/** Formats the server's real startedAt timestamp as a short human-readable "running since" string. */
+export function formatRunningSince(startedAt: string | null): string | null {
+  if (!startedAt) return null;
+  const started = new Date(startedAt);
+  if (Number.isNaN(started.getTime())) return null;
+  return `running since ${started.toLocaleString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric",
+  })}`;
+}
 
 /** Fetches the real, live build version from the running api-server at mount. */
 export function useVersionInfo(): VersionInfo {

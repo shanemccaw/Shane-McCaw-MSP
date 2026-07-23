@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Bell, Volume2, VolumeX, SquareTerminal, Mail } from "lucide-react";
 import { Link } from "wouter";
-import { useVersionInfo } from "@/hooks/useVersionInfo";
+import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 
 // Persistent bottom status bar — the one place visual boldness is spent.
 // Segmented LED-style dots per live signal; cyan means "live right now".
@@ -152,7 +152,9 @@ export default function StatusBar({
 
       {/* Build version pill — internal/admin surface, deliberately noticeable */}
       <span
-        title={`commit ${versionInfo.hash}`}
+        title={`commit ${versionInfo.hash}${
+          formatRunningSince(versionInfo.startedAt) ? ` — ${formatRunningSince(versionInfo.startedAt)}` : ""
+        }`}
         className="flex items-center px-2 h-full shrink-0 text-[10px] font-bold uppercase tracking-wider text-primary-foreground"
       >
         <span className="bg-primary rounded-full px-2 py-0.5">v{versionInfo.display}</span>
