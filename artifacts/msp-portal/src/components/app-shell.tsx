@@ -1535,6 +1535,22 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const versionInfo = useVersionInfo();
   // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
   const [versionCopied, setVersionCopied] = useState(false);
+  // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
+  const [remoteCheck, setRemoteCheck] = useState<{ upToDate: boolean; latest: { build: number; version: string } } | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullResult, setPullResult] = useState<string | null>(null);
+
+  // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
+  useEffect(() => {
+    fetch("/api/version/remote-check")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.upToDate === "boolean") {
+          setRemoteCheck({ upToDate: data.upToDate, latest: data.latest });
+        }
+      })
+      .catch(() => { /* silently ignore — this is a non-critical dev convenience */ });
+  }, []);
 
   const mspRole = user?.mspRole;
   // Support chat is tenant-scoped and not available to PlatformAdmin (the
@@ -1614,6 +1630,27 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     (customerStatus === "inactive" || customerStatus === "disabled");
 
   const isAccountInactive = isMspInactive || isCustomerInactive;
+
+  // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
+  const handlePullVersion = async () => {
+    if (pulling) return;
+    setPulling(true);
+    setPullResult(null);
+    try {
+      const res = await fetch("/api/version/pull", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setPullResult("Pulled successfully — restart the server to apply changes.");
+        setRemoteCheck((prev) => (prev ? { ...prev, upToDate: true } : prev));
+      } else {
+        setPullResult(`Pull failed: ${data.error ?? "unknown error"}`);
+      }
+    } catch {
+      setPullResult("Pull failed: network error");
+    } finally {
+      setPulling(false);
+    }
+  };
 
   // Cmd+K global keyboard shortcut
   useEffect(() => {
@@ -1878,7 +1915,22 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               <span className="text-foreground font-medium">Shane McCaw Consulting</span>
             </span>
             <span className="text-muted-foreground flex items-center gap-1">
-              v{versionInfo.display}
+              {remoteCheck && !remoteCheck.upToDate ? (
+                // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
+                <button
+                  type="button"
+                  onClick={() => void handlePullVersion()}
+                  disabled={pulling}
+                  className="text-red-500 hover:text-red-400 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  title={pullResult ?? "Click to pull the latest version from origin/main"}
+                >
+                  v{versionInfo.display}
+                  <span className="text-green-500">→ v{remoteCheck.latest.version}</span>
+                  {pulling && <span className="text-muted-foreground">(pulling…)</span>}
+                </button>
+              ) : (
+                <>v{versionInfo.display}</>
+              )}
               {formatRunningSince(versionInfo.startedAt) ? ` — ${formatRunningSince(versionInfo.startedAt)}` : ""}
               {/* ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️ */}
               <button
@@ -1900,6 +1952,10 @@ export function AppShell({ children, title, actions }: AppShellProps) {
                 )}
               </button>
             </span>
+            {/* ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️ */}
+            {pullResult && remoteCheck?.upToDate && (
+              <span className="text-amber-500 text-[10px]">{pullResult}</span>
+            )}
           </div>
         </div>
       </footer>
