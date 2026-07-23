@@ -15,6 +15,8 @@ import {
   graphFetchPaginated,
   executeMonitorCheck,
   executeMonitoringPackage,
+  parseCsvReport,
+  isCsvReportResponse,
 } from "../monitor-executor";
 import type { SeverityRule, MappingRule } from "../monitor-executor";
 import { logger } from "../logger";
@@ -389,6 +391,23 @@ describe("applyMapping", () => {
 describe("graphFetchPaginated", () => {
   const mockFetch = graphFetchForTenant as Mock;
 
+  /**
+   * graphFetchPaginated reads the body via res.text() (so a CSV usage-report
+   * body is never handed to JSON.parse) and consults res.headers.get(). This
+   * helper builds a Response-shaped mock for a JSON payload; `contentType` and
+   * raw `body` overrides support the CSV/non-JSON cases below.
+   */
+  function mockRes(payload: unknown, opts: { contentType?: string; body?: string } = {}) {
+    const body = opts.body ?? JSON.stringify(payload);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => body,
+      json: async () => JSON.parse(body),
+      headers: { get: (h: string) => (h.toLowerCase() === "content-type" ? opts.contentType ?? "application/json" : null) },
+    };
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -398,13 +417,11 @@ describe("graphFetchPaginated", () => {
     mockFetch.mockImplementation(async () => {
       callCount++;
       const page = callCount;
-      return {
-        ok: true,
-        json: async () =>
-          page < 3
-            ? { value: [{ id: `item${page}` }], "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=next" }
-            : { value: [{ id: `item${page}` }] },
-      };
+      return mockRes(
+        page < 3
+          ? { value: [{ id: `item${page}` }], "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=next" }
+          : { value: [{ id: `item${page}` }] },
+      );
     });
 
     const result = await graphFetchPaginated("tenant1", "/users", "GET");
@@ -414,10 +431,7 @@ describe("graphFetchPaginated", () => {
   });
 
   it("handles single-page (no nextLink)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ value: [{ id: "u1" }, { id: "u2" }] }),
-    });
+    mockFetch.mockResolvedValue(mockRes({ value: [{ id: "u1" }, { id: "u2" }] }));
 
     const result = await graphFetchPaginated("tenant1", "/users", "GET");
     expect(result.items).toHaveLength(2);
@@ -425,10 +439,7 @@ describe("graphFetchPaginated", () => {
   });
 
   it("handles non-collection (single object) response", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "org1", displayName: "Contoso" }),
-    });
+    mockFetch.mockResolvedValue(mockRes({ id: "org1", displayName: "Contoso" }));
 
     const result = await graphFetchPaginated("tenant1", "/organization", "GET");
     expect(result.items).toHaveLength(1);
@@ -446,10 +457,9 @@ describe("graphFetchPaginated", () => {
   });
 
   it("respects NEXT_LINK_MAX_PAGES safety cap (50 pages)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ value: [{ id: "item" }], "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=next" }),
-    });
+    mockFetch.mockResolvedValue(
+      mockRes({ value: [{ id: "item" }], "@odata.nextLink": "https://graph.microsoft.com/v1.0/users?$skip=next" }),
+    );
 
     const result = await graphFetchPaginated("tenant1", "/users", "GET");
     expect(result.pageCount).toBe(50);
@@ -464,24 +474,41 @@ describe("graphFetchPaginated", () => {
   });
 
   it("resolves date placeholders in endpoints", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ value: [] }),
-    });
+    mockFetch.mockResolvedValue(mockRes({ value: [] }));
 
     await graphFetchPaginated("tenant1", "/users?$filter=createdDateTime ge {30DaysAgo}", "GET");
-    
+
     expect(mockFetch).toHaveBeenCalled();
     const calledUrl = mockFetch.mock.calls[0][1];
     // Check that the URL resolved {30DaysAgo} to a date string matching standard ISO pattern
     expect(calledUrl).toMatch(/\/users\?\$filter=createdDateTime ge \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
   });
 
+  // ── {id} identity-placeholder substitution ──────────────────────────────────
+  // Regression: endpoints are DATA in monitor_checks.endpoint, so
+  // /organization/{id}/branding reached Graph with literal braces and failed
+  // with "Invalid object identifier '{id}'" (platform:branding-config).
+
+  it("substitutes the {id} identity placeholder with the real tenant GUID", async () => {
+    mockFetch.mockResolvedValue(mockRes({ id: "b1", signInPageText: "hi" }));
+
+    await graphFetchPaginated("aad-tenant-guid", "/organization/{id}/branding", "GET");
+
+    const calledUrl = mockFetch.mock.calls[0][1];
+    expect(calledUrl).toBe("/organization/aad-tenant-guid/branding");
+    expect(calledUrl).not.toContain("{id}");
+  });
+
+  it("substitutes {tenantId} and {organizationId} aliases too", async () => {
+    mockFetch.mockResolvedValue(mockRes({ value: [] }));
+
+    await graphFetchPaginated("guid-2", "/organization/{organizationId}/branding?t={tenantId}", "GET");
+
+    expect(mockFetch.mock.calls[0][1]).toBe("/organization/guid-2/branding?t=guid-2");
+  });
+
   it("applies ConsistencyLevel: eventual header when URL has $filter= on GET", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ value: [] }),
-    });
+    mockFetch.mockResolvedValue(mockRes({ value: [] }));
 
     await graphFetchPaginated("tenant1", "/users?$filter=displayName eq 'Test'", "GET");
 
@@ -492,16 +519,101 @@ describe("graphFetchPaginated", () => {
   });
 
   it("does not apply ConsistencyLevel: eventual header when URL has no filter", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ value: [] }),
-    });
+    mockFetch.mockResolvedValue(mockRes({ value: [] }));
 
     await graphFetchPaginated("tenant1", "/users", "GET");
 
     expect(mockFetch).toHaveBeenCalled();
     const options = mockFetch.mock.calls[0][2];
     expect(options.headers?.ConsistencyLevel).toBeUndefined();
+  });
+
+  // ── Usage-report CSV bodies ─────────────────────────────────────────────────
+  // Regression for the real production failure across 5 adoption/OneDrive
+  // checks (126 error rows): /reports/getXxx(period='D7') answers 302 → a
+  // pre-authenticated CSV download. Node's fetch follows the redirect, so the
+  // executor saw a 200 whose body is CSV and called res.json() on it, producing
+  // `Unexpected token 'R', "Report Ref"... is not valid JSON`.
+
+  const REPORT_CSV = [
+    '"Report Refresh Date","User Principal Name","Send Count","Is Deleted"',
+    '"2026-07-23","alice@contoso.com","42","False"',
+    '"2026-07-23","bob@contoso.com","0","False"',
+  ].join("\r\n");
+
+  it("parses a usage-report CSV body into items instead of throwing on JSON.parse", async () => {
+    mockFetch.mockResolvedValue(mockRes(null, { body: REPORT_CSV, contentType: "application/octet-stream" }));
+
+    const result = await graphFetchPaginated("tenant1", "/reports/getEmailActivityUserDetail(period='D7')", "GET");
+
+    expect(result.items).toHaveLength(2);
+    expect(result.pageCount).toBe(1);
+    const first = result.items[0] as Record<string, string>;
+    expect(first["User Principal Name"]).toBe("alice@contoso.com");
+    expect(first["Send Count"]).toBe("42");
+  });
+
+  it("detects a report CSV by its signature even when content-type claims JSON", async () => {
+    // The followed redirect to reports.office.com does not always carry a CSV
+    // content-type, so detection must not depend on the header alone.
+    mockFetch.mockResolvedValue(mockRes(null, { body: REPORT_CSV, contentType: "application/json" }));
+
+    const result = await graphFetchPaginated("tenant1", "/reports/getOffice365ActiveUserDetail(period='D7')", "GET");
+    expect(result.items).toHaveLength(2);
+  });
+
+  it("does not misread ordinary Graph JSON as CSV", async () => {
+    mockFetch.mockResolvedValue(mockRes({ value: [{ id: "u1" }] }));
+
+    const result = await graphFetchPaginated("tenant1", "/users", "GET");
+    expect(result.items).toEqual([{ id: "u1" }]);
+  });
+
+  it("surfaces a readable error for a non-JSON, non-CSV 200 body (raw IIS HTML)", async () => {
+    mockFetch.mockResolvedValue(
+      mockRes(null, { body: "<html><head><title>Service Unavailable</title></head></html>", contentType: "text/html" }),
+    );
+
+    await expect(graphFetchPaginated("tenant1", "/deviceManagement/deviceConfigurations", "GET"))
+      .rejects.toThrow(/non-JSON body/);
+  });
+});
+
+// ── parseCsvReport / isCsvReportResponse ──────────────────────────────────────
+
+describe("parseCsvReport", () => {
+  it("handles quoted fields containing commas and doubled-quote escapes", () => {
+    const csv = [
+      '"Report Refresh Date","Display Name","Note"',
+      '"2026-07-23","Contoso, Inc.","He said ""hi"""',
+    ].join("\n");
+    const rows = parseCsvReport(csv);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!["Display Name"]).toBe("Contoso, Inc.");
+    expect(rows[0]!["Note"]).toBe('He said "hi"');
+  });
+
+  it("strips a UTF-8 BOM and ignores trailing blank lines", () => {
+    const rows = parseCsvReport('﻿"A","B"\r\n"1","2"\r\n\r\n');
+    expect(rows).toEqual([{ A: "1", B: "2" }]);
+  });
+
+  it("returns an empty array for an empty body", () => {
+    expect(parseCsvReport("")).toEqual([]);
+  });
+});
+
+describe("isCsvReportResponse", () => {
+  it("recognises the Report Refresh Date signature", () => {
+    expect(isCsvReportResponse(null, '"Report Refresh Date","X"\n"a","b"')).toBe(true);
+  });
+
+  it("recognises text/csv content-type", () => {
+    expect(isCsvReportResponse("text/csv; charset=utf-8", "anything")).toBe(true);
+  });
+
+  it("does not classify Graph JSON as CSV", () => {
+    expect(isCsvReportResponse("application/json", '{"value":[]}')).toBe(false);
   });
 });
 
@@ -543,7 +655,10 @@ describe("executeMonitorCheck", () => {
   it("returns ok status on successful check", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [{ id: "u1", mfaRegistered: true }] }),
       json: async () => ({ value: [{ id: "u1", mfaRegistered: true }] }),
+      headers: { get: () => "application/json" },
     });
 
     const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
@@ -601,7 +716,10 @@ describe("executeMonitorCheck", () => {
   it("applies severity classification to extracted data", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
       json: async () => ({ value: [] }),
+      headers: { get: () => "application/json" },
     });
 
     const result = await executeMonitorCheck({ check: baseCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });

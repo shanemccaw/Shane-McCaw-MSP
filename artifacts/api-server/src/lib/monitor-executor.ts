@@ -109,12 +109,90 @@ function resolvePathInData(p: string, data: Record<string, unknown>): unknown {
 // so this substitution was always structurally necessary.
 const DATE_PLACEHOLDER_RE = /\{(\d+)DaysAgo\}/g;
 
-export function resolveEndpointPlaceholders(endpoint: string): string {
-  return endpoint.replace(DATE_PLACEHOLDER_RE, (_match, days: string) => {
+/**
+ * Identity placeholders a check endpoint may contain. Unlike {NDaysAgo} these
+ * can't be resolved from the clock — they need the tenant GUID, which is only
+ * known at execution time. `{id}`/`{tenantId}`/`{organizationId}` all resolve to
+ * the same value: Graph's organization id IS the AAD tenant id.
+ *
+ * This exists because endpoints are authored as DATA in monitor_checks.endpoint,
+ * so an endpoint like `/organization/{id}/branding` (the documented v1.0 shape —
+ * the {id} segment is mandatory, there is no `me`/`default` alias) previously
+ * went to Graph with the literal braces still in it and came back
+ * "Invalid object identifier '{id}'".
+ */
+const IDENTITY_PLACEHOLDER_RE = /\{(id|tenantId|organizationId)\}/g;
+
+/**
+ * Resolves the placeholder tokens a monitor check's stored endpoint may contain.
+ *
+ * `tenantId` is optional so existing callers (and the date-only tests) are
+ * unaffected; when it's absent, identity placeholders are deliberately left
+ * as-is rather than substituted with an empty string, which would silently
+ * produce a wrong-but-plausible URL like `/organization//branding`.
+ */
+export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string): string {
+  const withDates = endpoint.replace(DATE_PLACEHOLDER_RE, (_match, days: string) => {
     const n = Number(days);
     const d = new Date(Date.now() - n * 24 * 60 * 60 * 1000);
     return d.toISOString();
   });
+  if (!tenantId) return withDates;
+  return withDates.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
+}
+
+// ── Microsoft 365 usage-report (CSV) responses ────────────────────────────────
+// The /reports/getXxx(period='D7') family does NOT return JSON. Per Microsoft's
+// documented contract it returns 302 → a short-lived, pre-authenticated
+// reports.office.com download URL whose body is CSV. Node's fetch follows that
+// redirect transparently, so the executor sees a 200 whose body is CSV text and
+// blindly called res.json() on it — producing the real observed failure
+// `Unexpected token 'R', "Report Ref"... is not valid JSON` ("Report Refresh
+// Date" is the first CSV column header). Parsing it as CSV is the fix; the rows
+// then flow through applyMapping exactly like Graph JSON items.
+
+/** True when a Graph response is a usage-report CSV rather than JSON. */
+export function isCsvReportResponse(contentType: string | null, body: string): boolean {
+  if (contentType && /text\/csv|application\/octet-stream/i.test(contentType)) return true;
+  // Content-Type isn't always trustworthy on the redirected download; fall back
+  // to the report's own signature first column.
+  return /^﻿?"?Report Refresh Date"?,/i.test(body.trimStart());
+}
+
+/**
+ * Minimal RFC-4180 CSV → array-of-objects parser (quoted fields, embedded commas,
+ * doubled "" escapes, CRLF). Deliberately local and dependency-free: the only
+ * CSV this platform ingests is Microsoft's own well-formed report output.
+ */
+export function parseCsvReport(csv: string): Record<string, string>[] {
+  const text = csv.replace(/^﻿/, "");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+      continue;
+    }
+    if (ch === '"') { inQuotes = true; continue; }
+    if (ch === ",") { row.push(field); field = ""; continue; }
+    if (ch === "\r") continue;
+    if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; continue; }
+    field += ch;
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+
+  const [header, ...dataRows] = rows;
+  if (!header) return [];
+  return dataRows
+    .filter(r => r.some(c => c.trim() !== ""))
+    .map(r => Object.fromEntries(header.map((h, i) => [h.trim(), (r[i] ?? "").trim()])));
 }
 
 function parseExprValue(s: string, data: Record<string, unknown>): unknown {
@@ -377,10 +455,11 @@ export async function graphFetchPaginated(
   let pageCount = 0;
   let rawResponse: unknown = null;
 
-  // Resolve relative-date placeholders (e.g. {30DaysAgo}) before building the
-  // URL — Graph's $filter requires a literal ISO 8601 date, not a relative
-  // expression.
-  const resolvedEndpoint = resolveEndpointPlaceholders(endpoint);
+  // Resolve placeholders before building the URL: relative dates (e.g.
+  // {30DaysAgo}) because Graph's $filter requires a literal ISO 8601 date rather
+  // than a relative expression, and identity tokens ({id}/{tenantId}) because
+  // paths like /organization/{id}/branding require the real tenant GUID inline.
+  const resolvedEndpoint = resolveEndpointPlaceholders(endpoint, tenantId);
 
   // Build full URL if endpoint is a path
   let url: string = resolvedEndpoint.startsWith("http")
@@ -418,12 +497,37 @@ export async function graphFetchPaginated(
       throw new Error(`Graph API error ${res.status}: ${text.slice(0, 400)}`);
     }
 
+    // Usage-report endpoints answer with CSV (via a followed 302), not JSON.
+    // Read the body as text once and decide, so a CSV body is never handed to
+    // JSON.parse. CSV reports are single-shot — they have no @odata.nextLink —
+    // so this terminates the pagination loop.
+    const bodyText = await res.text();
+    if (isCsvReportResponse(res.headers.get("content-type"), bodyText)) {
+      const csvRows = parseCsvReport(bodyText);
+      pageCount++;
+      if (rawResponse == null) {
+        rawResponse = { _format: "csv", _rowCount: csvRows.length, value: csvRows.slice(0, 5) };
+      }
+      items.push(...csvRows);
+      break;
+    }
+
     type GraphPage = {
       value?: unknown[];
       "@odata.nextLink"?: string;
       [k: string]: unknown;
     };
-    const page = await res.json() as GraphPage;
+    let page: GraphPage;
+    try {
+      page = JSON.parse(bodyText) as GraphPage;
+    } catch {
+      // A non-JSON, non-CSV 200 body is a real anomaly worth surfacing verbatim
+      // rather than crashing with a bare JSON.parse SyntaxError — e.g. the raw
+      // IIS "Service Unavailable" HTML some Intune endpoints return.
+      throw new Error(
+        `Graph API returned a non-JSON body (content-type: ${res.headers.get("content-type") ?? "none"}): ${bodyText.slice(0, 200)}`,
+      );
+    }
 
     if (pageCount === 0) rawResponse = page;
     pageCount++;
