@@ -40,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationBell } from "@/components/notification-bell";
+import { ScanStatusIndicator } from "@/components/scan-status-indicator";
 import {
   Activity,
   AlertCircle,
@@ -1329,6 +1330,13 @@ function CustomerTopBar({
         </div>
       </Link>
 
+      {/* Real, always-visible monitoring scan status — mobile only (desktop
+          shows it in the sidebar brand block above the search trigger, per the
+          established branding-lives-in-the-sidebar-on-desktop convention). */}
+      <div className="md:hidden min-w-0 w-24 sm:w-32">
+        <ScanStatusIndicator />
+      </div>
+
       {/* Page title — desktop only, matching the admin top bar. */}
       {title && (
         <h1 className="hidden md:block text-sm font-semibold text-foreground truncate">
@@ -1693,6 +1701,15 @@ export function AppShell({ children, title, actions }: AppShellProps) {
           </>
         )}
       </div>
+
+      {/* Real, always-visible monitoring scan status — CustomerUser only (scans
+          are keyed by their customerId claim). Fixed-height container inside
+          ScanStatusIndicator itself so its 3 states never reflow the sidebar. */}
+      {isCustomerUser && (
+        <div className="px-3 pt-2">
+          <ScanStatusIndicator collapsed={collapsed} />
+        </div>
+      )}
 
       {/* Tenant/customer switcher — admin roles only. For CustomerUser there is
           nothing to switch and the box would just repeat the brand header. */}

@@ -438,6 +438,73 @@ router.get(
   },
 );
 
+// ── Shell-wide scan status (lightweight, poll every 30-60s from app-shell.tsx) ─
+//
+//   GET /api/portal/scan-status
+//
+// Deliberately minimal sibling of /portal/assessment/status above — that route
+// pulls the full assessment-wizard payload (documents, radar, cost engine,
+// copilot readiness, etc.) and is too heavy to poll from every page in the
+// shell. This route reads only the customer's latest msp_diagnostic_runs row,
+// so the persistent shell indicator (last-scan-time / no-scan pill / live
+// progress bar) can poll cheaply without re-deriving the whole wizard state.
+router.get(
+  "/portal/scan-status",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const [latestRun] = await db
+        .select()
+        .from(mspDiagnosticRunsTable)
+        .where(eq(mspDiagnosticRunsTable.customerId, customerId))
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      const [lastCompleted] = await db
+        .select({
+          completedAt: mspDiagnosticRunsTable.completedAt,
+          createdAt: mspDiagnosticRunsTable.createdAt,
+        })
+        .from(mspDiagnosticRunsTable)
+        .where(
+          and(
+            eq(mspDiagnosticRunsTable.customerId, customerId),
+            inArray(mspDiagnosticRunsTable.status, [...COMPLETED_RUN_STATUSES]),
+          ),
+        )
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      const active =
+        latestRun != null && (ACTIVE_RUN_STATUSES as readonly string[]).includes(latestRun.status);
+
+      res.json({
+        everScanned: latestRun != null,
+        lastScanAt: lastCompleted ? (lastCompleted.completedAt ?? lastCompleted.createdAt) : null,
+        active: active
+          ? {
+              status: latestRun.status,
+              checksOk: latestRun.checksOk ?? 0,
+              checksError: latestRun.checksError ?? 0,
+              checksLicenseGap: latestRun.checksLicenseGap ?? 0,
+              checksTotal: latestRun.checksTotal ?? 0,
+              startedAt: latestRun.startedAt ?? latestRun.createdAt,
+            }
+          : null,
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/scan-status failed");
+      res.status(500).json({ error: "Failed to load scan status" });
+    }
+  },
+);
+
 // ── Assessment document-generation live progress SSE ───────────────────────────
 //
 //   GET /api/portal/assessment/doc-workflow/:runId/sse?jwt=<accessToken>
