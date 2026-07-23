@@ -30,6 +30,7 @@ interface ScanStatusPayload {
     checksTotal: number;
     startedAt: string;
   } | null;
+  isTestbed: boolean;
 }
 
 const POLL_INTERVAL_MS = 45_000;

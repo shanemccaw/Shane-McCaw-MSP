@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { CommandPalette } from "@/components/command-palette";
 import { NotificationBell } from "@/components/notification-bell";
 import { ScanStatusIndicator } from "@/components/scan-status-indicator";
+import { ScanTriggerButton } from "@/components/scan-trigger-button";
 import {
   Activity,
   AlertCircle,
@@ -69,7 +70,6 @@ import {
   Gift,
   GitBranch,
   History,
-  Home,
   KeyRound,
   LayoutDashboard,
   ListTodo,
@@ -482,18 +482,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "My Portal",
     items: [
-      {
-        icon: Home,
-        label: "Home",
-        href: "/customer-home",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: LayoutDashboard,
-        label: "Dashboard",
-        href: "/customer-dashboard",
-        roles: ["CustomerUser"],
-      },
       // M365 Health Suite — additive-for-now per Shane; reorganization into
       // its own nav section is a deliberate, separate later step.
       {
@@ -1731,6 +1719,15 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             fetchWithAuth={fetchWithAuth}
             mspRole={mspRole}
           />
+        </div>
+      )}
+
+      {/* ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
+          Testbed-only manual scan trigger, positioned directly above the
+          search box per the same real-estate convention as ScanStatusIndicator. */}
+      {isCustomerUser && !collapsed && (
+        <div className="px-3 pt-1 pb-1">
+          <ScanTriggerButton />
         </div>
       )}
 

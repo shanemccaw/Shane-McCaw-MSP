@@ -233,7 +233,7 @@ function SlugInnerSwitch() {
     : user?.mspRole === "Assessment"
       ? "/assessment"
       : user?.mspRole === "CustomerUser"
-        ? "/customer-dashboard"
+        ? "/m365-health"
         : "/dashboard";
 
   return (
@@ -688,7 +688,7 @@ function FlatLoggedInRedirect() {
         user?.mspRole === "Assessment"
           ? "assessment"
           : user?.mspRole === "CustomerUser"
-            ? "customer-dashboard"
+            ? "m365-health"
             : "dashboard";
       navigate(`/${resolvedSlug}/${landing}`, { replace: true });
       return;
