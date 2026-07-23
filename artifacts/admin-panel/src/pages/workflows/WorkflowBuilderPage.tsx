@@ -2662,6 +2662,9 @@ function NodeConfigPanel({
   const [gsSearch, setGsSearch] = useState("");
   const [gsLoading, setGsLoading] = useState(false);
 
+  // ── generate_document: live document type list (replaces stale hardcoded hint strings) ──
+  const [docTypesList, setDocTypesList] = useState<{ key: string; label: string; category: "report" | "consulting" }[]>([]);
+
   // ── Runbook name dropdown (update_m365_profile + execute_runbook) ─────────
   const [runbookNames, setRunbookNames] = useState<string[]>([]);
   const [runbooksLoading, setRunbooksLoading] = useState(false);
@@ -2706,6 +2709,15 @@ function NodeConfigPanel({
         .finally(() => setGsLoading(false));
     }
   }, [nodeType, gsSourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchWithAuth("/api/admin/document-types")
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { key: string; label: string; category: "report" | "consulting"; isActive: boolean }[]) => {
+        setDocTypesList(Array.isArray(data) ? data.filter(dt => dt.isActive).map(dt => ({ key: dt.key, label: dt.label, category: dt.category })) : []);
+      })
+      .catch(() => setDocTypesList([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <FocusTrackerContext.Provider value={focusTrackerCtxRef.current}>
@@ -3089,10 +3101,13 @@ function NodeConfigPanel({
                 <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
                   <p className="text-[10px] text-muted-foreground/60 font-medium">Valid values for <span className="text-muted-foreground">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
                   <p className="text-[10px] font-mono text-muted-foreground/60 leading-relaxed">
-                    {(((node.data.docCategory as string) ?? "report") === "consulting"
-                      ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
-                      : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
-                    )}
+                    {docTypesList.length > 0
+                      ? docTypesList
+                          .filter(dt => dt.category === (((node.data.docCategory as string) ?? "report") === "consulting" ? "consulting" : "report"))
+                          .map(dt => dt.key)
+                          .join(" · ") || "No active document types in this category yet — create one in Insights → Document Types."
+                      : "Loading…"
+                    }
                   </p>
                   <p className="text-[10px] text-muted-foreground/60">Accepts a <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> — e.g. <span className="font-mono text-muted-foreground">{"{{item.docType}}"}</span> from a ForEach loop.</p>
                 </div>
@@ -3515,10 +3530,13 @@ function NodeConfigPanel({
             <div className="rounded-lg bg-background border border-border p-2.5 space-y-1">
               <p className="text-[10px] text-muted-foreground/60 font-medium">Valid values for <span className="text-muted-foreground">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
               <p className="text-[10px] font-mono text-muted-foreground/60 leading-relaxed">
-                {(((node.data.docCategory as string) ?? "report") === "consulting"
-                  ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
-                  : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
-                )}
+                {docTypesList.length > 0
+                  ? docTypesList
+                      .filter(dt => dt.category === (((node.data.docCategory as string) ?? "report") === "consulting" ? "consulting" : "report"))
+                      .map(dt => dt.key)
+                      .join(" · ") || "No active document types in this category yet — create one in Insights → Document Types."
+                  : "Loading…"
+                }
               </p>
               <p className="text-[10px] text-muted-foreground/60">Accepts a <span className="font-mono text-muted-foreground">{"{{variable}}"}</span> — e.g. <span className="font-mono text-muted-foreground">{"{{item.docType}}"}</span> from a ForEach loop.</p>
             </div>
