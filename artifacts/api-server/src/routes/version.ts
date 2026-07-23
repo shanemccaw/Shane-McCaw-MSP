@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { requireAdmin } from "../middlewares/requireAuth";
 
 // Internal build/version stamp — distinct from the external partner
 // health check at /api/msp/v1/health, which stays unmodified.
@@ -60,6 +61,41 @@ const router: IRouter = Router();
 
 router.get("/version", (_req, res) => {
   res.json(versionInfo);
+});
+
+router.get("/version/remote-check", (_req, res) => {
+  try {
+    execFileSync("git", ["fetch", "origin", "main"], { cwd: repoRoot, encoding: "utf8", timeout: 15000 });
+    const latestBuild = execFileSync("git", ["rev-list", "--count", "origin/main"], { cwd: repoRoot, encoding: "utf8" }).trim();
+    const latestHash = execFileSync("git", ["rev-parse", "--short", "origin/main"], { cwd: repoRoot, encoding: "utf8" }).trim();
+    const current = computeVersionInfo();
+    res.json({
+      current,
+      latest: { build: Number(latestBuild), hash: latestHash, version: `${MAJOR}.${MINOR}.${latestBuild}` },
+      upToDate: current.build >= Number(latestBuild),
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Could not check remote version", detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+router.post("/version/pull", requireAdmin, (_req, res) => {
+  try {
+    const pullOutput = execFileSync("git", ["pull", "origin", "main"], { cwd: repoRoot, encoding: "utf8", timeout: 30000 });
+    const updated = computeVersionInfo();
+    res.json({
+      success: true,
+      output: pullOutput.trim(),
+      version: updated,
+      note: "Files updated on disk. The running server process still has the old code loaded in memory — a restart is required for changes to actually take effect.",
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "git pull failed — check for local changes or merge conflicts on the server",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
 });
 
 export default router;
