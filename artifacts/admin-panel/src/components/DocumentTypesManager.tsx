@@ -6,9 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { FileCog, Plus, Pencil, Loader2, X } from "lucide-react";
 
-// Section builder, scoping builder (includedProfileKeyPatterns /
-// includedSignalCategories), and AI-prompt-link editing are explicitly OUT of
-// scope here — this is list + basic create/edit only. Later stages add those.
+// Section builder and scoping builder (includedProfileKeyPatterns /
+// includedSignalCategories) are covered here. AI-prompt-link editing is
+// explicitly OUT of scope here — this is list + basic create/edit only.
+// Later stages add that.
 
 interface DocumentType {
   id: number;
@@ -20,6 +21,8 @@ interface DocumentType {
   sortOrder: number;
   isActive: boolean;
   sections: { id: string; heading: string; guidance: string }[];
+  includedProfileKeyPatterns: string[];
+  includedSignalCategories: string[];
 }
 
 // No dedicated lightweight services-lookup endpoint exists yet — reusing the
@@ -49,6 +52,8 @@ interface TypeForm {
   sortOrder: string;
   isActive: boolean;
   sectionsRaw: string;
+  profilePatternsRaw: string;
+  signalCategoriesRaw: string;
 }
 
 const emptyTypeForm = (): TypeForm => ({
@@ -60,6 +65,8 @@ const emptyTypeForm = (): TypeForm => ({
   sortOrder: "0",
   isActive: true,
   sectionsRaw: "[]",
+  profilePatternsRaw: "[]",
+  signalCategoriesRaw: "[]",
 });
 
 async function readErr(res: Response, fallback: string): Promise<string> {
@@ -122,6 +129,8 @@ export default function DocumentTypesManager() {
       sortOrder: String(type.sortOrder),
       isActive: type.isActive,
       sectionsRaw: JSON.stringify(type.sections ?? [], null, 2),
+      profilePatternsRaw: JSON.stringify(type.includedProfileKeyPatterns ?? [], null, 2),
+      signalCategoriesRaw: JSON.stringify(type.includedSignalCategories ?? [], null, 2),
     });
     setFormError(null);
     setModalOpen(true);
@@ -150,6 +159,28 @@ export default function DocumentTypesManager() {
       setFormError(err instanceof Error ? `Sections JSON error: ${err.message}` : "Invalid sections JSON");
       return;
     }
+    let parsedProfilePatterns: string[];
+    try {
+      const parsed = JSON.parse(form.profilePatternsRaw);
+      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
+        throw new Error("Must be a JSON array of strings");
+      }
+      parsedProfilePatterns = parsed as string[];
+    } catch (err) {
+      setFormError(err instanceof Error ? `Profile Key Patterns JSON error: ${err.message}` : "Invalid profile key patterns JSON");
+      return;
+    }
+    let parsedSignalCategories: string[];
+    try {
+      const parsed = JSON.parse(form.signalCategoriesRaw);
+      if (!Array.isArray(parsed) || !parsed.every(p => typeof p === "string")) {
+        throw new Error("Must be a JSON array of strings");
+      }
+      parsedSignalCategories = parsed as string[];
+    } catch (err) {
+      setFormError(err instanceof Error ? `Signal Categories JSON error: ${err.message}` : "Invalid signal categories JSON");
+      return;
+    }
     setSaving(true);
     setFormError(null);
     try {
@@ -160,6 +191,8 @@ export default function DocumentTypesManager() {
         sortOrder: Number(form.sortOrder) || 0,
         isActive: form.isActive,
         sections: parsedSections,
+        includedProfileKeyPatterns: parsedProfilePatterns,
+        includedSignalCategories: parsedSignalCategories,
       };
 
       const res = editingType
@@ -347,6 +380,40 @@ export default function DocumentTypesManager() {
                 <CodeMirror
                   value={form.sectionsRaw}
                   onChange={value => setForm(f => ({ ...f, sectionsRaw: value }))}
+                  extensions={[json()]}
+                  theme={oneDark}
+                  height="100%"
+                  style={{ height: "100%", fontSize: "12px" }}
+                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Profile Key Patterns <span className="font-normal text-muted-foreground/60">(JSON array of strings, wildcard suffix supported, e.g. "copilot*")</span>
+              </label>
+              <div className="border border-border rounded-md overflow-hidden" style={{ height: "150px" }}>
+                <CodeMirror
+                  value={form.profilePatternsRaw}
+                  onChange={value => setForm(f => ({ ...f, profilePatternsRaw: value }))}
+                  extensions={[json()]}
+                  theme={oneDark}
+                  height="100%"
+                  style={{ height: "100%", fontSize: "12px" }}
+                  basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Signal Categories <span className="font-normal text-muted-foreground/60">(JSON array of signal key prefixes, e.g. "security:")</span>
+              </label>
+              <div className="border border-border rounded-md overflow-hidden" style={{ height: "150px" }}>
+                <CodeMirror
+                  value={form.signalCategoriesRaw}
+                  onChange={value => setForm(f => ({ ...f, signalCategoriesRaw: value }))}
                   extensions={[json()]}
                   theme={oneDark}
                   height="100%"
