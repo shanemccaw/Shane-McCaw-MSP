@@ -60,6 +60,7 @@ import {
   ClipboardCheck,
   CloudCog,
   Cog,
+  Copy,
   CreditCard,
   Download,
   FileBarChart2,
@@ -589,21 +590,18 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
-        icon: Users,
-        label: "Team Members",
-        href: "/customer-team",
-        roles: ["CustomerUser"],
-      },
-      {
         icon: CreditCard,
         label: "Billing",
         href: "/customer-billing",
         roles: ["CustomerUser"],
       },
       {
-        icon: Lock,
-        label: "Privacy & Data",
-        href: "/customer-privacy",
+        // Consolidated settings hub — absorbs the former Team Members and
+        // Privacy & Data sidebar entries (now tabs inside /customer-settings,
+        // alongside Password & MFA, Notifications, and Cancel Services).
+        icon: Cog,
+        label: "Settings",
+        href: "/customer-settings",
         roles: ["CustomerUser"],
       },
     ],
@@ -1421,10 +1419,6 @@ function CustomerTopBar({
               <Store className="size-4 text-muted-foreground" />
               <span>Marketplace</span>
             </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-team")}>
-              <Users className="size-4 text-muted-foreground" />
-              <span>Manage Team</span>
-            </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-documents")}>
               <FileText className="size-4 text-muted-foreground" />
               <span>Documents</span>
@@ -1436,25 +1430,13 @@ function CustomerTopBar({
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings")}>
+            {/* Single consolidated Settings hub — replaces the former Manage
+                Team / Password & MFA / Notification Preferences / Download My
+                Data / Privacy & Data entries. All five live as tabs inside
+                /customer-settings now. */}
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-settings")}>
               <Cog className="size-4 text-muted-foreground" />
               <span>Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/settings/security")}>
-              <KeyRound className="size-4 text-muted-foreground" />
-              <span>Password &amp; MFA</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-notifications")}>
-              <Bell className="size-4 text-muted-foreground" />
-              <span>Notification Preferences</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/coming-soon/download-data")}>
-              <Download className="size-4 text-muted-foreground" />
-              <span>Download My Data</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/customer-privacy")}>
-              <Lock className="size-4 text-muted-foreground" />
-              <span>Privacy &amp; Data</span>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
@@ -1551,6 +1533,8 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
   const versionInfo = useVersionInfo();
+  // ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️
+  const [versionCopied, setVersionCopied] = useState(false);
 
   const mspRole = user?.mspRole;
   // Support chat is tenant-scoped and not available to PlatformAdmin (the
@@ -1893,9 +1877,28 @@ export function AppShell({ children, title, actions }: AppShellProps) {
               Powered by{" "}
               <span className="text-foreground font-medium">Shane McCaw Consulting</span>
             </span>
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground flex items-center gap-1">
               v{versionInfo.display}
               {formatRunningSince(versionInfo.startedAt) ? ` — ${formatRunningSince(versionInfo.startedAt)}` : ""}
+              {/* ⚠️ TEMPORARY — REMOVE BEFORE PRODUCTION ⚠️ */}
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(`v${versionInfo.display}`).then(() => {
+                    setVersionCopied(true);
+                    setTimeout(() => setVersionCopied(false), 2000);
+                  });
+                }}
+                className="text-muted-foreground/60 hover:text-foreground transition-colors"
+                title="Copy version string"
+                aria-label="Copy version string"
+              >
+                {versionCopied ? (
+                  <Check className="size-3" />
+                ) : (
+                  <Copy className="size-3" />
+                )}
+              </button>
             </span>
           </div>
         </div>
