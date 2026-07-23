@@ -11,6 +11,7 @@ See [CLAUDE.md](CLAUDE.md) for the exact instructions.
 
 | Date | Status | Step | Commit |
 |------|--------|------|--------|
+| 2026-07-23 | ⏳ IN FLIGHT | persistent reconsent nag banner | |
 | 2026-07-23 | ⏳ IN FLIGHT | Shell Top Bar Status Indicators + Delete Executive Mode + Move M365 Health Circle | |
 | 2026-07-23 | ✅ DONE | document types AI prompt link editing | 420c2acf |
 | 2026-07-23 | ✅ DONE | extract PromptEditDialog into shared component | 3a3bbd7a |
