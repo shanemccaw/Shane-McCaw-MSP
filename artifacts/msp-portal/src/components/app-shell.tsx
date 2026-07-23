@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Link, useLocation } from "wouter";
 import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 import { useAuth, type MspRole } from "@/lib/auth-context";
+import { useNeedsReconsent, useStartReconsent } from "@/components/reconsent-modal";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
 import { useMarketplace } from "@/lib/marketplace-context";
@@ -43,6 +44,13 @@ import { CommandPalette } from "@/components/command-palette";
 import { NotificationBell } from "@/components/notification-bell";
 import { ScanStatusIndicator } from "@/components/scan-status-indicator";
 import { ScanTriggerButton } from "@/components/scan-trigger-button";
+import {
+  ProjectScopeIndicator,
+  ServiceStatusIndicator,
+  ComplianceCountSquare,
+  OpenRequestsCountSquare,
+  SidebarHealthCircle,
+} from "@/components/shell-status-widgets";
 import {
   Activity,
   AlertCircle,
@@ -532,12 +540,6 @@ const NAV_SECTIONS: NavSection[] = [
         icon: KeyRound,
         label: "Licensing",
         href: "/licensing",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: Sparkles,
-        label: "Executive Mode",
-        href: "/executive-mode",
         roles: ["CustomerUser"],
       },
       {
@@ -1054,6 +1056,27 @@ function ImpersonationBanner({ email }: { email: string }) {
     </div>
   );
 }
+function ReconsentBanner({ offsetTop }: { offsetTop: boolean }) {
+  const { start, starting, error } = useStartReconsent();
+  return (
+    <div className={`fixed inset-x-0 z-[9998] bg-red-600 text-white flex items-center justify-between px-4 py-2 shadow-lg ${offsetTop ? "top-[42px]" : "top-0"}`}>
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+        </svg>
+        Microsoft 365 connection needs to be re-authorized
+        {error && <span className="text-red-200 font-normal">— {error}</span>}
+      </div>
+      <button
+        onClick={() => void start()}
+        disabled={starting}
+        className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 disabled:opacity-60"
+      >
+        {starting ? "Starting…" : "Re-authorize access"}
+      </button>
+    </div>
+  );
+}
 
 
 // ── Customer Documents slide-in panel ─────────────────────────────────────────
@@ -1325,6 +1348,17 @@ function CustomerTopBar({
       )}
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        {/* Real status indicators — Project Scope (Scope Creep Engine) and
+            Service Status (SLA Engine), plus Compliance/Open Requests count
+            squares. All sourced from ShellStatusProvider (real, already-
+            computed engine outputs — see shell-status-context.tsx); hidden
+            below lg/xl to avoid crowding the bar on smaller screens, same as
+            other progressively-hidden elements in this header. */}
+        <ProjectScopeIndicator />
+        <ServiceStatusIndicator />
+        <ComplianceCountSquare />
+        <OpenRequestsCountSquare />
+
         {/* Search — ⌘K trigger. Visual/keyboard element only; no search backend
             yet (see CommandPalette wiring in AppShell). */}
         <button
@@ -1505,6 +1539,7 @@ interface MspSuspensionState {
 
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
+  const needsReconsent = useNeedsReconsent();
   const { supportOpen, setSupportOpen } = useSupportChat();
   const { open: openMarketplace } = useMarketplace();
   const [, navigate] = useLocation();
@@ -1747,6 +1782,17 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         </div>
       )}
 
+      {/* Real M365 Overall Health circle — moved here from /m365-health's hero
+          so it's genuinely present shell-wide, positioned directly above the
+          search box per the same real-estate convention as ScanStatusIndicator
+          and ScanTriggerButton above. CustomerUser only (health score is
+          keyed by customerId, same as the scan status). */}
+      {isCustomerUser && (
+        <div className="px-1.5 pt-1 pb-1">
+          <SidebarHealthCircle collapsed={collapsed} />
+        </div>
+      )}
+
       {/* Search trigger */}
       {!collapsed && (
         <div className="px-3 pt-2 pb-1">
@@ -1965,7 +2011,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     return (
       <>
         {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
-        <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+        {needsReconsent && <ReconsentBanner offsetTop={!!user?.impersonatedBy} />}
+        <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${
+          (user?.impersonatedBy ? 1 : 0) + (needsReconsent ? 1 : 0) === 2 ? "pt-[84px]" :
+          (user?.impersonatedBy || needsReconsent) ? "pt-[42px]" : ""
+        }`}>
           {/* Desktop sidebar */}
           <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
 
@@ -2020,7 +2070,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   return (
     <>
       {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
-      <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+      {needsReconsent && <ReconsentBanner offsetTop={!!user?.impersonatedBy} />}
+      <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${
+        (user?.impersonatedBy ? 1 : 0) + (needsReconsent ? 1 : 0) === 2 ? "pt-[84px]" :
+        (user?.impersonatedBy || needsReconsent) ? "pt-[42px]" : ""
+      }`}>
         {/* Desktop sidebar */}
         <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
 

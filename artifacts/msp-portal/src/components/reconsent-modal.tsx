@@ -26,18 +26,44 @@ import { useScanStatus } from "@/lib/scan-status-context";
 
 const DISMISS_KEY = "reconsent-modal-dismissed";
 
-export function ReconsentModal() {
-  const { user, fetchWithAuth } = useAuth();
+export function useNeedsReconsent(): boolean {
+  const { user } = useAuth();
   const { data } = useScanStatus();
+  return (
+    user?.role === "client" &&
+    (data?.consentStatus === "revoked" || data?.consentStatus === "declined")
+  );
+}
+
+export function useStartReconsent() {
+  const { fetchWithAuth } = useAuth();
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const start = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth("/api/portal/consent/reconsent-link", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to start reconsent");
+      }
+      const { consentUrl } = (await res.json()) as { consentUrl: string };
+      window.location.href = consentUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start reconsent");
+      setStarting(false);
+    }
+  };
+  return { start, starting, error };
+}
+
+export function ReconsentModal() {
+  const needsReconsent = useNeedsReconsent();
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem(DISMISS_KEY) === "1",
   );
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const needsReconsent =
-    user?.role === "client" &&
-    (data?.consentStatus === "revoked" || data?.consentStatus === "declined");
+  const { start, starting, error } = useStartReconsent();
 
   // A newly-broken consent state should resurface even if an earlier state was dismissed.
   useEffect(() => {
@@ -51,25 +77,6 @@ export function ReconsentModal() {
   const handleDismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, "1");
     setDismissed(true);
-  };
-
-  const handleReconsent = async () => {
-    setStarting(true);
-    setError(null);
-    try {
-      const res = await fetchWithAuth("/api/portal/consent/reconsent-link", {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Failed to start reconsent");
-      }
-      const { consentUrl } = (await res.json()) as { consentUrl: string };
-      window.location.href = consentUrl;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start reconsent");
-      setStarting(false);
-    }
   };
 
   return (
@@ -88,7 +95,7 @@ export function ReconsentModal() {
           <Button variant="outline" onClick={handleDismiss} disabled={starting}>
             Remind me later
           </Button>
-          <Button onClick={() => void handleReconsent()} disabled={starting}>
+          <Button onClick={() => void start()} disabled={starting}>
             {starting ? "Starting…" : "Re-authorize access"}
           </Button>
         </DialogFooter>
