@@ -17,8 +17,9 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, mspSubscriptionsTable, mspsTable, platformAgreementsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
+import { resolveEffectiveChargeCents } from "../lib/catalog-pricing.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
@@ -27,6 +28,12 @@ const router: IRouter = Router();
 // ── GET /api/msp/signup/tiers ──────────────────────────────────────────────────
 // Returns all products where fulfillmentType = "msp_monthly_subscription".
 // These are the platform subscription tiers an MSP can choose from.
+//
+// The fulfillmentTypeKey OR-arm is a safety net for tier rows whose enum column
+// silently defaulted to "standard" (e.g. the admin bulk-import path inserts
+// fulfillmentType ?? "standard") — the lifecycle key "msp_monthly_subscription"
+// is only ever assigned to platform tiers (PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS
+// + the seed-portal backfills), so widening on it can't pull in non-tier rows.
 
 router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
   try {
@@ -38,6 +45,8 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
         description: servicesTable.description,
         tagline: servicesTable.tagline,
         price: servicesTable.price,
+        basePrice: servicesTable.basePrice,
+        priceCents: servicesTable.priceCents,
         billingType: servicesTable.billingType,
         features: servicesTable.features,
         inclusions: servicesTable.inclusions,
@@ -49,14 +58,28 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
         fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
       })
       .from(servicesTable)
-      .where(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"))
+      .where(or(
+        eq(servicesTable.fulfillmentType, "msp_monthly_subscription"),
+        eq(servicesTable.fulfillmentTypeKey, "msp_monthly_subscription"),
+      ))
       .orderBy(servicesTable.sortOrder);
 
     // Flatten typeAttributes into the response for backward compat with the signup UI
     const tiers = rawTiers.map(t => {
       const attrs = (t.typeAttributes ?? {}) as Record<string, unknown>;
+      // Canonical price resolution (catalog-pricing.ts). Tier rows created via
+      // the modern admin API carry their price ONLY in the integer priceCents
+      // column — legacy decimal price/basePrice are NULL — so serving the raw
+      // legacy column rendered every modern tier as "Contact for pricing" and
+      // broke self-service checkout (the third legacy-price-only bug of this
+      // class). The resolved price is serialized back into the legacy
+      // string-dollars `price` shape both signup UIs already parse. A seeded
+      // explicit "0.00" free tier keeps its legacy value (resolver returns 0).
+      const effectiveCents = resolveEffectiveChargeCents(t, 1);
       return {
         ...t,
+        price: effectiveCents > 0 ? (effectiveCents / 100).toFixed(2) : t.price,
+        priceCents: effectiveCents,
         tenantAllowance: attrs.tenantAllowance ?? null,
         aiCreditAllowance: attrs.aiCreditAllowancePlatformValue ?? attrs.aiCreditAllowance ?? null,
       aiCreditAllowancePlatformValue: attrs.aiCreditAllowancePlatformValue ?? null,
@@ -173,19 +196,38 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
         id: servicesTable.id,
         name: servicesTable.name,
         price: servicesTable.price,
+        basePrice: servicesTable.basePrice,
+        priceCents: servicesTable.priceCents,
+        typeAttributes: servicesTable.typeAttributes,
         fulfillmentType: servicesTable.fulfillmentType,
+        fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
         billingType: servicesTable.billingType,
       })
       .from(servicesTable)
       .where(eq(servicesTable.id, Number(serviceId)))
       .limit(1);
 
-    if (!service || service.fulfillmentType !== "msp_monthly_subscription") {
+    if (
+      !service ||
+      (service.fulfillmentType !== "msp_monthly_subscription" &&
+        service.fulfillmentTypeKey !== "msp_monthly_subscription")
+    ) {
       res.status(400).json({ error: "Invalid or non-MSP-subscription service tier" });
       return;
     }
 
-    if (!service.price) {
+    // Canonical price resolution — a modern-created tier row carries its price
+    // ONLY in priceCents (legacy price/basePrice NULL), so gating on the legacy
+    // column alone 400'd every modern tier. A tier is unpriced only when NO
+    // pricing field is configured at all; an explicit 0 in any flat column
+    // (e.g. the seeded free Starter's "0.00") still proceeds, exactly as before.
+    const chargeCents = resolveEffectiveChargeCents(service, 1);
+    const hasConfiguredPrice =
+      chargeCents > 0 ||
+      service.price != null ||
+      service.basePrice != null ||
+      service.priceCents != null;
+    if (!hasConfiguredPrice) {
       res.status(400).json({ error: "Service tier has no price configured" });
       return;
     }
@@ -235,10 +277,11 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
     // Create a Stripe Price for this tier (recurring monthly) or reuse existing
     // For production, prices would be pre-created in Stripe Dashboard. For dev, we
     // create an ad-hoc price so the checkout works without manual Stripe setup.
-    const priceCents = Math.round(parseFloat(String(service.price)) * 100);
+    // Unit amount comes from the canonical resolver above — never the raw legacy
+    // decimal column, which is NULL on modern-created tier rows (NaN charge).
     const price = await stripe.prices.create({
       currency: "usd",
-      unit_amount: priceCents,
+      unit_amount: chargeCents,
       recurring: { interval: "month" },
       product_data: {
         name: `MSP Platform — ${service.name}`,

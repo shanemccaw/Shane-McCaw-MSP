@@ -32,7 +32,7 @@ import {
   BarChart2,
 } from "lucide-react";
 import { trackMspSignupStarted, trackPricingInteraction } from "@/lib/analytics";
-import { useServices } from "@/hooks/useServices";
+import { useServices, resolvePublicServicePriceCents } from "@/hooks/useServices";
 
 const GRADIENT_BG = { background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" };
 const CONNECTOR_BG = { background: "linear-gradient(180deg, var(--accent-blue), rgba(255,255,255,0.08))" };
@@ -344,10 +344,13 @@ export default function Msp() {
     const svc = onboardingServices.find(
       (s) => s.serviceType === key || s.slug === `msp-onboarding-${key.replace("_", "-")}`
     );
-    if (!svc || !svc.price) return null;
-    const num = parseFloat(svc.price);
-    if (isNaN(num)) return null;
-    return num === 0 ? "Included" : `+$${num.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    if (!svc) return null;
+    // Canonical resolution — a modern-created onboarding service carries its
+    // price only in priceCents (legacy price NULL), which the old raw
+    // parseFloat(svc.price) read silently hid.
+    const cents = resolvePublicServicePriceCents(svc);
+    if (cents == null) return null;
+    return cents === 0 ? "Included" : `+$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
   }
 
   useEffect(() => {

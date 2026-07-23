@@ -10,6 +10,9 @@ export interface PublicService {
   price: string | null;
   basePrice: string | null;
   maxPrice: string | null;
+  /** Canonical integer-cents price — the only populated price field on
+   *  services created via the modern admin API (legacy price/basePrice NULL). */
+  priceCents: number | null;
   turnaround: string | null;
   durationDays: number | null;
   billingType: "one_time" | "recurring_monthly";
@@ -43,6 +46,29 @@ export interface PublicService {
 export interface PublicAssociatedDocument {
   title: string;
   category: "report" | "consulting";
+}
+
+/**
+ * Client-side mirror of the server's canonical resolveServicePriceCents
+ * (api-server catalog-pricing.ts): a positive integer `priceCents` wins;
+ * otherwise the legacy decimal `price` ?? `basePrice` dollars. Returns null
+ * only when the service carries no price field at all — distinct from an
+ * explicit 0 (free/included). Reading `svc.price` alone silently treats every
+ * modern-created paid service as unpriced (the recurring legacy-price-only
+ * bug class), so price display logic must resolve through this helper.
+ */
+export function resolvePublicServicePriceCents(
+  svc: Pick<PublicService, "priceCents" | "price" | "basePrice">,
+): number | null {
+  if (svc.priceCents != null && Number(svc.priceCents) > 0) {
+    return Math.round(Number(svc.priceCents));
+  }
+  const legacy = svc.price ?? svc.basePrice;
+  if (legacy != null) {
+    const dollars = parseFloat(String(legacy));
+    if (!isNaN(dollars)) return Math.round(dollars * 100);
+  }
+  return svc.priceCents != null ? 0 : null;
 }
 
 export function formatPrice(price: string | null): string | null {
