@@ -141,6 +141,9 @@ interface TypeAttributesPricing {
   seatCountFloor?: string | number | null;
   flatMonthlySurcharge?: string | number | null;
   flatMonthlyPrice?: string | number | null;
+  /** Inclusive seat band this tier row covers (monitoring tiers are one row per band). */
+  seatMin?: string | number | null;
+  seatMax?: string | number | null;
 }
 
 function toPositiveNumber(v: unknown): number {
@@ -168,6 +171,89 @@ export function resolveTypeAttributesMonthlyPriceCents(
   const surcharge = toPositiveNumber(ta.flatMonthlySurcharge);
   const flatMonthly = toPositiveNumber(ta.flatMonthlyPrice);
   return Math.round((perSeatTotal + surcharge + flatMonthly) * 100);
+}
+
+/**
+ * Effective per-service charge in integer cents for checkout, resolving every
+ * pricing representation the catalog carries, in canonical precedence order:
+ *
+ *   1. `contractFinalPriceDollars` — the server-computed wizard price captured
+ *      on the signed contract (only ever set by the strictly-validated wizard
+ *      path; trusted when present).
+ *   2. The `type_attributes` pricing model at the given seat count (monitoring
+ *      tiers / recurring add-ons). For rows that carry it, this IS the price by
+ *      design — the admin tier editor writes NO flat price (`priceFixed:
+ *      false`), so any value sitting in the flat columns of such a row is
+ *      stale/accidental data. It must NOT override the real seat-scaled price:
+ *      a contaminated flat column silently flat-charging a per-seat product
+ *      (e.g. a $16,000/mo 2000-seat tier charged as a leftover $11 `price`)
+ *      is exactly the failure mode this ordering exists to prevent.
+ *   3. Legacy decimal `price` / `basePrice` (dollars).
+ *   4. Canonical integer `priceCents`.
+ *
+ * Returns 0 when nothing carries a positive price (the free path).
+ */
+export function resolveEffectiveChargeCents(
+  s: {
+    priceCents?: number | null;
+    price?: string | number | null;
+    basePrice?: string | number | null;
+    typeAttributes?: unknown;
+  },
+  seats = 1,
+  contractFinalPriceDollars?: number | null,
+): number {
+  if (contractFinalPriceDollars != null && !isNaN(Number(contractFinalPriceDollars))) {
+    return Math.round(Number(contractFinalPriceDollars) * 100);
+  }
+  const taCents = resolveTypeAttributesMonthlyPriceCents(s, seats);
+  if (taCents > 0) return taCents;
+  if (s.price != null && s.price !== "") {
+    const dollars = parseFloat(String(s.price));
+    if (!isNaN(dollars) && dollars > 0) return Math.round(dollars * 100);
+  }
+  if (s.basePrice != null && s.basePrice !== "") {
+    const dollars = parseFloat(String(s.basePrice));
+    if (!isNaN(dollars) && dollars > 0) return Math.round(dollars * 100);
+  }
+  if (s.priceCents != null && Number(s.priceCents) > 0) return Math.round(Number(s.priceCents));
+  return 0;
+}
+
+/**
+ * Validates a purchase seat count against a per-seat-priced tier row's seat
+ * band (`seatMin`/`seatMax` in `type_attributes`). Monitoring tiers are one
+ * catalog row per band (Micro/SMB/Mid-Market/Enterprise), and the price is only
+ * correct when the buyer's seat count actually falls inside the purchased
+ * row's band:
+ *
+ *   - seats BELOW `seatMin` means the seat count was lost somewhere upstream
+ *     (a checkout link that dropped `?seats=`, a retry path that reset to 1) —
+ *     silently billing the floor-clamped 1-seat price undercharges a 2000-seat
+ *     tenant by thousands per month. Fail loudly instead.
+ *   - seats ABOVE `seatMax` means the wrong band row is being purchased (the
+ *     band's per-seat rate does not apply at that scale, in either direction).
+ *
+ * Returns a customer-safe error message, or null when the purchase is valid.
+ * Rows without per-seat pricing or without a seat band always return null.
+ */
+export function seatBandViolationMessage(
+  s: { typeAttributes?: unknown },
+  seats: number,
+): string | null {
+  const ta = (s.typeAttributes ?? {}) as TypeAttributesPricing;
+  const ppu = toPositiveNumber(ta.pricePerUserMonth);
+  if (ppu <= 0) return null; // not a per-seat-priced row
+  const seatMin = Math.trunc(toPositiveNumber(ta.seatMin));
+  const seatMax = Math.trunc(toPositiveNumber(ta.seatMax));
+  const effectiveSeats = Math.max(1, Math.trunc(seats) || 1);
+  if (seatMin > 1 && effectiveSeats < seatMin) {
+    return `This package is priced for ${seatMin}+ licensed users. Please return to the pricing page and select the package matching your licensed-user count.`;
+  }
+  if (seatMax > 0 && effectiveSeats > seatMax) {
+    return `This package covers up to ${seatMax} licensed users. Please return to the pricing page and select the package matching your licensed-user count.`;
+  }
+  return null;
 }
 
 /**

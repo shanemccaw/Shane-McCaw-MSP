@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
-import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents } from "../lib/catalog-pricing.ts";
+import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents, resolveEffectiveChargeCents, seatBandViolationMessage } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -9778,11 +9778,14 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     const signedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     const effectivePriceStr = (() => {
       if (computedFinalPrice != null) return `$${computedFinalPrice.toLocaleString("en-US")}`;
+      // Same resolver checkout charges with (seatCountFloor + flatMonthlySurcharge
+      // included) so the signed contract/PDF names the real monthly price — a
+      // naive ppu × seats here previously understated per-seat tiers on the
+      // legal document itself.
+      const taCents = resolveTypeAttributesMonthlyPriceCents(svc, contractSeats);
+      if (taCents > 0) return `$${(taCents / 100).toLocaleString("en-US")}`;
       if (svc.price) return `$${parseFloat(String(svc.price)).toLocaleString("en-US")}`;
-      const ta = (svc.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
-      const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
-      const total = ppu * contractSeats;
-      return total > 0 ? `$${total.toLocaleString("en-US")}` : "—";
+      return "—";
     })();
 
     // Build a plain-text summary of wizard selections for the contract body/PDF
@@ -10419,36 +10422,34 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
   let subscriptionUrl: string | null = null;
   const startDateStr = startDate ?? new Date().toISOString();
 
+  // ── Seat-band guard: per-seat-priced tiers must be bought at a seat count
+  // inside the purchased row's own band. seats below seatMin means the count
+  // was lost upstream (a link that dropped ?seats=, a retry that reset to 1) —
+  // silently charging the floor-clamped price undercharges a large tenant by
+  // thousands per month; seats above seatMax means the wrong band row entirely.
+  // Fail loudly with a 400 instead of billing a wrong amount.
+  for (const s of services) {
+    const bandErr = seatBandViolationMessage(s, resolvedSeats);
+    if (bandErr) {
+      res.status(400).json({ error: `"${s.name}": ${bandErr}` });
+      return;
+    }
+  }
+
   // ── Coupon: server-side re-validation ─────────────────────────────────────
   // Build raw price map (before discount) for all services.
-  // Resolution order: contract wizard finalPrice → services.price → typeAttributes pricing model → priceCents
+  // Resolution order (see resolveEffectiveChargeCents): contract wizard
+  // finalPrice → typeAttributes pricing model at the purchase seat count
+  // (enforces seatCountFloor + flatMonthlySurcharge, and — for rows carrying
+  // per-seat pricing — deliberately OVERRIDES any stale flat price/basePrice
+  // value, which would otherwise silently flat-charge a per-seat product) →
+  // legacy price/basePrice → canonical priceCents.
   const rawPriceCents = new Map<number, number>();
   for (const s of services) {
-    const contractFinal = contractFinalPrices.get(s.id);
-    if (contractFinal != null) {
-      rawPriceCents.set(s.id, Math.round(contractFinal * 100));
-    } else if (s.price) {
-      rawPriceCents.set(s.id, Math.round(parseFloat(String(s.price)) * 100));
-    } else if (s.basePrice) {
-      rawPriceCents.set(s.id, Math.round(parseFloat(String(s.basePrice)) * 100));
-    } else {
-      // Single source of truth for the type_attributes pricing model — enforces
-      // seatCountFloor (minimum billable seats) and flatMonthlySurcharge, which
-      // a naive ppu × seats computation here previously dropped (Enhanced-Micro
-      // at 1 seat charged $18/mo instead of the real $270/mo).
-      const taCents = resolveTypeAttributesMonthlyPriceCents(s, resolvedSeats);
-      if (taCents > 0) {
-        rawPriceCents.set(s.id, taCents);
-      } else {
-        // Canonical priceCents fallback — services created via the modern admin
-        // API carry their price only here (legacy price/basePrice NULL). Without
-        // this the Stripe amount would be $0 for such a service.
-        rawPriceCents.set(
-          s.id,
-          s.priceCents != null && Number(s.priceCents) > 0 ? Math.round(Number(s.priceCents)) : 0,
-        );
-      }
-    }
+    rawPriceCents.set(
+      s.id,
+      resolveEffectiveChargeCents(s, resolvedSeats, contractFinalPrices.get(s.id)),
+    );
   }
   const totalCartCents = [...rawPriceCents.values()].reduce((a, b) => a + b, 0);
 

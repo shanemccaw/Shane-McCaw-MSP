@@ -310,12 +310,19 @@ export default function Checkout() {
       const storedSessionId = loadSessionId();
       if (storedSessionId) {
         setSessionId(storedSessionId);
+        // Recover guestInfo from the localStorage cache (survives the Stripe
+        // round-trip) so a canceled payment can be retried without re-entering
+        // details, and — critically — recover the SEAT COUNT from the
+        // server-side session: the Stripe cancel URL carries no ?seats= param,
+        // so without this a "try again" payment silently reverted to 1 seat and
+        // charged the floor-clamped price instead of the real per-tenant price.
+        const cachedInfo = loadGuestInfoCache(storedSessionId);
+        if (cachedInfo) {
+          setGuestInfo(cachedInfo);
+          setTermsAccepted(cachedInfo.termsAccepted === true);
+        }
         fetchCheckoutSession(storedSessionId).then((info) => {
-          if (info) {
-            // We don't have PII from the server (by design), but guestInfo display
-            // on the confirmed/payment page reads from local state set earlier.
-            // Re-hydration is best-effort; the confirmed screen doesn't require it.
-          }
+          if (info && info.seats > 1) setRecoveredSeats(info.seats);
         }).catch(() => {});
       }
       if (checkoutStatus === "success") {
@@ -581,10 +588,22 @@ export default function Checkout() {
   const priceDisplay = (() => {
     if (!service) return null;
     if (service.isFree) return "Free";
-    const ta = (service.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
+    const ta = (service.typeAttributes ?? {}) as {
+      pricePerUserMonth?: string | null;
+      seatCountFloor?: string | number | null;
+      flatMonthlySurcharge?: string | number | null;
+    };
     if (service.billingType === "recurring_monthly" && ta.pricePerUserMonth) {
+      // Mirror the server charge exactly (resolveTypeAttributesMonthlyPriceCents):
+      // pricePerUserMonth × max(seats, seatCountFloor) + flatMonthlySurcharge.
+      // A naive ppu × seats here understated the Confirm-step price for tiers
+      // with a billable-seat floor or a flat surcharge — the customer must see
+      // the same number Stripe will charge.
       const perSeat = Number(ta.pricePerUserMonth);
-      return `${fmtPrice(Math.round(perSeat * effectiveSeats * 100))}/mo`;
+      const floor = Math.trunc(Number(ta.seatCountFloor ?? 0)) || 0;
+      const surcharge = Number(ta.flatMonthlySurcharge ?? 0) || 0;
+      const billableSeats = Math.max(1, effectiveSeats, floor);
+      return `${fmtPrice(Math.round((perSeat * billableSeats + surcharge) * 100))}/mo`;
     }
     if (service.billingType === "recurring_monthly") {
       return `${fmtPrice(Number(service.price ?? 0) * 100)}/mo`;

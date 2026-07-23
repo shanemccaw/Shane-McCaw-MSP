@@ -173,6 +173,19 @@ router.post(
       apiErr(res, 422, "This item is priced on consultation and has no fixed checkout price.");
       return;
     }
+    // Per-seat-priced items (monitoring tiers): marketplaceShape.priceCents is
+    // the per-user/month RATE, not a chargeable total — this seat-less checkout
+    // would charge e.g. $8.00/mo for an entire 2000-seat monitoring subscription.
+    // Reject rather than silently undercharge; these products must be purchased
+    // through the seat-aware monitoring checkout flow.
+    if (marketplaceShape.perSeat) {
+      apiErr(
+        res,
+        422,
+        "This item is priced per licensed user and requires a seat count. Purchase it through the monitoring checkout flow instead.",
+      );
+      return;
+    }
     const amountCents = marketplaceShape.priceCents;
 
     const actorId = (req.user as { id?: number } | undefined)?.id ?? null;

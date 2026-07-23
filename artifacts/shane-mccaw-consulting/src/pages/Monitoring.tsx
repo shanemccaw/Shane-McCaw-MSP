@@ -737,7 +737,11 @@ export default function Monitoring() {
                       )}
 
                       <Link
-                        href={`/checkout/${matched.slug}`}
+                        // Carry the selected seat count into checkout. Without ?seats=, the
+                        // checkout + server default to 1 seat and charge the floor-clamped
+                        // 1-seat price instead of the real per-tenant price — the exact
+                        // revenue bug Home.tsx's identical card already guards against.
+                        href={`/checkout/${matched.slug}?seats=${seatCount}`}
                         className={`mt-auto px-4 py-3 rounded-xl text-sm font-bold text-center transition-all flex items-center justify-center gap-1 ${
                           isHighlighted ? "text-white hover:opacity-90" : "bg-white/[0.06] hover:bg-white/[0.1] text-text-primary border border-white/[0.08]"
                         }`}
