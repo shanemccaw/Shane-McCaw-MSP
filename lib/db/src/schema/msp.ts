@@ -682,6 +682,51 @@ export const tenantWriteConsentTable = pgTable("tenant_write_consent", {
 export type TenantWriteConsent = typeof tenantWriteConsentTable.$inferSelect;
 export type InsertTenantWriteConsent = typeof tenantWriteConsentTable.$inferInsert;
 
+// ── Tenant SharePoint Consent ──────────────────────────────────────────────────
+// Third, independent consent record — for the "Office 365 SharePoint Online"
+// resource (appId 00000003-0000-0ff1-ce00-000000000000), NOT Microsoft Graph.
+//
+// This exists because Sites.FullControl.All is an Application permission on a
+// DIFFERENT Azure resource from Graph's REQUIRED_MT_SCOPES. A tenant having a
+// granted tenant_consent row proves nothing about whether that tenant's admin
+// ever approved the SharePoint permission, so reusing tenant_consent.scopes_granted
+// for SharePoint would produce false "consented" reads for every tenant that
+// consented before Sites.FullControl.All was added to the app registration.
+// One row per customer Azure AD tenant, stamped by the SharePoint admin-consent
+// callback in routes/consent.ts.
+//
+// NOTE: unlike tenant_write_consent (which uses a separate WRITE app registration),
+// this permission lives on the SAME multi-tenant app as Graph — it is a second
+// resource on one app, so no separate client id is involved. What differs is the
+// consent grant itself, which is per-resource and must be obtained on its own.
+
+export const tenantSharePointConsentTable = pgTable("tenant_sharepoint_consent", {
+  tenantId: text("tenant_id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  consentStatus: text("consent_status", {
+    enum: ["pending", "granted", "declined", "revoked"],
+  }).notNull().default("pending"),
+  consentedAt: timestamp("consented_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  adminEmail: text("admin_email"),
+  adminDisplayName: text("admin_display_name"),
+  /**
+   * Snapshot of REQUIRED_SHAREPOINT_APP_PERMISSIONS at the moment this tenant's
+   * admin consented — the SharePoint analogue of tenant_consent.scopes_granted,
+   * and the thing re-consent detection diffs against. Defaults to [] so a row
+   * that predates a permission being added reads as stale, never as covered.
+   */
+  permissionsGranted: jsonb("permissions_granted").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("tenant_sharepoint_consent_customer_id_idx").on(t.customerId),
+  index("tenant_sharepoint_consent_status_idx").on(t.consentStatus),
+]);
+
+export type TenantSharePointConsent = typeof tenantSharePointConsentTable.$inferSelect;
+export type InsertTenantSharePointConsent = typeof tenantSharePointConsentTable.$inferInsert;
+
 // ── Consent Invite Tokens ──────────────────────────────────────────────────────
 // Single-use expiring tokens that wrap the admin-consent redirect URL.
 // One token is created per onboarding invite; it is burned on first use or on expiry.

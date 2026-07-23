@@ -24,11 +24,12 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
-import { db, tenantConsentTable, tenantWriteConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
+import { db, tenantConsentTable, tenantWriteConsentTable, tenantSharePointConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
+import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
@@ -867,6 +868,317 @@ router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (re
     .limit(1);
 
   res.json({ tenantId: customer.tenantId, writeConsent: row ?? null });
+});
+
+// ── SharePoint consent (Office 365 SharePoint Online resource) ─────────────────
+//
+// THIRD, independent consent flow — for Sites.FullControl.All, an Application
+// permission on the "Office 365 SharePoint Online" API
+// (appId 00000003-0000-0ff1-ce00-000000000000), NOT Microsoft Graph.
+//
+// Why this is not just "add scopes to the Graph flow": a tenant's granted
+// tenant_consent row is a snapshot of REQUIRED_MT_SCOPES (Graph .default) and
+// says nothing about the SharePoint resource. Every tenant that consented before
+// Sites.FullControl.All was added to the app registration has a perfectly valid
+// Graph consent and NO SharePoint grant, so re-consent detection needs its own
+// per-tenant record (tenant_sharepoint_consent) to diff against — reusing the
+// Graph row would report those tenants as SharePoint-consented when they aren't.
+//
+// The permission lives on the SAME multi-tenant app as Graph (MT_APP_CLIENT_ID),
+// so this reuses that client id rather than a separate registration — unlike the
+// write flow above, which has its own app. State handling follows the write-flow
+// precedent exactly: never bare, HMAC-signed over customerId + a single-use
+// consent_invite_tokens row, with an "sp." prefix so a state minted for this flow
+// cannot be replayed against the read or write callbacks (and vice versa).
+
+function signSharePointConsentState(customerId: number, token: string): string {
+  const mac = createHmac("sha256", writeConsentStateSecret()).update(`sharepoint-consent:${customerId}:${token}`).digest("hex");
+  return `sp.${customerId}.${token}.${mac}`;
+}
+function verifySharePointConsentState(state: string): { customerId: number; token: string } | null {
+  const parts = state.split(".");
+  if (parts.length !== 4 || parts[0] !== "sp" || !parts[1] || !parts[2] || !parts[3]) return null;
+  const customerId = parseInt(parts[1], 10);
+  const token = parts[2];
+  const mac = parts[3];
+  if (isNaN(customerId) || String(customerId) !== parts[1]) return null;
+  const expected = createHmac("sha256", writeConsentStateSecret()).update(`sharepoint-consent:${customerId}:${token}`).digest("hex");
+  const a = Buffer.from(mac, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return { customerId, token };
+}
+
+// ── GET /api/admin/customers/:customerId/sharepoint-consent/start ──────────────
+
+router.get("/admin/customers/:customerId/sharepoint-consent/start", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = parseInt(req.params["customerId"] as string, 10);
+  if (isNaN(customerId)) {
+    res.status(400).json({ error: "Invalid customerId" });
+    return;
+  }
+
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: customer.tenantId?.trim() || null,
+    customerId,
+    clientUserId: null,
+    expiresAt,
+  });
+
+  // Fixed callback URL — register exactly this one URL in the MT app's Azure
+  // Redirect URIs (alongside /api/consent/callback); customerId rides in the
+  // signed state, not the path, so one URL serves every customer.
+  const callbackUrl = `${getHostBase(req)}/api/admin/sharepoint-consent/callback`;
+  const tenantHint = customer.tenantId?.trim() || "common";
+  const consentUrl = buildAdminConsentUrl(
+    tenantHint,
+    signSharePointConsentState(customerId, token),
+    callbackUrl,
+    process.env.MT_APP_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "admin",
+    actorRole: "admin",
+    actionType: "sharepoint_consent_invite_created",
+    entityType: "tenant_sharepoint_consent",
+    metadata: { tenantHint, customerId, expiresAt, permissions: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS] },
+  });
+
+  res.json({ consentUrl, expiresAt, permissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
+});
+
+// ── POST /api/portal/consent/sharepoint-link ───────────────────────────────────
+// Customer-scoped equivalent of the start route above, for a logged-in customer
+// whose own SharePoint consent is missing or stale. Mirrors the existing
+// /portal/consent/reconsent-link (read flow) so the portal pill has one real
+// button to call for the SharePoint case. customerId comes from the JWT only.
+
+router.post("/portal/consent/sharepoint-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+    return;
+  }
+
+  const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
+  if (typeof customerId !== "number" || Number.isNaN(customerId)) {
+    res.status(403).json({ error: "No customer identity on token" });
+    return;
+  }
+
+  const [customerRow] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: customerRow?.tenantId?.trim() || null,
+    customerId,
+    clientUserId: req.user!.id,
+    expiresAt,
+  });
+
+  const callbackUrl = `${getHostBase(req)}/api/admin/sharepoint-consent/callback`;
+  const tenantHint = customerRow?.tenantId?.trim() || "common";
+  const consentUrl = buildAdminConsentUrl(
+    tenantHint,
+    signSharePointConsentState(customerId, token),
+    callbackUrl,
+    process.env.MT_APP_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "customer",
+    actorRole: "client",
+    actionType: "sharepoint_consent_invite_created",
+    entityType: "tenant_sharepoint_consent",
+    metadata: { tenantHint, customerId, reconsent: true, expiresAt },
+  });
+
+  res.json({ consentUrl, expiresAt, permissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
+});
+
+// ── GET /api/admin/sharepoint-consent/callback ─────────────────────────────────
+// Microsoft redirects here after the tenant admin approves or declines the
+// SharePoint permission. One FIXED URL for every customer. Unauthenticated by
+// necessity (Microsoft's redirect carries no session) — trust comes from the
+// HMAC-bound, DB-backed single-use state, exactly as in the write callback.
+
+router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Response) => {
+  const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
+  const hostBase = getHostBase(req);
+
+  const verified = state ? verifySharePointConsentState(state) : null;
+  if (!verified) {
+    log.warn({ state }, "SharePoint-consent callback: state missing or failed HMAC verification");
+    res.status(400).send("Invalid consent callback state.");
+    return;
+  }
+  const { customerId, token } = verified;
+
+  // Validate + burn the single-use token; it must belong to THIS customer.
+  const now = new Date();
+  const [tokenRow] = await db
+    .select({ customerId: consentInviteTokensTable.customerId })
+    .from(consentInviteTokensTable)
+    .where(
+      and(
+        eq(consentInviteTokensTable.token, token),
+        isNull(consentInviteTokensTable.usedAt),
+        gte(consentInviteTokensTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (!tokenRow || tokenRow.customerId !== customerId) {
+    log.warn({ customerId, tokenCustomerId: tokenRow?.customerId }, "SharePoint-consent callback: token invalid, expired, used, or bound to a different customer");
+    res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
+    return;
+  }
+
+  await db
+    .update(consentInviteTokensTable)
+    .set({ usedAt: now, ...(tenant ? { tenantId: tenant } : {}) })
+    .where(eq(consentInviteTokensTable.token, token));
+
+  // Declined at the Microsoft screen
+  if (error === "access_denied" || error_subcode === "cancel") {
+    log.warn({ customerId, tenant, error, error_subcode }, "SharePoint-consent callback: admin declined");
+    if (tenant) {
+      await db
+        .insert(tenantSharePointConsentTable)
+        .values({ tenantId: tenant, customerId, consentStatus: "declined", updatedAt: now })
+        .onConflictDoUpdate({
+          target: tenantSharePointConsentTable.tenantId,
+          set: { consentStatus: "declined", customerId, updatedAt: now },
+        });
+    }
+    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    return;
+  }
+
+  if (!tenant || admin_consent?.toLowerCase() !== "true") {
+    log.warn({ customerId, tenant, admin_consent }, "SharePoint-consent callback: unexpected parameters");
+    res.status(400).send("Invalid consent callback parameters.");
+    return;
+  }
+
+  // Stamp the permission snapshot the same way the Graph callback stamps
+  // scopesGranted: what the app registration asked for at this moment IS what
+  // the admin approved on this screen (admin_consent=true is tenant-wide for
+  // every Application permission the app currently declares on that resource).
+  // Storing the snapshot — rather than a bare boolean — is what makes drift
+  // detectable later when REQUIRED_SHAREPOINT_APP_PERMISSIONS grows.
+  await db
+    .insert(tenantSharePointConsentTable)
+    .values({
+      tenantId: tenant,
+      customerId,
+      consentStatus: "granted",
+      consentedAt: now,
+      permissionsGranted: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: tenantSharePointConsentTable.tenantId,
+      set: {
+        consentStatus: "granted",
+        consentedAt: now,
+        revokedAt: null,
+        customerId,
+        permissionsGranted: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+        updatedAt: now,
+      },
+    });
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "microsoft:sharepoint-consent-callback",
+    actorRole: "admin",
+    actionType: "tenant_sharepoint_consent_granted",
+    entityType: "tenant_sharepoint_consent",
+    entityId: tenant,
+    metadata: { tenantId: tenant, customerId, permissions: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS] },
+  });
+
+  log.info({ tenant, customerId }, "Tenant SHAREPOINT admin consent granted");
+  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&sharepoint=1`);
+});
+
+// ── GET /api/admin/customers/:customerId/sharepoint-consent ────────────────────
+// Status read for the admin UI — current tenant_sharepoint_consent state for the
+// customer's tenant, plus the same staleness verdict the portal pill uses.
+
+router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = parseInt(req.params["customerId"] as string, 10);
+  if (isNaN(customerId)) {
+    res.status(400).json({ error: "Invalid customerId" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+  if (!customer.tenantId) {
+    res.json({ tenantId: null, sharePointConsent: null, permissionsStale: false, requiredPermissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS });
+    return;
+  }
+
+  const [row] = await db
+    .select({
+      consentStatus: tenantSharePointConsentTable.consentStatus,
+      consentedAt: tenantSharePointConsentTable.consentedAt,
+      revokedAt: tenantSharePointConsentTable.revokedAt,
+      permissionsGranted: tenantSharePointConsentTable.permissionsGranted,
+    })
+    .from(tenantSharePointConsentTable)
+    .where(eq(tenantSharePointConsentTable.tenantId, customer.tenantId))
+    .limit(1);
+
+  const permissionsStale =
+    row?.consentStatus === "granted" &&
+    REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !(row.permissionsGranted ?? []).includes(p));
+
+  res.json({
+    tenantId: customer.tenantId,
+    sharePointConsent: row ?? null,
+    permissionsStale,
+    requiredPermissions: REQUIRED_SHAREPOINT_APP_PERMISSIONS,
+  });
 });
 
 export default router;

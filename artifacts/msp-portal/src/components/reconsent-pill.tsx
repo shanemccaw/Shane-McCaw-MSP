@@ -1,51 +1,90 @@
 /**
  * ReconsentPill
  *
- * Subtle sidebar nudge shown when the logged-in customer's real
- * tenant_consent.consent_status (polled via ScanStatusProvider's
- * GET /api/portal/scan-status) is "revoked" or "declined" — meaning Microsoft
- * Graph access is genuinely broken — OR consent is "granted" but scopesStale
- * is true, meaning REQUIRED_MT_SCOPES has grown since this tenant last
- * consented (new Application permissions added to the app registration).
- * Deliberately quiet by design: a small amber pill in the left nav (above
- * the search box), not a modal or a red banner — it nudges, it doesn't
- * interrupt.
+ * Subtle sidebar nudge shown when the logged-in customer's real Microsoft
+ * consent state (polled via ScanStatusProvider's GET /api/portal/scan-status)
+ * needs attention. Three genuinely different real states, in priority order:
  *
- * Clicking it starts the existing, real admin-consent OAuth flow (consent.ts)
- * via POST /api/portal/consent/reconsent-link; no second consent mechanism.
- * Replaces the previous ReconsentModal + full-width ReconsentBanner.
+ *   1. Graph BROKEN — tenant_consent.consent_status is "revoked"/"declined".
+ *      Nothing works; highest priority.
+ *   2. Graph STALE — consent is "granted" but scopesStale is true, meaning
+ *      REQUIRED_MT_SCOPES has grown since this tenant last consented.
+ *   3. SharePoint MISSING/STALE — tenant_sharepoint_consent has no row, is
+ *      revoked/declined, or is granted with a permissionsGranted snapshot that
+ *      no longer covers REQUIRED_SHAREPOINT_APP_PERMISSIONS.
+ *
+ * SharePoint is a SEPARATE Azure resource from Graph (Office 365 SharePoint
+ * Online, appId 00000003-0000-0ff1-ce00-000000000000, permission
+ * Sites.FullControl.All), consented independently and tracked in its own
+ * per-tenant table — so it is NOT inferred from the Graph consent state, and it
+ * gets its own consent link (POST /api/portal/consent/sharepoint-link) rather
+ * than reusing the Graph reconsent link, which cannot grant it.
+ *
+ * Graph state outranks SharePoint state: if Graph access is broken or stale
+ * that's the thing to fix first, and one pill never shows two problems at once.
+ *
+ * Deliberately quiet by design: a small amber pill in the left nav (above the
+ * search box), not a modal or a red banner — it nudges, it doesn't interrupt.
+ * Clicking it starts the real admin-consent OAuth flow in consent.ts; no second
+ * consent mechanism. Replaces the previous ReconsentModal + ReconsentBanner.
  */
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
 
-export function useNeedsReconsent(): boolean {
+/** Which real consent problem (if any) this customer currently has, highest priority first. */
+export type ReconsentKind = "graph-broken" | "graph-scope-upgrade" | "sharepoint" | null;
+
+export function useReconsentKind(): ReconsentKind {
   const { user } = useAuth();
   const { data } = useScanStatus();
-  return (
-    user?.role === "client" &&
-    (data?.consentStatus === "revoked" ||
-      data?.consentStatus === "declined" ||
-      (data?.consentStatus === "granted" && data?.scopesStale === true))
-  );
+  if (user?.role !== "client" || !data) return null;
+
+  if (data.consentStatus === "revoked" || data.consentStatus === "declined") return "graph-broken";
+  if (data.consentStatus === "granted" && data.scopesStale === true) return "graph-scope-upgrade";
+
+  // SharePoint: an explicit null (row absent) is a real "never granted" state —
+  // the tenant simply has not been through this separate consent flow yet.
+  // The field being MISSING from the payload entirely is different: the server
+  // couldn't read it, so the state is genuinely unknown and the pill stays
+  // silent rather than nagging about something it can't verify.
+  // Only surfaced once Graph itself is healthy, so the customer is never asked
+  // to fix two things at once.
+  if (data.consentStatus === "granted" && "sharePointConsentStatus" in data) {
+    const sp = data.sharePointConsentStatus;
+    if (sp === null || sp === "pending" || sp === "revoked" || sp === "declined") return "sharepoint";
+    if (sp === "granted" && data.sharePointPermissionsStale === true) return "sharepoint";
+  }
+
+  return null;
 }
 
-/** True only for the "access still works, just needs a top-up" case — distinct copy from a genuinely broken connection. */
+export function useNeedsReconsent(): boolean {
+  return useReconsentKind() !== null;
+}
+
+/** True only for the "access still works, just needs a top-up" Graph case — distinct copy from a genuinely broken connection. */
 export function useReconsentIsScopeUpgrade(): boolean {
-  const { data } = useScanStatus();
-  return data?.consentStatus === "granted" && data?.scopesStale === true;
+  return useReconsentKind() === "graph-scope-upgrade";
 }
 
 export function useStartReconsent() {
   const { fetchWithAuth } = useAuth();
+  const kind = useReconsentKind();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // SharePoint consent CANNOT be obtained through the Graph reconsent link —
+  // it is a different resource, so it has its own endpoint.
+  const endpoint =
+    kind === "sharepoint"
+      ? "/api/portal/consent/sharepoint-link"
+      : "/api/portal/consent/reconsent-link";
   const start = async () => {
     setStarting(true);
     setError(null);
     try {
-      const res = await fetchWithAuth("/api/portal/consent/reconsent-link", { method: "POST" });
+      const res = await fetchWithAuth(endpoint, { method: "POST" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to start reconsent");
@@ -61,21 +100,31 @@ export function useStartReconsent() {
 }
 
 /**
- * The pill itself. Renders nothing unless reconsent is genuinely needed.
+ * The pill itself. Renders nothing unless a real consent problem exists.
  * `collapsed` mirrors the sidebar's collapsed state: expanded shows the
  * labeled pill; collapsed shows just the amber dot button.
  */
 export function ReconsentPill({ collapsed }: { collapsed: boolean }) {
-  const needsReconsent = useNeedsReconsent();
-  const isScopeUpgrade = useReconsentIsScopeUpgrade();
+  const kind = useReconsentKind();
   const { start, starting, error } = useStartReconsent();
 
-  if (!needsReconsent) return null;
+  if (kind === null) return null;
 
-  const idleTitle = isScopeUpgrade
-    ? "Additional Microsoft 365 permissions are available. Click to approve them."
-    : "Your Microsoft 365 connection is no longer active. Click to re-approve access.";
-  const idleLabel = isScopeUpgrade ? "Permission update available" : "Reconnect needed";
+  const idleTitle =
+    kind === "sharepoint"
+      ? "SharePoint access hasn't been approved for your tenant yet. Click to approve it."
+      : kind === "graph-scope-upgrade"
+        ? "Additional Microsoft 365 permissions are available. Click to approve them."
+        : "Your Microsoft 365 connection is no longer active. Click to re-approve access.";
+
+  const idleLabel =
+    kind === "sharepoint"
+      ? "SharePoint access needed"
+      : kind === "graph-scope-upgrade"
+        ? "Permission update available"
+        : "Reconnect needed";
+
+  const errorLabel = kind === "sharepoint" ? "Approval failed — retry" : "Reconnect failed — retry";
 
   if (collapsed) {
     return (
@@ -109,7 +158,7 @@ export function ReconsentPill({ collapsed }: { collapsed: boolean }) {
           <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
         </span>
         <span className="flex-1 text-left truncate">
-          {starting ? "Opening Microsoft…" : error ? "Reconnect failed — retry" : idleLabel}
+          {starting ? "Opening Microsoft…" : error ? errorLabel : idleLabel}
         </span>
         <span className="text-amber-600/60 dark:text-amber-500/60 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
           →

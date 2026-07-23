@@ -40,6 +40,20 @@ export interface ScanStatusPayload {
   consentStatus: "pending" | "granted" | "declined" | "revoked" | null;
   /** True when consentStatus is "granted" but the tenant's stored scopesGranted snapshot is missing a scope in the current REQUIRED_MT_SCOPES union — new permissions were added to the app registration since this tenant last consented. */
   scopesStale: boolean;
+  /**
+   * Real tenant_sharepoint_consent.consent_status for this customer's tenant.
+   * SharePoint Online is a separate Azure resource from Graph, so this is
+   * independent of consentStatus above and a granted Graph consent implies
+   * nothing about it. Three distinct meanings:
+   *   - a status string: a real row exists with that state
+   *   - null: NO row — the tenant has never been through the SharePoint
+   *     admin-consent flow at all (a real, reportable state)
+   *   - absent/undefined: the server could not read the state (e.g. the manual
+   *     migration hasn't run yet) — genuinely unknown, so the UI stays silent
+   */
+  sharePointConsentStatus?: "pending" | "granted" | "declined" | "revoked" | null;
+  /** True when sharePointConsentStatus is "granted" but the stored permissionsGranted snapshot is missing something in REQUIRED_SHAREPOINT_APP_PERMISSIONS. */
+  sharePointPermissionsStale: boolean;
 }
 
 interface ScanStatusContextValue {

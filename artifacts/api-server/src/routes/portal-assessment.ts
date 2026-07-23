@@ -57,6 +57,7 @@ import {
   wfDefinitionsTable,
   presentationDocViewsTable,
   tenantConsentTable,
+  tenantSharePointConsentTable,
 } from "@workspace/db";
 
 /**
@@ -89,6 +90,7 @@ import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveSiblingUserIds } from "../lib/tenant-signals";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -516,6 +518,17 @@ router.get(
 
       let consentStatus: string | null = null;
       let scopesStale = false;
+      // SharePoint Online is a SEPARATE Azure resource from Graph
+      // (00000003-0000-0ff1-ce00-000000000000), consented independently and
+      // recorded in its own tenant_sharepoint_consent row. It is deliberately
+      // NOT derived from tenantConsentTable: a granted Graph consent says
+      // nothing about whether Sites.FullControl.All was ever approved, so
+      // reading it off the Graph row would report every pre-existing tenant as
+      // SharePoint-consented when none of them are.
+      // null = no row (genuinely never consented, a reportable state);
+      // undefined = could not be read at all (omitted from the payload → unknown).
+      let sharePointConsentStatus: string | null | undefined = null;
+      let sharePointPermissionsStale = false;
       if (customerRow?.tenantId) {
         const [consentRow] = await db
           .select({ consentStatus: tenantConsentTable.consentStatus, scopesGranted: tenantConsentTable.scopesGranted })
@@ -528,6 +541,35 @@ router.get(
         if (consentStatus === "granted") {
           const granted = new Set(consentRow?.scopesGranted ?? []);
           scopesStale = REQUIRED_MT_SCOPES.some((scope) => !granted.has(scope));
+        }
+
+        // Guarded separately from the Graph read above: tenant_sharepoint_consent
+        // is created by a manual migration (repo policy — no drizzle-kit push), so
+        // between this deploy and that SQL running the table may not exist yet. A
+        // failure here must NOT take down the whole scan-status payload, which the
+        // shell's scan indicator and the Graph reconsent pill both depend on.
+        try {
+          const [spConsentRow] = await db
+            .select({
+              consentStatus: tenantSharePointConsentTable.consentStatus,
+              permissionsGranted: tenantSharePointConsentTable.permissionsGranted,
+            })
+            .from(tenantSharePointConsentTable)
+            .where(eq(tenantSharePointConsentTable.tenantId, customerRow.tenantId))
+            .limit(1);
+          // null = no row at all = this tenant has never been through the
+          // SharePoint consent flow. That is a real, reportable state (not
+          // "unknown"), and is what every tenant reads as until an admin consents.
+          sharePointConsentStatus = spConsentRow?.consentStatus ?? null;
+          if (sharePointConsentStatus === "granted") {
+            const grantedPerms = new Set(spConsentRow?.permissionsGranted ?? []);
+            sharePointPermissionsStale = REQUIRED_SHAREPOINT_APP_PERMISSIONS.some((p) => !grantedPerms.has(p));
+          }
+        } catch (spErr) {
+          // Report "unknown" (undefined), never a fabricated "granted" — the pill
+          // stays silent rather than claiming a consent state we couldn't read.
+          log.warn({ spErr, customerId }, "scan-status: tenant_sharepoint_consent read failed (migration not yet run?) — omitting SharePoint consent state");
+          sharePointConsentStatus = undefined;
         }
       }
 
@@ -547,6 +589,8 @@ router.get(
         isTestbed: customerRow?.isTestbed === true,
         consentStatus,
         scopesStale,
+        sharePointConsentStatus,
+        sharePointPermissionsStale,
       });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-status failed");
