@@ -1,17 +1,28 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { exec } from "child_process";
+import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "admin.deploy" });
 
 const router = Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const WORKSPACE_ROOT = path.resolve(__dirname, "../../../../");
+// The server is always started (both `pnpm run start` locally and the bundled
+// `node ./dist/index.mjs` in production) from the real workspace root, so
+// process.cwd() is the robust source of truth here — unlike __dirname, it
+// isn't tied to whether this file is running from its src/ source location
+// or collapsed into a single bundled dist/ file. Verified against a .git
+// directory rather than trusted blindly, so a wrong cwd fails loudly instead
+// of silently running deploy operations against the wrong path.
+const WORKSPACE_ROOT = process.cwd();
+if (!fs.existsSync(path.join(WORKSPACE_ROOT, ".git"))) {
+  throw new Error(
+    `admin-deploy-console: WORKSPACE_ROOT (${WORKSPACE_ROOT}) does not contain a .git directory — ` +
+      "the server process was not started from the real workspace root."
+  );
+}
 
 interface DeployStep {
   label: string;
