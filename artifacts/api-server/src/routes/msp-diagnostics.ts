@@ -146,7 +146,8 @@ router.post(
       res.status(202).json({ runId, status: "pending", message: "Diagnostics run started" });
 
       // 5. Fire-and-forget: run the full diagnostics pipeline.
-      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId })
+      // Manual MSPOperator re-check — routine, not assessment-triggered.
+      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId, isAssessmentTriggered: false })
         .catch((err: unknown) => {
           log.error({ err, runId }, "msp-diagnostics: async run failed");
         });

@@ -6418,6 +6418,10 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               tenantId: purchaseTenantId!,
               customerId: customer?.id,
               triggeredByUserId: webhookUserIdOverride ?? undefined,
+              // Mirrors the consent.granted scan path (see comment above) — the
+              // buyer just transitioned into a paid CustomerUser and this
+              // refreshes their assessment-derived dashboard post-purchase.
+              isAssessmentTriggered: true,
             });
             req.log.info(
               { tenantId: purchaseTenantId, customerId: customer?.id },

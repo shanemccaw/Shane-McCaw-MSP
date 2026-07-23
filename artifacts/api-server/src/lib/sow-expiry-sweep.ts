@@ -94,7 +94,8 @@ export async function sweepExpiredSows(): Promise<void> {
     for (const customerId of rescanCustomerIds) {
       void (async () => {
         try {
-          await runDiagnostics({ customerId });
+          // 30-day SOW expiry rescan — routine, not assessment-triggered.
+          await runDiagnostics({ customerId, isAssessmentTriggered: false });
           log.info({ customerId }, "sow-expiry-sweep: 30-day expiry rescan started");
         } catch (err) {
           log.warn({ err, customerId }, "sow-expiry-sweep: rescan failed (non-fatal)");

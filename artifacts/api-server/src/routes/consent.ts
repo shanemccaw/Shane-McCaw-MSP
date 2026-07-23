@@ -547,6 +547,10 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         customerId: inviteRecord?.customerId ?? prospectCustomerId ?? undefined,
         packageKey: resolvedPackageKey ?? undefined,
         triggeredByUserId: undefined,
+        // This is the initial post-consent scan for a purchased order —
+        // the genuine Assessment-flow trigger. Real discriminator for
+        // document generation; see diagnostics-runner.ts's DiagnosticsRunOpts.
+        isAssessmentTriggered: true,
       });
       log.info(
         { tenant, packageKey: resolvedPackageKey ?? "core:security-baseline" },

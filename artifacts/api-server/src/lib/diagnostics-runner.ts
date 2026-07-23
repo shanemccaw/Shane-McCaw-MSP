@@ -27,16 +27,13 @@ import {
   mspDocumentsTable,
   portalWfRunsTable,
   portalWfOperatorTasksTable,
-  clientServicesTable,
-  servicesTable,
 } from "@workspace/db";
-import { eq, and, inArray, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
-import { resolveCustomerUserIds } from "./tenant-signals";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -445,6 +442,17 @@ export interface DiagnosticsRunOpts {
    * just UPDATE that row to "running".  Eliminates the duplicate-row bug.
    */
   existingRunId?: string;
+  /**
+   * Explicit trigger-context flag: true only for scans genuinely fired by the
+   * Assessment flow (post-consent initial scan, Free→Paid upgrade rescan).
+   * Every caller must state this — it must NEVER be inferred from whether the
+   * customer merely *holds* an assessment-type client_services row, since a
+   * customer can hold both an old Assessment purchase and a current Monitoring
+   * subscription, and every routine monitoring re-scan for them would
+   * otherwise misread as an assessment scan. Defaults to false (routine scan)
+   * so callers that omit it never accidentally trigger document generation.
+   */
+  isAssessmentTriggered?: boolean;
 }
 
 export interface DiagnosticsRunResult {
@@ -627,27 +635,18 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     }
 
     // 5. Generate HTML report → Document Pipeline
-    // Gated to genuine Assessment-flow scans only — reuses the same real
-    // discriminator as the assessment_doc_gate workflow node (workflow-executor.ts):
-    // does the customer hold an active client_services row for a service whose
-    // deliveryType is "assessment"? Routine monitoring re-scans (5-min Live
-    // Activity Monitor, manual MSPOperator re-check) have no such row and must
-    // never create a "Diagnostics Report" document — findings/checks above are
-    // unaffected either way.
-    let isAssessmentScan = false;
-    if (customerId != null) {
-      const scopeUserIds = await resolveCustomerUserIds(customerId);
-      if (scopeUserIds.length > 0) {
-        const [assessmentOrder] = await db
-          .select({ serviceId: clientServicesTable.serviceId })
-          .from(clientServicesTable)
-          .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-          .where(and(inArray(clientServicesTable.clientUserId, scopeUserIds), eq(servicesTable.deliveryType, "assessment")))
-          .orderBy(desc(clientServicesTable.id))
-          .limit(1);
-        isAssessmentScan = assessmentOrder != null;
-      }
-    }
+    // Gated to genuine Assessment-flow RUNS only, keyed off what triggered THIS
+    // specific run (opts.isAssessmentTriggered, stated explicitly by each real
+    // caller) — NOT off whether the customer merely holds an assessment-type
+    // client_services row. A customer can legitimately hold both an old
+    // Assessment purchase and a current Monitoring subscription (e.g. Mark
+    // Perry, customerId 4); a service-history check reads "assessment access"
+    // as true for every one of that customer's routine monitoring re-scans
+    // too, spuriously generating a document (and burning AI credits) on every
+    // 5-min Live Activity Monitor tick, manual MSPOperator re-check, SOW-expiry
+    // sweep rescan, and testbed debug-trigger scan. Findings/check-writing
+    // above this gate are unaffected either way.
+    const isAssessmentScan = opts.isAssessmentTriggered === true;
 
     let documentId: string | undefined;
     if (!isAssessmentScan) {

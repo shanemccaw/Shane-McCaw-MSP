@@ -843,7 +843,8 @@ router.post(
 
       res.status(202).json({ runId, status: "pending", message: "Debug scan trigger started" });
 
-      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId }).catch(
+      // Testbed-only manual debug trigger — routine, not assessment-triggered.
+      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId, isAssessmentTriggered: false }).catch(
         (err: unknown) => {
           log.error({ err, runId }, "debug-trigger-scan: async run failed");
         },
