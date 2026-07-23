@@ -4,12 +4,13 @@ import { json } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { FileCog, Plus, Pencil, Loader2, X } from "lucide-react";
+import { FileCog, Plus, Pencil, Loader2, X, SlidersHorizontal } from "lucide-react";
+import PromptEditDialog from "@/components/PromptEditDialog";
 
 // Section builder and scoping builder (includedProfileKeyPatterns /
-// includedSignalCategories) are covered here. AI-prompt-link editing is
-// explicitly OUT of scope here — this is list + basic create/edit only.
-// Later stages add that.
+// includedSignalCategories) are covered here. The linked AI prompt (set at
+// creation time server-side) is editable via the shared PromptEditDialog,
+// not reassignable through this form.
 
 interface DocumentType {
   id: number;
@@ -23,6 +24,7 @@ interface DocumentType {
   sections: { id: string; heading: string; guidance: string }[];
   includedProfileKeyPatterns: string[];
   includedSignalCategories: string[];
+  aiPromptId: number | null;
 }
 
 // No dedicated lightweight services-lookup endpoint exists yet — reusing the
@@ -110,6 +112,27 @@ export default function DocumentTypesManager() {
   const [form, setForm] = useState<TypeForm>(emptyTypeForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [promptDialogKey, setPromptDialogKey] = useState<string | null>(null);
+  const [promptDialogLoading, setPromptDialogLoading] = useState(false);
+
+  const openPromptDialog = async (type: DocumentType) => {
+    if (type.aiPromptId == null) {
+      toast({ title: "No linked prompt", description: "This document type has no linked AI prompt.", variant: "destructive" });
+      return;
+    }
+    setPromptDialogLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${type.aiPromptId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load prompt");
+      setPromptDialogKey(data.prompt.key);
+    } catch (err) {
+      toast({ title: "Failed to load prompt", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setPromptDialogLoading(false);
+    }
+  };
 
   const openCreate = () => {
     setEditingType(null);
@@ -304,6 +327,14 @@ export default function DocumentTypesManager() {
               <button onClick={() => openEdit(type)} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent shrink-0" title="Edit document type">
                 <Pencil className="h-3.5 w-3.5" />
               </button>
+              <button
+                onClick={() => void openPromptDialog(type)}
+                disabled={promptDialogLoading}
+                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent shrink-0 disabled:opacity-40"
+                title="Edit AI prompt"
+              >
+                <SlidersHorizontal className="size-3.5" />
+              </button>
             </div>
           ))}
         </div>
@@ -445,6 +476,15 @@ export default function DocumentTypesManager() {
             </div>
           </div>
         </div>
+      )}
+
+      {promptDialogKey && (
+        <PromptEditDialog
+          open={true}
+          onClose={() => setPromptDialogKey(null)}
+          promptKey={promptDialogKey}
+          fetchWithAuth={fetchWithAuth}
+        />
       )}
     </div>
   );
