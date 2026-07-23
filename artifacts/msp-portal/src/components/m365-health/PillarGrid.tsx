@@ -1,132 +1,170 @@
 import React from 'react';
 import {
   Shield,
-  Gavel,
-  ShieldCheck,
+  Scale,
+  FileCheck,
   Users,
   Bot,
   Network,
   Receipt,
-  TrendingUp,
-  TrendingDown,
-  Minus,
   ChevronRight,
 } from 'lucide-react';
-import { PillarData } from './types';
+import {
+  HealthRadarPillar,
+  scoreBand,
+  BAND_COLOR_VAR,
+  BAND_TEXT_CLASS,
+} from './useM365HealthLive';
+
+/**
+ * 7-pillar score cards — circular red→amber→green rings driven by the real
+ * package-aware pillar scores (status.radar.pillars). The full 7-pillar
+ * universe always renders in canonical order; a pillar the customer's scanned
+ * package doesn't genuinely cover renders the honest "Not covered by this
+ * scan" state — never a fabricated score. Ring color = the platform's shared
+ * score banding (≥70 green, ≥40 amber, else red) in the app's real status
+ * tokens; the numeric score + band label always accompany the color so state
+ * is never encoded by color alone.
+ */
+
+export interface PillarCardEntry {
+  /** Canonical pillar key — matches the backend HealthPillar keys + "security". */
+  key: string;
+  label: string;
+  /** null = honest not-covered state. */
+  score: number | null;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+/** The full, confirmed 7-pillar universe in canonical display order — same set
+ * as /assessment's GAUGE_PILLARS (keys match the backend's real HealthPillar
+ * keys plus "security"). */
+export const PILLAR_UNIVERSE: { key: string; fallbackLabel: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: 'security', fallbackLabel: 'Security', icon: Shield },
+  { key: 'governance', fallbackLabel: 'Governance', icon: Scale },
+  { key: 'compliance', fallbackLabel: 'Compliance', icon: FileCheck },
+  { key: 'adoption', fallbackLabel: 'Adoption', icon: Users },
+  { key: 'copilot', fallbackLabel: 'Copilot', icon: Bot },
+  { key: 'architecture', fallbackLabel: 'Architecture', icon: Network },
+  { key: 'licensing', fallbackLabel: 'Licensing', icon: Receipt },
+];
+
+export function buildPillarCards(pillars: HealthRadarPillar[]): PillarCardEntry[] {
+  return PILLAR_UNIVERSE.map(({ key, fallbackLabel, icon }) => {
+    const real = pillars.find((p) => p.pillar === key);
+    return {
+      key,
+      label: real?.label ?? fallbackLabel,
+      score: real ? real.score : null,
+      icon,
+    };
+  });
+}
 
 interface PillarGridProps {
-  pillars: PillarData[];
-  onSelectPillar: (pillarId: string) => void;
-  selectedPillarId?: string;
+  pillars: HealthRadarPillar[];
+  onSelectPillar: (pillarKey: string) => void;
+  selectedPillarKey?: string;
 }
+
+const RING_RADIUS = 34;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 export const PillarGrid: React.FC<PillarGridProps> = ({
   pillars,
   onSelectPillar,
-  selectedPillarId,
+  selectedPillarKey,
 }) => {
-  const getIconComponent = (iconName: string) => {
-    switch (iconName) {
-      case 'Shield':
-        return Shield;
-      case 'Gavel':
-        return Gavel;
-      case 'ShieldCheck':
-        return ShieldCheck;
-      case 'Users':
-        return Users;
-      case 'Bot':
-        return Bot;
-      case 'Network':
-        return Network;
-      case 'Receipt':
-        return Receipt;
-      default:
-        return Shield;
-    }
-  };
+  const cards = buildPillarCards(pillars);
 
   return (
     <section className="mb-6">
       <div className="flex items-center justify-between mb-3 px-1">
-        <h3 className="text-xs font-mono font-bold text-[#c0c7d3] uppercase tracking-wider">
-          7-Pillar Health Score Matrix
+        <h3 className="text-xs font-mono font-bold text-secondary-foreground/90 uppercase tracking-wider">
+          7-Pillar Health Matrix
         </h3>
-        <span className="text-[11px] font-mono text-[#8a919d]">Click any pillar for deep telemetry & actions</span>
+        <span className="text-[11px] font-mono text-muted-foreground">
+          Scores reflect only what your scan genuinely covers
+        </span>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-        {pillars.map((pillar) => {
-          const IconComp = getIconComponent(pillar.icon);
-          const isSelected = selectedPillarId === pillar.id;
+        {cards.map((card) => {
+          const IconComp = card.icon;
+          const isSelected = selectedPillarKey === card.key;
+          const covered = card.score != null;
+          const band = covered ? scoreBand(card.score as number) : null;
+          const ringColor = band ? BAND_COLOR_VAR[band] : undefined;
+          const dashOffset = covered
+            ? RING_CIRCUMFERENCE * (1 - (card.score as number) / 100)
+            : RING_CIRCUMFERENCE;
 
           return (
-            <div
-              key={pillar.id}
-              onClick={() => onSelectPillar(pillar.id)}
-              className={`bg-card border border-border p-4 rounded-xl cursor-pointer transition-all duration-300 relative group flex flex-col justify-between ${
-                isSelected
-                  ? 'ring-2 ring-[#479ef5] bg-[#2a2a2a] shadow-[0_0_20px_rgba(71,158,245,0.2)]'
-                  : 'hover:-translate-y-1'
-              }`}
+            <button
+              key={card.key}
+              onClick={() => onSelectPillar(card.key)}
+              className={`bg-card border border-border p-4 rounded-xl cursor-pointer transition-all duration-300 group flex flex-col items-center text-center ${
+                isSelected ? 'ring-2 ring-ring' : 'hover:-translate-y-1'
+              } ${covered ? '' : 'opacity-70'}`}
             >
-              {/* Pillar top row: Icon & Trend pill */}
-              <div className="flex justify-between items-start mb-3">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{
-                    backgroundColor: `${pillar.color}15`,
-                    color: pillar.color,
-                  }}
-                >
-                  <IconComp className="w-4 h-4" />
-                </div>
-
-                <div className="flex items-center text-[10px] font-mono font-semibold">
-                  {pillar.trend === 'up' && (
-                    <span className="flex items-center text-[#a0c9ff]">
-                      <TrendingUp className="w-3 h-3 mr-0.5" />
-                      +{pillar.change}%
-                    </span>
-                  )}
-                  {pillar.trend === 'down' && (
-                    <span className="flex items-center text-[#ffb4ab]">
-                      <TrendingDown className="w-3 h-3 mr-0.5" />
-                      {pillar.change}%
-                    </span>
-                  )}
-                  {pillar.trend === 'stable' && (
-                    <span className="text-[#8a919d] font-bold">STABLE</span>
-                  )}
-                </div>
+              {/* Title row */}
+              <div className="flex items-center gap-1.5 mb-2">
+                <IconComp
+                  className={`w-3.5 h-3.5 ${covered && band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'}`}
+                />
+                <span className="text-[11px] font-mono font-semibold text-secondary-foreground/90 uppercase tracking-wide">
+                  {card.label}
+                </span>
+                <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
 
-              {/* Title & Score */}
-              <div className="mb-3">
-                <h4 className="text-[11px] font-mono text-[#c0c7d3] font-medium flex items-center justify-between">
-                  <span>{pillar.name}</span>
-                  <ChevronRight className="w-3 h-3 text-[#8a919d] opacity-0 group-hover:opacity-100 transition-opacity" />
-                </h4>
-                <p className="font-headline text-2xl font-bold text-[#e2e2e2] mt-0.5" style={{ color: isSelected ? pillar.color : undefined }}>
-                  {pillar.score}
-                </p>
-              </div>
-
-              {/* Sparkline Bars */}
-              <div className="h-8 flex items-end space-x-1 pt-1 border-t border-[#404752]/30">
-                {pillar.bars.map((barVal, bIdx) => (
-                  <div
-                    key={bIdx}
-                    className="w-full rounded-t-sm transition-all duration-300 group-hover:brightness-125"
-                    style={{
-                      height: `${(barVal / 8) * 100}%`,
-                      backgroundColor: pillar.color,
-                      opacity: 0.7 + bIdx * 0.1,
-                    }}
+              {/* Circular score ring */}
+              <div className="relative w-20 h-20 my-1">
+                <svg className="w-full h-full" viewBox="0 0 80 80">
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r={RING_RADIUS}
+                    fill="none"
+                    stroke="hsl(var(--muted))"
+                    strokeWidth="7"
                   />
-                ))}
+                  {covered && (
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r={RING_RADIUS}
+                      fill="none"
+                      stroke={ringColor}
+                      strokeWidth="7"
+                      strokeDasharray={RING_CIRCUMFERENCE}
+                      strokeDashoffset={dashOffset}
+                      strokeLinecap="round"
+                      transform="rotate(-90 40 40)"
+                      className="transition-all duration-700 ease-out"
+                    />
+                  )}
+                </svg>
+                <span
+                  className={`absolute inset-0 flex items-center justify-center text-lg font-bold font-mono ${
+                    covered && band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'
+                  }`}
+                >
+                  {covered ? card.score : '—'}
+                </span>
               </div>
-            </div>
+
+              {/* Band label — state is never color alone */}
+              <span className="text-[10px] font-mono text-muted-foreground mt-1">
+                {covered
+                  ? band === 'green'
+                    ? 'Healthy'
+                    : band === 'amber'
+                      ? 'Needs attention'
+                      : 'At risk'
+                  : 'Not covered by this scan'}
+              </span>
+            </button>
           );
         })}
       </div>

@@ -1,227 +1,250 @@
 import React, { useState } from 'react';
 import {
   MessageSquare,
-  Share2,
-  Rocket,
-  Shield,
-  TrendingDown,
-  CheckCircle,
+  Mail,
+  FolderOpen,
+  Cloud,
+  Bot,
 } from 'lucide-react';
-import { SecurityTrendPoint, AdoptionMetricItem } from './types';
+import { SecurityTrendPoint } from './types';
+import {
+  ResolvedMetric,
+  resolvedValue,
+  USAGE_METRICS,
+} from './useM365HealthLive';
+import type { CopilotReadinessLive } from '@/components/assessment-test/types';
+
+/**
+ * Trends row — two real panels:
+ *
+ *   • Copilot Readiness breakdown — the three real sub-indicators behind the
+ *     hero's overall readiness figure (copilot-readiness.ts: SharePoint/Teams
+ *     overshare, sensitivity labels, DLP — 50/30/20 weighting). Every score is
+ *     real or renders the honest "no data" state.
+ *   • Adoption — the real usage.* active-user counts per workload from the
+ *     monitor check catalog (usage:teams-active etc.). Bars are relative to
+ *     the busiest workload (a real ratio), labeled with the real counts — no
+ *     fabricated percentages.
+ *
+ * ⚠️ SECURITY TRENDS (v2 backlog — deliberately hidden, not deleted):
+ * the mock weekly alerts/risky-users/priv-sign-ins chart below is preserved
+ * behind `showSecurityTrends` (default false) because no real historical
+ * trend data has accumulated in tenant_engine_snapshots yet. Re-enable it
+ * only when a real time-series source exists (e.g. the
+ * /api/portal/engines/security/history series) — never with fabricated
+ * points.
+ */
 
 interface TrendsRowProps {
-  securityTrends: SecurityTrendPoint[];
-  adoptionMetrics: AdoptionMetricItem[];
+  copilotReadiness: CopilotReadinessLive | null;
+  metrics: Record<string, ResolvedMetric>;
+  /** v2 backlog flag — mock security-trends chart stays hidden until a real
+   * historical series exists. */
+  showSecurityTrends?: boolean;
+  securityTrends?: SecurityTrendPoint[];
 }
 
+const USAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  'usage.teamsActiveCount': MessageSquare,
+  'usage.exchangeActiveCount': Mail,
+  'usage.sharePointActiveCount': FolderOpen,
+  'usage.oneDriveActiveCount': Cloud,
+};
+
+const READINESS_INDICATORS: {
+  key: 'sharePointTeams' | 'sensitivityLabels' | 'dlp';
+  label: string;
+}[] = [
+  { key: 'sharePointTeams', label: 'SharePoint & Teams exposure' },
+  { key: 'sensitivityLabels', label: 'Sensitivity labels' },
+  { key: 'dlp', label: 'Data loss prevention' },
+];
+
 export const TrendsRow: React.FC<TrendsRowProps> = ({
-  securityTrends,
-  adoptionMetrics,
+  copilotReadiness,
+  metrics,
+  showSecurityTrends = false,
+  securityTrends = [],
 }) => {
   const [activeTrendMetric, setActiveTrendMetric] = useState<'alerts' | 'riskyUsers' | 'privSignIns'>('alerts');
 
+  // Real adoption counts, bars relative to the busiest workload.
+  const usageValues = USAGE_METRICS.map((def) => ({
+    def,
+    value: resolvedValue(metrics[def.key]),
+  }));
+  const maxUsage = Math.max(0, ...usageValues.map((u) => u.value ?? 0));
+  const anyUsage = usageValues.some((u) => u.value != null);
+
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-      {/* 1. Security Trend */}
-      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
-            SECURITY TRENDS
-          </h4>
-          <span className="text-xs font-mono text-[#a0c9ff] font-medium flex items-center">
-            <TrendingDown className="w-3.5 h-3.5 mr-1" />
-            Alerts Down 22%
-          </span>
-        </div>
-
-        {/* Interactive Bar Chart */}
-        <div className="h-32 flex items-end space-x-1.5 pb-2 border-b border-[#404752]/40">
-          {securityTrends.map((point, idx) => {
-            const val = point[activeTrendMetric];
-            const maxVal = 100;
-            const heightPercent = (val / maxVal) * 100;
-
-            return (
-              <div
-                key={idx}
-                className="flex-1 flex flex-col items-center group cursor-pointer"
-                title={`${point.label}: ${val} ${activeTrendMetric}`}
-              >
-                <div
-                  className="w-full bg-[#479ef5]/30 rounded-t group-hover:bg-[#479ef5] transition-all duration-300"
-                  style={{
-                    height: `${heightPercent}%`,
-                    backgroundColor:
-                      activeTrendMetric === 'alerts'
-                        ? '#a0c9ff'
-                        : activeTrendMetric === 'riskyUsers'
-                        ? '#dab9ff'
-                        : '#c8c6c5',
-                  }}
-                />
-                <span className="text-[9px] font-mono text-[#8a919d] mt-1 group-hover:text-[#e2e2e2]">
-                  {point.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Interactive Legend selector */}
-        <div className="grid grid-cols-3 gap-2 mt-3 text-[10px] font-mono text-[#8a919d]">
-          <button
-            onClick={() => setActiveTrendMetric('alerts')}
-            className={`flex items-center justify-center space-x-1 py-1 rounded border transition-colors ${
-              activeTrendMetric === 'alerts'
-                ? 'bg-[#a0c9ff]/20 border-[#a0c9ff] text-[#a0c9ff] font-bold'
-                : 'border-transparent hover:text-[#c0c7d3]'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-[#a0c9ff]" />
-            <span>Alerts</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTrendMetric('riskyUsers')}
-            className={`flex items-center justify-center space-x-1 py-1 rounded border transition-colors ${
-              activeTrendMetric === 'riskyUsers'
-                ? 'bg-[#dab9ff]/20 border-[#dab9ff] text-[#dab9ff] font-bold'
-                : 'border-transparent hover:text-[#c0c7d3]'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-[#dab9ff]" />
-            <span>Risky Users</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTrendMetric('privSignIns')}
-            className={`flex items-center justify-center space-x-1 py-1 rounded border transition-colors ${
-              activeTrendMetric === 'privSignIns'
-                ? 'bg-[#c8c6c5]/20 border-[#c8c6c5] text-[#c8c6c5] font-bold'
-                : 'border-transparent hover:text-[#c0c7d3]'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-[#c8c6c5]" />
-            <span>Priv. Sign-ins</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Compliance Drift */}
-      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
-            COMPLIANCE DRIFT
-          </h4>
-          <span className="text-xs font-mono text-[#dab9ff] font-medium">
-            Labels +14%
-          </span>
-        </div>
-
-        <div className="h-32 flex items-center justify-center space-x-6">
-          {/* Ring Gauge */}
-          <div className="relative w-24 h-24 flex-shrink-0">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle
-                cx="48"
-                cy="48"
-                r="40"
-                fill="transparent"
-                stroke="#333535"
-                strokeWidth="8"
-              />
-              <circle
-                cx="48"
-                cy="48"
-                r="40"
-                fill="transparent"
-                stroke="#dab9ff"
-                strokeWidth="8"
-                strokeDasharray={2 * Math.PI * 40}
-                strokeDashoffset={2 * Math.PI * 40 * (1 - 0.75)}
-                strokeLinecap="round"
-                className="transition-all duration-700"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center font-mono font-bold text-lg text-[#e2e2e2]">
-              75%
-            </div>
+    <section
+      className={`grid grid-cols-1 gap-6 mb-6 ${
+        showSecurityTrends ? 'lg:grid-cols-3' : 'lg:grid-cols-2'
+      }`}
+    >
+      {/* ⚠️ v2 backlog — mock Security Trends chart, hidden by default (see header) */}
+      {showSecurityTrends && (
+        <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="font-mono text-xs font-semibold text-foreground uppercase">
+              SECURITY TRENDS
+            </h4>
           </div>
 
-          {/* Side Legend */}
-          <div className="space-y-2 text-xs font-mono text-[#c0c7d3]">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 rounded-full bg-[#dab9ff]" />
-              <span>Labeled Content</span>
-            </div>
-            <div className="flex items-center space-x-2 text-[#8a919d]">
-              <span className="w-2 h-2 rounded-full bg-[#ffb4ab]" />
-              <span>DLP Overrides (Low)</span>
-            </div>
-            <div className="flex items-center space-x-2 text-[#8a919d]">
-              <span className="w-2 h-2 rounded-full bg-[#479ef5]" />
-              <span>Policy Drift (Med)</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-[#404752]/40 text-[10px] font-mono text-[#8a919d] flex justify-between">
-          <span>Target Alignment: High</span>
-          <span className="text-[#dab9ff]">24h Audit Sync</span>
-        </div>
-      </div>
-
-      {/* 3. Adoption Metrics */}
-      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="font-mono text-xs font-semibold text-[#e2e2e2] uppercase">
-            ADOPTION METRICS
-          </h4>
-          <span className="text-xs font-mono text-[#479ef5] font-medium">
-            Engagement High
-          </span>
-        </div>
-
-        <div className="space-y-4 my-auto">
-          {adoptionMetrics.map((m) => {
-            let IconComponent = MessageSquare;
-            if (m.icon === 'Share2') IconComponent = Share2;
-            if (m.icon === 'Rocket') IconComponent = Rocket;
-
-            return (
-              <div key={m.id} className="flex items-center space-x-3">
+          <div className="h-32 flex items-end space-x-1.5 pb-2 border-b border-border">
+            {securityTrends.map((point, idx) => {
+              const val = point[activeTrendMetric];
+              const heightPercent = (val / 100) * 100;
+              return (
                 <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: `${m.color}20`, color: m.color }}
+                  key={idx}
+                  className="flex-1 flex flex-col items-center group cursor-pointer"
+                  title={`${point.label}: ${val} ${activeTrendMetric}`}
                 >
-                  <IconComponent className="w-3.5 h-3.5" />
+                  <div
+                    className="w-full bg-primary/60 rounded-t group-hover:bg-primary transition-all duration-300"
+                    style={{ height: `${heightPercent}%` }}
+                  />
+                  <span className="text-[9px] font-mono text-muted-foreground mt-1 group-hover:text-foreground">
+                    {point.label}
+                  </span>
                 </div>
+              );
+            })}
+          </div>
 
-                <div className="flex-grow space-y-1">
+          <div className="grid grid-cols-3 gap-2 mt-3 text-[10px] font-mono text-muted-foreground">
+            {(['alerts', 'riskyUsers', 'privSignIns'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setActiveTrendMetric(m)}
+                className={`flex items-center justify-center space-x-1 py-1 rounded border transition-colors ${
+                  activeTrendMetric === m
+                    ? 'bg-primary/15 border-primary text-primary font-bold'
+                    : 'border-transparent hover:text-secondary-foreground'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-primary" />
+                <span>{m === 'alerts' ? 'Alerts' : m === 'riskyUsers' ? 'Risky Users' : 'Priv. Sign-ins'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Copilot Readiness breakdown — real sub-indicators */}
+      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
+        <div className="flex justify-between items-center mb-3">
+          <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+            <Bot className="w-3.5 h-3.5 text-status-violet" />
+            COPILOT READINESS BREAKDOWN
+          </h4>
+          <span className="text-xs font-mono text-status-violet font-medium">
+            {copilotReadiness?.overall.score != null
+              ? `${copilotReadiness.overall.score}% overall`
+              : 'No data yet'}
+          </span>
+        </div>
+
+        {copilotReadiness ? (
+          <div className="space-y-4 my-auto">
+            {READINESS_INDICATORS.map(({ key, label }) => {
+              const indicator = copilotReadiness[key];
+              const weight = copilotReadiness.overall.weights[key];
+              return (
+                <div key={key} className="space-y-1">
                   <div className="flex justify-between text-xs font-mono">
-                    <span className="text-[#c0c7d3]">{m.name}</span>
-                    <span className="font-bold" style={{ color: m.color }}>
-                      {m.percentage}%
+                    <span className="text-secondary-foreground/90">
+                      {label}{' '}
+                      <span className="text-muted-foreground">({Math.round(weight * 100)}%)</span>
+                    </span>
+                    <span className="font-bold text-foreground">
+                      {indicator.score != null ? `${indicator.score}%` : 'no data'}
                     </span>
                   </div>
-                  <div className="h-1.5 bg-[#1e2020] rounded-full overflow-hidden border border-[#404752]/30">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${m.percentage}%`,
-                        backgroundColor: m.color,
-                      }}
-                    />
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    {indicator.score != null && (
+                      <div
+                        className="h-full rounded-full transition-all duration-500 bg-status-violet"
+                        style={{ width: `${indicator.score}%` }}
+                      />
+                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        ) : (
+          <div className="my-auto text-center px-4">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Copilot-readiness indicators appear once your scan has collected
+              the backing SharePoint, labeling, and DLP checks.
+            </p>
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-border text-[10px] font-mono text-muted-foreground flex justify-between">
+          <span>Weighted 50 / 30 / 20</span>
+          <span>
+            {copilotReadiness
+              ? `${copilotReadiness.overall.coveredIndicators.length} of 3 indicators covered`
+              : '—'}
+          </span>
+        </div>
+      </div>
+
+      {/* Adoption — real usage.* active-user counts */}
+      <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-between">
+        <div className="flex justify-between items-center mb-3">
+          <h4 className="font-mono text-xs font-semibold text-foreground uppercase">
+            ADOPTION — ACTIVE USERS
+          </h4>
+          <span className="text-xs font-mono text-primary font-medium">
+            {anyUsage ? 'Per workload' : 'No data yet'}
+          </span>
         </div>
 
-        <div className="pt-2 border-t border-[#404752]/40 text-[10px] font-mono text-[#8a919d] flex justify-between">
-          <span>Active Users: 1,420</span>
-          <span className="text-[#a0c9ff]">+18% MoM</span>
+        {anyUsage ? (
+          <div className="space-y-4 my-auto">
+            {usageValues.map(({ def, value }) => {
+              const IconComponent = USAGE_ICONS[def.key] ?? MessageSquare;
+              return (
+                <div key={def.key} className="flex items-center space-x-3">
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10 text-primary">
+                    <IconComponent className="w-3.5 h-3.5" />
+                  </div>
+
+                  <div className="flex-grow space-y-1">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-secondary-foreground/90">{def.label}</span>
+                      <span className="font-bold text-foreground">
+                        {value != null ? `${value.toLocaleString()} active` : 'no data'}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      {value != null && maxUsage > 0 && (
+                        <div
+                          className="h-full rounded-full transition-all duration-500 bg-primary"
+                          style={{ width: `${(value / maxUsage) * 100}%` }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="my-auto text-center px-4">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Workload adoption counts appear once the usage checks have
+              collected activity data for your tenant.
+            </p>
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-border text-[10px] font-mono text-muted-foreground flex justify-between">
+          <span>Bars are relative to your busiest workload</span>
         </div>
       </div>
     </section>
