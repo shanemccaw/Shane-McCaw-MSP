@@ -21,6 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
+import { SimulatorDeployConsolePanel } from "./SimulatorDeployConsolePanel";
 import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
 
 interface Msp {
@@ -55,7 +56,7 @@ export function SimulatorCenterCanvas({
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines">("sql");
+  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "deploy">("sql");
 
   // Testbeds state
   const [msps, setMsps] = useState<Msp[]>([]);
@@ -191,6 +192,7 @@ export function SimulatorCenterCanvas({
     { key: "testbeds", label: "Testbeds" },
     { key: "overrides", label: "Overrides" },
     { key: "engines", label: "Run Engines" },
+    { key: "deploy", label: "Deploy Console" },
   ];
 
   return (
@@ -422,6 +424,10 @@ export function SimulatorCenterCanvas({
         {/* Tab 4: Run Engines Panel */}
         {activeTab === "engines" && (
           <SimulatorEnginesPanel />
+        )}
+        {/* Tab 5: Deploy Console — whitelisted git/pnpm operations only */}
+        {activeTab === "deploy" && (
+          <SimulatorDeployConsolePanel />
         )}
       </div>
     </div>
