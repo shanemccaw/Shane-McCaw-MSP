@@ -625,38 +625,41 @@ router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Reques
 // tenant_write_consent — fully independent of the read-only flow above (which
 // stays untouched). PlatformAdmin-triggered only: an admin generates the consent
 // URL for a specific customer, sends/opens it, and Microsoft redirects to the
-// per-customer callback below.
+// single FIXED callback below (/api/admin/write-consent/callback) — one URL to
+// register in the write app's Azure Redirect URIs, regardless of customer count.
+// The customerId travels inside the signed state instead of the callback path.
 //
 // State is never bare (state-less consent URLs are banned platform-wide): a
 // single-use expiring row in consent_invite_tokens backs every URL, and the
-// state carries an HMAC binding it to the WRITE flow ("wc.<token>.<mac>") so a
-// write-flow state pasted into the read callback fails closed (its token lookup
-// on the full prefixed string finds no row) and vice versa.
-//
-// NOTE (Azure registration): the redirect URI contains the numeric customerId in
-// its path, so each customer's exact callback URL must be present in the write
-// app's registered Redirect URIs before that customer's consent can complete —
-// Microsoft rejects any redirect_uri not registered verbatim.
+// state carries an HMAC over BOTH the customerId and the token
+// ("wc.<customerId>.<token>.<mac>") — binding it to the WRITE flow and to one
+// specific customer. A write-flow state pasted into the read callback fails
+// closed (its token lookup on the full prefixed string finds no row) and vice
+// versa; a tampered customerId fails the HMAC; and the callback additionally
+// cross-checks the state's customerId against the token row's stored customerId,
+// so the DB row stays the authoritative binding.
 
 function writeConsentStateSecret(): string {
   const s = process.env.JWT_SECRET;
   if (!s) throw new Error("JWT_SECRET not configured");
   return s;
 }
-function signWriteConsentState(token: string): string {
-  const mac = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${token}`).digest("hex");
-  return `wc.${token}.${mac}`;
+function signWriteConsentState(customerId: number, token: string): string {
+  const mac = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${customerId}:${token}`).digest("hex");
+  return `wc.${customerId}.${token}.${mac}`;
 }
-function verifyWriteConsentState(state: string): string | null {
+function verifyWriteConsentState(state: string): { customerId: number; token: string } | null {
   const parts = state.split(".");
-  if (parts.length !== 3 || parts[0] !== "wc" || !parts[1] || !parts[2]) return null;
-  const token = parts[1];
-  const mac = parts[2];
-  const expected = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${token}`).digest("hex");
+  if (parts.length !== 4 || parts[0] !== "wc" || !parts[1] || !parts[2] || !parts[3]) return null;
+  const customerId = parseInt(parts[1], 10);
+  const token = parts[2];
+  const mac = parts[3];
+  if (isNaN(customerId) || String(customerId) !== parts[1]) return null;
+  const expected = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${customerId}:${token}`).digest("hex");
   const a = Buffer.from(mac, "hex");
   const b = Buffer.from(expected, "hex");
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return token;
+  return { customerId, token };
 }
 
 // ── GET /api/admin/customers/:customerId/write-consent/start ───────────────────
@@ -695,11 +698,13 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
     expiresAt,
   });
 
-  const callbackUrl = `${getHostBase(req)}/api/admin/customers/${customerId}/write-consent/callback`;
+  // Fixed callback URL — register exactly this one URL in the write app's
+  // Azure Redirect URIs; customerId rides in the signed state, not the path.
+  const callbackUrl = `${getHostBase(req)}/api/admin/write-consent/callback`;
   const tenantHint = customer.tenantId?.trim() || "common";
   const consentUrl = buildAdminConsentUrl(
     tenantHint,
-    signWriteConsentState(token),
+    signWriteConsentState(customerId, token),
     callbackUrl,
     process.env.MT_APP_WRITE_CLIENT_ID,
   );
@@ -716,29 +721,26 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
   res.json({ consentUrl, expiresAt });
 });
 
-// ── GET /api/admin/customers/:customerId/write-consent/callback ────────────────
+// ── GET /api/admin/write-consent/callback ──────────────────────────────────────
 // Microsoft redirects here after the customer's admin approves or declines the
-// WRITE app. Mirrors the read callback above: burn the single-use token, upsert
-// tenant_write_consent, land on a result page. Unauthenticated by necessity
-// (Microsoft's redirect carries no session) — trust comes from the HMAC-bound,
-// DB-backed single-use state.
+// WRITE app. One FIXED URL for every customer (registered once in Azure);
+// the customerId is recovered from the HMAC-signed state and cross-checked
+// against the single-use token row. Mirrors the read callback above: burn the
+// token, upsert tenant_write_consent, land on a result page. Unauthenticated by
+// necessity (Microsoft's redirect carries no session) — trust comes from the
+// HMAC-bound, DB-backed single-use state.
 
-router.get("/admin/customers/:customerId/write-consent/callback", async (req: Request, res: Response) => {
-  const customerId = parseInt(req.params["customerId"] as string, 10);
+router.get("/admin/write-consent/callback", async (req: Request, res: Response) => {
   const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
   const hostBase = getHostBase(req);
 
-  if (isNaN(customerId)) {
-    res.status(400).send("Invalid callback URL.");
-    return;
-  }
-
-  const token = state ? verifyWriteConsentState(state) : null;
-  if (!token) {
-    log.warn({ customerId, state }, "Write-consent callback: state missing or failed HMAC verification");
+  const verified = state ? verifyWriteConsentState(state) : null;
+  if (!verified) {
+    log.warn({ state }, "Write-consent callback: state missing or failed HMAC verification");
     res.status(400).send("Invalid consent callback state.");
     return;
   }
+  const { customerId, token } = verified;
 
   // Validate + burn the single-use token; it must belong to THIS customer.
   const now = new Date();
