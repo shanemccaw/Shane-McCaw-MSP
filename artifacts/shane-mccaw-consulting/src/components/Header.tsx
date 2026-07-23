@@ -215,14 +215,15 @@ export function Header() {
                 <ArrowRight className="w-3 h-3" />
               </ChatCTA>
             ) : (
-              <ChatCTA
+              <Link
+                href="/msp"
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                <span>Chat with us</span>
+                <span>For MSPs</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </ChatCTA>
+              </Link>
             )}
           </div>
 
@@ -286,14 +287,15 @@ export function Header() {
                 Or ask a question
               </ChatCTA>
             ) : (
-              <ChatCTA
+              <Link
+                href="/msp"
                 onClick={closeMobileMenu}
                 className="w-full text-center py-3 px-4 rounded-xl text-sm font-semibold text-white block"
                 style={{ background: "linear-gradient(90deg, var(--accent-blue), var(--accent-violet))" }}
                 data-track="cta"
               >
-                Chat with us
-              </ChatCTA>
+                For MSPs
+              </Link>
             )}
           </div>
         </div>
