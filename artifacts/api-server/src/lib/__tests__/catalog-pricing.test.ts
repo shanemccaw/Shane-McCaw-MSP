@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveCatalogPricing, resolveServicePriceCents, isServiceFree } from "../catalog-pricing";
+import {
+  resolveCatalogPricing,
+  resolveServicePriceCents,
+  resolveTypeAttributesMonthlyPriceCents,
+  isServiceFree,
+} from "../catalog-pricing";
 
 describe("resolveCatalogPricing", () => {
   it("computes wholesaleCostCents using default 70% retail price if internalCostCents is null or undefined", () => {
@@ -81,5 +86,109 @@ describe("isServiceFree", () => {
 
   it("honors an explicit isFreeOffering flag even when a priceCents value is present (intentional free promo)", () => {
     expect(isServiceFree({ isFreeOffering: true, priceCents: 25000, price: null, basePrice: null })).toBe(true);
+  });
+
+  it("REGRESSION: a monitoring tier priced ONLY via typeAttributes.pricePerUserMonth is NOT free (second live Stripe bypass)", () => {
+    // The exact shape of a real monitoring_tier row created via the admin
+    // panel: the monitoring-tier editor writes NO flat price (priceFixed:
+    // false) — price/basePrice/priceCents are all NULL and the entire price
+    // lives in typeAttributes. Reading only the flat columns judged this
+    // "free": consent-success inline-finalized the order and the free-checkout
+    // guard passed it, provisioning a real Enhanced Monitoring subscription
+    // for $0 with Stripe never invoked.
+    expect(
+      isServiceFree({
+        isFreeOffering: false,
+        priceCents: null,
+        price: null,
+        basePrice: null,
+        typeAttributes: { pricePerUserMonth: "8.00", seatCountFloor: 5, flatMonthlySurcharge: null },
+      }),
+    ).toBe(false);
+  });
+
+  it("treats a typeAttributes flatMonthlySurcharge-only or flatMonthlyPrice-only service as paid", () => {
+    expect(
+      isServiceFree({ isFreeOffering: false, typeAttributes: { flatMonthlySurcharge: "25.00" } }),
+    ).toBe(false);
+    // recurring_addon pricing model
+    expect(
+      isServiceFree({ isFreeOffering: false, typeAttributes: { flatMonthlyPrice: "29.00" } }),
+    ).toBe(false);
+  });
+
+  it("stays free when typeAttributes exist but carry no positive pricing", () => {
+    expect(
+      isServiceFree({
+        isFreeOffering: false,
+        priceCents: null,
+        price: null,
+        basePrice: null,
+        typeAttributes: { tenantTierLabel: "Core", pricePerUserMonth: null, flatMonthlySurcharge: "0.00" },
+      }),
+    ).toBe(true);
+    expect(isServiceFree({ isFreeOffering: false, typeAttributes: {} })).toBe(true);
+    expect(isServiceFree({ isFreeOffering: false, typeAttributes: null })).toBe(true);
+  });
+
+  it("honors isFreeOffering even when typeAttributes pricing is present (intentional free promo)", () => {
+    expect(
+      isServiceFree({ isFreeOffering: true, typeAttributes: { pricePerUserMonth: "8.00" } }),
+    ).toBe(true);
+  });
+});
+
+describe("resolveTypeAttributesMonthlyPriceCents", () => {
+  it("computes pricePerUserMonth × seats", () => {
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "8.00" } }, 10),
+    ).toBe(8000);
+  });
+
+  it("clamps seats up to the seatCountFloor (minimum billable seats)", () => {
+    expect(
+      resolveTypeAttributesMonthlyPriceCents(
+        { typeAttributes: { pricePerUserMonth: "8.00", seatCountFloor: 5 } },
+        1,
+      ),
+    ).toBe(4000);
+  });
+
+  it("clamps a zero/negative/missing seat count to 1", () => {
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "8.00" } }, 0),
+    ).toBe(800);
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "8.00" } }, -3),
+    ).toBe(800);
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "8.00" } }),
+    ).toBe(800);
+  });
+
+  it("adds flatMonthlySurcharge on top of per-seat pricing", () => {
+    expect(
+      resolveTypeAttributesMonthlyPriceCents(
+        { typeAttributes: { pricePerUserMonth: "8.00", flatMonthlySurcharge: "25.00" } },
+        10,
+      ),
+    ).toBe(10500);
+  });
+
+  it("resolves a flatMonthlyPrice-only add-on independent of seats", () => {
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { flatMonthlyPrice: "29.00" } }, 50),
+    ).toBe(2900);
+  });
+
+  it("returns 0 for missing/empty/non-numeric typeAttributes pricing", () => {
+    expect(resolveTypeAttributesMonthlyPriceCents({}, 10)).toBe(0);
+    expect(resolveTypeAttributesMonthlyPriceCents({ typeAttributes: null }, 10)).toBe(0);
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "" } }, 10),
+    ).toBe(0);
+    expect(
+      resolveTypeAttributesMonthlyPriceCents({ typeAttributes: { pricePerUserMonth: "abc" } }, 10),
+    ).toBe(0);
   });
 });

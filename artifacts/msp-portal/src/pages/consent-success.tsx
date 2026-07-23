@@ -110,6 +110,14 @@ interface CatalogService {
   basePrice: string | null;
   priceCents: number | null;
   isFreeOffering: boolean | null;
+  /**
+   * Per-type pricing (monitoring tiers, recurring add-ons). A monitoring tier's
+   * ENTIRE price lives here (pricePerUserMonth × seats) with price/basePrice/
+   * priceCents all NULL — serviceIsFree below must read it or every monitoring
+   * tier is judged free and inline-finalized without Stripe (the second live
+   * Stripe-bypass bug, hit by a real Enhanced Monitoring purchase).
+   */
+  typeAttributes: Record<string, unknown> | null;
 }
 
 /** guestInfo cached by the public checkout at guest-info submit — same origin. */
@@ -158,12 +166,38 @@ function fallbackProductName(slug: string): string {
   return PRODUCT_NAMES[slug] ?? slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** True when the catalog entry carries no positive price anywhere (free offering). */
+/**
+ * True when the catalog entry carries no positive price anywhere (free offering).
+ *
+ * Mirrors the server's isServiceFree (api-server lib/catalog-pricing.ts): every
+ * pricing representation must be checked — the flat columns AND the
+ * type_attributes pricing model. Monitoring tiers carry their entire price in
+ * typeAttributes.pricePerUserMonth (+ optional flatMonthlySurcharge) with all
+ * flat columns NULL; recurring add-ons use typeAttributes.flatMonthlyPrice.
+ * Reading only the flat columns judged a paid Enhanced Monitoring tier "free"
+ * and inline-finalized the order here without Stripe. The server-side
+ * free-checkout guard independently rejects paid services, but this gate is
+ * what routes a paid order to the public checkout's Stripe step instead of the
+ * inline free finalize.
+ */
 function serviceIsFree(svc: CatalogService): boolean {
+  const ta = (svc.typeAttributes ?? {}) as {
+    pricePerUserMonth?: string | number | null;
+    flatMonthlySurcharge?: string | number | null;
+    flatMonthlyPrice?: string | number | null;
+  };
+  const positive = (v: string | number | null | undefined): boolean => {
+    if (v == null || v === "") return false;
+    const n = parseFloat(String(v));
+    return !isNaN(n) && n > 0;
+  };
   const hasPositivePrice =
     (svc.priceCents ?? 0) > 0 ||
-    Number(svc.price ?? 0) > 0 ||
-    Number(svc.basePrice ?? 0) > 0;
+    positive(svc.price) ||
+    positive(svc.basePrice) ||
+    positive(ta.pricePerUserMonth) ||
+    positive(ta.flatMonthlySurcharge) ||
+    positive(ta.flatMonthlyPrice);
   return svc.isFreeOffering === true || !hasPositivePrice;
 }
 

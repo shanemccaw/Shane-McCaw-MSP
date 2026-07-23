@@ -124,22 +124,82 @@ export function resolveServicePriceCents(s: {
 }
 
 /**
+ * Pricing carried inside `services.type_attributes` for per-type-priced
+ * products. Monitoring tiers price per seat (`pricePerUserMonth` ×
+ * max(seats, `seatCountFloor`) + optional `flatMonthlySurcharge`) and the
+ * admin monitoring-tier editor writes NO flat price at all (`priceFixed:
+ * false`) — a real monitoring tier row has `price`/`basePrice`/`priceCents`
+ * all NULL with its entire price living here. Recurring add-ons similarly
+ * carry `flatMonthlyPrice`. Any free-vs-paid decision that only reads the
+ * flat columns therefore judges every monitoring tier "free" — the second
+ * live Stripe-bypass bug (a real Enhanced Monitoring purchase provisioned
+ * for $0 via the consent-success inline finalize + free-checkout guard,
+ * both blind to this pricing model).
+ */
+interface TypeAttributesPricing {
+  pricePerUserMonth?: string | number | null;
+  seatCountFloor?: string | number | null;
+  flatMonthlySurcharge?: string | number | null;
+  flatMonthlyPrice?: string | number | null;
+}
+
+function toPositiveNumber(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = parseFloat(String(v));
+  return !isNaN(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Effective monthly price in integer cents of the `type_attributes` pricing
+ * model (see {@link TypeAttributesPricing}) at a given seat count. Seats are
+ * clamped to ≥1 and to the tier's `seatCountFloor` (minimum billable seats),
+ * matching how create-session computes the real Stripe charge. Returns 0 when
+ * the service carries no type-attribute pricing (flat-priced or free products).
+ */
+export function resolveTypeAttributesMonthlyPriceCents(
+  s: { typeAttributes?: unknown },
+  seats = 1,
+): number {
+  const ta = (s.typeAttributes ?? {}) as TypeAttributesPricing;
+  const ppu = toPositiveNumber(ta.pricePerUserMonth);
+  const floor = Math.trunc(toPositiveNumber(ta.seatCountFloor));
+  const billableSeats = Math.max(1, Math.trunc(seats) || 1, floor);
+  const perSeatTotal = ppu > 0 ? ppu * billableSeats : 0;
+  const surcharge = toPositiveNumber(ta.flatMonthlySurcharge);
+  const flatMonthly = toPositiveNumber(ta.flatMonthlyPrice);
+  return Math.round((perSeatTotal + surcharge + flatMonthly) * 100);
+}
+
+/**
  * A catalog service is genuinely free only when it is explicitly flagged
- * `isFreeOffering` OR carries no positive price via ANY pricing field (see
- * {@link resolveServicePriceCents}). This is the single source of truth for the
- * free-vs-paid decision that routes checkout to the Stripe-free path — kept here
- * rather than duplicated per call site so the frontend routing gate and the
- * server-side provisioning guard can never drift apart again, which is what
- * allowed a paid item to reach the free-checkout endpoint.
+ * `isFreeOffering` OR carries no positive price via ANY pricing field — the
+ * flat columns (see {@link resolveServicePriceCents}) AND the per-seat /
+ * type-attribute pricing model (see
+ * {@link resolveTypeAttributesMonthlyPriceCents}). This is the single source
+ * of truth for the free-vs-paid decision that routes checkout to the
+ * Stripe-free path — kept here rather than duplicated per call site so the
+ * frontend routing gates and the server-side provisioning guard can never
+ * drift apart again, which is what allowed a paid item to reach the
+ * free-checkout endpoint (first a modern-priced assessment whose price lived
+ * only in priceCents, then a monitoring tier whose price lived only in
+ * typeAttributes.pricePerUserMonth).
+ *
+ * Pass `typeAttributes` whenever the caller has it (full DB rows always do) —
+ * omitting it silently reverts to flat-columns-only and re-opens the
+ * monitoring-tier hole.
  */
 export function isServiceFree(s: {
   isFreeOffering?: boolean | null;
   priceCents?: number | null;
   price?: string | number | null;
   basePrice?: string | number | null;
+  typeAttributes?: unknown;
 }): boolean {
   if (s.isFreeOffering) return true;
-  return resolveServicePriceCents(s) === 0;
+  return (
+    resolveServicePriceCents(s) === 0 &&
+    resolveTypeAttributesMonthlyPriceCents(s) === 0
+  );
 }
 
 /**

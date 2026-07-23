@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, userSessionsTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, tenantEngineSnapshotsTable, engineScoreDailyRollupTable, engineBaselineHistoryTable, tenantSignalHistoryTable, mspDocumentsTable, mspSowsTable, mspReportRunsTable, mspCustomerClickwrapsTable, mspSalesBundleAssignmentsTable, mspsTable } from "@workspace/db";
-import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents } from "../lib/catalog-pricing.ts";
+import { resolveCatalogPricing, isServiceFree, resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents } from "../lib/catalog-pricing.ts";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, lte, isNotNull, isNull, or, lt, ilike, type SQL } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -13893,19 +13893,28 @@ async function provisionFreeOnboarding(opts: {
     const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
     const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
     // Server-side price guard — the free path must NEVER provision a paid
-    // service. This resolves price through the canonical `priceCents` (via
-    // isServiceFree/resolveServicePriceCents), NOT just the legacy price/basePrice
-    // columns: a service created via the modern admin API has price/basePrice
-    // NULL with the real price only in priceCents, so the previous legacy-only
-    // sum read $0 and let a paid item slip through the free checkout — the
-    // Stripe-bypass bug. A service is free-eligible only when isServiceFree() is
-    // true (explicit isFreeOffering flag, or zero price across every field).
-    // This is a second, independent enforcement point behind the frontend's
-    // isFree routing and holds even if that routing is ever wrong again.
+    // service. This resolves price through EVERY pricing representation via
+    // isServiceFree: the canonical `priceCents`, the legacy price/basePrice
+    // columns, AND the type_attributes pricing model (pricePerUserMonth /
+    // flatMonthlySurcharge / flatMonthlyPrice). Both live Stripe-bypass bugs
+    // were a blind spot here: first a modern-priced assessment whose price
+    // lived only in priceCents, then a monitoring tier whose price lives ONLY
+    // in typeAttributes.pricePerUserMonth (the admin monitoring-tier editor
+    // writes no flat price at all) — the legacy+priceCents check read $0 and
+    // let a real Enhanced Monitoring subscription provision for free. A
+    // service is free-eligible only when isServiceFree() is true (explicit
+    // isFreeOffering flag, or zero price across every pricing field of every
+    // model). This is a second, independent enforcement point behind the
+    // frontend's isFree routing and holds even if that routing is ever wrong
+    // again.
     const paidService = orderedServices.find(s => !isServiceFree(s));
     if (paidService) {
       reqLog.warn(
-        { serviceId: paidService.id, priceCents: resolveServicePriceCents(paidService) },
+        {
+          serviceId: paidService.id,
+          priceCents: resolveServicePriceCents(paidService),
+          typeAttributesMonthlyPriceCents: resolveTypeAttributesMonthlyPriceCents(paidService),
+        },
         "free-checkout: rejected paid service reaching the free-checkout path",
       );
       return { ok: false, status: 400, error: "This order has a non-zero price — use the standard checkout" };
