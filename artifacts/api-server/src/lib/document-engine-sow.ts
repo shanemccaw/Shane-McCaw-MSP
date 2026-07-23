@@ -171,6 +171,15 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
 
     const htmlContent = extractAiHtml(aiResponse);
 
+    const sowPricingLines = candidates.map((c) => ({
+      title: c.serviceName,
+      scope: c.rationale,
+      priceUsd: c.adjustedPriceCents / 100,
+      notes: c.rationale,
+      line_type: "workstream" as const,
+    }));
+    const sowTotalPrice = sowPricingLines.reduce((sum, l) => sum + l.priceUsd, 0).toFixed(2);
+
     await db.update(insightsGeneratedDocumentsTable)
       .set({
         title: docTypeRow.label,
@@ -187,6 +196,8 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
             firedSignalKeys: c.firedSignalKeys,
           })),
         },
+        sowPricingLines,
+        sowTotalPrice,
         updatedAt: new Date(),
       })
       .where(eq(insightsGeneratedDocumentsTable.id, documentId));
