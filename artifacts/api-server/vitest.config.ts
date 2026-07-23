@@ -9,6 +9,7 @@ export default defineConfig({
       "src/lib/sse-hub-firehose.test.ts",
       "src/routes/admin-live-stream.test.ts",
       "src/routes/admin-signal-rules-import.test.ts",
+      "src/routes/admin-signal-rules-from-tenant.test.ts",
       "src/lib/compileReportToHtml.test.ts",
       "src/lib/sow-pricing.test.ts",
       "src/lib/sow-expiry-sweep.test.ts",

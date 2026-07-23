@@ -308,13 +308,16 @@ interface EngagementProject {
   isVisible: boolean;
 }
 
-interface ClientWithRuns {
+// A real customer with a granted Microsoft Graph consent — the tenants we can
+// pull live monitor-derived profile data from. Backed by
+// GET /admin/signal-rules/clients-with-runs (msp_customers JOIN tenant_consent).
+interface ConsentedTenant {
   id: number;
   name: string | null;
-  email: string;
-  company: string | null;
-  runCount: number;
-  lastRunAt: string;
+  tenantId: string | null;
+  isTestbed: boolean;
+  consentStatus: string;
+  consentedAt: string | null;
 }
 
 interface SimProfileRunDiff {
@@ -453,7 +456,7 @@ export default function TenantSignalsPage() {
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [pageView, setPageView] = useState<"rules" | "simulate">("rules");
-  const [clientsWithRuns, setClientsWithRuns] = useState<ClientWithRuns[]>([]);
+  const [consentedTenants, setConsentedTenants] = useState<ConsentedTenant[]>([]);
   const [showFromClientModal, setShowFromClientModal] = useState(false);
   const [fromClientSearch, setFromClientSearch] = useState("");
   const [fromClientId, setFromClientId] = useState("");
@@ -538,9 +541,9 @@ export default function TenantSignalsPage() {
     if (res.ok) setScriptFields(await res.json() as ScriptField[]);
   }, [fetchWithAuth]);
 
-  const loadClientsWithRuns = useCallback(async () => {
+  const loadConsentedTenants = useCallback(async () => {
     const res = await fetchWithAuth("/api/admin/signal-rules/clients-with-runs");
-    if (res.ok) setClientsWithRuns(await res.json() as ClientWithRuns[]);
+    if (res.ok) setConsentedTenants(await res.json() as ConsentedTenant[]);
   }, [fetchWithAuth]);
 
   const loadClients = useCallback(async () => {
@@ -1052,13 +1055,13 @@ export default function TenantSignalsPage() {
   }
 
   async function handleImportFromClient() {
-    if (!fromClientId) { toast({ title: "Select a client first", variant: "destructive" }); return; }
+    if (!fromClientId) { toast({ title: "Select a consented tenant first", variant: "destructive" }); return; }
     setImportingFromClient(true);
     try {
       const res = await fetchWithAuth("/api/admin/signal-rules/simulation-profiles/from-client", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientUserId: Number(fromClientId), tags: ["tenant-import"] }),
+        body: JSON.stringify({ customerId: Number(fromClientId), tags: ["tenant-import"] }),
       });
       if (res.ok) {
         const profile = await res.json() as SimulationProfile;
@@ -1171,7 +1174,7 @@ export default function TenantSignalsPage() {
               Signal Rules
             </button>
             <button
-              onClick={() => { setPageView("simulate"); void loadSimProfiles(); void loadClientsWithRuns(); }}
+              onClick={() => { setPageView("simulate"); void loadSimProfiles(); void loadConsentedTenants(); }}
               className={`px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 ${pageView === "simulate" ? "bg-primary text-white" : "bg-background text-muted-foreground hover:text-foreground"}`}
             >
               <FlaskConical className="w-3 h-3" /> Simulate
@@ -1223,12 +1226,12 @@ export default function TenantSignalsPage() {
             <div>
               <h2 className="text-base font-bold text-foreground">Simulation Profiles</h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Test rule changes against saved tenant data snapshots before publishing. Profiles can be created manually or imported directly from a real client's script run history.
+                Test rule changes against saved tenant data snapshots before publishing. Profiles can be created manually or imported directly from a real consented tenant's live Microsoft Graph monitor data.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setShowFromClientModal(true); }}
+                onClick={() => { setShowFromClientModal(true); void loadConsentedTenants(); }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary text-xs font-semibold rounded-lg border border-primary/30 hover:bg-primary/20 transition-colors"
               >
                 <Database className="w-3.5 h-3.5" /> Import from Tenant
@@ -2829,76 +2832,65 @@ export default function TenantSignalsPage() {
         <Modal title="Import from Tenant" onClose={() => { setShowFromClientModal(false); setFromClientSearch(""); setFromClientId(""); setFromClientName(""); }} wide>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Select a client to pull their most recent script run results. A simulation profile will be created from the merged <code className="text-xs bg-accent px-1 rounded">profileUpdates</code> and <code className="text-xs bg-accent px-1 rounded">parsedFindings</code> across all completed runs.
+              Select a consented tenant to pull its real, current Microsoft Graph monitor data. A simulation profile is created from the live merged tenant profile — the same per-check monitor scan results (<code className="text-xs bg-accent px-1 rounded">profileUpdates</code>) and derived <code className="text-xs bg-accent px-1 rounded">findings</code> the platform's own engines see. Only customers with a <strong className="text-foreground/80">granted</strong> tenant consent appear here.
             </p>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1.5">Search client</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">Search tenant</label>
               <input
                 value={fromClientSearch}
                 onChange={e => { setFromClientSearch(e.target.value); setFromClientId(""); setFromClientName(""); }}
-                placeholder="Name, email, or company…"
+                placeholder="Customer name or tenant ID…"
                 className="w-full border border-border bg-background text-foreground/90 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
 
-            {fromClientSearch && (
-              <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-                {clientsWithRuns
-                  .filter(c =>
-                    c.email.toLowerCase().includes(fromClientSearch.toLowerCase()) ||
-                    (c.name ?? "").toLowerCase().includes(fromClientSearch.toLowerCase()) ||
-                    (c.company ?? "").toLowerCase().includes(fromClientSearch.toLowerCase())
+            {(() => {
+              const q = fromClientSearch.toLowerCase();
+              const matches = q
+                ? consentedTenants.filter(c =>
+                    (c.name ?? "").toLowerCase().includes(q) ||
+                    (c.tenantId ?? "").toLowerCase().includes(q)
                   )
-                  .slice(0, 20)
-                  .map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
-                      className={`w-full text-left px-4 py-2.5 text-sm border-b border-border/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent"}`}
-                    >
-                      <span className="font-medium">{c.name ?? "—"}</span>
-                      <span className="text-muted-foreground ml-2">{c.email}</span>
-                      {c.company && <span className="text-muted-foreground/60 ml-1">· {c.company}</span>}
-                      <span className="ml-2 text-xs text-muted-foreground/60">{c.runCount} run{c.runCount !== 1 ? "s" : ""}</span>
-                    </button>
-                  ))}
-                {clientsWithRuns.filter(c =>
-                  c.email.toLowerCase().includes(fromClientSearch.toLowerCase()) ||
-                  (c.name ?? "").toLowerCase().includes(fromClientSearch.toLowerCase()) ||
-                  (c.company ?? "").toLowerCase().includes(fromClientSearch.toLowerCase())
-                ).length === 0 && (
-                  <p className="px-4 py-3 text-sm text-muted-foreground">No clients with completed script runs found.</p>
-                )}
-              </div>
-            )}
-
-            {!fromClientSearch && clientsWithRuns.length > 0 && (
-              <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-                {clientsWithRuns.slice(0, 10).map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm border-b border-border/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent"}`}
-                  >
-                    <span className="font-medium">{c.name ?? "—"}</span>
-                    <span className="text-muted-foreground ml-2">{c.email}</span>
-                    {c.company && <span className="text-muted-foreground/60 ml-1">· {c.company}</span>}
-                    <span className="ml-2 text-xs text-muted-foreground/60">{c.runCount} run{c.runCount !== 1 ? "s" : ""} · last {new Date(c.lastRunAt).toLocaleDateString()}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {!fromClientSearch && clientsWithRuns.length === 0 && (
-              <p className="text-sm text-muted-foreground italic">No clients with completed script runs found. Run some assessment scripts first.</p>
-            )}
+                : consentedTenants.slice(0, 10);
+              const renderRow = (c: ConsentedTenant) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? `Customer ${c.id}`); setFromClientSearch(c.name ?? `Customer ${c.id}`); }}
+                  className={`w-full text-left px-4 py-2.5 text-sm border-b border-border/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-primary/10 text-primary" : "text-foreground/90 hover:bg-accent"}`}
+                >
+                  <span className="font-medium">{c.name ?? `Customer ${c.id}`}</span>
+                  {c.isTestbed && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide bg-amber-500/15 text-amber-500 px-1.5 py-0.5 rounded">Testbed</span>
+                  )}
+                  {c.tenantId && <span className="text-muted-foreground/60 ml-2 font-mono text-xs">{c.tenantId}</span>}
+                  <span className="ml-2 text-xs text-muted-foreground/60">
+                    {c.consentedAt ? `consented ${new Date(c.consentedAt).toLocaleDateString()}` : "consent granted"}
+                  </span>
+                </button>
+              );
+              if (consentedTenants.length === 0) {
+                return (
+                  <p className="text-sm text-muted-foreground italic">
+                    No consented tenants found. A customer needs a granted Microsoft Graph consent before its live tenant data can be imported here.
+                  </p>
+                );
+              }
+              return (
+                <div className="border border-border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                  {matches.slice(0, 20).map(renderRow)}
+                  {matches.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-muted-foreground">No consented tenants match that search.</p>
+                  )}
+                </div>
+              );
+            })()}
 
             {fromClientId && (
               <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
                 <Check className="w-4 h-4 text-primary flex-shrink-0" />
                 <p className="text-sm text-foreground/90">
-                  Will create a simulation profile from <strong className="text-foreground">{fromClientName}</strong>'s script run history.
+                  Will create a simulation profile from <strong className="text-foreground">{fromClientName}</strong>'s live tenant monitor data.
                 </p>
               </div>
             )}

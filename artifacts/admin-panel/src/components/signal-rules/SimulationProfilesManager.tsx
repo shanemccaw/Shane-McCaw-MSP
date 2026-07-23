@@ -17,10 +17,11 @@ import {
 
 // ─── Matches the real backend shapes in admin-signal-rules.ts ─────────────────
 // GET/POST/PATCH/DELETE /admin/signal-rules/simulation-profiles (signal_simulation_profiles)
-// GET /admin/signal-rules/clients-with-runs — real script_run_results clients, for
-// seeding a profile from an actual tenant's data.
+// GET /admin/signal-rules/clients-with-runs — real consented tenants
+// (msp_customers JOIN tenant_consent, consent_status='granted'), for seeding a
+// profile from an actual tenant's live Graph monitor data.
 // POST /admin/signal-rules/simulation-profiles/from-client — creates a profile by
-// merging that client's completed script runs.
+// running buildTenantProfile() against that customer's consented tenant.
 // POST /admin/signal-rules/simulation-profiles/:id/run — evaluates the profile
 // against the live rule set, stores the result, and returns a diff vs the
 // profile's previous run.
@@ -61,13 +62,15 @@ interface SimulationProfile {
   updatedAt: string;
 }
 
-interface ClientWithRuns {
+// A real customer with a granted Microsoft Graph consent — a tenant whose live
+// monitor data can seed a simulation profile.
+interface ConsentedTenant {
   id: number;
   name: string | null;
-  email: string;
-  company: string | null;
-  runCount: number;
-  lastRunAt: string | null;
+  tenantId: string | null;
+  isTestbed: boolean;
+  consentStatus: string;
+  consentedAt: string | null;
 }
 
 interface RunResult {
@@ -148,7 +151,7 @@ export default function SimulationProfilesManager() {
   const [saving, setSaving] = useState(false);
 
   const [fromClientOpen, setFromClientOpen] = useState(false);
-  const [clients, setClients] = useState<ClientWithRuns[]>([]);
+  const [clients, setClients] = useState<ConsentedTenant[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [fromClientName, setFromClientName] = useState("");
@@ -284,7 +287,7 @@ export default function SimulationProfilesManager() {
 
   const handleCreateFromClient = async () => {
     if (!selectedClientId) {
-      setFromClientError("Select a client.");
+      setFromClientError("Select a consented tenant.");
       return;
     }
     setFromClientSaving(true);
@@ -293,15 +296,15 @@ export default function SimulationProfilesManager() {
       const res = await fetchWithAuth("/api/admin/signal-rules/simulation-profiles/from-client", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientUserId: Number(selectedClientId), name: fromClientName.trim() || undefined }),
+        body: JSON.stringify({ customerId: Number(selectedClientId), name: fromClientName.trim() || undefined }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to create profile from client");
-      toast({ title: "Profile created from client data" });
+      if (!res.ok) throw new Error(data.error ?? "Failed to create profile from tenant");
+      toast({ title: "Profile created from tenant data" });
       setFromClientOpen(false);
       void loadProfiles();
     } catch (err) {
-      setFromClientError(err instanceof Error ? err.message : "Failed to create profile from client");
+      setFromClientError(err instanceof Error ? err.message : "Failed to create profile from tenant");
     } finally {
       setFromClientSaving(false);
     }
@@ -342,8 +345,8 @@ export default function SimulationProfilesManager() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button onClick={openFromClient} className={btnGhostCls} title="Seed a profile from a real client's completed script runs">
-            <UserPlus className="h-3.5 w-3.5" /> Create from Client
+          <button onClick={openFromClient} className={btnGhostCls} title="Seed a profile from a real consented tenant's live Microsoft Graph monitor data">
+            <UserPlus className="h-3.5 w-3.5" /> Create from Tenant
           </button>
           <button onClick={openCreate} className={btnPrimaryCls}>
             <Plus className="h-3.5 w-3.5" /> New Profile
@@ -357,7 +360,7 @@ export default function SimulationProfilesManager() {
         </div>
       ) : profiles.length === 0 ? (
         <div className="px-4 py-6 text-xs italic text-muted-foreground/70 text-center bg-card border border-border rounded-lg">
-          No simulation profiles yet. Create one manually or seed it from a real client's script run history.
+          No simulation profiles yet. Create one manually or seed it from a real consented tenant's live monitor data.
         </div>
       ) : (
         <div className="space-y-3">
@@ -601,38 +604,38 @@ export default function SimulationProfilesManager() {
         </div>
       )}
 
-      {/* ── Create from Client modal ── */}
+      {/* ── Create from Tenant modal ── */}
       {fromClientOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !fromClientSaving && setFromClientOpen(false)}>
           <div
             className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md mx-4 p-6"
             onClick={e => e.stopPropagation()}
           >
-            <h2 className="text-base font-bold text-foreground mb-4">Create Profile from Client</h2>
+            <h2 className="text-base font-bold text-foreground mb-4">Create Profile from Tenant</h2>
             <p className="text-xs text-muted-foreground mb-4">
-              Merges a real client's completed script runs (most recent 50) into a single profile — later runs
-              override earlier ones field-by-field, and findings are unioned.
+              Pulls a consented tenant's real, current Microsoft Graph monitor data into a single profile via
+              the platform's canonical tenant-profile merge. Only customers with a granted consent appear.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Client</label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Consented tenant</label>
                 {clientsLoading ? (
                   <div className="flex items-center gap-2 text-muted-foreground text-xs py-1.5">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading clients…
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading tenants…
                   </div>
                 ) : (
                   <select className={selectCls} value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
-                    <option value="">Select a client…</option>
+                    <option value="">Select a tenant…</option>
                     {clients.map(c => (
                       <option key={c.id} value={String(c.id)}>
-                        {c.name ?? c.email}{c.company ? ` (${c.company})` : ""} — {c.runCount} run{c.runCount !== 1 ? "s" : ""}
+                        {c.name ?? `Customer ${c.id}`}{c.isTestbed ? " [testbed]" : ""}{c.tenantId ? ` — ${c.tenantId}` : ""}
                       </option>
                     ))}
                   </select>
                 )}
                 {!clientsLoading && clients.length === 0 && (
-                  <p className="mt-1 text-[11px] italic text-muted-foreground/70">No clients with completed script runs found.</p>
+                  <p className="mt-1 text-[11px] italic text-muted-foreground/70">No consented tenants found. A customer needs a granted Microsoft Graph consent first.</p>
                 )}
               </div>
               <div>
@@ -641,7 +644,7 @@ export default function SimulationProfilesManager() {
                   className={inputCls}
                   value={fromClientName}
                   onChange={e => setFromClientName(e.target.value)}
-                  placeholder="Defaults to the client's name/company + date"
+                  placeholder="Defaults to the customer's name + date"
                 />
               </div>
             </div>

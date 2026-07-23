@@ -15,6 +15,7 @@ import {
   SIGNAL_TREND_DIRECTIONS,
   SIGNAL_SEVERITIES,
   coerceDecayRate,
+  buildTenantProfile,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -1748,30 +1749,39 @@ router.delete("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async
 });
 
 // ── GET /api/admin/signal-rules/clients-with-runs ─────────────────────────────
+//
+// Lists the real customers this platform can pull a live tenant profile from:
+// msp_customers rows that have a GRANTED Microsoft Graph consent record in
+// tenant_consent. This replaces the pre-wipe model (users role='client' joined
+// to script_run_results.profile_updates), which the manual PowerShell-script
+// system populated and which is now empty. Route name kept for compatibility
+// with existing consumers (TenantSignals.tsx, SimulationProfilesManager.tsx);
+// the returned shape is customer/tenant-centric now, not user-centric.
+//
+// Testbed customers surface first (Shane's stated use case is testing against
+// his own test tenant), then by most-recently-consented.
 
 router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const result = await db.execute(sql`
-      SELECT u.id, u.name, u.email, u.company,
-             COUNT(srr.id)::int AS run_count,
-             MAX(srr.created_at) AS last_run_at
-      FROM users u
-      INNER JOIN script_run_results srr ON srr.customer_id = u.id AND srr.status = 'completed'
-      WHERE u.role = 'client'
-      GROUP BY u.id, u.name, u.email, u.company
-      ORDER BY MAX(srr.created_at) DESC
+      SELECT mc.id, mc.name, mc.tenant_id AS "tenantId", mc.is_testbed AS "isTestbed",
+             tc.consent_status AS "consentStatus", tc.consented_at AS "consentedAt"
+      FROM msp_customers mc
+      JOIN tenant_consent tc ON tc.customer_id = mc.id
+      WHERE tc.consent_status = 'granted'
+      ORDER BY mc.is_testbed DESC, tc.consented_at DESC NULLS LAST
     `);
     res.json(result.rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       name: r.name,
-      email: r.email,
-      company: r.company,
-      runCount: r.run_count,
-      lastRunAt: r.last_run_at,
+      tenantId: r.tenantId,
+      isTestbed: r.isTestbed === true,
+      consentStatus: r.consentStatus,
+      consentedAt: r.consentedAt,
     })));
   } catch (err) {
     log.error({ err }, "GET /admin/signal-rules/clients-with-runs failed");
-    res.status(500).json({ error: "Failed to fetch clients" });
+    res.status(500).json({ error: "Failed to fetch consented tenants" });
   }
 });
 
@@ -1779,40 +1789,50 @@ router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: R
 
 router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { clientUserId, name, tags } = (req.body ?? {}) as Record<string, unknown>;
-    if (!clientUserId) { res.status(400).json({ error: "clientUserId is required" }); return; }
-    const cid = Number(clientUserId);
-    if (isNaN(cid)) { res.status(400).json({ error: "Invalid clientUserId" }); return; }
+    // The identifier is now an msp_customers.id (a consented tenant), not a
+    // users.id. Accept the historical `clientUserId` body field for
+    // compatibility with existing callers, and a clearer `customerId` alias.
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const rawId = body.customerId ?? body.clientUserId;
+    if (rawId === undefined || rawId === null || rawId === "") {
+      res.status(400).json({ error: "customerId is required" }); return;
+    }
+    const customerId = Number(rawId);
+    if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+    const { name, tags } = body;
 
-    const clientResult = await db.execute(sql`
-      SELECT id, name, email, company FROM users WHERE id = ${cid} AND role = 'client'
+    // Require the customer to exist AND currently hold a granted Graph consent
+    // — this is the same gate the picker query uses, re-checked server-side so
+    // a stale/forged id can't seed a profile from a non-consented tenant.
+    const customerResult = await db.execute(sql`
+      SELECT mc.id, mc.name, mc.tenant_id AS "tenantId", mc.is_testbed AS "isTestbed"
+      FROM msp_customers mc
+      JOIN tenant_consent tc ON tc.customer_id = mc.id
+      WHERE mc.id = ${customerId} AND tc.consent_status = 'granted'
+      LIMIT 1
     `);
-    if (clientResult.rows.length === 0) { res.status(404).json({ error: "Client not found" }); return; }
-    const client = clientResult.rows[0] as { id: number; name: string | null; email: string; company: string | null };
-
-    const scriptRuns = await db.execute(sql`
-      SELECT profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings", created_at AS "createdAt"
-      FROM script_run_results
-      WHERE customer_id = ${cid} AND status = 'completed'
-      ORDER BY created_at DESC LIMIT 50
-    `);
-
-    if (scriptRuns.rows.length === 0) {
-      res.status(422).json({ error: "This client has no completed script runs to import" });
+    if (customerResult.rows.length === 0) {
+      res.status(404).json({ error: "No customer with a granted tenant consent found for that id" });
       return;
     }
+    const customer = customerResult.rows[0] as { id: number; name: string | null; tenantId: string | null; isTestbed: boolean };
 
-    const mergedProfile: Record<string, unknown> = {};
-    const allFindings = new Set<string>();
+    // Build the real, current tenant profile using the platform's canonical
+    // merge logic — this pulls tenant_monitor_profiles (real per-check Graph
+    // scan results) via fetchLatestMonitorProfileRows/mergeMonitorProfileRows
+    // and derives real monitor findings. Reused as-is, not reimplemented.
+    const { mergedProfile, findings, tenantId } = await buildTenantProfile(customerId);
 
-    for (const run of [...(scriptRuns.rows as Array<{ profileUpdates: Record<string, unknown>; parsedFindings: string[] }>)].reverse()) {
-      Object.assign(mergedProfile, run.profileUpdates ?? {});
-      for (const f of run.parsedFindings ?? []) allFindings.add(f);
+    if (Object.keys(mergedProfile).length === 0 && findings.length === 0) {
+      res.status(422).json({
+        error: "This tenant has no monitor-derived profile data yet — run a scan against it first, then import.",
+      });
+      return;
     }
 
     const profileName = typeof name === "string" && name.trim()
       ? name.trim()
-      : `${client.name ?? client.email}${client.company ? ` (${client.company})` : ""} — ${new Date().toLocaleDateString()}`;
+      : `${customer.name ?? `Customer ${customer.id}`}${customer.isTestbed ? " (testbed)" : ""} — ${new Date().toLocaleDateString()}`;
 
     const parsedTags = Array.isArray(tags) ? tags as string[] : ["tenant-import"];
 
@@ -1820,9 +1840,9 @@ router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin,
       INSERT INTO signal_simulation_profiles (name, description, profile_updates, parsed_findings, tags)
       VALUES (
         ${profileName},
-        ${`Imported from client ID ${cid}: ${client.email} · ${scriptRuns.rows.length} script run(s)`},
+        ${`Imported from consented tenant: ${customer.name ?? `customer ${customer.id}`}${tenantId ? ` · tenant ${tenantId}` : ""} · ${Object.keys(mergedProfile).length} profile field(s), ${findings.length} finding(s)`},
         ${JSON.stringify(mergedProfile)}::jsonb,
-        ${JSON.stringify([...allFindings])}::jsonb,
+        ${JSON.stringify(findings)}::jsonb,
         ${JSON.stringify(parsedTags)}::jsonb
       )
       RETURNING id, name, description, profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings",
@@ -1833,7 +1853,7 @@ router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin,
     res.status(201).json(result.rows[0]);
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules/simulation-profiles/from-client failed");
-    res.status(500).json({ error: "Failed to create simulation profile from client data" });
+    res.status(500).json({ error: "Failed to create simulation profile from tenant data" });
   }
 });
 
