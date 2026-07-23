@@ -627,9 +627,107 @@ function MarketplacePurchaseDialog({ open, onOpenChange, customerId, customerNam
   );
 }
 
+// ── Write-Back Consent (PlatformAdmin only) ───────────────────────────────────
+// Surfaces the customer's tenant_write_consent state (the SEPARATE write App
+// Registration's consent — distinct from the read-only tenant consent) plus the
+// admin-triggered consent-URL generator. Both endpoints are PlatformAdmin-gated
+// server-side; this card simply isn't rendered for anyone else.
+
+function WriteBackConsentCard({ customerId }: { customerId: number }) {
+  const { fetchWithAuth } = useAuth();
+  const [status, setStatus] = useState<{
+    tenantId: string | null;
+    writeConsent: { consentStatus: string; consentedAt: string | null; revokedAt: string | null } | null;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    fetchWithAuth(`/api/admin/customers/${customerId}/write-consent`)
+      .then(async (res) => {
+        if (!mounted) return;
+        if (res.ok) setStatus((await res.json()) as typeof status);
+        else setStatus(null);
+      })
+      .catch(() => { if (mounted) setStatus(null); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [customerId, fetchWithAuth]);
+
+  async function generateConsentLink() {
+    setGenerating(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/customers/${customerId}/write-consent/start`);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(body?.error ?? "Failed to generate write-consent link");
+        return;
+      }
+      const data = (await res.json()) as { consentUrl: string };
+      window.open(data.consentUrl, "_blank", "noopener,noreferrer");
+      toast.success("Write-back consent link opened in a new tab");
+    } catch {
+      toast.error("Failed to generate write-consent link");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const consentStatus = status?.writeConsent?.consentStatus ?? null;
+
+  return (
+    <Card className="border-slate-800/60 bg-slate-900/40">
+      <CardHeader>
+        <CardTitle className="text-lg font-bold flex items-center gap-2">
+          <Lock className="size-5 text-amber-400" />
+          Write-Back Consent
+        </CardTitle>
+        <CardDescription>
+          Admin consent for the dedicated write app — separate from the read-only tenant consent.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        {loading ? (
+          <Skeleton className="h-8 w-full" />
+        ) : (
+          <div className="flex items-center justify-between bg-slate-950/40 p-3 rounded-xl border border-slate-800/40">
+            <span className="text-xs text-muted-foreground font-medium">Status</span>
+            {status?.tenantId == null ? (
+              <Badge variant="outline" className="text-slate-400 border-slate-700">No tenant linked</Badge>
+            ) : consentStatus === "granted" ? (
+              <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Granted</Badge>
+            ) : consentStatus === "revoked" ? (
+              <Badge className="bg-red-500/15 text-red-400 border border-red-500/30">Revoked</Badge>
+            ) : consentStatus === "declined" ? (
+              <Badge className="bg-red-500/15 text-red-400 border border-red-500/30">Declined</Badge>
+            ) : consentStatus === "pending" ? (
+              <Badge className="bg-amber-500/15 text-amber-400 border border-amber-500/30">Pending</Badge>
+            ) : (
+              <Badge variant="outline" className="text-slate-400 border-slate-700">Not requested</Badge>
+            )}
+          </div>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={generating || loading || status?.tenantId == null}
+          onClick={() => void generateConsentLink()}
+        >
+          {generating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <ExternalLink className="size-3.5 mr-1.5" />}
+          {consentStatus === "granted" ? "Re-run write consent" : "Start write consent"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { fetchWithAuth, accessToken } = useAuth();
+  const { fetchWithAuth, accessToken, user } = useAuth();
+  const isPlatformAdmin = user?.role === "admin" || user?.mspRole === "PlatformAdmin";
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
@@ -997,6 +1095,8 @@ export default function CustomerDetailPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {isPlatformAdmin && <WriteBackConsentCard customerId={customer.id} />}
             </div>
           </TabsContent>
 

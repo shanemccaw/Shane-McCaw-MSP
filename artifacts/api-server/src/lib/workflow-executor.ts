@@ -464,7 +464,7 @@ export async function runBaselineTemplateAgainstTenant(
   const method = template.method as "POST" | "PATCH" | "PUT" | "DELETE";
 
   const { graphWriteForTenant } = await import("./graph");
-  const result = await graphWriteForTenant(tenantId, endpoint, method, body, [200, 201, 204]);
+  const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
 
   let auditLogId: number | undefined;
   try {
@@ -8440,9 +8440,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         try {
-          const { graphWriteForTenant, ConsentRevokedError: GwoConsentRevokedError } = await import("./graph");
+          const { graphWriteForTenant } = await import("./graph");
           const gwoResult = await graphWriteForTenant(
             gwoCustomerRow.tenantId,
+            gwoCustomerId,
             gwoEndpointRaw,
             gwoMethod,
             gwoBody,
@@ -8461,9 +8462,20 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           log.info({ runId, customerId: gwoCustomerId, tenantId: gwoCustomerRow.tenantId, method: gwoMethod, endpoint: gwoEndpointRaw, status: gwoResult.status, success: gwoResult.success }, "wf-executor: graph_write_operation completed");
         } catch (gwoErr) {
           nodeError = true;
-          const errMsg = gwoErr instanceof Error ? gwoErr.message : String(gwoErr);
-          output = { error: errMsg, success: false };
-          log.error({ runId, gwoErr }, "wf-executor: graph_write_operation failed");
+          const { WriteBackCustomerNotFoundError: GwoCustomerNotFound, WriteBackNotEnabledError: GwoNotEnabled, WriteConsentRequiredError: GwoWriteConsentRequired } = await import("./graph");
+          // Write-back gate refusals (enforced inside graphWriteForTenant, the
+          // single choke point) — surface WHICH gate blocked the write via a
+          // stable `blockedBy` slug in the node output, and route through the
+          // existing "unexpected" error handle so workflows still branch.
+          if (gwoErr instanceof GwoCustomerNotFound || gwoErr instanceof GwoNotEnabled || gwoErr instanceof GwoWriteConsentRequired) {
+            switchChosenHandle = "unexpected";
+            output = { success: false, blockedBy: gwoErr.reason, error: gwoErr.message };
+            log.warn({ runId, customerId: gwoCustomerId, blockedBy: gwoErr.reason }, "wf-executor: graph_write_operation blocked by write-back gate");
+          } else {
+            const errMsg = gwoErr instanceof Error ? gwoErr.message : String(gwoErr);
+            output = { error: errMsg, success: false };
+            log.error({ runId, gwoErr }, "wf-executor: graph_write_operation failed");
+          }
         }
         break;
       }

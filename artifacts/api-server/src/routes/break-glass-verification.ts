@@ -39,7 +39,14 @@ import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "auth" });
 import { decryptSecret, encryptSecret } from "../lib/secret-crypto";
-import { graphWriteForTenant, sendMailViaGraph, graphCredentialsPresent } from "../lib/graph";
+import {
+  graphWriteForTenant,
+  sendMailViaGraph,
+  graphCredentialsPresent,
+  WriteBackCustomerNotFoundError,
+  WriteBackNotEnabledError,
+  WriteConsentRequiredError,
+} from "../lib/graph";
 import { sendEmailForMspOrThrow } from "../lib/mailer";
 
 const router = Router();
@@ -288,9 +295,11 @@ const effectiveRoleOf = (user: AuthUser) => (user.role === "admin" ? "PlatformAd
 
 // ── Delegated Graph helpers (auth-code flow — net-new; standard OAuth) ─────────
 async function exchangeCodeForToken(tenantId: string, code: string): Promise<string | null> {
-  const clientId = process.env.MT_APP_CLIENT_ID;
-  const clientSecret = process.env.MT_APP_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error("MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET not configured");
+  // WRITE app credentials — the delegated User.Read permission this flow uses
+  // lives on the write App Registration now, not the read app.
+  const clientId = process.env.MT_APP_WRITE_CLIENT_ID;
+  const clientSecret = process.env.MT_APP_WRITE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("MT_APP_WRITE_CLIENT_ID / MT_APP_WRITE_CLIENT_SECRET not configured");
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     client_id: clientId,
@@ -450,7 +459,9 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
         `<h1>Verification is not available</h1><p>This customer's tenant is not configured for verification. Please contact your provider.</p>`, branding));
     }
 
-    const clientId = process.env.MT_APP_CLIENT_ID;
+    // WRITE app client id — must match exchangeCodeForToken's credentials
+    // (delegated User.Read lives on the write App Registration).
+    const clientId = process.env.MT_APP_WRITE_CLIENT_ID;
     if (!clientId) return res.status(500).send(renderPage("Not configured", `<h1>Verification is temporarily unavailable</h1>`, branding));
 
     const authorize = new URL(`https://login.microsoftonline.com/${encodeURIComponent(ctx.tenantId)}/oauth2/v2.0/authorize`);
@@ -738,6 +749,7 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
     const newPassword = generateStrongPassword();
     const write = await graphWriteForTenant(
       ctx.tenantId,
+      ctx.secret.customerId,
       `/users/${encodeURIComponent(accountId)}`,
       "PATCH",
       { passwordProfile: { password: newPassword, forceChangePasswordNextSignIn: false } },
@@ -784,6 +796,12 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
     // 7. Do NOT resume — the run stays paused until the new secret is acknowledged.
     return res.json({ ok: true, newPendingSecretId, reissued: emails.length, sent });
   } catch (err) {
+    // Write-back gate refusals are expected, actionable states — surface which
+    // gate blocked instead of a generic 500.
+    if (err instanceof WriteBackNotEnabledError || err instanceof WriteBackCustomerNotFoundError || err instanceof WriteConsentRequiredError) {
+      req.log.warn({ pendingSecretId, reason: err.reason }, "break-glass: admin-override blocked by write-back gate");
+      return res.status(409).json({ error: err.message, blockedBy: err.reason });
+    }
     req.log.error({ err, pendingSecretId }, "break-glass: admin-override failed");
     return res.status(500).json({ error: "Failed to process override" });
   }

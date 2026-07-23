@@ -1,6 +1,6 @@
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
-import { db, tenantConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable, usersTable, mspsTable } from "@workspace/db";
+import { db, tenantConsentTable, tenantWriteConsentTable, tenantMonitorProfilesTable, tenantEngineOverridesTable, mspCustomersTable, usersTable, mspsTable } from "@workspace/db";
 import { eq, ne, and, or, gt, isNull } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
 import { createAuditLog } from "./audit";
@@ -16,6 +16,10 @@ let tokenCache: TokenCache | null = null;
 
 // Per-tenant token cache — keyed by tenantId, uses the multi-tenant app credentials
 const tenantTokenCache = new Map<string, TokenCache>();
+
+// Per-tenant token cache for the WRITE app — a physically separate App Registration
+// (MT_APP_WRITE_CLIENT_ID) with its own consent state; never mixed with the read cache.
+const tenantWriteTokenCache = new Map<string, TokenCache>();
 
 // ── Multi-tenant app scopes ────────────────────────────────────────────────────
 // Full union declared upfront — adding scopes later requires re-consent on every tenant.
@@ -154,6 +158,77 @@ export async function getAccessTokenForTenant(tenantId: string): Promise<string>
 }
 
 /**
+ * Obtain a client-credentials token for a customer tenant using the WRITE
+ * multi-tenant App Registration (MT_APP_WRITE_CLIENT_ID / MT_APP_WRITE_CLIENT_SECRET).
+ *
+ * Deliberately a SEPARATE function from getAccessTokenForTenant, not a branching
+ * parameter on it: the read and write apps are different App Registrations with
+ * independent consent state (tenant_consent vs tenant_write_consent), and
+ * conflating them risks a read-consented tenant silently passing a write-token
+ * request (or vice versa). Uses its own token cache for the same reason.
+ *
+ * On a consent-signature failure from the token endpoint, flips the tenant's
+ * tenant_write_consent row to "revoked" (never the read-side tenant_consent —
+ * the two consents are independent) and throws WriteConsentRequiredError.
+ */
+export async function getWriteAccessTokenForTenant(tenantId: string): Promise<string> {
+  const cached = tenantWriteTokenCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
+  }
+
+  const clientId = process.env.MT_APP_WRITE_CLIENT_ID;
+  const clientSecret = process.env.MT_APP_WRITE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error("MT_APP_WRITE_CLIENT_ID / MT_APP_WRITE_CLIENT_SECRET not configured");
+  }
+
+  const params = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope: "https://graph.microsoft.com/.default",
+  });
+
+  const res = await fetch(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    // Same documented consent-failure signatures as the read path (see
+    // getAccessTokenForTenant): only these may flip consent, never a bare status.
+    const isConsentError =
+      text.includes("invalid_grant") ||
+      text.includes("AADSTS65001") ||
+      text.includes("consent_required") ||
+      text.includes("AADSTS700016");
+
+    if (isConsentError) {
+      log.warn({ tenantId, status: res.status }, "Graph WRITE token: write consent revoked or never granted for tenant");
+      await markTenantWriteConsentRevoked(tenantId);
+      throw new WriteConsentRequiredError(tenantId, "revoked_at_token_endpoint");
+    }
+
+    throw new Error(`Graph tenant WRITE token fetch failed for ${tenantId}: ${res.status} ${text}`);
+  }
+
+  const data = await res.json() as { access_token: string; expires_in: number };
+  const entry: TokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  tenantWriteTokenCache.set(tenantId, entry);
+  return entry.token;
+}
+
+/**
  * Error thrown when a tenant's admin consent has been revoked or was never granted.
  * Callers should catch this and call markTenantConsentRevoked() then surface a
  * "re-authorize" prompt — never a silent failure.
@@ -254,6 +329,85 @@ export async function markTenantConsentRevoked(tenantId: string): Promise<void> 
     });
   } catch (err) {
     log.error({ err, tenantId }, "markTenantConsentRevoked: DB update failed");
+  }
+}
+
+// ── Write-back gate errors ─────────────────────────────────────────────────────
+// One distinct, identifiable error type per reason graphWriteForTenant can refuse
+// to execute, so graph_write_operation (and any other caller) can surface WHICH
+// gate blocked the write rather than a generic failure. All extend Error and set
+// a stable `name` + `reason` for instanceof-free matching across module copies.
+
+/** The customerId passed to graphWriteForTenant resolved to no msp_customers row (or one with no MSP). */
+export class WriteBackCustomerNotFoundError extends Error {
+  readonly reason = "customer_not_found" as const;
+  readonly customerId: number;
+  constructor(customerId: number) {
+    super(`Graph write blocked: customer ${customerId} not found (cannot resolve MSP for write-back gate)`);
+    this.name = "WriteBackCustomerNotFoundError";
+    this.customerId = customerId;
+  }
+}
+
+/** The customer's MSP has msps.write_back_enabled = false — write-back is switched off MSP-wide. */
+export class WriteBackNotEnabledError extends Error {
+  readonly reason = "write_back_not_enabled" as const;
+  readonly customerId: number;
+  readonly mspId: number;
+  constructor(customerId: number, mspId: number) {
+    super(`Graph write blocked: write-back is not enabled for MSP ${mspId} (customer ${customerId})`);
+    this.name = "WriteBackNotEnabledError";
+    this.customerId = customerId;
+    this.mspId = mspId;
+  }
+}
+
+/**
+ * The tenant has no tenant_write_consent row with consentStatus "granted" —
+ * the customer's admin has not (or no longer) consented to the WRITE app.
+ * Also thrown from getWriteAccessTokenForTenant when the token endpoint itself
+ * reports the consent signature (`detail: "revoked_at_token_endpoint"`), after
+ * flipping the row to revoked.
+ */
+export class WriteConsentRequiredError extends Error {
+  readonly reason = "write_consent_not_granted" as const;
+  readonly tenantId: string;
+  readonly detail: string;
+  constructor(tenantId: string, detail = "no_granted_row") {
+    super(`Graph write blocked: write consent not granted for tenant ${tenantId} (${detail})`);
+    this.name = "WriteConsentRequiredError";
+    this.tenantId = tenantId;
+    this.detail = detail;
+  }
+}
+
+/**
+ * Flip a tenant's WRITE consent row to "revoked" and evict the write token cache.
+ * The write-side mirror of markTenantConsentRevoked — deliberately narrower: it
+ * touches ONLY tenant_write_consent (never the read-side tenant_consent, whose
+ * consent state is independent) and does not reclassify monitor profiles (reads
+ * are unaffected by a write-consent revocation). Never throws.
+ */
+export async function markTenantWriteConsentRevoked(tenantId: string): Promise<void> {
+  tenantWriteTokenCache.delete(tenantId);
+  try {
+    const now = new Date();
+    await db
+      .update(tenantWriteConsentTable)
+      .set({ consentStatus: "revoked", revokedAt: now, updatedAt: now })
+      .where(eq(tenantWriteConsentTable.tenantId, tenantId));
+
+    await createAuditLog({
+      actorUserId: null,
+      actorName: "system:graph-write-auto-revoke",
+      actorRole: "admin",
+      actionType: "tenant_write_consent_revoked",
+      entityType: "tenant_write_consent",
+      entityId: tenantId,
+      metadata: { tenantId, autoRevoked: true, source: "graph_write_token_endpoint" },
+    });
+  } catch (err) {
+    log.error({ err, tenantId }, "markTenantWriteConsentRevoked: DB update failed");
   }
 }
 
@@ -543,14 +697,72 @@ export interface GraphWriteResult {
   errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected";
 }
 
+/**
+ * Perform a WRITE (POST/PATCH/PUT/DELETE) Graph call against a customer tenant.
+ *
+ * Uses the dedicated WRITE App Registration (getWriteAccessTokenForTenant /
+ * MT_APP_WRITE_CLIENT_ID) — never the read app's credentials.
+ *
+ * This function is the SINGLE choke point for the two write-back gates; they are
+ * enforced here so no route or workflow node can reach a tenant write without
+ * passing them:
+ *   1. The customer's MSP must have msps.write_back_enabled = true
+ *      (else WriteBackNotEnabledError; unresolvable customer →
+ *      WriteBackCustomerNotFoundError).
+ *   2. The tenant must have a tenant_write_consent row with consentStatus
+ *      "granted" (else WriteConsentRequiredError).
+ * All three failure modes are distinct, identifiable error types (stable `name`
+ * + `reason`) so graph_write_operation can surface WHICH gate blocked the write.
+ * Fails closed: any gate that cannot be positively verified throws.
+ *
+ * `customerId` is required precisely because the MSP gate resolves from the
+ * customer row — resolving by tenantId instead would pick an arbitrary customer
+ * when a tenant maps to more than one row and could read the wrong MSP's toggle.
+ */
 export async function graphWriteForTenant(
   tenantId: string,
+  customerId: number,
   path: string,
   method: GraphWriteMethod,
   body: unknown,
   expectedStatusCodes: number[] = [200, 201, 204],
 ): Promise<GraphWriteResult> {
-  const token = await getAccessTokenForTenant(tenantId);
+  // ── Gate 1: MSP write-back toggle (resolved from customerId) ────────────────
+  const [gateRow] = await db
+    .select({
+      mspId: mspCustomersTable.mspId,
+      writeBackEnabled: mspsTable.writeBackEnabled,
+    })
+    .from(mspCustomersTable)
+    .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!gateRow) {
+    log.warn({ customerId, tenantId, path, method }, "Graph tenant write BLOCKED: customer not found — cannot resolve MSP write-back gate");
+    throw new WriteBackCustomerNotFoundError(customerId);
+  }
+  if (!gateRow.writeBackEnabled) {
+    log.warn({ customerId, mspId: gateRow.mspId, tenantId, path, method }, "Graph tenant write BLOCKED: MSP write-back not enabled");
+    throw new WriteBackNotEnabledError(customerId, gateRow.mspId);
+  }
+
+  // ── Gate 2: tenant write consent must be granted ────────────────────────────
+  const [writeConsent] = await db
+    .select({ consentStatus: tenantWriteConsentTable.consentStatus })
+    .from(tenantWriteConsentTable)
+    .where(eq(tenantWriteConsentTable.tenantId, tenantId))
+    .limit(1);
+
+  if (writeConsent?.consentStatus !== "granted") {
+    log.warn(
+      { customerId, tenantId, path, method, writeConsentStatus: writeConsent?.consentStatus ?? "no_row" },
+      "Graph tenant write BLOCKED: tenant write consent not granted",
+    );
+    throw new WriteConsentRequiredError(tenantId, writeConsent ? `status_${writeConsent.consentStatus}` : "no_row");
+  }
+
+  const token = await getWriteAccessTokenForTenant(tenantId);
   const res = await fetch(`${GRAPH_BASE}${path}`, {
     method,
     headers: {
@@ -560,24 +772,27 @@ export async function graphWriteForTenant(
     body: JSON.stringify(body),
   });
 
-  if (res.status === 401) {
-    const text = await res.text();
-    log.warn({ tenantId, status: 401, body: text }, "Graph tenant write call: 401 — auto-revoking consent");
-    tenantTokenCache.delete(tenantId);
-    await markTenantConsentRevoked(tenantId);
-    throw new ConsentRevokedError(tenantId);
-  }
-
-  // Also catch consent errors embedded in 400/403 response bodies
-  if (res.status === 400 || res.status === 403) {
+  // Consent-signature errors mid-call flip the WRITE consent row only — the read
+  // app's tenant_consent is a separate app with independent state and must never
+  // be revoked by a write-side failure. A bare 401 without the documented
+  // signature is NOT treated as revocation (same rationale as graphFetchForTenant):
+  // the token endpoint is the authoritative revocation signal, and
+  // getWriteAccessTokenForTenant already throws WriteConsentRequiredError there.
+  if (res.status === 400 || res.status === 401 || res.status === 403) {
     const text = await res.text();
     if (isConsentErrorBody(text)) {
-      log.warn({ tenantId, status: res.status, body: text }, "Graph tenant write call: consent error in body — auto-revoking consent");
-      tenantTokenCache.delete(tenantId);
-      await markTenantConsentRevoked(tenantId);
-      throw new ConsentRevokedError(tenantId);
+      log.warn({ customerId, tenantId, status: res.status, body: text }, "Graph tenant write call: consent error in body — revoking WRITE consent");
+      await markTenantWriteConsentRevoked(tenantId);
+      throw new WriteConsentRequiredError(tenantId, "revoked_mid_call");
     }
-    
+    if (res.status === 401) {
+      // Non-consent 401 — evict the cached write token so the next attempt
+      // re-mints (where a genuine revocation surfaces authoritatively), and
+      // report a plain privilege failure for THIS call.
+      tenantWriteTokenCache.delete(tenantId);
+      return { success: false, status: 401, errorType: "insufficient_privilege", data: text };
+    }
+
     // Non-consent 400/403
     if (res.status === 403) {
       return { success: false, status: 403, errorType: "insufficient_privilege", data: text };

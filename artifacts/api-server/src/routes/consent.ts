@@ -23,8 +23,8 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
+import { randomBytes, createHmac, timingSafeEqual } from "crypto";
+import { db, tenantConsentTable, tenantWriteConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
@@ -617,6 +617,250 @@ router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Reques
   });
 
   res.json({ ok: true, tenantId });
+});
+
+// ── Write-back consent (WRITE App Registration — MT_APP_WRITE_CLIENT_ID) ───────
+//
+// Separate consent flow for the dedicated write App Registration, recorded in
+// tenant_write_consent — fully independent of the read-only flow above (which
+// stays untouched). PlatformAdmin-triggered only: an admin generates the consent
+// URL for a specific customer, sends/opens it, and Microsoft redirects to the
+// per-customer callback below.
+//
+// State is never bare (state-less consent URLs are banned platform-wide): a
+// single-use expiring row in consent_invite_tokens backs every URL, and the
+// state carries an HMAC binding it to the WRITE flow ("wc.<token>.<mac>") so a
+// write-flow state pasted into the read callback fails closed (its token lookup
+// on the full prefixed string finds no row) and vice versa.
+//
+// NOTE (Azure registration): the redirect URI contains the numeric customerId in
+// its path, so each customer's exact callback URL must be present in the write
+// app's registered Redirect URIs before that customer's consent can complete —
+// Microsoft rejects any redirect_uri not registered verbatim.
+
+function writeConsentStateSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET not configured");
+  return s;
+}
+function signWriteConsentState(token: string): string {
+  const mac = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${token}`).digest("hex");
+  return `wc.${token}.${mac}`;
+}
+function verifyWriteConsentState(state: string): string | null {
+  const parts = state.split(".");
+  if (parts.length !== 3 || parts[0] !== "wc" || !parts[1] || !parts[2]) return null;
+  const token = parts[1];
+  const mac = parts[2];
+  const expected = createHmac("sha256", writeConsentStateSecret()).update(`write-consent:${token}`).digest("hex");
+  const a = Buffer.from(mac, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return token;
+}
+
+// ── GET /api/admin/customers/:customerId/write-consent/start ───────────────────
+
+router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = parseInt(req.params["customerId"] as string, 10);
+  if (isNaN(customerId)) {
+    res.status(400).json({ error: "Invalid customerId" });
+    return;
+  }
+
+  if (!process.env.MT_APP_WRITE_CLIENT_ID) {
+    res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: customer.tenantId?.trim() || null,
+    customerId,
+    clientUserId: null,
+    expiresAt,
+  });
+
+  const callbackUrl = `${getHostBase(req)}/api/admin/customers/${customerId}/write-consent/callback`;
+  const tenantHint = customer.tenantId?.trim() || "common";
+  const consentUrl = buildAdminConsentUrl(
+    tenantHint,
+    signWriteConsentState(token),
+    callbackUrl,
+    process.env.MT_APP_WRITE_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "admin",
+    actorRole: "admin",
+    actionType: "write_consent_invite_created",
+    entityType: "tenant_write_consent",
+    metadata: { tenantHint, customerId, expiresAt },
+  });
+
+  res.json({ consentUrl, expiresAt });
+});
+
+// ── GET /api/admin/customers/:customerId/write-consent/callback ────────────────
+// Microsoft redirects here after the customer's admin approves or declines the
+// WRITE app. Mirrors the read callback above: burn the single-use token, upsert
+// tenant_write_consent, land on a result page. Unauthenticated by necessity
+// (Microsoft's redirect carries no session) — trust comes from the HMAC-bound,
+// DB-backed single-use state.
+
+router.get("/admin/customers/:customerId/write-consent/callback", async (req: Request, res: Response) => {
+  const customerId = parseInt(req.params["customerId"] as string, 10);
+  const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
+  const hostBase = getHostBase(req);
+
+  if (isNaN(customerId)) {
+    res.status(400).send("Invalid callback URL.");
+    return;
+  }
+
+  const token = state ? verifyWriteConsentState(state) : null;
+  if (!token) {
+    log.warn({ customerId, state }, "Write-consent callback: state missing or failed HMAC verification");
+    res.status(400).send("Invalid consent callback state.");
+    return;
+  }
+
+  // Validate + burn the single-use token; it must belong to THIS customer.
+  const now = new Date();
+  const [tokenRow] = await db
+    .select({ customerId: consentInviteTokensTable.customerId })
+    .from(consentInviteTokensTable)
+    .where(
+      and(
+        eq(consentInviteTokensTable.token, token),
+        isNull(consentInviteTokensTable.usedAt),
+        gte(consentInviteTokensTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (!tokenRow || tokenRow.customerId !== customerId) {
+    log.warn({ customerId, tokenCustomerId: tokenRow?.customerId }, "Write-consent callback: token invalid, expired, used, or bound to a different customer");
+    res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
+    return;
+  }
+
+  await db
+    .update(consentInviteTokensTable)
+    .set({ usedAt: now, ...(tenant ? { tenantId: tenant } : {}) })
+    .where(eq(consentInviteTokensTable.token, token));
+
+  // Declined at the Microsoft screen
+  if (error === "access_denied" || error_subcode === "cancel") {
+    log.warn({ customerId, tenant, error, error_subcode }, "Write-consent callback: admin declined");
+    if (tenant) {
+      await db
+        .insert(tenantWriteConsentTable)
+        .values({ tenantId: tenant, customerId, consentStatus: "declined", updatedAt: now })
+        .onConflictDoUpdate({
+          target: tenantWriteConsentTable.tenantId,
+          set: { consentStatus: "declined", customerId, updatedAt: now },
+        });
+    }
+    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    return;
+  }
+
+  if (!tenant || admin_consent?.toLowerCase() !== "true") {
+    log.warn({ customerId, tenant, admin_consent }, "Write-consent callback: unexpected parameters");
+    res.status(400).send("Invalid consent callback parameters.");
+    return;
+  }
+
+  // Upsert tenant_write_consent as granted. scopesGranted is deliberately left
+  // at its default — the write app's manifest is the source of truth for what
+  // was granted; no scope list is fabricated here.
+  await db
+    .insert(tenantWriteConsentTable)
+    .values({
+      tenantId: tenant,
+      customerId,
+      consentStatus: "granted",
+      consentedAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: tenantWriteConsentTable.tenantId,
+      set: {
+        consentStatus: "granted",
+        consentedAt: now,
+        revokedAt: null,
+        customerId,
+        updatedAt: now,
+      },
+    });
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "microsoft:write-consent-callback",
+    actorRole: "admin",
+    actionType: "tenant_write_consent_granted",
+    entityType: "tenant_write_consent",
+    entityId: tenant,
+    metadata: { tenantId: tenant, customerId },
+  });
+
+  log.info({ tenant, customerId }, "Tenant WRITE admin consent granted");
+  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}&write=1`);
+});
+
+// ── GET /api/admin/customers/:customerId/write-consent ─────────────────────────
+// Status read for the admin UI — current tenant_write_consent state for the
+// customer's tenant (or null when the tenant has no row / customer has no tenant).
+
+router.get("/admin/customers/:customerId/write-consent", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = parseInt(req.params["customerId"] as string, 10);
+  if (isNaN(customerId)) {
+    res.status(400).json({ error: "Invalid customerId" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+  if (!customer.tenantId) {
+    res.json({ tenantId: null, writeConsent: null });
+    return;
+  }
+
+  const [row] = await db
+    .select({
+      consentStatus: tenantWriteConsentTable.consentStatus,
+      consentedAt: tenantWriteConsentTable.consentedAt,
+      revokedAt: tenantWriteConsentTable.revokedAt,
+    })
+    .from(tenantWriteConsentTable)
+    .where(eq(tenantWriteConsentTable.tenantId, customer.tenantId))
+    .limit(1);
+
+  res.json({ tenantId: customer.tenantId, writeConsent: row ?? null });
 });
 
 export default router;
