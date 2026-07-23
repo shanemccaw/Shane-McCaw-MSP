@@ -10421,7 +10421,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
 
   // ── Coupon: server-side re-validation ─────────────────────────────────────
   // Build raw price map (before discount) for all services.
-  // Resolution order: contract wizard finalPrice → services.price → typeAttributes.pricePerUserMonth × seats
+  // Resolution order: contract wizard finalPrice → services.price → typeAttributes pricing model → priceCents
   const rawPriceCents = new Map<number, number>();
   for (const s of services) {
     const contractFinal = contractFinalPrices.get(s.id);
@@ -10432,10 +10432,13 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     } else if (s.basePrice) {
       rawPriceCents.set(s.id, Math.round(parseFloat(String(s.basePrice)) * 100));
     } else {
-      const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
-      const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
-      if (ppu > 0) {
-        rawPriceCents.set(s.id, Math.round(ppu * resolvedSeats * 100));
+      // Single source of truth for the type_attributes pricing model — enforces
+      // seatCountFloor (minimum billable seats) and flatMonthlySurcharge, which
+      // a naive ppu × seats computation here previously dropped (Enhanced-Micro
+      // at 1 seat charged $18/mo instead of the real $270/mo).
+      const taCents = resolveTypeAttributesMonthlyPriceCents(s, resolvedSeats);
+      if (taCents > 0) {
+        rawPriceCents.set(s.id, taCents);
       } else {
         // Canonical priceCents fallback — services created via the modern admin
         // API carry their price only here (legacy price/basePrice NULL). Without
