@@ -1,27 +1,38 @@
 import { Router, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { exec } from "child_process";
-import fs from "fs";
-import path from "path";
+import { exec, execSync } from "child_process";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "admin.deploy" });
 
 const router = Router();
 
-// The server is always started (both `pnpm run start` locally and the bundled
-// `node ./dist/index.mjs` in production) from the real workspace root, so
-// process.cwd() is the robust source of truth here — unlike __dirname, it
-// isn't tied to whether this file is running from its src/ source location
-// or collapsed into a single bundled dist/ file. Verified against a .git
-// directory rather than trusted blindly, so a wrong cwd fails loudly instead
-// of silently running deploy operations against the wrong path.
-const WORKSPACE_ROOT = process.cwd();
-if (!fs.existsSync(path.join(WORKSPACE_ROOT, ".git"))) {
-  throw new Error(
-    `admin-deploy-console: WORKSPACE_ROOT (${WORKSPACE_ROOT}) does not contain a .git directory — ` +
-      "the server process was not started from the real workspace root."
-  );
+// process.cwd() is NOT reliable here — in this pnpm workspace, running a
+// package's own dev/start script sets cwd to that package's directory, not
+// the monorepo root. Ask git itself for the real repo root instead, which is
+// correct regardless of where the process was launched from. Resolved lazily
+// on first use (not at module load) so a resolution failure only breaks the
+// deploy console route, never server startup — this is a secondary admin
+// feature and must never be able to take the whole server down.
+let cachedWorkspaceRoot: string | undefined;
+
+function getWorkspaceRoot(): string {
+  if (cachedWorkspaceRoot) return cachedWorkspaceRoot;
+  let root: string;
+  try {
+    root = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+  } catch (err) {
+    throw new Error(
+      `admin-deploy-console: failed to resolve workspace root via 'git rev-parse --show-toplevel': ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
+  if (!root) {
+    throw new Error("admin-deploy-console: 'git rev-parse --show-toplevel' returned an empty result");
+  }
+  cachedWorkspaceRoot = root;
+  return root;
 }
 
 interface DeployStep {
@@ -68,11 +79,11 @@ interface StepResult {
   output: string;
 }
 
-function runStep(step: DeployStep): Promise<StepResult> {
+function runStep(step: DeployStep, workspaceRoot: string): Promise<StepResult> {
   return new Promise((resolve) => {
     exec(
       step.command,
-      { cwd: WORKSPACE_ROOT, timeout: step.timeoutMs, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 },
+      { cwd: workspaceRoot, timeout: step.timeoutMs, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const output = [stdout, stderr].filter(Boolean).join("\n").trim();
         resolve({ label: step.label, command: step.command, ok: !err, output: err ? (output || err.message) : output });
@@ -106,11 +117,20 @@ router.post("/admin/simulator/deploy/:operation", requireAdmin, async (req: Requ
     return;
   }
 
+  let workspaceRoot: string;
+  try {
+    workspaceRoot = getWorkspaceRoot();
+  } catch (err) {
+    log.error({ operation, err: err instanceof Error ? err.message : String(err) }, "Deploy console workspace root resolution failed");
+    res.status(500).json({ ok: false, operation, error: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+
   log.info({ operation, userId: req.user?.id }, "Deploy console operation starting");
 
   const results: StepResult[] = [];
   for (const step of steps) {
-    const result = await runStep(step);
+    const result = await runStep(step, workspaceRoot);
     results.push(result);
     if (!result.ok) {
       log.error({ operation, step: step.label }, "Deploy console step failed");
