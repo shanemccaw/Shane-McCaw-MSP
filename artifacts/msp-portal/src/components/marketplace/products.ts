@@ -1,4 +1,8 @@
-import { Product, TeamMember, DashboardMetric } from '../types';
+// PLACEHOLDER DATA — not real product/pricing data. Structural placeholder only,
+// carried over from the original AI-Studio mock (fabricated products, prices,
+// team members). Wiring this to the real services catalog is a separate,
+// later task — do not treat any price or product here as real.
+import { Product } from './types';
 
 export const INITIAL_PRODUCTS: Product[] = [
   {
@@ -177,17 +181,3 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
 ];
 
-export const TEAM_MEMBERS: TeamMember[] = [
-  { id: '1', name: 'John Doe', initials: 'JD', bgColor: 'bg-[#479ef5]', textColor: 'text-[#001c37]', role: 'Portfolio Manager' },
-  { id: '2', name: 'Alex Smith', initials: 'AS', bgColor: 'bg-[#5a3289]', textColor: 'text-[#cda3ff]', role: 'Risk Analyst' },
-  { id: '3', name: 'Elena Rostova', initials: 'ER', bgColor: 'bg-[#333535]', textColor: 'text-[#e2e2e2]', role: 'Compliance Officer' },
-  { id: '4', name: 'Michael Chen', initials: 'MC', bgColor: 'bg-[#00497f]', textColor: 'text-[#a0c9ff]', role: 'Property Director' },
-  { id: '5', name: 'Sarah Jenkins', initials: 'SJ', bgColor: 'bg-[#2a0053]', textColor: 'text-[#dab9ff]', role: 'Operations Lead' },
-];
-
-export const MOCK_DASHBOARD_METRICS: DashboardMetric[] = [
-  { id: 'delinquency-rate', title: 'Tenant Delinquency Rate', value: '1.8%', change: '-0.4%', isPositive: true, chartData: [3.2, 2.8, 2.4, 2.1, 1.9, 1.8] },
-  { id: 'occupancy-score', title: 'Portfolio Occupancy', value: '96.4%', change: '+1.2%', isPositive: true, chartData: [92, 93.5, 94.1, 95.2, 95.8, 96.4] },
-  { id: 'risk-exposure', title: 'Asset Volatility Score', value: 'Low (12)', change: '-3 pts', isPositive: true, chartData: [24, 20, 18, 15, 14, 12] },
-  { id: 'compliance-audit', title: 'Compliance Coverage', value: '99.2%', change: '+0.5%', isPositive: true, chartData: [95, 96.8, 97.4, 98.1, 98.9, 99.2] },
-];

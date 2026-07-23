@@ -2,8 +2,6 @@ export type BadgeType = 'PREMIUM' | 'ENTERPRISE' | 'CORE' | 'ADD-ON' | 'PROTECT'
 
 export type CategoryType = 'All Products' | 'Intelligence' | 'Security' | 'Automation' | 'Compliance';
 
-export type TopTabType = 'Intelligence' | 'Security' | 'Automation' | 'All';
-
 export interface ColorTheme {
   bg: string;
   text: string;
@@ -32,21 +30,3 @@ export interface Product {
   provider: string;
 }
 
-export interface TeamMember {
-  id: string;
-  name: string;
-  initials: string;
-  bgColor: string;
-  textColor: string;
-  role: string;
-  avatarUrl?: string;
-}
-
-export interface DashboardMetric {
-  id: string;
-  title: string;
-  value: string;
-  change: string;
-  isPositive: boolean;
-  chartData: number[];
-}

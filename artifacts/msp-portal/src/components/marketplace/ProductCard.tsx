@@ -9,7 +9,7 @@ import {
   Check,
   Info,
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product } from './types';
 
 interface ProductCardProps {
   product: Product;
@@ -49,7 +49,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     billingCycle === 'yearly' ? product.priceYearly : product.priceMonthly;
 
   return (
-    <div className="boutique-card bg-[#1e2020] flex flex-col p-4 md:p-5 rounded-xl border border-white/5 h-full relative group">
+    <div className="bg-[#1e2020] flex flex-col p-4 md:p-5 rounded-xl border border-white/5 h-full relative group">
       {/* Top Bar: Icon & Badge */}
       <div className="flex justify-between items-start mb-4">
         <div
@@ -61,7 +61,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         <div className="flex items-center gap-2">
           <span
-            className={`px-2.5 py-0.5 rounded-full font-mono-code text-[10px] font-semibold uppercase tracking-wider border ${product.colorTheme.badgeBg} ${product.colorTheme.badgeText} ${product.colorTheme.badgeBorder}`}
+            className={`px-2.5 py-0.5 rounded-full font-mono text-[10px] font-semibold uppercase tracking-wider border ${product.colorTheme.badgeBg} ${product.colorTheme.badgeText} ${product.colorTheme.badgeBorder}`}
           >
             {product.badge}
           </span>
@@ -78,13 +78,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Title */}
       <h3
         onClick={() => onOpenDetails(product)}
-        className="font-headline text-lg font-semibold text-[#e2e2e2] mb-1.5 cursor-pointer hover:text-[#a0c9ff] transition-colors"
+        className="font-sans text-lg font-semibold text-[#e2e2e2] mb-1.5 cursor-pointer hover:text-[#a0c9ff] transition-colors"
       >
         {product.title}
       </h3>
 
       {/* Description */}
-      <p className="text-xs md:text-sm text-[#c0c7d3] flex-1 mb-5 leading-relaxed font-body">
+      <p className="text-xs md:text-sm text-[#c0c7d3] flex-1 mb-5 leading-relaxed font-sans">
         {product.description}
       </p>
 
@@ -99,10 +99,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Footer Row: Price & Select Button */}
       <div className="flex items-center justify-between mt-auto pt-3.5 border-t border-white/5">
         <div>
-          <p className="font-mono-code text-[10px] text-[#8a919d] uppercase tracking-wider">
+          <p className="font-mono text-[10px] text-[#8a919d] uppercase tracking-wider">
             Starting at
           </p>
-          <p className="font-headline text-lg md:text-xl font-bold text-[#e2e2e2]">
+          <p className="font-sans text-lg md:text-xl font-bold text-[#e2e2e2]">
             ${currentPrice}
             <span className="text-xs text-[#c0c7d3] font-normal">
               /{billingCycle === 'yearly' ? 'mo (annual)' : 'mo'}
@@ -112,7 +112,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         <button
           onClick={() => onToggleSelect(product.id)}
-          className={`px-4 py-2 rounded-lg font-body text-xs md:text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-sans text-xs md:text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
             isSelected
               ? 'bg-[#10b981] text-white hover:bg-[#059669] shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95'
               : 'bg-[#a0c9ff] text-[#003259] hover:bg-[#d2e4ff] active:scale-95 hover:shadow-[0_0_12px_rgba(160,201,255,0.4)]'

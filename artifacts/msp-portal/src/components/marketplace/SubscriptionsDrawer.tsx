@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Trash2, ArrowRight, Wallet, CheckCircle, ShieldCheck, Sparkles } from 'lucide-react';
-import { Product } from '../types';
+import { Product } from './types';
 
 interface SubscriptionsDrawerProps {
   isOpen: boolean;
@@ -43,13 +43,13 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-      <div className="glass-modal w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+      <div className="bg-[#1e2020]/90 backdrop-blur-xl w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-[#282a2b] border-b border-white/5">
           <div className="flex items-center gap-2.5">
             <ShieldCheck className="w-5 h-5 text-[#a0c9ff]" />
-            <h3 className="font-headline text-lg font-bold text-[#e2e2e2]">
+            <h3 className="font-sans text-lg font-bold text-[#e2e2e2]">
               Active Subscriptions Review
             </h3>
           </div>
@@ -62,13 +62,13 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-5">
+        <div className="p-6 overflow-y-auto flex-1 space-y-5">
           {isSuccess ? (
             <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
               <div className="w-16 h-16 rounded-full bg-[#10b981]/20 border border-[#10b981] flex items-center justify-center text-[#10b981] animate-bounce">
                 <CheckCircle className="w-10 h-10" />
               </div>
-              <h4 className="font-headline text-xl font-bold text-white">
+              <h4 className="font-sans text-xl font-bold text-white">
                 Solutions Deployed Successfully!
               </h4>
               <p className="text-xs text-[#c0c7d3] max-w-md">
@@ -80,7 +80,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
               <div className="w-12 h-12 rounded-full bg-[#1e2020] border border-white/10 flex items-center justify-center text-[#8a919d]">
                 <Sparkles className="w-6 h-6" />
               </div>
-              <p className="font-headline text-base text-[#e2e2e2]">
+              <p className="font-sans text-base text-[#e2e2e2]">
                 No solutions selected yet
               </p>
               <p className="text-xs text-[#8a919d] max-w-xs">
@@ -94,7 +94,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
                 <span className="text-xs text-[#c0c7d3] font-medium">
                   Billing Terms
                 </span>
-                <div className="flex bg-[#1e2020] p-1 rounded-lg border border-[#404752] text-xs font-mono-code">
+                <div className="flex bg-[#1e2020] p-1 rounded-lg border border-[#404752] text-xs font-mono">
                   <button
                     onClick={() => setBillingCycle('monthly')}
                     className={`px-3 py-1 rounded-md transition-all ${
@@ -120,7 +120,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
 
               {/* Products List */}
               <div className="space-y-2.5">
-                <h4 className="font-mono-code text-xs uppercase text-[#8a919d] tracking-wider">
+                <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider">
                   Selected Solutions ({selectedProducts.length})
                 </h4>
                 {selectedProducts.map((p) => {
@@ -136,7 +136,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
                           <span className="text-sm font-semibold text-[#e2e2e2]">
                             {p.title}
                           </span>
-                          <span className="px-2 py-0.2 text-[9px] font-mono-code rounded bg-[#a0c9ff]/10 text-[#a0c9ff]">
+                          <span className="px-2 py-0.2 text-[9px] font-mono rounded bg-[#a0c9ff]/10 text-[#a0c9ff]">
                             {p.badge}
                           </span>
                         </div>
@@ -146,7 +146,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <span className="font-headline text-sm font-bold text-[#e2e2e2]">
+                        <span className="font-sans text-sm font-bold text-[#e2e2e2]">
                           ${price}/mo
                         </span>
                         <button
@@ -163,7 +163,7 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
               </div>
 
               {/* Wallet & Cost Breakdown */}
-              <div className="bg-[#121414] p-4 rounded-xl border border-white/5 space-y-2 font-mono-code text-xs">
+              <div className="bg-[#121414] p-4 rounded-xl border border-white/5 space-y-2 font-mono text-xs">
                 <div className="flex justify-between text-[#c0c7d3]">
                   <span>Current Wallet Balance</span>
                   <span>${walletBalance.toLocaleString()}</span>
@@ -187,10 +187,10 @@ export const SubscriptionsDrawer: React.FC<SubscriptionsDrawerProps> = ({
         {!isSuccess && selectedProducts.length > 0 && (
           <div className="p-4 bg-[#282a2b] border-t border-white/5 flex items-center justify-between">
             <div>
-              <p className="font-mono-code text-[10px] text-[#8a919d] uppercase">
+              <p className="font-mono text-[10px] text-[#8a919d] uppercase">
                 Total Monthly Investment
               </p>
-              <p className="font-headline text-xl font-bold text-[#e2e2e2]">
+              <p className="font-sans text-xl font-bold text-[#e2e2e2]">
                 ${totalCost}
                 <span className="text-xs text-[#c0c7d3] font-normal">/mo</span>
               </p>

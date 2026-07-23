@@ -13,7 +13,7 @@ import {
   Lock,
   Leaf,
 } from 'lucide-react';
-import { Product } from '../types';
+import { Product } from './types';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -57,8 +57,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fade-in">
-      <div className="glass-modal w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+      <div className="bg-[#1e2020]/90 backdrop-blur-xl w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-[#282a2b] border-b border-white/5">
           <div className="flex items-center gap-3">
@@ -66,10 +66,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               {getIcon(product.iconName)}
             </div>
             <div>
-              <span className="font-mono-code text-[10px] uppercase text-[#a0c9ff] tracking-wider font-semibold">
+              <span className="font-mono text-[10px] uppercase text-[#a0c9ff] tracking-wider font-semibold">
                 {product.category} • {product.badge}
               </span>
-              <h3 className="font-headline text-lg font-bold text-[#e2e2e2]">
+              <h3 className="font-sans text-lg font-bold text-[#e2e2e2]">
                 {product.title}
               </h3>
             </div>
@@ -83,10 +83,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+        <div className="p-6 overflow-y-auto flex-1 space-y-6">
           {/* Description */}
           <div>
-            <h4 className="font-mono-code text-xs uppercase text-[#8a919d] tracking-wider mb-1">
+            <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider mb-1">
               Overview
             </h4>
             <p className="text-sm text-[#e2e2e2] leading-relaxed">
@@ -97,7 +97,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* Key Metrics row */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-[#121414] p-3.5 rounded-xl border border-white/5">
             <div>
-              <p className="font-mono-code text-[10px] text-[#8a919d] uppercase">Rating</p>
+              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Rating</p>
               <div className="flex items-center gap-1 mt-0.5">
                 <Star className="w-3.5 h-3.5 fill-[#a0c9ff] text-[#a0c9ff]" />
                 <span className="text-sm font-bold text-[#e2e2e2]">
@@ -108,14 +108,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </div>
 
             <div>
-              <p className="font-mono-code text-[10px] text-[#8a919d] uppercase">Active Deployments</p>
+              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Active Deployments</p>
               <p className="text-sm font-bold text-[#e2e2e2] mt-0.5">
                 {product.activeTeams} Teams
               </p>
             </div>
 
             <div className="col-span-2 sm:col-span-1">
-              <p className="font-mono-code text-[10px] text-[#8a919d] uppercase">Provider</p>
+              <p className="font-mono text-[10px] text-[#8a919d] uppercase">Provider</p>
               <p className="text-xs font-semibold text-[#a0c9ff] truncate mt-0.5">
                 {product.provider}
               </p>
@@ -124,7 +124,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           {/* Key Features list */}
           <div>
-            <h4 className="font-mono-code text-xs uppercase text-[#8a919d] tracking-wider mb-2.5">
+            <h4 className="font-mono text-xs uppercase text-[#8a919d] tracking-wider mb-2.5">
               Capabilities & Features
             </h4>
             <div className="space-y-2">
@@ -144,10 +144,10 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         {/* Modal Footer */}
         <div className="p-4 bg-[#282a2b] border-t border-white/5 flex items-center justify-between">
           <div>
-            <p className="font-mono-code text-[10px] text-[#8a919d] uppercase">
+            <p className="font-mono text-[10px] text-[#8a919d] uppercase">
               Subscription Cost
             </p>
-            <p className="font-headline text-xl font-bold text-[#e2e2e2]">
+            <p className="font-sans text-xl font-bold text-[#e2e2e2]">
               ${currentPrice}
               <span className="text-xs text-[#c0c7d3] font-normal">/mo</span>
             </p>
