@@ -423,7 +423,7 @@ export default function LoginPage() {
     : user?.mspRole === "Assessment"
       ? "/assessment"
       : user?.mspRole === "CustomerUser"
-        ? "/customer-dashboard"
+        ? "/m365-health"
         : "/dashboard";
 
   useEffect(() => {
@@ -447,17 +447,17 @@ export default function LoginPage() {
       }
 
       // Compute landing from the freshly-resolved user so CustomerUser
-      // always goes to customer-dashboard, not dashboard (pre-login user is null).
+      // always goes to m365-health, not dashboard (pre-login user is null).
       const resolvedLanding =
         result.user?.mspRole === "Assessment"
           ? "/assessment"
           : result.user?.mspRole === "CustomerUser"
-            ? "/customer-dashboard"
+            ? "/m365-health"
             : "/dashboard";
 
       if (ctxSlug) {
         // Inside slug-scoped router — navigate() auto-prefixes the slug.
-        // e.g. "/customer-dashboard" → /portal/{slug}/customer-dashboard
+        // e.g. "/m365-health" → /portal/{slug}/m365-health
         navigate(resolvedLanding);
       } else {
         // Flat /login context — no inner router to add the slug prefix.

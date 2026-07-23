@@ -101,7 +101,6 @@ export default function M365HealthPage() {
 
           {/* 6. Executive CTA — real navigation only */}
           <ExecutiveCtaBar
-            onOpenDashboards={() => navigate('/customer-dashboard')}
             onOpenOffers={() => navigate('/customer-offers')}
           />
         </main>

@@ -261,7 +261,7 @@ export default function AccountSetupPage() {
           json.user?.mspRole === "Assessment"
             ? "assessment"
             : json.user?.mspRole === "CustomerUser"
-              ? "customer-dashboard"
+              ? "m365-health"
               : "dashboard";
         if (slug) {
           storeSlug(slug);

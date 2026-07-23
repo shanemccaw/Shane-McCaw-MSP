@@ -89,7 +89,6 @@ import DashboardCanvasPreviewPage from "@/pages/dashboard-canvas-preview";
 import DevStyleGuidePage from "@/pages/dev-style-guide";
 import MspWidgetDashboardPage from "@/pages/msp-dashboard";
 import DashboardDesignerPage from "@/pages/dashboard-designer";
-import CustomerDashboardPage from "@/pages/customer-dashboard";
 import OverviewTestPage from "@/pages/overview-test";
 import AssessmentTestPage from "@/pages/assessment-test";
 import M365HealthPage from "@/pages/m365-health";
@@ -375,7 +374,7 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={CustomerHomePage} />
       </Route>
       <Route path="/customer-dashboard">
-        <ProtectedRoute component={CustomerDashboardPage} />
+        <Redirect to="/m365-health" />
       </Route>
       <Route path="/overview-test">
         <ProtectedRoute component={OverviewTestPage} />

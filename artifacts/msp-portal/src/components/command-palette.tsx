@@ -99,7 +99,7 @@ const CUSTOMER_RESULT_HEADING: Record<CustomerSearchResultType, string> = {
 };
 
 const CUSTOMER_NAV_ENTRIES: NavEntry[] = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/customer-dashboard", roles: ["CustomerUser"] },
+  { icon: LayoutDashboard, label: "M365 Health", href: "/m365-health", roles: ["CustomerUser"] },
   { icon: FileText, label: "Documents", href: "/customer-documents", roles: ["CustomerUser"] },
   { icon: AlertTriangle, label: "Diagnostics & Offers", href: "/customer-diagnostics", roles: ["CustomerUser"] },
   { icon: History, label: "Activity Timeline", href: "/customer-timeline", roles: ["CustomerUser"] },
