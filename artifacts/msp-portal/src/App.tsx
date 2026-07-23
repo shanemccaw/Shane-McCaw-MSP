@@ -99,7 +99,6 @@ import AdoptionPage from "@/pages/adoption";
 import CopilotPage from "@/pages/copilot";
 import ArchitecturePage from "@/pages/architecture";
 import LicensingPage from "@/pages/licensing";
-import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
@@ -436,11 +435,6 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/licensing">
         <ProtectedRoute component={LicensingPage} />
-      </Route>
-      {/* Executive Mode — Simplified Leadership View: 5-tile stripped-down
-          alternate to the full Mission Control dashboard, fenced off from it. */}
-      <Route path="/executive-mode">
-        <ProtectedRoute component={ExecutiveModePage} />
       </Route>
       {/* /assessment now serves the real, standard-AppShell assessment
           experience (real portal nav incl. Marketplace, same as every other
@@ -906,6 +900,7 @@ function AppInner() {
 
 import { SupportChatProvider } from "@/lib/support-chat-context";
 import { ScanStatusProvider } from "@/lib/scan-status-context";
+import { ShellStatusProvider } from "@/lib/shell-status-context";
 import { MarketplaceProvider } from "@/lib/marketplace-context";
 import { MarketplaceModalHost } from "@/components/marketplace-modal-host";
 import { ReconsentModal } from "@/components/reconsent-modal";
@@ -924,12 +919,14 @@ function App() {
             <ThemeProvider>
               <SupportChatProvider>
                 <ScanStatusProvider>
-                  <MarketplaceProvider>
-                    <WouterRouter base={BASE_PATH}>
-                      <AppInner />
-                    </WouterRouter>
-                    <Toaster richColors position="top-right" />
-                  </MarketplaceProvider>
+                  <ShellStatusProvider>
+                    <MarketplaceProvider>
+                      <WouterRouter base={BASE_PATH}>
+                        <AppInner />
+                      </WouterRouter>
+                      <Toaster richColors position="top-right" />
+                    </MarketplaceProvider>
+                  </ShellStatusProvider>
                 </ScanStatusProvider>
               </SupportChatProvider>
             </ThemeProvider>
