@@ -540,12 +540,6 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["CustomerUser"],
       },
       {
-        icon: FileText,
-        label: "Documents",
-        href: "/customer-documents",
-        roles: ["CustomerUser"],
-      },
-      {
         icon: Zap,
         label: "Diagnostics & Offers",
         href: "/customer-diagnostics",
@@ -567,9 +561,10 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Store,
         label: "Marketplace",
         href: "/marketplace",
-        // Shared across roles — both Assessment and CustomerUser reach it via
-        // the sidebar (CustomerUser also has it in the avatar menu).
-        roles: ["Assessment", "CustomerUser"],
+        // Assessment-role customers reach Marketplace only via this sidebar
+        // entry; CustomerUser already has it in the avatar menu, so
+        // "CustomerUser" was removed from roles here (kept for Assessment).
+        roles: ["Assessment"],
       },
       {
         icon: ShieldCheck,
@@ -581,27 +576,6 @@ const NAV_SECTIONS: NavSection[] = [
         icon: FolderSync,
         label: "Project Scope",
         href: "/customer-scope",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: MessageCircle,
-        label: "Support",
-        href: "/support",
-        roles: ["CustomerUser"],
-      },
-      {
-        icon: CreditCard,
-        label: "Billing",
-        href: "/customer-billing",
-        roles: ["CustomerUser"],
-      },
-      {
-        // Consolidated settings hub — absorbs the former Team Members and
-        // Privacy & Data sidebar entries (now tabs inside /customer-settings,
-        // alongside Password & MFA, Notifications, and Cancel Services).
-        icon: Cog,
-        label: "Settings",
-        href: "/customer-settings",
         roles: ["CustomerUser"],
       },
     ],
@@ -783,13 +757,15 @@ const NAV_SECTIONS: NavSection[] = [
         icon: FileText,
         label: "Offboarding",
         href: "/offboarding",
-        roles: ["MSPAdmin", "CustomerUser"],
+        // CustomerUser already has this in the avatar menu; kept for MSPAdmin.
+        roles: ["MSPAdmin"],
       },
       {
         icon: Webhook,
         label: "Webhooks",
         href: "/webhooks",
-        roles: ["MSPAdmin", "CustomerUser"],
+        // CustomerUser already has this in the avatar menu; kept for MSPAdmin.
+        roles: ["MSPAdmin"],
       },
       {
         icon: Cog,
