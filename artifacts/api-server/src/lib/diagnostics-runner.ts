@@ -769,6 +769,13 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       findings: findingsCount,
     });
 
+    // Graded evaluable-check coverage for this run (see doc-gate-coverage.ts) —
+    // the single decision shared by the CIO narrative trigger below AND the
+    // diagnostics.run_completed event payload, so every downstream consumer
+    // (the seeded Sales Offer workflow's branch condition in particular) grades
+    // the run on real coverage instead of the literal finalStatus string.
+    const runCoverage = evaluateDocGateCoverage({ checksOk, checksLicenseGap, checksError, checksTotal });
+
     // CIO-Report Narrative — fire as soon as the scan itself completes, well
     // before documents finish generating, so the wait between "scan done" and
     // "documents done" becomes the narrative's value-delivery moment. Gated on
@@ -778,8 +785,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // written over mostly-absent data. Needs a known customer (benchmark/cost
     // lookups need customerId). Fire-and-forget — a narrative failure must never
     // fail or slow down the diagnostics run itself.
-    const narrativeCoverage = evaluateDocGateCoverage({ checksOk, checksLicenseGap, checksError, checksTotal });
-    if (narrativeCoverage.proceed && customerId != null) {
+    if (runCoverage.proceed && customerId != null) {
       void generateCioNarrative({
         runId,
         customerId,
@@ -806,6 +812,12 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // sales-offer workflow also listens here (independent fan-out). No direct
     // function call here anymore — the old hidden assessment-doc-trigger path is
     // retired in favor of this visible workflow.
+    //
+    // coverageSufficient/coverageBand/coveragePct carry the graded coverage
+    // decision (evaluateDocGateCoverage) into the event so workflow branch
+    // conditions can gate on real coverage — a permanently-"partial" tenant
+    // (e.g. two known unrunnable checks) with majority real signal still fires
+    // downstream engines, while a near-dark run still correctly does not.
     await emitWorkflowEvent("diagnostics.run_completed", {
       runId,
       customerId,
@@ -814,6 +826,9 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       packageKey,
       findingsCount,
       finalStatus,
+      coverageSufficient: runCoverage.proceed,
+      coverageBand: runCoverage.band,
+      coveragePct: runCoverage.coveragePct,
     });
 
     return { runId, status: finalStatus, checksTotal, checksOk, checksError, requiresScript, checksLicenseGap, findingsCount, documentId };
@@ -851,6 +866,11 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       packageKey,
       findingsCount: 0,
       finalStatus: "failed",
+      // A run that died mid-flight has no reliable check counts — grade it as
+      // no-coverage so graded downstream gates (sales offers, etc.) skip it.
+      coverageSufficient: false,
+      coverageBand: "no_data",
+      coveragePct: 0,
     });
 
     throw err;

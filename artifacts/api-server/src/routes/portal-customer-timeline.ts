@@ -43,6 +43,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, lt, inArray } from "drizzle-orm";
 import { ENGINE_DEFS } from "../lib/engine-registry";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -97,6 +98,8 @@ router.get(
             status: mspDiagnosticRunsTable.status,
             checksTotal: mspDiagnosticRunsTable.checksTotal,
             checksOk: mspDiagnosticRunsTable.checksOk,
+            checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+            checksError: mspDiagnosticRunsTable.checksError,
             completedAt: mspDiagnosticRunsTable.completedAt,
             createdAt: mspDiagnosticRunsTable.createdAt,
           })
@@ -104,7 +107,11 @@ router.get(
           .where(
             and(
               eq(mspDiagnosticRunsTable.customerId, customerId),
-              inArray(mspDiagnosticRunsTable.status, ["completed", "failed"]),
+              // "partial" included deliberately: a partial run is a real
+              // finished scan (graded below via evaluateDocGateCoverage) —
+              // excluding it hid every scan from tenants whose runs never
+              // reach literal "completed".
+              inArray(mspDiagnosticRunsTable.status, ["completed", "partial", "failed"]),
               beforeValid ? lt(mspDiagnosticRunsTable.createdAt, beforeValid) : undefined,
             ),
           )
@@ -196,13 +203,23 @@ router.get(
 
       for (const run of runs) {
         const at = run.completedAt ?? run.createdAt;
-        if (run.status === "completed") {
+        if (run.status === "completed" || run.status === "partial") {
+          // Graded, not literal-status: a "partial" run with sufficient real
+          // evaluable coverage (evaluateDocGateCoverage) reads as a successful
+          // scan; a near-dark partial run is shown honestly as limited coverage.
+          const cov = evaluateDocGateCoverage({
+            checksOk: run.checksOk ?? 0,
+            checksLicenseGap: run.checksLicenseGap ?? 0,
+            checksError: run.checksError ?? 0,
+            checksTotal: run.checksTotal ?? 0,
+          });
+          const sufficient = run.status === "completed" || cov.proceed;
           events.push({
             id: `run:${run.runId}`,
             type: "scan_completed",
-            title: "Security scan completed",
+            title: sufficient ? "Security scan completed" : "Security scan finished with limited coverage",
             description: run.checksTotal > 0 ? `${run.checksOk} of ${run.checksTotal} checks passed` : undefined,
-            status: "success",
+            status: sufficient ? "success" : "warning",
             timestamp: at.toISOString(),
           });
         } else if (run.status === "failed") {

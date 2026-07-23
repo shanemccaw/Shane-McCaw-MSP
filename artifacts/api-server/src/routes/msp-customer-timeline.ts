@@ -48,6 +48,7 @@ import { eq, and, desc, lt, inArray } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { ENGINE_DEFS } from "../lib/engine-registry";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -149,6 +150,8 @@ router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res
           status: mspDiagnosticRunsTable.status,
           checksTotal: mspDiagnosticRunsTable.checksTotal,
           checksOk: mspDiagnosticRunsTable.checksOk,
+          checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+          checksError: mspDiagnosticRunsTable.checksError,
           completedAt: mspDiagnosticRunsTable.completedAt,
           createdAt: mspDiagnosticRunsTable.createdAt,
         })
@@ -156,7 +159,11 @@ router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res
         .where(
           and(
             eq(mspDiagnosticRunsTable.mspId, mspId),
-            inArray(mspDiagnosticRunsTable.status, ["completed", "failed"]),
+            // "partial" included deliberately: a partial run is a real finished
+            // scan (graded below via evaluateDocGateCoverage) — excluding it
+            // made every scan invisible for tenants whose runs never reach
+            // literal "completed" (e.g. a couple of permanently-unrunnable checks).
+            inArray(mspDiagnosticRunsTable.status, ["completed", "partial", "failed"]),
             ...(effectiveCustomerIds === null ? [] : [inArray(mspDiagnosticRunsTable.customerId, effectiveCustomerIds)]),
             ...(beforeValid ? [lt(mspDiagnosticRunsTable.createdAt, beforeValid)] : []),
           ),
@@ -268,13 +275,23 @@ router.get("/msp/timeline", requireRole("MSPOperator"), async (req: Request, res
     for (const run of runs) {
       const at = run.completedAt ?? run.createdAt;
       const cust = customerFor(run.customerId);
-      if (run.status === "completed") {
+      if (run.status === "completed" || run.status === "partial") {
+        // Graded, not literal-status: a "partial" run with sufficient real
+        // evaluable coverage (evaluateDocGateCoverage) reads as a successful
+        // scan; a near-dark partial run is shown honestly as limited coverage.
+        const cov = evaluateDocGateCoverage({
+          checksOk: run.checksOk ?? 0,
+          checksLicenseGap: run.checksLicenseGap ?? 0,
+          checksError: run.checksError ?? 0,
+          checksTotal: run.checksTotal ?? 0,
+        });
+        const sufficient = run.status === "completed" || cov.proceed;
         events.push({
           id: `run:${run.runId}`,
           type: "scan_completed",
-          title: "Security scan completed",
+          title: sufficient ? "Security scan completed" : "Security scan finished with limited coverage",
           description: run.checksTotal > 0 ? `${run.checksOk} of ${run.checksTotal} checks passed` : undefined,
-          status: "success",
+          status: sufficient ? "success" : "warning",
           timestamp: at.toISOString(),
           ...cust,
         });

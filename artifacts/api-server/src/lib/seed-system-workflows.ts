@@ -1160,9 +1160,11 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     name: "__system__: Diagnostics Completion — Generate Sales Offers",
     description:
       "Triggered when a diagnostics run finishes (diagnostics-runner.ts, event diagnostics.run_completed). " +
-      "Only acts when finalStatus == 'completed' — a failed or partial run means checks didn't finish " +
-      "cleanly, so its findings are incomplete and not a reliable basis for scoring offer candidates " +
-      "(same completed-vs-failed branch style as 'Run Assessment' above). Runs sales_offer_generate for " +
+      "Only acts when the run's graded evaluable-check coverage is sufficient (coverageSufficient == true, " +
+      "computed by evaluateDocGateCoverage in doc-gate-coverage.ts — the same >=50% real-coverage bar as " +
+      "assessment_doc_gate and the CIO narrative). A permanently-'partial' run with majority real signal " +
+      "(e.g. two known unrunnable checks) still generates offers; a failed or near-dark run — too few " +
+      "checks producing a real result to score candidates against — is skipped. Runs sales_offer_generate for " +
       "the completed customer, which scores fired signals against active rule groups and persists any new " +
       "candidates as draft sales_offers rows (persistSalesOfferCandidates also fires a per-offer customer " +
       "notification on insert). Offers land in state 'draft' and require an MSP operator to review and " +
@@ -1183,7 +1185,12 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           id: "branch",
           type: "condition",
           position: { x: 300, y: 200 },
-          data: { nodeType: "condition", label: "Run Completed?", expression: "finalStatus == 'completed'" },
+          // Graded coverage gate (NOT literal finalStatus): diagnostics-runner
+          // grades every finished run with evaluateDocGateCoverage and carries
+          // the decision on the event payload as coverageSufficient. A 'partial'
+          // run with >=50% real evaluable coverage passes; failed/near-dark runs
+          // (and legacy payloads without the field) evaluate false and skip.
+          data: { nodeType: "condition", label: "Coverage Sufficient?", expression: "coverageSufficient == true" },
         },
         {
           id: "generate",
@@ -1216,7 +1223,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         { id: "end_notified", type: "end", position: { x: 0, y: 760 }, data: { nodeType: "end", label: "Done" } },
         { id: "end_none", type: "end", position: { x: 300, y: 620 }, data: { nodeType: "end", label: "No new candidates" } },
-        { id: "end_skip", type: "end", position: { x: 450, y: 340 }, data: { nodeType: "end", label: "Run not completed — skip" } },
+        { id: "end_skip", type: "end", position: { x: 450, y: 340 }, data: { nodeType: "end", label: "Coverage insufficient — skip" } },
       ],
       edges: [
         { id: "e1", source: "start", target: "branch" },
@@ -3123,6 +3130,23 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         log.info({ defId }, "seed-system-workflows: patched Live Activity Monitor — fixed dead linkPath, added send_alert_email node");
+      } else if (seed.name === "__system__: Diagnostics Completion — Generate Sales Offers") {
+        // Patch v1: graded coverage gate. The strict finalStatus == 'completed'
+        // branch NEVER fired for tenants whose runs are permanently 'partial'
+        // (confirmed live: every real run's branch_path was [start, branch,
+        // end_skip] despite real findings + fired signals). Replace with the
+        // shared evaluateDocGateCoverage decision, carried on the event payload
+        // as coverageSufficient (see diagnostics-runner.ts). Guard: fires only
+        // while the old expression is still present — no-ops once patched.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"branch","data":{"expression":"finalStatus == ''completed''"}}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        log.info({ defId }, "seed-system-workflows: patched Generate Sales Offers — graded coverage gate (coverageSufficient) replaces strict finalStatus check");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)

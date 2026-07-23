@@ -34,6 +34,7 @@ import {
 import { eq, and, inArray, or, ilike, desc } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -112,27 +113,42 @@ router.get("/msp/staff-search", requireRole("MSPOperator"), async (req: Request,
       )
       .limit(RESULTS_PER_SOURCE);
 
-    const completedRuns = await db
+    // Graded coverage gate (evaluateDocGateCoverage, same helper as the
+    // alerts feed / sales-offer trigger): searchable findings come from each
+    // customer's latest coverage-sufficient run (completed OR partial), so a
+    // tenant whose runs are permanently "partial" still has its real findings
+    // searchable; a near-dark run defers to the last sufficient one.
+    const finishedRuns = await db
       .select({
         runId: mspDiagnosticRunsTable.runId,
         customerId: mspDiagnosticRunsTable.customerId,
+        checksOk: mspDiagnosticRunsTable.checksOk,
+        checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+        checksError: mspDiagnosticRunsTable.checksError,
+        checksTotal: mspDiagnosticRunsTable.checksTotal,
       })
       .from(mspDiagnosticRunsTable)
       .where(
         and(
           eq(mspDiagnosticRunsTable.mspId, mspId),
-          eq(mspDiagnosticRunsTable.status, "completed"),
+          inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]),
           ...(scopedIds === null ? [] : [inArray(mspDiagnosticRunsTable.customerId, scopedIds)]),
         ),
       )
       .orderBy(desc(mspDiagnosticRunsTable.completedAt));
 
     const latestRunIdByCustomer = new Map<number, string>();
-    for (const run of completedRuns) {
+    for (const run of finishedRuns) {
       if (run.customerId === null) continue;
-      if (!latestRunIdByCustomer.has(run.customerId)) {
-        latestRunIdByCustomer.set(run.customerId, run.runId);
-      }
+      if (latestRunIdByCustomer.has(run.customerId)) continue;
+      const cov = evaluateDocGateCoverage({
+        checksOk: run.checksOk ?? 0,
+        checksLicenseGap: run.checksLicenseGap ?? 0,
+        checksError: run.checksError ?? 0,
+        checksTotal: run.checksTotal ?? 0,
+      });
+      if (!cov.proceed) continue;
+      latestRunIdByCustomer.set(run.customerId, run.runId);
     }
     const latestRunIds = [...latestRunIdByCustomer.values()];
 

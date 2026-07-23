@@ -95,6 +95,7 @@ import { runSlaEngineForTenant } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant } from "./scope-creep-engine.ts";
 import { logger } from "./logger.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
+import { evaluateDocGateCoverage } from "./doc-gate-coverage";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -1059,17 +1060,38 @@ async function platformPackageCoverage(def: MetricDef, ctx: ResolveContext): Pro
 
 async function platformAssessmentCoverage(def: MetricDef, ctx: ResolveContext): Promise<MetricResult> {
   // No assessment column on msp_customers — derive coverage from diagnostic runs:
-  // (# active customers with a completed diagnostic run) / (# active customers) * 100.
+  // (# active customers with a coverage-sufficient diagnostic run) / (# active customers) * 100.
+  // Graded gate (evaluateDocGateCoverage, see doc-gate-coverage.ts): a strictly
+  // status="completed" filter counted tenants whose runs are permanently "partial"
+  // (real majority signal, a couple of unrunnable checks) as never-assessed.
+  // A run counts as coverage when its real evaluable-check coverage clears the bar.
   // AGGREGATION RULE: coverage percent across the book = averaged as a ratio of covered/total.
   const customerIds = await mspCustomerIds(ctx.mspId);
   if (customerIds.length === 0) return notAvailable(def, "no_customers", "MSP has no active customers");
-  const covered = await db
-    .selectDistinct({ customerId: mspDiagnosticRunsTable.customerId })
+  const runRows = await db
+    .select({
+      customerId: mspDiagnosticRunsTable.customerId,
+      checksOk: mspDiagnosticRunsTable.checksOk,
+      checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+      checksError: mspDiagnosticRunsTable.checksError,
+      checksTotal: mspDiagnosticRunsTable.checksTotal,
+    })
     .from(mspDiagnosticRunsTable)
-    .where(and(eq(mspDiagnosticRunsTable.mspId, ctx.mspId), eq(mspDiagnosticRunsTable.status, "completed"), inArray(mspDiagnosticRunsTable.customerId, customerIds)));
-  const coveredCount = covered.filter((c) => c.customerId != null).length;
+    .where(and(eq(mspDiagnosticRunsTable.mspId, ctx.mspId), inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]), inArray(mspDiagnosticRunsTable.customerId, customerIds)));
+  const coveredIds = new Set<number>();
+  for (const row of runRows) {
+    if (row.customerId == null || coveredIds.has(row.customerId)) continue;
+    const cov = evaluateDocGateCoverage({
+      checksOk: row.checksOk ?? 0,
+      checksLicenseGap: row.checksLicenseGap ?? 0,
+      checksError: row.checksError ?? 0,
+      checksTotal: row.checksTotal ?? 0,
+    });
+    if (cov.proceed) coveredIds.add(row.customerId);
+  }
+  const coveredCount = coveredIds.size;
   const pct = Math.round((coveredCount / customerIds.length) * 1000) / 10;
-  return scalar(def, pct, { unit: "percent", covered: coveredCount, total: customerIds.length, source: "msp_diagnostic_runs(completed)" });
+  return scalar(def, pct, { unit: "percent", covered: coveredCount, total: customerIds.length, source: "msp_diagnostic_runs(coverage-sufficient)" });
 }
 
 // ── AI (mspId-scoped) ─────────────────────────────────────────────────────────

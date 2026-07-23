@@ -9,8 +9,10 @@
  *     scoped strictly to the caller's own mspId (resolveMspIdStrict — no
  *     query-param override, so no cross-MSP leakage is even reachable)
  *   - severity / category / customerId filters narrow the merged result
- *   - only each customer's LATEST completed run's findings are included,
- *     not older runs
+ *   - only each customer's LATEST coverage-sufficient run's findings are
+ *     included (graded via evaluateDocGateCoverage — a partial run with
+ *     majority real coverage counts; a near-dark run defers to the last
+ *     sufficient one), not older runs
  *
  * Run: pnpm --filter @workspace/api-server run test -- msp-alerts
  */
@@ -34,7 +36,10 @@ function mspToken(mspId: number, mspRole: "MSPOperator" | "MSPAdmin" | "Customer
 vi.mock("@workspace/db", () => ({
   db: { select: vi.fn() },
   mspCustomersTable: { id: "id", name: "name", mspId: "mspId" },
-  mspDiagnosticRunsTable: { runId: "runId", customerId: "customerId", completedAt: "completedAt", mspId: "mspId", status: "status" },
+  mspDiagnosticRunsTable: {
+    runId: "runId", customerId: "customerId", completedAt: "completedAt", mspId: "mspId", status: "status",
+    checksOk: "checksOk", checksLicenseGap: "checksLicenseGap", checksError: "checksError", checksTotal: "checksTotal",
+  },
   mspDiagnosticFindingsTable: {
     id: "id", findingId: "findingId", runId: "runId", customerId: "customerId", severity: "severity",
     title: "title", description: "description", recommendation: "recommendation", checkKey: "checkKey",
@@ -106,15 +111,29 @@ const openIncident = {
   conditionType: "signal",
 };
 
+// Deliberately status "partial" with majority real coverage (10/12 evaluable,
+// 83%) — the graded gate must treat this exactly like a completed run. This is
+// the confirmed-live shape: a tenant whose runs never reach literal "completed"
+// because a couple of checks are permanently unrunnable.
 const latestRun = {
   runId: "run-latest",
   customerId: 2,
   completedAt: new Date("2026-07-19T10:00:00Z"),
+  checksOk: 8, checksLicenseGap: 2, checksError: 2, checksTotal: 12,
 };
 const olderRun = {
   runId: "run-older",
   customerId: 2,
   completedAt: new Date("2026-07-10T10:00:00Z"),
+  checksOk: 12, checksLicenseGap: 0, checksError: 0, checksTotal: 12,
+};
+// Near-dark run: only 2 of 12 checks produced a real result — below the
+// coverage bar, so its findings are NOT a reliable basis for the feed.
+const darkRun = {
+  runId: "run-dark",
+  customerId: 2,
+  completedAt: new Date("2026-07-20T10:00:00Z"),
+  checksOk: 2, checksLicenseGap: 0, checksError: 10, checksTotal: 12,
 };
 
 const latestFinding = {
@@ -183,6 +202,24 @@ describe("GET /msp/alerts", () => {
     const findingAlert = res.body.alerts.find((a: { source: string }) => a.source === "diagnostic_finding");
     expect(findingAlert.customerName).toBe("Beta LLC");
     // Only the LATEST run's finding surfaces — the older run is excluded.
+    // latestRun is status-agnostic "partial" with 83% real coverage: the graded
+    // gate (evaluateDocGateCoverage) must treat it as a valid findings basis.
+    expect(findingAlert.id).toBe("finding-f-latest");
+  });
+
+  it("skips a near-dark latest run in favor of the last coverage-sufficient one", async () => {
+    // darkRun is newest but only 2/12 checks produced a real result — the
+    // graded gate must NOT use it as the findings basis, deferring to
+    // latestRun (the next-newest sufficient run) instead of hiding the
+    // customer's findings entirely.
+    queueHandlerSelects({ runs: [darkRun, latestRun, olderRun] });
+    const res = await request(makeApp())
+      .get("/msp/alerts")
+      .set("Authorization", `Bearer ${mspToken(MSP_ID)}`);
+
+    expect(res.status).toBe(200);
+    const findingAlert = res.body.alerts.find((a: { source: string }) => a.source === "diagnostic_finding");
+    expect(findingAlert).toBeTruthy();
     expect(findingAlert.id).toBe("finding-f-latest");
   });
 

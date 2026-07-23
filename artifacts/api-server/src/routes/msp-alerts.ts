@@ -11,9 +11,11 @@
  *     deduplicated, escalation-tracked view of a firing rule. Severity comes
  *     from the parent policy_rules row.
  *   - msp_diagnostic_findings restricted to severity IN (warning, critical)
- *     AND only each customer's latest completed diagnostics run — mirrors
- *     the triage restriction portal-mission-control.ts's overview endpoint
- *     already applies for a single customer, extended across the MSP's book.
+ *     AND only each customer's latest coverage-sufficient diagnostics run
+ *     (completed OR partial, graded via evaluateDocGateCoverage — see
+ *     doc-gate-coverage.ts) — mirrors the triage restriction
+ *     portal-mission-control.ts's overview endpoint already applies for a
+ *     single customer, extended across the MSP's book.
  *
  * Routes (MSPOperator+, mspId from JWT claim via resolveMspIdStrict):
  *   GET /api/msp/alerts — merged, filterable (severity/category/customerId), paginated
@@ -31,6 +33,7 @@ import {
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -123,27 +126,44 @@ router.get("/msp/alerts", requireRole("MSPOperator"), async (req: Request, res: 
       deepLink: row.customerId ? `/customers/${row.customerId}` : null,
     }));
 
-    // ── Source 2: warning/critical findings from each customer's latest completed run ──
-    const completedRuns = await db
+    // ── Source 2: warning/critical findings from each customer's latest
+    // coverage-sufficient run ── Graded gate (evaluateDocGateCoverage, same
+    // helper as assessment_doc_gate / the sales-offer trigger): a strictly
+    // status="completed" filter made every tenant whose runs are permanently
+    // "partial" (e.g. two known unrunnable checks) invisible here despite
+    // real warning/critical findings. A partial run with sufficient real
+    // evaluable coverage is a reliable findings basis; a near-dark run is
+    // skipped in favor of the customer's most recent sufficient run.
+    const finishedRuns = await db
       .select({
         runId: mspDiagnosticRunsTable.runId,
         customerId: mspDiagnosticRunsTable.customerId,
         completedAt: mspDiagnosticRunsTable.completedAt,
+        checksOk: mspDiagnosticRunsTable.checksOk,
+        checksLicenseGap: mspDiagnosticRunsTable.checksLicenseGap,
+        checksError: mspDiagnosticRunsTable.checksError,
+        checksTotal: mspDiagnosticRunsTable.checksTotal,
       })
       .from(mspDiagnosticRunsTable)
       .where(and(
         eq(mspDiagnosticRunsTable.mspId, mspId),
-        eq(mspDiagnosticRunsTable.status, "completed"),
+        inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]),
         ...(scopedIds === null ? [] : [inArray(mspDiagnosticRunsTable.customerId, scopedIds)]),
       ))
       .orderBy(desc(mspDiagnosticRunsTable.completedAt));
 
     const latestRunIdByCustomer = new Map<number, string>();
-    for (const run of completedRuns) {
+    for (const run of finishedRuns) {
       if (run.customerId === null) continue;
-      if (!latestRunIdByCustomer.has(run.customerId)) {
-        latestRunIdByCustomer.set(run.customerId, run.runId);
-      }
+      if (latestRunIdByCustomer.has(run.customerId)) continue;
+      const cov = evaluateDocGateCoverage({
+        checksOk: run.checksOk ?? 0,
+        checksLicenseGap: run.checksLicenseGap ?? 0,
+        checksError: run.checksError ?? 0,
+        checksTotal: run.checksTotal ?? 0,
+      });
+      if (!cov.proceed) continue;
+      latestRunIdByCustomer.set(run.customerId, run.runId);
     }
     const latestRunIds = [...latestRunIdByCustomer.values()];
 
