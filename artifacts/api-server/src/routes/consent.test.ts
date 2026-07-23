@@ -202,8 +202,8 @@ import {
 
 describe("graph.ts — multi-tenant helpers", () => {
   describe("REQUIRED_MT_SCOPES", () => {
-    it("contains exactly 16 scopes", () => {
-      expect(REQUIRED_MT_SCOPES).toHaveLength(16);
+    it("contains exactly 26 scopes", () => {
+      expect(REQUIRED_MT_SCOPES).toHaveLength(26);
     });
 
     it("includes all required scopes", () => {
@@ -222,6 +222,18 @@ describe("graph.ts — multi-tenant helpers", () => {
         "IdentityRiskyUser.Read.All",
         "AccessReview.Read.All",
         "TeamSettings.Read.All",
+        "ServiceMessage.Read.All",
+        "ServiceHealth.Read.All",
+        "Agreement.Read.All",
+        "Application.Read.All",
+        "Community.Read.All",
+        "DelegatedPermissionGrant.Read.All",
+        "IdentityRiskyServicePrincipal.Read.All",
+        "InformationProtectionPolicy.Read.All",
+        "RealTimeActivityFeed.Read.All",
+        "RecordsManagement.Read.All",
+        "SharePointTenantSettings.Read.All",
+        "Team.ReadBasic.All",
       ];
       for (const scope of required) {
         expect(REQUIRED_MT_SCOPES).toContain(scope);

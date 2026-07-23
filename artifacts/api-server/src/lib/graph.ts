@@ -41,6 +41,16 @@ export const REQUIRED_MT_SCOPES = [
   "TeamSettings.Read.All",
   "ServiceMessage.Read.All",
   "ServiceHealth.Read.All",
+  "Agreement.Read.All",
+  "Application.Read.All",
+  "Community.Read.All",
+  "DelegatedPermissionGrant.Read.All",
+  "IdentityRiskyServicePrincipal.Read.All",
+  "InformationProtectionPolicy.Read.All",
+  "RealTimeActivityFeed.Read.All",
+  "RecordsManagement.Read.All",
+  "SharePointTenantSettings.Read.All",
+  "Team.ReadBasic.All",
 ] as const;
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];
