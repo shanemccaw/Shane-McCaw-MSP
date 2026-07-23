@@ -71,6 +71,7 @@ const SIGNAL_INTELLIGENCE_COLUMNS_SQL = sql`
   adoption_impact AS "adoptionImpact",
   copilot_impact AS "copilotImpact",
   architecture_impact AS "architectureImpact",
+  licensing_impact AS "licensingImpact",
   trend_value AS "trendValue",
   trend_direction AS "trendDirection",
   decay_rate AS "decayRate",

@@ -30,21 +30,35 @@ import {
   type HealthPillar,
   type SignalHealthImpactConfig,
 } from "./health-engine.ts";
-import { computeDisplayHealth } from "./health-display.ts";
+import { computePillarDisplayScore } from "./health-display.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 
+/**
+ * The radar's full pillar universe: the six health pillars PLUS the
+ * separately-computed security pillar. Security is deliberately NOT added to
+ * `HEALTH_PILLARS` itself (that would double-count it inside
+ * `computeHealthEngine` — it's scored by the standalone Security Engine and
+ * combined one level up in `calculateArchitectureHealthScore`, whose combined
+ * breakdown this module already consumes). Here it is just one more checkable
+ * coverage option: `PILLAR_FIELD.security` -> `securityImpact` already exists
+ * on every rule/group, so the identical real-coverage test applies.
+ */
+export type RadarPillar = HealthPillar | "security";
+const RADAR_PILLARS: readonly RadarPillar[] = [...HEALTH_PILLARS, "security"];
+
 /** Mirrors MissionControl.tsx's PILLAR_LABELS so the same pillar reads identically everywhere. */
-export const PILLAR_LABELS: Record<HealthPillar, string> = {
+export const PILLAR_LABELS: Record<RadarPillar, string> = {
   governance: "Governance",
   compliance: "Compliance",
   adoption: "Adoption",
   copilot: "Copilot Readiness",
   architecture: "Architecture",
   licensing: "Licensing",
+  security: "Security",
 };
 
 export interface PillarCoverageEntry {
-  pillar: HealthPillar;
+  pillar: RadarPillar;
   label: string;
   score: number;
 }
@@ -71,19 +85,20 @@ export async function getPillarCoverage(
   if (coveredSignalKeys.size === 0) return [];
 
   const impacts = getSignalHealthImpacts(rules, groups);
-  const displayScores = new Map(
-    computeDisplayHealth(healthOutput, rules, groups).map((p) => [p.pillar, p.displayScore]),
-  );
 
   const covered: PillarCoverageEntry[] = [];
-  for (const pillar of HEALTH_PILLARS) {
+  for (const pillar of RADAR_PILLARS) {
     const field = PILLAR_FIELD[pillar] as keyof Omit<SignalHealthImpactConfig, "signalKey">;
     const hasRealCoverage = [...coveredSignalKeys].some(
       (signalKey) => (impacts.get(signalKey)?.[field] ?? 0) > 0,
     );
     if (!hasRealCoverage) continue;
 
-    const displayScore = displayScores.get(pillar);
+    // Same honest display normalization for all seven pillars.
+    // `healthOutput` comes from `calculateArchitectureHealthScore`, whose
+    // breakdown already includes the Security Engine's real security entry —
+    // no separate scoring path here.
+    const displayScore = computePillarDisplayScore(pillar, healthOutput, impacts);
     if (displayScore == null) continue; // no rules configured anywhere for this pillar — don't fabricate
 
     covered.push({ pillar, label: PILLAR_LABELS[pillar], score: displayScore });

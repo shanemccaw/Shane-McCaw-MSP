@@ -29,6 +29,7 @@ export default defineConfig({
       "src/lib/forecasting-engine.test.ts",
       "src/lib/priority-engine.test.ts",
       "src/lib/health-engine.test.ts",
+      "src/lib/pillar-coverage.test.ts",
       "src/lib/crm-engine.test.ts",
       "src/lib/msp-engine.test.ts",
       "src/lib/msp-engine-tenant-id-space.test.ts",

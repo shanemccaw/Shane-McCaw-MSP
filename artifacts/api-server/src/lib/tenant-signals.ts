@@ -587,6 +587,7 @@ export interface SignalIntelligenceFields {
   adoptionImpact: number;
   copilotImpact: number;
   architectureImpact: number;
+  licensingImpact: number;
   trendValue: number;
   trendDirection: SignalTrendDirection;
   decayRate: number;

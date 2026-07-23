@@ -34,6 +34,40 @@ import type { SignalDerivationRule, SignalRuleGroup } from "./tenant-signals.ts"
 type PillarImpactField = keyof Omit<SignalHealthImpactConfig, "signalKey">;
 
 /**
+ * Single-pillar core of the normalization above, shared so the separately
+ * computed security pillar (Security Engine — its breakdown entry is combined
+ * into `HealthEngineOutput.breakdown` by `calculateArchitectureHealthScore`)
+ * gets the exact same honest normalization as the six health pillars, without
+ * a second normalization path. Returns null when no rules anywhere configure
+ * an impact for the pillar (theoreticalMax = 0 — never fabricate), and also
+ * when the output's breakdown carries no entry for the pillar at all (a
+ * pure `computeHealthEngine` output has no security entry — treating that as
+ * rawScore 0 would fabricate a perfect 100).
+ */
+export function computePillarDisplayScore(
+  pillar: HealthPillar | "security",
+  output: HealthEngineOutput,
+  impacts: Map<string, SignalHealthImpactConfig>,
+): number | null {
+  const field = PILLAR_FIELD[pillar] as PillarImpactField;
+
+  let theoreticalMax = 0;
+  for (const config of impacts.values()) {
+    theoreticalMax += config[field] as number;
+  }
+
+  if (theoreticalMax === 0) return null;
+
+  const pillarBreakdown = output.breakdown.find(b => b.pillar === pillar);
+  if (!pillarBreakdown) return null;
+
+  return Math.max(
+    0,
+    Math.min(100, Math.round(100 - (pillarBreakdown.score / theoreticalMax) * 100)),
+  );
+}
+
+/**
  * Converts a `HealthEngineOutput` into a customer-facing display score for
  * each pillar. Returns an array in the same order as `HEALTH_PILLARS`.
  */
@@ -44,26 +78,8 @@ export function computeDisplayHealth(
 ): { pillar: HealthPillar; displayScore: number | null }[] {
   const impacts = getSignalHealthImpacts(rules, groups);
 
-  return HEALTH_PILLARS.map(pillar => {
-    const field = PILLAR_FIELD[pillar] as PillarImpactField;
-
-    let theoreticalMax = 0;
-    for (const config of impacts.values()) {
-      theoreticalMax += config[field] as number;
-    }
-
-    if (theoreticalMax === 0) {
-      return { pillar, displayScore: null };
-    }
-
-    const pillarBreakdown = output.breakdown.find(b => b.pillar === pillar);
-    const rawScore = pillarBreakdown?.score ?? 0;
-
-    const displayScore = Math.max(
-      0,
-      Math.min(100, Math.round(100 - (rawScore / theoreticalMax) * 100)),
-    );
-
-    return { pillar, displayScore };
-  });
+  return HEALTH_PILLARS.map(pillar => ({
+    pillar,
+    displayScore: computePillarDisplayScore(pillar, output, impacts),
+  }));
 }
