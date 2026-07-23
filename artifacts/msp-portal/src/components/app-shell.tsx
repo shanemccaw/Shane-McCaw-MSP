@@ -16,6 +16,7 @@ import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 import { useAuth, type MspRole } from "@/lib/auth-context";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
+import { useMarketplace } from "@/lib/marketplace-context";
 import { useTheme } from "@/lib/theme-context";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -797,6 +798,7 @@ function SidebarNavItem({
   collapsed: boolean;
 }) {
   const [location] = useLocation();
+  const { open: openMarketplace } = useMarketplace();
   const active =
     item.href === "/dashboard"
       ? location === "/dashboard" || location === "/"
@@ -809,6 +811,21 @@ function SidebarNavItem({
       ? "bg-sidebar-accent text-sidebar-foreground font-medium"
       : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
   ].join(" ");
+
+  // Marketplace opens as a real overlay dialog over the current page instead
+  // of navigating away — intercept just this one item's click.
+  if (item.href === "/marketplace") {
+    return (
+      <button
+        className={cls}
+        title={collapsed ? item.label : undefined}
+        onClick={() => openMarketplace()}
+      >
+        <item.icon className="size-4 shrink-0" />
+        {!collapsed && <span>{item.label}</span>}
+      </button>
+    );
+  }
 
   return (
     <Link href={item.href}>
@@ -1258,6 +1275,7 @@ function CustomerTopBar({
 }) {
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
+  const { open: openMarketplace } = useMarketplace();
 
   return (
     <header className="h-14 shrink-0 border-b border-border bg-background/80 backdrop-blur flex items-center gap-3 px-4 md:px-6 sticky top-0 z-10">
@@ -1391,7 +1409,7 @@ function CustomerTopBar({
             <DropdownMenuSeparator />
 
             {/* Real pages */}
-            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => navigate("/marketplace")}>
+            <DropdownMenuItem className="cursor-pointer gap-2 py-2" onSelect={() => openMarketplace()}>
               <Store className="size-4 text-muted-foreground" />
               <span>Marketplace</span>
             </DropdownMenuItem>
@@ -1488,6 +1506,7 @@ interface MspSuspensionState {
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
   const { supportOpen, setSupportOpen } = useSupportChat();
+  const { open: openMarketplace } = useMarketplace();
   const [, navigate] = useLocation();
   const slug = useMspSlug();
   const [collapsed, setCollapsed] = useState(false);

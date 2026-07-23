@@ -18,6 +18,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
+import { useMarketplace } from "@/lib/marketplace-context";
 import {
   CommandDialog,
   CommandEmpty,
@@ -166,6 +167,7 @@ const NAV_ENTRIES: NavEntry[] = [
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [, navigate] = useLocation();
+  const { open: openMarketplace } = useMarketplace();
   const { fetchWithAuth, user } = useAuth();
   const [query, setQuery] = useState("");
   const [staffResults, setStaffResults] = useState<SearchCustomer[]>([]);
@@ -247,6 +249,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   function go(href: string) {
     onOpenChange(false);
+    // Marketplace opens as a real overlay dialog over the current page
+    // instead of navigating away.
+    if (href === "/marketplace") {
+      openMarketplace();
+      return;
+    }
     navigate(href);
   }
 

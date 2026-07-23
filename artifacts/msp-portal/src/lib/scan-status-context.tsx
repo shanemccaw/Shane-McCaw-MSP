@@ -59,6 +59,7 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
   const [triggerError, setTriggerError] = useState<string | null>(null);
   const fastUntilRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tickRef = useRef<(() => Promise<void>) | null>(null);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -89,11 +90,15 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
       const fast = Date.now() < fastUntilRef.current;
       timerRef.current = setTimeout(() => void tick(), fast ? ACTIVE_POLL_MS : IDLE_POLL_MS);
     };
+    // Exposed so reportTriggerStarted can re-enter the same self-rescheduling
+    // loop instead of firing a one-off load() that would leave polling dead.
+    tickRef.current = tick;
 
     void tick();
 
     return () => {
       cancelled = true;
+      tickRef.current = null;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [load]);
@@ -104,8 +109,8 @@ export function ScanStatusProvider({ children }: { children: ReactNode }) {
     // waiting out whatever's left of the current interval.
     fastUntilRef.current = Date.now() + ACTIVE_POLL_MS * 4;
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void load(), 250);
-  }, [load]);
+    timerRef.current = setTimeout(() => void tickRef.current?.(), 250);
+  }, []);
 
   const reportTriggerError = useCallback((message: string) => {
     setTriggerError(message);
