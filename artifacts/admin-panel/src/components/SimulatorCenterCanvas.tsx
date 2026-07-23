@@ -23,6 +23,7 @@ import { SimulatorOverridesPanel } from "./SimulatorOverridesPanel";
 import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
 import { SimulatorDeployConsolePanel } from "./SimulatorDeployConsolePanel";
 import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
+import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
 
 interface Msp {
   id: number;
@@ -56,7 +57,11 @@ export function SimulatorCenterCanvas({
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "deploy">("sql");
+  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint">("sql");
+
+  // The M365 endpoint currently open in the Endpoint tab, set by clicking an
+  // endpoint in the Explorer tree.
+  const [selectedEndpoint, setSelectedEndpoint] = useState<MonitorCheckSummary | null>(null);
 
   // Testbeds state
   const [msps, setMsps] = useState<Msp[]>([]);
@@ -72,13 +77,23 @@ export function SimulatorCenterCanvas({
     // events; this listener just brings the tab forward (the canvas stays
     // mounted while hidden, so its listener is always live).
     const handleLoadScript = () => setActiveTab("sql");
+    // Selecting an M365 endpoint in the tree opens it in its own tab — same
+    // event-driven hand-off the saved-script rows use for the SQL tab.
+    const handleSelectEndpoint = (e: Event) => {
+      const detail = (e as CustomEvent<MonitorCheckSummary>).detail;
+      if (!detail) return;
+      setSelectedEndpoint(detail);
+      setActiveTab("endpoint");
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleLoadScript);
+    window.addEventListener("simulator-select-endpoint", handleSelectEndpoint);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
       window.removeEventListener("simulator-run-migration", handleLoadScript);
+      window.removeEventListener("simulator-select-endpoint", handleSelectEndpoint);
     };
   }, []);
 
@@ -193,6 +208,11 @@ export function SimulatorCenterCanvas({
     { key: "overrides", label: "Overrides" },
     { key: "engines", label: "Run Engines" },
     { key: "deploy", label: "Deploy Console" },
+    // Only present once an endpoint has been picked in the Explorer tree —
+    // an empty "Endpoint" tab would be a dead tab with nothing to show.
+    ...(selectedEndpoint
+      ? [{ key: "endpoint" as typeof activeTab, label: selectedEndpoint.key }]
+      : []),
   ];
 
   return (
@@ -222,6 +242,11 @@ export function SimulatorCenterCanvas({
         <div className={`min-h-0 flex-1 ${activeTab === "sql" ? "flex flex-col" : "hidden"}`}>
           <SqlQueryCanvas output={sqlOutput} onOutputChange={onSqlOutputChange} />
         </div>
+
+        {/* Tab: M365 Endpoint — real URL/method/params + live single execution */}
+        {activeTab === "endpoint" && selectedEndpoint && (
+          <SimulatorEndpointCanvas key={selectedEndpoint.key} check={selectedEndpoint} />
+        )}
 
         {/* Tab 2: Testbeds Dashboard */}
         {activeTab === "testbeds" && (

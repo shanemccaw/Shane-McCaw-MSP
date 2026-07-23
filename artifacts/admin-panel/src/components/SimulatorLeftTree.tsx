@@ -24,6 +24,8 @@ import {
   Cpu,
   Zap,
   FileDiff,
+  Globe,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -83,6 +85,24 @@ interface BusEventType {
   group: string;
 }
 
+// Real monitor_checks rows from GET /api/admin/monitor-checks. There is no
+// `category` column on monitor_checks — the real taxonomy is the domain prefix
+// of the check's own `key` ("identity:mfa-registration" → "identity"), which is
+// how every seeded check is named. Grouping is derived from that, not invented.
+interface MonitorCheckNode {
+  key: string;
+  label: string;
+  description: string | null;
+  endpoint: string;
+  method: string;
+  selectParams: string | null;
+  requestBody: Record<string, unknown> | null;
+  properties: string[];
+  mapping: Array<{ sourceField: string; targetField: string; transform?: string }>;
+  requiresCustomerScript: boolean;
+  status: string;
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -98,6 +118,7 @@ export function SimulatorLeftTree() {
   const [suites, setSuites] = useState<TestSuite[]>([]);
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [busEventTypes, setBusEventTypes] = useState<BusEventType[]>([]);
+  const [monitorChecks, setMonitorChecks] = useState<MonitorCheckNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [triggeringException, setTriggeringException] = useState(false);
@@ -115,6 +136,9 @@ export function SimulatorLeftTree() {
   const [suitesOpen, setSuitesOpen] = useState(true);
   const [enginesOpen, setEnginesOpen] = useState(true);
   const [busEventsOpen, setBusEventsOpen] = useState(true);
+  const [endpointsOpen, setEndpointsOpen] = useState(true);
+  // Which endpoint the center canvas is showing — highlighted in the tree.
+  const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
@@ -140,6 +164,22 @@ export function SimulatorLeftTree() {
       return acc;
     },
     {} as Record<string, BusEventType[]>,
+  );
+
+  // Group monitor checks by the domain prefix of their own key (the real
+  // taxonomy — identity/security/governance/sharepoint/teams/exchange/devices/
+  // copilot/cost/appgov/adoption/platform/m365 all come from the key itself,
+  // there is no category column). Keys are namespaced ("ep:identity") so
+  // endpoint groups never collide with scenario/script/event categories in
+  // expandedCats — the same collision guard the event groups use.
+  const checksByDomain = monitorChecks.reduce(
+    (acc, check) => {
+      const domain = check.key.includes(":") ? check.key.split(":")[0]! : "other";
+      if (!acc[domain]) acc[domain] = [];
+      acc[domain].push(check);
+      return acc;
+    },
+    {} as Record<string, MonitorCheckNode[]>,
   );
 
   const loadData = async () => {
@@ -218,6 +258,13 @@ export function SimulatorLeftTree() {
         const eventTypesData = await eventTypesRes.json();
         setBusEventTypes(eventTypesData.types || []);
       }
+
+      // 6. Fetch the real monitor_checks catalog (M365 Endpoints).
+      const checksRes = await fetchWithAuth("/api/admin/monitor-checks");
+      if (checksRes.ok) {
+        const checksData = await checksRes.json();
+        setMonitorChecks(checksData.checks || []);
+      }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
       toast.error("Failed to load some simulator workspace items");
@@ -236,11 +283,18 @@ export function SimulatorLeftTree() {
     const handleSuitesUpdate = () => {
       loadData();
     };
+    // Save/retire/reactivate in the endpoint canvas re-reads the catalog so the
+    // tree's status badges stay truthful.
+    const handleEndpointsUpdate = () => {
+      loadData();
+    };
     window.addEventListener("simulator-scripts-updated", handleScriptsUpdate);
     window.addEventListener("simulator-suites-updated", handleSuitesUpdate);
+    window.addEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
     return () => {
       window.removeEventListener("simulator-scripts-updated", handleScriptsUpdate);
       window.removeEventListener("simulator-suites-updated", handleSuitesUpdate);
+      window.removeEventListener("simulator-endpoints-updated", handleEndpointsUpdate);
     };
   }, [fetchWithAuth]);
 
@@ -437,6 +491,30 @@ export function SimulatorLeftTree() {
       toast.error(err.message || "Network error running engine");
     } finally {
       setRunningEngines((prev) => ({ ...prev, [engine.key]: false }));
+    }
+  };
+
+  // Selecting an endpoint opens it in the center canvas (same event-driven
+  // hand-off the saved-script rows use to load into the SQL canvas).
+  const handleEndpointSelect = (check: MonitorCheckNode) => {
+    setSelectedEndpointKey(check.key);
+    window.dispatchEvent(new CustomEvent("simulator-select-endpoint", { detail: check }));
+  };
+
+  const handleEndpointRetire = async (check: MonitorCheckNode) => {
+    if (!confirm(`Retire "${check.key}"? It stays in the catalog as "archived" and can be reactivated.`)) return;
+    try {
+      // DELETE on the CRUD route is already a reversible archive, never a hard delete.
+      const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Endpoint retired (archived — reversible)");
+        window.dispatchEvent(new CustomEvent("simulator-endpoints-updated"));
+      } else {
+        toast.error(data.error || "Failed to retire endpoint");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error retiring endpoint");
     }
   };
 
@@ -966,6 +1044,126 @@ export function SimulatorLeftTree() {
                     )}
                   </div>
                 ))
+              )}
+            </div>
+          )}
+        </div>
+        {/* Section 7: M365 Endpoints (real monitor_checks catalog) */}
+        <div>
+          <div
+            onClick={() => setEndpointsOpen(!endpointsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {endpointsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <span className="truncate">M365 Endpoints</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal("new-monitor-check");
+              }}
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="New M365 endpoint"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+
+          {endpointsOpen && (
+            <div>
+              {monitorChecks.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No monitor checks</div>
+              ) : (
+                Object.keys(checksByDomain)
+                  .sort()
+                  .map((domain) => (
+                    <div key={domain}>
+                      <div
+                        onClick={() => toggleCat(`ep:${domain}`)}
+                        className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
+                      >
+                        {expandedCats[`ep:${domain}`] ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                        )}
+                        {expandedCats[`ep:${domain}`] ? (
+                          <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                        ) : (
+                          <Folder className="h-3.5 w-3.5 text-primary" />
+                        )}
+                        <span className="truncate capitalize">{domain}</span>
+                        <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
+                          {checksByDomain[domain]!.length}
+                        </span>
+                      </div>
+
+                      {expandedCats[`ep:${domain}`] && (
+                        <div className="ml-[22px] border-l border-accent">
+                          {checksByDomain[domain]!.map((check) => (
+                            <ContextMenu key={check.key}>
+                              <ContextMenuTrigger asChild>
+                                <div
+                                  onClick={() => handleEndpointSelect(check)}
+                                  className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                    selectedEndpointKey === check.key
+                                      ? "bg-accent text-foreground"
+                                      : "text-foreground/85"
+                                  } ${check.status !== "active" ? "opacity-50" : ""}`}
+                                >
+                                  <Globe
+                                    className={`h-3 w-3 shrink-0 ${
+                                      check.requiresCustomerScript
+                                        ? "text-amber-400"
+                                        : "text-muted-foreground group-hover:text-primary"
+                                    }`}
+                                    aria-label={
+                                      check.requiresCustomerScript ? "Collected by customer-side script" : undefined
+                                    }
+                                  />
+                                  <span
+                                    className="flex-1 truncate font-mono text-[11px]"
+                                    title={check.description || check.label}
+                                  >
+                                    {check.key.includes(":") ? check.key.split(":").slice(1).join(":") : check.key}
+                                  </span>
+                                  {check.status !== "active" && (
+                                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-amber-400/80">
+                                      {check.status}
+                                    </span>
+                                  )}
+                                </div>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent className="w-44">
+                                <ContextMenuItem onSelect={() => handleEndpointSelect(check)} className="gap-2 text-xs">
+                                  <Play className="h-3.5 w-3.5" />
+                                  Open
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onSelect={() => openModal("edit-monitor-check", { check })}
+                                  className="gap-2 text-xs"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                  Edit
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  onSelect={() => handleEndpointRetire(check)}
+                                  disabled={check.status !== "active"}
+                                  className="gap-2 text-xs text-destructive focus:text-destructive"
+                                >
+                                  <Archive className="h-3.5 w-3.5" />
+                                  Retire
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
               )}
             </div>
           )}

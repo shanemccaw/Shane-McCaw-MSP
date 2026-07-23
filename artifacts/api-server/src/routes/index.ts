@@ -110,6 +110,7 @@ import mspAuditLogRouter from "./msp-audit-log";
 import portalThemePreferenceRouter from "./portal-theme-preference";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
+import adminMonitorCheckRunsRouter from "./admin-monitor-check-runs";
 import adminBaselineTemplatesRouter from "./admin-baseline-templates";
 import adminConfigPackRunRouter from "./admin-config-pack-run";
 import mspReportsRouter from "./msp-reports";
@@ -273,6 +274,10 @@ router.use(mspPartnerRevenueRouter);
 router.use(mspAuditLogRouter);
 router.use(portalThemePreferenceRouter);
 router.use(supportChatRouter);
+// Mounted before adminMonitorChecksRouter so the single-endpoint execution
+// routes (.../:key/run) are matched on their own terms rather than depending on
+// the CRUD router's :key patterns not shadowing them.
+router.use(adminMonitorCheckRunsRouter);
 router.use(adminMonitorChecksRouter);
 router.use(adminBaselineTemplatesRouter);
 router.use(adminConfigPackRunRouter);

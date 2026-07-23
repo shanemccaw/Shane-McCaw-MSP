@@ -39,7 +39,8 @@ import {
   ChevronRight,
   Trash2,
   Plus,
-  Zap
+  Zap,
+  Globe
 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -64,6 +65,8 @@ export type ModalType =
   | "new-test-suite"
   | "edit-test-suite"
   | "fire-bus-event"
+  | "new-monitor-check"
+  | "edit-monitor-check"
   | null;
 
 interface ModalContextType {
@@ -120,6 +123,8 @@ function ModalContainer() {
         {activeModal === "new-test-suite" && <TestSuiteEditorModal isNew={true} />}
         {activeModal === "edit-test-suite" && <TestSuiteEditorModal isNew={false} />}
         {activeModal === "fire-bus-event" && <FireBusEventModal />}
+        {activeModal === "new-monitor-check" && <MonitorCheckEditorModal isNew={true} />}
+        {activeModal === "edit-monitor-check" && <MonitorCheckEditorModal isNew={false} />}
       </DialogContent>
     </Dialog>
   );
@@ -1127,6 +1132,277 @@ function TestSuiteEditorModal({ isNew = false }: { isNew: boolean }) {
               <Save className="w-3.5 h-3.5" /> Save Suite
             </>
           )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Create / edit one M365 Endpoint (a real monitor_checks row).
+ *
+ * Backed by the EXISTING audit-logged admin CRUD routes — POST
+ * /api/admin/monitor-checks and PATCH /api/admin/monitor-checks/:key — rather
+ * than new parallel endpoints, since those already enforce requireAdmin, write
+ * the monitor_check_audit_log entry, and bump schemaVersion when the endpoint or
+ * mapping changes. Retire is deliberately NOT here: it's the reversible
+ * status-to-"archived" action on the tree row / endpoint canvas.
+ *
+ * `key` is immutable after creation — it's the catalog's natural key, referenced
+ * by monitoring_package_checks and by every stored tenant_monitor_profiles row,
+ * and the PATCH route does not accept it.
+ */
+function MonitorCheckEditorModal({ isNew = false }: { isNew: boolean }) {
+  const { modalData, closeModal } = useModal();
+  const { fetchWithAuth } = useAuth();
+
+  const [checkKey, setCheckKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [description, setDescription] = useState("");
+  const [endpoint, setEndpoint] = useState("");
+  const [method, setMethod] = useState("GET");
+  const [selectParams, setSelectParams] = useState("");
+  const [propertiesText, setPropertiesText] = useState("");
+  const [requestBodyText, setRequestBodyText] = useState("");
+  const [requiresCustomerScript, setRequiresCustomerScript] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const c = modalData?.check;
+    if (!isNew && c) {
+      setCheckKey(c.key ?? "");
+      setLabel(c.label ?? "");
+      setDescription(c.description ?? "");
+      setEndpoint(c.endpoint ?? "");
+      setMethod(c.method || "GET");
+      setSelectParams(c.selectParams ?? "");
+      setPropertiesText((c.properties ?? []).join(", "));
+      setRequestBodyText(c.requestBody ? JSON.stringify(c.requestBody, null, 2) : "");
+      setRequiresCustomerScript(Boolean(c.requiresCustomerScript));
+    } else {
+      setCheckKey("");
+      setLabel("");
+      setDescription("");
+      setEndpoint("");
+      setMethod("GET");
+      setSelectParams("");
+      setPropertiesText("");
+      setRequestBodyText("");
+      setRequiresCustomerScript(false);
+    }
+  }, [isNew, modalData]);
+
+  const handleSave = async () => {
+    // Real field validation, matching what the route itself requires.
+    if (isNew && !checkKey.trim()) {
+      toast.error("Key is required");
+      return;
+    }
+    if (isNew && !/^[a-z0-9]+:[a-z0-9-]+$/.test(checkKey.trim())) {
+      toast.error("Key must look like domain:check-name — the prefix is what groups it in the tree");
+      return;
+    }
+    if (!label.trim()) {
+      toast.error("Label is required");
+      return;
+    }
+    if (!endpoint.trim()) {
+      toast.error("Endpoint is required");
+      return;
+    }
+
+    let parsedBody: unknown = null;
+    if (requestBodyText.trim()) {
+      try {
+        parsedBody = JSON.parse(requestBodyText);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "parse error";
+        toast.error(`Request body is not valid JSON: ${detail}`);
+        return;
+      }
+    }
+
+    const properties = propertiesText
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    setSaving(true);
+    try {
+      const existingKey = String(modalData?.check?.key ?? "");
+      const url = isNew
+        ? "/api/admin/monitor-checks"
+        : `/api/admin/monitor-checks/${encodeURIComponent(existingKey)}`;
+      const res = await fetchWithAuth(url, {
+        method: isNew ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(isNew ? { key: checkKey.trim() } : {}),
+          label: label.trim(),
+          description: description.trim() || null,
+          endpoint: endpoint.trim(),
+          method,
+          selectParams: selectParams.trim() || null,
+          properties,
+          requestBody: parsedBody,
+          requiresCustomerScript,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(isNew ? "Endpoint created" : "Endpoint updated");
+        window.dispatchEvent(new CustomEvent("simulator-endpoints-updated"));
+        closeModal();
+      } else {
+        toast.error(data.error || "Failed to save endpoint");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Network error saving endpoint");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-card border border-border">
+            <Globe className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-semibold text-foreground">
+              {isNew ? "New M365 Endpoint" : "Edit M365 Endpoint"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              A real monitor check — the endpoint is stored as data and executed against a live tenant.
+            </DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+
+      <div className="grid grid-cols-2 gap-4 pt-1">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Key</Label>
+          <Input
+            placeholder="identity:mfa-registration"
+            value={checkKey}
+            onChange={(e) => setCheckKey(e.target.value)}
+            disabled={!isNew}
+            className="bg-background border-border text-foreground text-xs h-9 font-mono disabled:opacity-60"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            {isNew
+              ? "The prefix before the colon groups it in the tree."
+              : "Key is immutable — packages and stored results reference it."}
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Label</Label>
+          <Input
+            placeholder="MFA registration coverage"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-muted-foreground">Description</Label>
+        <Input
+          placeholder="What this check collects"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="bg-background border-border text-foreground text-xs h-9"
+        />
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Method</Label>
+          <Select value={method} onValueChange={setMethod}>
+            <SelectTrigger className="w-full bg-background border-border text-foreground text-xs h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-card border-border text-foreground text-xs">
+              {["GET", "POST", "PATCH", "PUT", "DELETE"].map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5 col-span-3">
+          <Label className="text-xs font-semibold text-muted-foreground">Endpoint</Label>
+          <Input
+            placeholder="/reports/authenticationMethods/userRegistrationDetails"
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9 font-mono"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Select params</Label>
+          <Input
+            placeholder="$select=id,displayName"
+            value={selectParams}
+            onChange={(e) => setSelectParams(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9 font-mono"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-muted-foreground">Properties (comma-separated)</Label>
+          <Input
+            placeholder="isMfaRegistered, userPrincipalName"
+            value={propertiesText}
+            onChange={(e) => setPropertiesText(e.target.value)}
+            className="bg-background border-border text-foreground text-xs h-9 font-mono"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-muted-foreground">Request body (JSON, optional)</Label>
+        <textarea
+          value={requestBodyText}
+          onChange={(e) => setRequestBodyText(e.target.value)}
+          rows={4}
+          spellCheck={false}
+          placeholder="{}"
+          className="w-full resize-y rounded-lg border border-border bg-background px-2 py-1.5 font-mono text-[11px] text-foreground focus:outline-none"
+        />
+      </div>
+
+      <div className="flex items-center justify-between p-3 border border-border rounded-lg bg-card/50">
+        <div className="flex gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-xs font-semibold text-foreground">Requires customer-side script</h4>
+            <p className="text-[10px] text-muted-foreground">
+              Collected by PowerShell on the customer side — no Graph request, so it can't be executed here.
+            </p>
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={requiresCustomerScript}
+          onChange={(e) => setRequiresCustomerScript(e.target.checked)}
+          className="w-4 h-4 rounded border-border bg-background accent-primary focus:ring-ring/30"
+        />
+      </div>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <Button variant="outline" onClick={closeModal} className="h-9 text-xs">
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={saving} className="h-9 text-xs">
+          {saving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+          {isNew ? "Create endpoint" : "Save changes"}
         </Button>
       </div>
     </div>
