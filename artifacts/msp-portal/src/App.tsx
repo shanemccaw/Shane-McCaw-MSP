@@ -899,6 +899,7 @@ function AppInner() {
       <Router />
       <SessionExpiryModal />
       <MarketplaceModalHost />
+      <ReconsentModal />
     </>
   );
 }
@@ -907,6 +908,7 @@ import { SupportChatProvider } from "@/lib/support-chat-context";
 import { ScanStatusProvider } from "@/lib/scan-status-context";
 import { MarketplaceProvider } from "@/lib/marketplace-context";
 import { MarketplaceModalHost } from "@/components/marketplace-modal-host";
+import { ReconsentModal } from "@/components/reconsent-modal";
 import { ThemeProvider } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
 

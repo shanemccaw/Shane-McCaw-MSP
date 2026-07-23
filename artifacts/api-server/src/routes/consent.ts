@@ -27,7 +27,7 @@ import { randomBytes } from "crypto";
 import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspCustomersTable, mspsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
@@ -100,6 +100,64 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
   res.json({
     consentUrl,
     token,
+    expiresAt,
+    scopes: REQUIRED_MT_SCOPES,
+  });
+});
+
+// ── POST /api/portal/consent/reconsent-link ────────────────────────────────────
+//
+// Customer-scoped equivalent of invite-link above, for a logged-in customer
+// whose own tenant_consent has gone revoked/declined. Reuses the exact same
+// invite-token + buildAdminConsentUrl mechanism — no second consent mechanism.
+// tenantId/customerId are resolved server-side from the JWT, never trusted
+// from the request body.
+router.post("/portal/consent/reconsent-link", requireRole("Assessment"), async (req: Request, res: Response) => {
+  if (!mtAppCredentialsPresent()) {
+    res.status(503).json({
+      error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET)",
+    });
+    return;
+  }
+
+  const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
+  if (typeof customerId !== "number" || Number.isNaN(customerId)) {
+    res.status(403).json({ error: "No customer identity on token" });
+    return;
+  }
+
+  const [customerRow] = await db
+    .select({ tenantId: mspCustomersTable.tenantId })
+    .from(mspCustomersTable)
+    .where(eq(mspCustomersTable.id, customerId))
+    .limit(1);
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: customerRow?.tenantId?.trim() || null,
+    customerId,
+    clientUserId: req.user!.id,
+    expiresAt,
+  });
+
+  const callbackUrl = getCallbackUrl(req);
+  const tenantHint = customerRow?.tenantId?.trim() || "common";
+  const consentUrl = buildAdminConsentUrl(tenantHint, token, callbackUrl);
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "customer",
+    actorRole: "client",
+    actionType: "consent_invite_created",
+    entityType: "consent_invite",
+    metadata: { tenantHint, customerId, reconsent: true, expiresAt },
+  });
+
+  res.json({
+    consentUrl,
     expiresAt,
     scopes: REQUIRED_MT_SCOPES,
   });

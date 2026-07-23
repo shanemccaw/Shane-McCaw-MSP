@@ -56,6 +56,7 @@ import {
   wfRunsTable,
   wfDefinitionsTable,
   presentationDocViewsTable,
+  tenantConsentTable,
 } from "@workspace/db";
 
 /**
@@ -506,11 +507,21 @@ router.get(
       // ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
       // isTestbed is exposed here only so the shell-wide scan-trigger button can
       // gate itself to testbed customers. Remove alongside that button.
-      const [customerRowForTestbed] = await db
-        .select({ isTestbed: mspCustomersTable.isTestbed })
+      const [customerRow] = await db
+        .select({ isTestbed: mspCustomersTable.isTestbed, tenantId: mspCustomersTable.tenantId })
         .from(mspCustomersTable)
         .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
+
+      let consentStatus: string | null = null;
+      if (customerRow?.tenantId) {
+        const [consentRow] = await db
+          .select({ consentStatus: tenantConsentTable.consentStatus })
+          .from(tenantConsentTable)
+          .where(eq(tenantConsentTable.tenantId, customerRow.tenantId))
+          .limit(1);
+        consentStatus = consentRow?.consentStatus ?? null;
+      }
 
       res.json({
         everScanned: latestRun != null,
@@ -525,7 +536,8 @@ router.get(
               startedAt: latestRun.startedAt ?? latestRun.createdAt,
             }
           : null,
-        isTestbed: customerRowForTestbed?.isTestbed === true,
+        isTestbed: customerRow?.isTestbed === true,
+        consentStatus,
       });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-status failed");

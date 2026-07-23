@@ -36,6 +36,8 @@ export interface ScanStatusPayload {
     startedAt: string;
   } | null;
   isTestbed: boolean;
+  /** Real tenant_consent.consent_status for this customer's tenant, or null if no row yet. */
+  consentStatus: "pending" | "granted" | "declined" | "revoked" | null;
 }
 
 interface ScanStatusContextValue {
