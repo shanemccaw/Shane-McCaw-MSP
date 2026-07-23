@@ -299,17 +299,33 @@ export function useTopicHealthLive(options: TopicHealthLiveOptions): TopicHealth
 }
 
 /**
+ * Cross-cutting finding categories (diagnostics-runner.ts's buildRecommendation)
+ * that are never actually "about" a pillar topic, regardless of what the
+ * short-circuited check's own checkLabel/title happen to contain — e.g. a
+ * tenant-wide consent revocation short-circuits EVERY remaining check in a run,
+ * producing one "consent" finding per check with that check's own topic-ish
+ * label (an Overdue Access Reviews check that never got to run still reads
+ * "access review" in its title). These are already correctly surfaced via the
+ * real consent banner/reconsent pill — a pillar page's Top Risks list must
+ * never re-show them as if they were genuine topic findings.
+ */
+const NON_TOPIC_CATEGORIES = new Set(['consent', 'reliability', 'script']);
+
+/**
  * Topic-scope a findings feed by keyword match over the finding's REAL
  * checkLabel + title + description. The overview endpoint doesn't expose the
- * raw checkKey (and recommendation.category is severity-derived, not
+ * raw checkKey (and recommendation.category is largely severity-derived, not
  * topic-derived — see diagnostics-runner.ts), so a transparent display-layer
  * keyword filter is the honest option: it only ever narrows the real feed,
  * never invents membership. Pages pair it with a "view all findings" pointer
- * so nothing filtered out becomes invisible platform-wide.
+ * so nothing filtered out becomes invisible platform-wide. Findings in a
+ * NON_TOPIC_CATEGORIES category are excluded before the keyword match, since
+ * their category is a genuine platform-wide signal (not this pillar's).
  */
 export function filterFindingsByTopic(findings: TopicFinding[], keywords: string[]): TopicFinding[] {
   const needles = keywords.map((k) => k.toLowerCase());
   return findings.filter((f) => {
+    if (f.category && NON_TOPIC_CATEGORIES.has(f.category)) return false;
     const haystack = `${f.checkLabel ?? ''} ${f.title} ${f.description ?? ''}`.toLowerCase();
     return needles.some((n) => haystack.includes(n));
   });

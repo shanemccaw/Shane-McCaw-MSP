@@ -1,7 +1,6 @@
 import React from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Shield, ShieldCheck, AlertTriangle, AlertOctagon, CircleDashed, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { HeartbeatTrace } from './HeartbeatTrace';
 import type { LiveMetric, RiskIndexLive, TimeFrame } from './useSecurityOverviewLive';
 import type { OverviewSlice } from '@/components/m365-health/useM365HealthLive';
 
@@ -17,8 +16,7 @@ import type { OverviewSlice } from '@/components/m365-health/useM365HealthLive';
  *   • Severity mini-bar — the real critical/warning/info finding split.
  *   • Timeframe selector + refresh — genuinely re-scope and re-fetch the
  *     page's two historical charts (no fake number nudging).
- * Decoration: the original 320px Shield background element, plus the animated
- * HeartbeatTrace (the "live telemetry heartbeat", shared with m365-health).
+ * Decoration: the original 320px Shield background element.
  */
 
 interface HeaderHeroBandProps {
@@ -226,11 +224,10 @@ export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
         </div>
       </div>
 
-      {/* Decorative background: the original Shield + the live heartbeat trace */}
+      {/* Decorative background: the original Shield */}
       <div className="absolute -right-12 -top-12 opacity-[0.05] pointer-events-none text-foreground">
         <Shield className="w-[320px] h-[320px]" />
       </div>
-      <HeartbeatTrace />
     </div>
   );
 };
