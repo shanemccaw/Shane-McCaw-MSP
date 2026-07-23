@@ -903,6 +903,7 @@ function AppInner() {
 }
 
 import { SupportChatProvider } from "@/lib/support-chat-context";
+import { ScanStatusProvider } from "@/lib/scan-status-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
 
@@ -917,10 +918,12 @@ function App() {
                 class on <html> from here on (main.tsx no longer hardcodes it). */}
             <ThemeProvider>
               <SupportChatProvider>
-                <WouterRouter base={BASE_PATH}>
-                  <AppInner />
-                </WouterRouter>
-                <Toaster richColors position="top-right" />
+                <ScanStatusProvider>
+                  <WouterRouter base={BASE_PATH}>
+                    <AppInner />
+                  </WouterRouter>
+                  <Toaster richColors position="top-right" />
+                </ScanStatusProvider>
               </SupportChatProvider>
             </ThemeProvider>
           </AuthProvider>

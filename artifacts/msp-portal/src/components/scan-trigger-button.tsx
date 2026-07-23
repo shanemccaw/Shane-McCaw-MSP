@@ -11,39 +11,48 @@
  * server-side to isTestbed=true customers — this client-side check is only a
  * second layer, not the real gate. Never render this for a real, non-testbed
  * customer.
+ *
+ * No toast/notification feedback here by design — a click drives the real,
+ * shared ScanStatusIndicator (via ScanStatusContext) into its live
+ * "active scan, X% progress" state instead. If the trigger request itself
+ * fails, that failure is surfaced on the same shared indicator too (a red
+ * "scan trigger failed" state), never silently swallowed.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Loader2, PlayCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useScanStatus } from "@/lib/scan-status-context";
 
 export function ScanTriggerButton() {
-  const { accessToken, fetchWithAuth } = useAuth();
-  const [isTestbed, setIsTestbed] = useState(false);
+  const { fetchWithAuth } = useAuth();
+  const { data, reportTriggerStarted, reportTriggerError } = useScanStatus();
   const [triggering, setTriggering] = useState(false);
-
-  useEffect(() => {
-    if (!accessToken) return;
-    fetchWithAuth("/api/portal/scan-status", undefined, { silent: true })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { isTestbed?: boolean } | null) => {
-        if (data) setIsTestbed(data.isTestbed === true);
-      })
-      .catch(() => {
-        // best-effort; button just stays hidden
-      });
-  }, [accessToken, fetchWithAuth]);
 
   const trigger = useCallback(async () => {
     setTriggering(true);
     try {
-      await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      if (res.ok) {
+        reportTriggerStarted();
+      } else {
+        let message = `Trigger request failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) message = body.error;
+        } catch {
+          // non-JSON error body — keep the status-code message
+        }
+        reportTriggerError(message);
+      }
+    } catch (err) {
+      reportTriggerError(err instanceof Error ? err.message : "Network error triggering scan");
     } finally {
       setTriggering(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, reportTriggerStarted, reportTriggerError]);
 
-  if (!isTestbed) return null;
+  if (!data?.isTestbed) return null;
 
   return (
     <button

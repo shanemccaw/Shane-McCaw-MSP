@@ -4,36 +4,22 @@
  * Shell-wide, always-visible indicator of a customer's monitoring scan state.
  * Rendered from app-shell.tsx (both the desktop sidebar brand block and the
  * mobile top-bar brand block) so it is genuinely present on every portal page,
- * not just one. Polls the lightweight GET /api/portal/scan-status endpoint —
- * deliberately NOT the full /api/portal/assessment/status payload, which is
- * too heavy to poll from every page.
+ * not just one. Reads from ScanStatusContext (lib/scan-status-context.tsx) —
+ * the shared poller for GET /api/portal/scan-status — so a click on
+ * ScanTriggerButton visibly drives this same indicator instead of the two
+ * components running disconnected fetches.
  *
- * Three states, rendered inside a fixed-height container so switching between
+ * Four states, rendered inside a fixed-height container so switching between
  * them (a scan can fire as often as every 5 minutes via the Live Activity
- * Monitor workflow) never causes a layout jump in the shell:
- *   - active scan running   → progress bar + progress text
- *   - idle, has scanned     → real relative "Last scan: …" time
- *   - idle, never scanned   → red "NO SCAN" pill
+ * Monitor workflow, or on demand via the testbed trigger button) never
+ * causes a layout jump in the shell:
+ *   - trigger request failed   → red error pill (distinct wording from "no scan")
+ *   - active scan running      → progress bar + progress text
+ *   - idle, has scanned        → real relative "Last scan: …" time
+ *   - idle, never scanned      → red "NO SCAN" pill
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/lib/auth-context";
-
-interface ScanStatusPayload {
-  everScanned: boolean;
-  lastScanAt: string | null;
-  active: {
-    status: string;
-    checksOk: number;
-    checksError: number;
-    checksLicenseGap: number;
-    checksTotal: number;
-    startedAt: string;
-  } | null;
-  isTestbed: boolean;
-}
-
-const POLL_INTERVAL_MS = 45_000;
+import { useScanStatus, type ScanStatusPayload } from "@/lib/scan-status-context";
 
 function timeAgo(isoString: string): string {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -48,24 +34,7 @@ function timeAgo(isoString: string): string {
 }
 
 export function ScanStatusIndicator({ collapsed = false }: { collapsed?: boolean }) {
-  const { accessToken, fetchWithAuth } = useAuth();
-  const [data, setData] = useState<ScanStatusPayload | null>(null);
-
-  const load = useCallback(async () => {
-    if (!accessToken) return;
-    try {
-      const res = await fetchWithAuth("/api/portal/scan-status", undefined, { silent: true });
-      if (res.ok) setData((await res.json()) as ScanStatusPayload);
-    } catch {
-      // best-effort — keep showing the last known state rather than clearing it
-    }
-  }, [accessToken, fetchWithAuth]);
-
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), POLL_INTERVAL_MS);
-    return () => clearInterval(t);
-  }, [load]);
+  const { data, triggerError } = useScanStatus();
 
   if (collapsed) return null;
 
@@ -74,7 +43,14 @@ export function ScanStatusIndicator({ collapsed = false }: { collapsed?: boolean
   // shell around them.
   return (
     <div className="h-8 flex items-center" title="Monitoring scan status">
-      {!data ? (
+      {triggerError ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-status-red/40 bg-status-red/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-red truncate"
+          title={triggerError}
+        >
+          Scan trigger failed
+        </span>
+      ) : !data ? (
         <div className="h-1.5 w-full rounded-full bg-muted/40 animate-pulse" />
       ) : data.active ? (
         <ActiveScanProgress active={data.active} />
