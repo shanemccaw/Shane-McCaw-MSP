@@ -11,14 +11,19 @@
  *     server-linked remediation offers (Intelligence Signals).
  *   • POST /api/dashboard/resolve                 — the 14 drift.* metrics +
  *     identity/policy risk counts (Risk Heat Map), usage.* adoption counts,
- *     and licensing.wasteEstimateBreakdown (per-SKU cost breakdown).
+ *     licensing.wasteEstimateBreakdown (per-SKU cost breakdown), and — via
+ *     includeHistory — the real Security Trends series (tenant_engine_snapshots
+ *     / tenant_monitor_profiles history; see SECURITY_TREND_METRICS).
+ *
+ * Security Trends renders REAL history with an honest "not enough history yet"
+ * empty state for brand-new tenants — the seeded Live Activity Monitor
+ * workflow (5-minute cadence per consented tenant) fills it in genuinely over
+ * the customer's first day; nothing is fabricated to bridge the gap.
  *
  * DELIBERATELY HIDDEN (v2 backlog, code preserved — do not delete):
  *   • Risk Reduction (CostAndRiskRow.tsx) — not rendered; its savings-split
- *     percentages and "84% risk reduction" figure have no real data source.
- *   • Security Trends (TrendsRow.tsx, showSecurityTrends=false) — no real
- *     historical trend series has accumulated in tenant_engine_snapshots yet.
- * Both return in v2 once real historical/derived sources exist.
+ *     percentages and "84% risk reduction" figure have no real data source,
+ *     and no real, defensible formula exists for it regardless of data volume.
  */
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
@@ -76,8 +81,9 @@ export default function M365HealthPage() {
             onSelectPillar={setSelectedPillarKey}
           />
 
-          {/* 4. Trends — real Copilot-readiness breakdown + real adoption.
-              Security Trends stays hidden (v2 backlog, see file headers). */}
+          {/* 4. Trends — real Security Trends history (honest empty state until
+              monitoring history accumulates), real Copilot-readiness breakdown,
+              and real adoption counts. */}
           <TrendsRow
             copilotReadiness={live.status?.copilotReadiness ?? null}
             metrics={live.metrics}

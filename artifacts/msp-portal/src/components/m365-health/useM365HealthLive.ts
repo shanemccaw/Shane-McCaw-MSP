@@ -28,7 +28,10 @@
  *          metrics, the identity.* / policy-family risk counts backing the
  *          risk heatmap, the usage.* adoption counts, and
  *          licensing.wasteEstimateBreakdown (the Cost Engine's real per-SKU
- *          waste distribution). Auth floor: CustomerUser — same honest-empty
+ *          waste distribution). The three SECURITY_TREND_METRICS additionally
+ *          opt into `includeHistory`, returning real {t,value} series from
+ *          tenant_engine_snapshots / tenant_monitor_profiles for the Security
+ *          Trends chart. Auth floor: CustomerUser — same honest-empty
  *          degradation for lower roles.
  *
  * Every fetch is best-effort: a failed/forbidden call leaves its slice null
@@ -115,6 +118,11 @@ export interface ResolvedMetricOk {
   valueType: string;
   data: Record<string, unknown>;
   meta?: Record<string, unknown>;
+  /** Real {t,value} history (oldest→newest), present ONLY for metrics this
+   * hook opts into `includeHistory` (the security-trend series). Served by
+   * resolveMetricHistory from tenant_engine_snapshots (engine metrics) /
+   * tenant_monitor_profiles rows (monitor checks) — never synthesized. */
+  history?: { t: string; value: number }[];
 }
 export interface ResolvedMetricUnavailable {
   metricKey: string;
@@ -128,6 +136,16 @@ export interface ResolvedMetricError {
   error: string;
 }
 export type ResolvedMetric = ResolvedMetricOk | ResolvedMetricUnavailable | ResolvedMetricError;
+
+/** Extract a resolved metric's real {t,value} history series (oldest→newest).
+ * Empty for not_available/error or when the metric wasn't opted into
+ * includeHistory — the honest "no history yet". */
+export function resolvedHistory(r: ResolvedMetric | undefined): { t: string; value: number }[] {
+  if (!r || r.status !== "ok" || !Array.isArray(r.history)) return [];
+  return r.history.filter(
+    (p) => p && typeof p.t === "string" && typeof p.value === "number" && Number.isFinite(p.value),
+  );
+}
 
 /** Extract the canonical numeric value from a resolved scalar/trend metric.
  * Returns null for not_available/error/non-numeric — the honest "no data". */
@@ -199,12 +217,34 @@ export const USAGE_METRICS: HeatmapMetricDef[] = [
 /** Cost Engine per-SKU waste distribution (real dollars/mo per SKU). */
 export const COST_BREAKDOWN_METRIC = "licensing.wasteEstimateBreakdown";
 
+/** Security Trends series — the real, history-capable security scalars.
+ * resolveMetricHistory only serves customer-scope smart-eligible SCALAR
+ * metrics, which constrains this set:
+ *   • engine.securityScore          → tenant_engine_snapshots ("security" engine
+ *     rows — the same table engine_score_daily_rollup summarizes)
+ *   • security.highSeverityAlertCount / identity.impossibleTravelCount
+ *     → tenant_monitor_profiles history (the Live Activity Monitor's 5-minute
+ *       collection cadence writes these rows for consented tenants)
+ * A brand-new customer genuinely has no rows yet → honest empty state. */
+export const SECURITY_TREND_METRICS: HeatmapMetricDef[] = [
+  { key: "engine.securityScore", label: "Security Score" },
+  { key: "security.highSeverityAlertCount", label: "High-Severity Alerts" },
+  { key: "identity.impossibleTravelCount", label: "Impossible Travel" },
+];
+
 const ALL_METRIC_KEYS: string[] = [
-  ...IDENTITY_HEATMAP_METRICS,
-  ...POLICY_HEATMAP_METRICS,
-  ...DRIFT_HEATMAP_METRICS,
-  ...USAGE_METRICS,
-].map((m) => m.key).concat([COST_BREAKDOWN_METRIC]);
+  ...new Set(
+    [
+      ...IDENTITY_HEATMAP_METRICS,
+      ...POLICY_HEATMAP_METRICS,
+      ...DRIFT_HEATMAP_METRICS,
+      ...USAGE_METRICS,
+      // impossibleTravelCount also sits in the IDENTITY heatmap row — the Set
+      // dedupes it so the resolve batch stays one-key-per-metric.
+      ...SECURITY_TREND_METRICS,
+    ].map((m) => m.key),
+  ),
+].concat([COST_BREAKDOWN_METRIC]);
 
 // ── The hook ──────────────────────────────────────────────────────────────────
 
@@ -269,7 +309,12 @@ export function useM365HealthLive(): M365HealthLive {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ metrics: ALL_METRIC_KEYS }),
+            body: JSON.stringify({
+              metrics: ALL_METRIC_KEYS,
+              // 30-day lookback for the Security Trends history series.
+              windowDays: 30,
+              includeHistory: SECURITY_TREND_METRICS.map((m) => m.key),
+            }),
           },
           { silent: true },
         );
