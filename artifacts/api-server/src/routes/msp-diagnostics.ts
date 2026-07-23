@@ -50,6 +50,7 @@ import { registerDiagnosticsRunSSEClient } from "../lib/sse-channels";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
 import { computeDisplayHealth } from "../lib/health-display";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
+import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 
@@ -812,12 +813,28 @@ router.get(
       if (hasCritical) status = "critical";
       else if (hasWarning) status = "warning";
 
-      let score = 100;
+      // Graded coverage gate (same helper as assessment_doc_gate / the CIO
+      // narrative trigger, see doc-gate-coverage.ts): a run below the real
+      // evaluable-check coverage bar does not get a fabricated numeric score.
+      // Previously `score` defaulted to 100 ("healthy") whenever checksTotal
+      // was 0 — the worst case of this class of bug, a fully-dark run reading
+      // as a clean bill of health. Findings/status stay derived from whatever
+      // real findings actually fired (real signal regardless of overall
+      // coverage); only the composite score is coverage-gated.
+      const cov = evaluateDocGateCoverage({
+        checksOk: latestRun.checksOk ?? 0,
+        checksLicenseGap: latestRun.checksLicenseGap ?? 0,
+        checksError: latestRun.checksError ?? 0,
+        checksTotal: latestRun.checksTotal ?? 0,
+      });
+      let score: number | null = null;
       const summaryObj = latestRun.summary as Record<string, unknown> | null;
-      if (summaryObj && typeof summaryObj.compositeScore === "number") {
-        score = summaryObj.compositeScore;
-      } else if (latestRun.checksTotal > 0) {
-        score = Math.round((latestRun.checksOk / latestRun.checksTotal) * 100);
+      if (cov.proceed) {
+        if (summaryObj && typeof summaryObj.compositeScore === "number") {
+          score = summaryObj.compositeScore;
+        } else if (latestRun.checksTotal > 0) {
+          score = Math.round((latestRun.checksOk / latestRun.checksTotal) * 100);
+        }
       }
 
       res.json({

@@ -247,10 +247,27 @@ router.get(
         .limit(1);
 
       // ── Real pillar coverage (radar) + real stat cards ────────────────────
-      // Gated identically to the CIO narrative (lastCompleted, matching
-      // assessment_doc_gate's own "completed" bar) — no scan yet means no real
-      // per-pillar data or cost data exists to show, so both stay empty rather
-      // than fabricated.
+      // Gated on the SAME graded evaluable-check coverage as assessment_doc_gate
+      // and the CIO narrative trigger (see doc-gate-coverage.ts): the most recent
+      // completed-or-partial run is graded via evaluateDocGateCoverage, and only
+      // a run that clears DOC_GATE_MIN_COVERAGE_PCT is used to compute pillar
+      // scores or cost data. Previously this block ran off bare `lastCompleted`
+      // (any completed OR partial run, regardless of how little of it was real
+      // signal) — inconsistent with the doc gate / CIO narrative, which already
+      // require graded "sufficient" coverage. A run below the bar now honestly
+      // renders "not covered" / "awaiting scan" instead of surfacing partial
+      // pillar data computed off a mostly-dark run.
+      let runCoverage: ReturnType<typeof evaluateDocGateCoverage> | null = null;
+      if (lastCompleted) {
+        runCoverage = evaluateDocGateCoverage({
+          checksOk: lastCompleted.checksOk ?? 0,
+          checksLicenseGap: lastCompleted.checksLicenseGap ?? 0,
+          checksError: lastCompleted.checksError ?? 0,
+          checksTotal: lastCompleted.checksTotal ?? 0,
+        });
+      }
+      const coverageRun = runCoverage?.proceed ? lastCompleted : null;
+
       let pillarCoverage: Awaited<ReturnType<typeof getPillarCoverage>> = [];
       let genuineFindings: number | null = null;
       let licenseWasteMonthlyCents: number | null = null;
@@ -276,14 +293,16 @@ router.get(
             ? Number(runSummary.criticalCount ?? 0) + Number(runSummary.warningCount ?? 0)
             : null;
 
-        pillarCoverage = await getPillarCoverage(lastCompleted.packageKey, customerId).catch((err) => {
-          log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
-          return [];
-        });
+        if (coverageRun) {
+          pillarCoverage = await getPillarCoverage(coverageRun.packageKey, customerId).catch((err) => {
+            log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
+            return [];
+          });
+        }
 
-        if (lastCompleted.tenantId) {
+        if (coverageRun?.tenantId) {
           try {
-            const props = await latestCheckProps(lastCompleted.tenantId, "cost:license-waste-estimate");
+            const props = await latestCheckProps(coverageRun.tenantId, "cost:license-waste-estimate");
             const counts = props ? extractGroupByCountCounts(props) : null;
             if (counts) {
               const breakdown: SkuCostBreakdown = await computeSkuCostBreakdown(counts);
@@ -317,7 +336,7 @@ router.get(
             log.warn({ err, customerId }, "GET /portal/assessment/status: license waste computation failed");
           }
 
-          copilotReadiness = await computeCopilotReadiness(lastCompleted.tenantId).catch((err) => {
+          copilotReadiness = await computeCopilotReadiness(coverageRun.tenantId).catch((err) => {
             log.warn({ err, customerId }, "GET /portal/assessment/status: copilot readiness computation failed");
             return null;
           });
@@ -386,24 +405,16 @@ router.get(
         // to responsibly generate documents — so the wizard can say so plainly
         // instead of waiting forever for documents that will never come. Null
         // until a scan finishes; never `blocked` once real documents exist.
-        docGeneration: lastCompleted
-          ? (() => {
-              const cov = evaluateDocGateCoverage({
-                checksOk: lastCompleted.checksOk ?? 0,
-                checksLicenseGap: lastCompleted.checksLicenseGap ?? 0,
-                checksError: lastCompleted.checksError ?? 0,
-                checksTotal: lastCompleted.checksTotal ?? 0,
-              });
-              return {
-                blocked:
-                  !cov.proceed && readyCount === 0 && generatingCount === 0,
-                band: cov.band,
-                coveragePct: cov.coveragePct,
-                evaluableChecks: cov.evaluableChecks,
-                totalChecks: cov.totalChecks,
-                minRequiredPct: DOC_GATE_MIN_COVERAGE_PCT,
-              };
-            })()
+        docGeneration: runCoverage
+          ? {
+              blocked:
+                !runCoverage.proceed && readyCount === 0 && generatingCount === 0,
+              band: runCoverage.band,
+              coveragePct: runCoverage.coveragePct,
+              evaluableChecks: runCoverage.evaluableChecks,
+              totalChecks: runCoverage.totalChecks,
+              minRequiredPct: DOC_GATE_MIN_COVERAGE_PCT,
+            }
           : null,
         mfa: {
           enrolled: mfaEnrolled,
@@ -413,7 +424,7 @@ router.get(
         // package has real monitoring_package_checks rows curated for it; never
         // padded with fabricated axes.
         radar: {
-          packageKey: lastCompleted?.packageKey ?? null,
+          packageKey: coverageRun?.packageKey ?? null,
           pillars: pillarCoverage,
         },
         // Real stat cards — every number traces to a completed run's own
@@ -484,6 +495,15 @@ router.get(
       const active =
         latestRun != null && (ACTIVE_RUN_STATUSES as readonly string[]).includes(latestRun.status);
 
+      // ⚠️ TEMPORARY TESTING BYPASS — REMOVE BEFORE PRODUCTION ⚠️
+      // isTestbed is exposed here only so the shell-wide scan-trigger button can
+      // gate itself to testbed customers. Remove alongside that button.
+      const [customerRowForTestbed] = await db
+        .select({ isTestbed: mspCustomersTable.isTestbed })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+
       res.json({
         everScanned: latestRun != null,
         lastScanAt: lastCompleted ? (lastCompleted.completedAt ?? lastCompleted.createdAt) : null,
@@ -497,6 +517,7 @@ router.get(
               startedAt: latestRun.startedAt ?? latestRun.createdAt,
             }
           : null,
+        isTestbed: customerRowForTestbed?.isTestbed === true,
       });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-status failed");

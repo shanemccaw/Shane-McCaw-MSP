@@ -113,7 +113,9 @@ export interface AssessmentFinding {
 
 export interface AssessmentResultsPayload {
   serviceSlug: string;
-  score: number;
+  // null when the backing run's real evaluable-check coverage is below the
+  // graded doc-gate bar (see doc-gate-coverage.ts) — never a fabricated number.
+  score: number | null;
   status: "not_evaluated" | "healthy" | "warning" | "critical" | string;
   findings: AssessmentFinding[];
   evaluatedAt: string;
