@@ -1,142 +1,103 @@
-import React, { useState } from 'react';
-import { HeatMapRow, IntensityLevel, Department } from './types';
-import { Info } from 'lucide-react';
+import React from 'react';
+import { MessageSquare, Mail, FolderOpen, Cloud } from 'lucide-react';
+import {
+  ResolvedMetric,
+  resolvedValue,
+} from '@/components/health-suite/useTopicHealthLive';
+
+/**
+ * Workload Activity — REAL per-workload active-user counts + adoption scores
+ * from the usage.* monitor checks, replacing the mock department×week heatmap
+ * (a per-department activity dimension isn't collected by any check — that
+ * would need a new Graph report ingestion; reported as a gap rather than
+ * fabricated). Bars are relative to the busiest workload — a real ratio,
+ * labeled with the real counts.
+ */
+
+const WORKLOADS: {
+  activeKey: string;
+  scoreKey: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { activeKey: 'usage.teamsActiveCount', scoreKey: 'usage.teamsUsageCount', label: 'Teams', icon: MessageSquare },
+  { activeKey: 'usage.exchangeActiveCount', scoreKey: 'usage.exchangeUsageCount', label: 'Exchange', icon: Mail },
+  { activeKey: 'usage.sharePointActiveCount', scoreKey: 'usage.sharePointUsageCount', label: 'SharePoint', icon: FolderOpen },
+  { activeKey: 'usage.oneDriveActiveCount', scoreKey: 'usage.oneDriveUsageCount', label: 'OneDrive', icon: Cloud },
+];
 
 interface TeamsHeatMapProps {
-  data: HeatMapRow[];
-  selectedDepartment: Department;
-  onSelectDepartment: (dept: Department) => void;
+  metrics: Record<string, ResolvedMetric>;
 }
 
-export const TeamsHeatMap: React.FC<TeamsHeatMapProps> = ({
-  data,
-  selectedDepartment,
-  onSelectDepartment
-}) => {
-  const [activeCell, setActiveCell] = useState<{ dept: string; type: string; level: IntensityLevel; score: number } | null>(null);
-
-  const getCellClasses = (level: IntensityLevel) => {
-    switch (level) {
-      case 'High':
-        return 'bg-[#479ef5] text-[#001c37] font-bold shadow-sm hover:brightness-110';
-      case 'Mid':
-        return 'bg-amber-500 text-[#2a1a00] font-bold shadow-sm hover:brightness-110';
-      case 'Low':
-        return 'bg-red-500 text-white font-bold shadow-sm hover:brightness-110';
-      default:
-        return 'bg-gray-700 text-white';
-    }
-  };
-
-  const filteredData = selectedDepartment === 'All' 
-    ? data 
-    : data.filter(d => d.department === selectedDepartment);
+export const TeamsHeatMap: React.FC<TeamsHeatMapProps> = ({ metrics }) => {
+  const rows = WORKLOADS.map((w) => ({
+    ...w,
+    active: resolvedValue(metrics[w.activeKey]),
+    score: resolvedValue(metrics[w.scoreKey]),
+  }));
+  const maxActive = Math.max(0, ...rows.map((r) => r.active ?? 0));
+  const anyData = rows.some((r) => r.active != null || r.score != null);
 
   return (
-    <section className="bg-card border border-border p-6 rounded-xl flex flex-col h-full">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h2 className="font-headline text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            Teams Activity Heat Map
-          </h2>
-          <p className="text-xs text-[#8a919d] font-body mt-0.5">
-            Cross-department engagement intensity matrix
-          </p>
-        </div>
-        <span className="font-mono-data text-[10px] text-[#8a919d] bg-[#1a1c1c] px-2.5 py-1 rounded border border-white/5 uppercase tracking-wider">
-          Last 30 Days
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+          <MessageSquare className="w-3.5 h-3.5 text-primary" />
+          WORKLOAD ACTIVITY
+        </h4>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          {anyData ? 'Real usage checks' : 'AWAITING DATA'}
         </span>
       </div>
 
-      <div className="overflow-x-auto flex-1">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="font-mono-data text-xs text-[#c0c7d3] uppercase border-b border-white/10">
-              <th className="pb-3 font-semibold">Department</th>
-              <th className="pb-3 text-center font-semibold">Meetings</th>
-              <th className="pb-3 text-center font-semibold">Chats</th>
-              <th className="pb-3 text-center font-semibold">Channels</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {filteredData.map((row) => (
-              <tr 
-                key={row.department}
-                className={`transition-colors ${selectedDepartment === row.department ? 'bg-[#479ef5]/10' : 'hover:bg-white/[0.02]'}`}
-              >
-                {/* Department Name */}
-                <td className="py-3 font-body text-sm font-medium text-[#e2e2e2]">
-                  <button
-                    onClick={() => onSelectDepartment(selectedDepartment === row.department ? 'All' : row.department)}
-                    className="hover:text-[#479ef5] transition-colors flex items-center gap-1.5"
-                  >
-                    <span>{row.department}</span>
-                    {selectedDepartment === row.department && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#479ef5]"></span>
+      {anyData ? (
+        <div className="space-y-5 flex-grow">
+          {rows.map((row) => {
+            const Icon = row.icon;
+            return (
+              <div key={row.activeKey} className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10 text-primary">
+                  <Icon className="w-4 h-4" />
+                </div>
+                <div className="flex-grow space-y-1 min-w-0">
+                  <div className="flex justify-between text-xs font-mono gap-2">
+                    <span className="text-secondary-foreground/90">{row.label}</span>
+                    <span className="font-bold text-foreground flex-shrink-0">
+                      {row.active != null ? `${row.active.toLocaleString()} active` : 'no data'}
+                      {row.score != null && (
+                        <span className="text-muted-foreground font-normal">
+                          {' '}· score {row.score.toLocaleString()}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    {row.active != null && maxActive > 0 && (
+                      <div
+                        className="h-full rounded-full transition-all duration-500 bg-primary"
+                        style={{ width: `${(row.active / maxActive) * 100}%` }}
+                      />
                     )}
-                  </button>
-                </td>
-
-                {/* Meetings */}
-                <td className="py-2 px-1.5 text-center">
-                  <div
-                    onMouseEnter={() => setActiveCell({ dept: row.department, type: 'Meetings', level: row.meetings, score: row.meetingScore })}
-                    onMouseLeave={() => setActiveCell(null)}
-                    className={`h-8 rounded-lg flex items-center justify-center font-mono-data text-xs cursor-pointer transition-all ${getCellClasses(row.meetings)}`}
-                  >
-                    {row.meetings}
                   </div>
-                </td>
-
-                {/* Chats */}
-                <td className="py-2 px-1.5 text-center">
-                  <div
-                    onMouseEnter={() => setActiveCell({ dept: row.department, type: 'Chats', level: row.chats, score: row.chatScore })}
-                    onMouseLeave={() => setActiveCell(null)}
-                    className={`h-8 rounded-lg flex items-center justify-center font-mono-data text-xs cursor-pointer transition-all ${getCellClasses(row.chats)}`}
-                  >
-                    {row.chats}
-                  </div>
-                </td>
-
-                {/* Channels */}
-                <td className="py-2 px-1.5 text-center">
-                  <div
-                    onMouseEnter={() => setActiveCell({ dept: row.department, type: 'Channels', level: row.channels, score: row.channelScore })}
-                    onMouseLeave={() => setActiveCell(null)}
-                    className={`h-8 rounded-lg flex items-center justify-center font-mono-data text-xs cursor-pointer transition-all ${getCellClasses(row.channels)}`}
-                  >
-                    {row.channels}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Cell Hover Status Footer */}
-      <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-[#8a919d]">
-        <div className="flex items-center gap-3 font-mono-data text-[10px]">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-[#479ef5]"></span> High (&gt;75%)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-amber-500"></span> Mid (40-75%)
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded bg-red-500"></span> Low (&lt;40%)
-          </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
+      ) : (
+        <div className="flex-grow flex items-center justify-center text-center px-4 py-8">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Workload activity appears once the usage checks have collected
+            activity data for your tenant.
+          </p>
+        </div>
+      )}
 
-        {activeCell ? (
-          <div className="font-mono-data text-[11px] text-[#479ef5] bg-[#1a1c1c] px-2 py-0.5 rounded border border-[#479ef5]/30">
-            {activeCell.dept} {activeCell.type}: {activeCell.score}/100 ({activeCell.level})
-          </div>
-        ) : (
-          <span className="font-mono-data text-[10px] text-[#8a919d]">Hover cell for score</span>
-        )}
+      <div className="mt-4 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+        Bars relative to your busiest workload · per-department breakdown isn&apos;t
+        collected yet
       </div>
-    </section>
+    </div>
   );
 };

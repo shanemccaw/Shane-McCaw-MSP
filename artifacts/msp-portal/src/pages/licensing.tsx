@@ -1,273 +1,192 @@
+/**
+ * /licensing — Licensing topic page, wired to REAL data end to end (formerly
+ * a mock structure-only page: invented SKU table, per-department hygiene
+ * grid, fake waste pie chart, mock Copilot engagement gauge, and fake
+ * patch/auto-assign automation).
+ *
+ * Real sources (all pre-existing endpoints — see
+ * health-suite/useTopicHealthLive.ts):
+ *   • GET  /api/portal/assessment/status        — the real Licensing pillar
+ *     score + the Cost Engine's real license-waste summary (monthly/annual
+ *     cents, seat/SKU counts, top waste SKU) + the Copilot readiness block.
+ *   • GET  /api/portal/mission-control/overview — real findings + linked
+ *     remediation offers, topic-scoped by transparent keyword filter.
+ *   • POST /api/dashboard/resolve               — licensing.wasteEstimateBreakdown
+ *     (real per-SKU waste dollars), inactive/duplicate license checks (with
+ *     real history), and the Copilot license-readiness signal.
+ *
+ * Content-loss note (mockup Header removal): the removed Header held
+ * time-range/department filters and refresh/export controls driving mock data
+ * only — no real display content to restore.
+ *
+ * HONEST GAPS (stated in the UI): full per-SKU assigned-vs-purchased
+ * inventory (the check collects it; needs a small resolver transform on
+ * existing infrastructure), per-department hygiene, per-user Copilot
+ * engagement telemetry (not collected), and licensing.costTrend
+ * (not_collected in the registry).
+ */
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { AppShell } from '@/components/app-shell';
-import { Header } from '@/components/licensing/Header';
-import { HeroBand } from '@/components/licensing/HeroBand';
 import { SkuInventory } from '@/components/licensing/SkuInventory';
 import { AssignmentHygiene } from '@/components/licensing/AssignmentHygiene';
 import { WasteDistribution } from '@/components/licensing/WasteDistribution';
 import { CopilotEngagement } from '@/components/licensing/CopilotEngagement';
-import { PriorityInsights } from '@/components/licensing/PriorityInsights';
-import { AutomationCandidates } from '@/components/licensing/AutomationCandidates';
-import { PatchModal } from '@/components/licensing/PatchModal';
-import { UserInspectModal } from '@/components/licensing/UserInspectModal';
-import { ToastContainer, ToastMessage } from '@/components/licensing/Toast';
-
+import { TopicHero, HeroStat } from '@/components/health-suite/TopicHero';
+import { DailyTrendPanel } from '@/components/health-suite/DailyTrendPanel';
+import { TopicFindings } from '@/components/health-suite/TopicFindings';
+import { AutomationOpportunities } from '@/components/health-suite/AutomationOpportunities';
+import { TopicRemediationModal } from '@/components/health-suite/TopicRemediationModal';
 import {
-  INITIAL_SKUS,
-  INITIAL_HYGIENE_MATRIX,
-  INITIAL_PRIORITY_INSIGHTS,
-  INITIAL_AUTOMATION_CANDIDATES,
-  SAMPLE_AFFECTED_USERS,
-} from '@/components/licensing/mockData';
+  useTopicHealthLive,
+  filterFindingsByTopic,
+  resolvedValue,
+  TopicFinding,
+} from '@/components/health-suite/useTopicHealthLive';
 
-import {
-  FilterState,
-  AutomationCandidate,
-  PriorityInsight,
-  AffectedUser,
-  SkuItem,
-} from '@/components/licensing/types';
+const METRIC_KEYS = [
+  'licensing.wasteEstimateBreakdown',
+  'licensing.inactiveLicenseCount',
+  'licensing.duplicateLicenseCount',
+  'licensing.skuBreakdown',
+  'licensing.copilotLicenseBreakdown',
+  'copilot.usagePerUser',
+  'drift.licenseAssignmentDriftCount',
+];
+
+const HISTORY_KEYS = ['licensing.inactiveLicenseCount', 'licensing.duplicateLicenseCount'];
+
+const TOPIC_KEYWORDS = [
+  'licens',
+  'sku',
+  'seat',
+  'waste',
+  'cost',
+  'inactive',
+  'duplicate',
+  'copilot',
+  'subscription',
+];
 
 export default function LicensingPage() {
-  const [filter, setFilter] = useState<FilterState>({
-    timeRange: '30d',
-    department: 'All',
-    instance: 'ARC-INTEL-09X',
+  const [, navigate] = useLocation();
+  const live = useTopicHealthLive({
+    pillar: 'licensing',
+    metricKeys: METRIC_KEYS,
+    historyKeys: HISTORY_KEYS,
   });
+  const [remediationFinding, setRemediationFinding] = useState<TopicFinding | null>(null);
 
-  const [efficiencyScore, setEfficiencyScore] = useState(84);
-  const [monthlyWaste, setMonthlyWaste] = useState(12450);
-  const [savingsPotential, setSavingsPotential] = useState('$149.2K');
-  const [underLicensedUsers, setUnderLicensedUsers] = useState(428);
-  const [copilotReadiness, setCopilotReadiness] = useState(62.8);
+  const allFindings = live.overview?.findings ?? [];
+  const topicFindings = filterFindingsByTopic(allFindings, TOPIC_KEYWORDS);
+  const otherCount = allFindings.length - topicFindings.length;
 
-  const [skus, setSkus] = useState<SkuItem[]>(INITIAL_SKUS);
-  const [hygieneMatrix, setHygieneMatrix] = useState(INITIAL_HYGIENE_MATRIX);
-  const [insights, setInsights] = useState<PriorityInsight[]>(INITIAL_PRIORITY_INSIGHTS);
-  const [candidates, setCandidates] = useState<AutomationCandidate[]>(INITIAL_AUTOMATION_CANDIDATES);
-  const [users, setUsers] = useState<AffectedUser[]>(SAMPLE_AFFECTED_USERS);
+  const licenseWaste = live.status?.stats.licenseWaste ?? null;
+  const inactiveLicenses = resolvedValue(live.metrics['licensing.inactiveLicenseCount']);
+  const duplicateLicenses = resolvedValue(live.metrics['licensing.duplicateLicenseCount']);
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedPatch, setSelectedPatch] = useState<AutomationCandidate | null>(null);
-
-  const [inspectModal, setInspectModal] = useState<{
-    open: boolean;
-    title: string;
-    subtitle: string;
-    users: AffectedUser[];
-  }>({
-    open: false,
-    title: '',
-    subtitle: '',
-    users: [],
-  });
-
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-  };
-
-  const handleDismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const handleFilterChange = (newFilter: Partial<FilterState>) => {
-    setFilter((prev) => ({ ...prev, ...newFilter }));
-    addToast(`Filter updated: ${Object.keys(newFilter)[0]}`, 'info');
-  };
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    addToast('Synchronizing Microsoft Graph API telemetry...', 'info');
-    setTimeout(() => {
-      setIsRefreshing(false);
-      addToast('Tenant metrics updated from live telemetry', 'success');
-    }, 1200);
-  };
-
-  const handleExport = () => {
-    const reportData = `ArchIntel Systems - Tenant Licensing Report (${filter.instance})\nDate: ${new Date().toLocaleDateString()}\nEfficiency Score: ${efficiencyScore}/100\nMonthly Waste: $${monthlyWaste}\nUnder-Licensed: ${underLicensedUsers} users`;
-    const blob = new Blob([reportData], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Licensing-Intelligence-${filter.instance}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast('Licensing intelligence report exported', 'success');
-  };
-
-  const handleInitializePatch = (candidate: AutomationCandidate) => {
-    setSelectedPatch(candidate);
-  };
-
-  const handleApplyPatch = (candidateId: string) => {
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === candidateId ? { ...c, status: 'applied' } : c))
-    );
-
-    setEfficiencyScore((prev) => Math.min(100, prev + 4));
-    setMonthlyWaste((prev) => Math.max(2000, prev - 4200));
-
-    addToast(`Patch executed: ${candidates.find((c) => c.id === candidateId)?.title}`, 'success');
-  };
-
-  const handleHygieneCellClick = (
-    department: string,
-    category: 'inactive' | 'disabled' | 'overlap',
-    count: number
-  ) => {
-    const filtered = users.filter((u) => {
-      if (category === 'inactive') return u.issue.includes('Inactive') || u.issue.includes('Zero Login');
-      if (category === 'disabled') return u.issue.includes('Disabled');
-      if (category === 'overlap') return u.issue.includes('Overlap');
-      return true;
-    });
-
-    setInspectModal({
-      open: true,
-      title: `${department} Department - ${category.toUpperCase()} Licenses`,
-      subtitle: `Inspecting ${count} flagged accounts in ${department}`,
-      users: filtered.length > 0 ? filtered : users,
-    });
-  };
-
-  const handleSelectInsight = (insight: PriorityInsight) => {
-    setInspectModal({
-      open: true,
-      title: `Priority Insight: ${insight.title}`,
-      subtitle: insight.description,
-      users: users,
-    });
-  };
-
-  const handleInspectRiskUsers = () => {
-    setInspectModal({
-      open: true,
-      title: 'Under-Licensing Risk - Purview Audit',
-      subtitle: '128 users performing Microsoft Purview actions on M365 E3 licenses without compliance add-on.',
-      users: users.filter((u) => u.issue.includes('Purview') || u.sku.includes('E3')),
-    });
-  };
-
-  const handleFixUser = (userId: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
-    addToast('License action applied to target user account', 'success');
-  };
-
-  const handleHeroCardClick = (type: string) => {
-    switch (type) {
-      case 'efficiency':
-        addToast(`Efficiency Score: ${efficiencyScore}/100 based on SKU assignment density`, 'info');
-        break;
-      case 'waste':
-        addToast(`Monthly Waste: $${monthlyWaste.toLocaleString()} across unused seats`, 'info');
-        break;
-      case 'savings':
-        addToast(`Annual Potential Savings: ${savingsPotential}`, 'info');
-        break;
-      case 'underlicensed':
-        handleInspectRiskUsers();
-        break;
-      case 'copilot':
-        setSelectedPatch(candidates[2] || null);
-        break;
-    }
-  };
+  const heroStats: HeroStat[] = [
+    {
+      label: 'Annual Waste Identified',
+      value:
+        licenseWaste != null
+          ? `$${Math.round(licenseWaste.annualCents / 100).toLocaleString()}`
+          : null,
+      caption: 'Real seat counts × real list prices',
+      emptyCaption: 'No waste data yet',
+      accent: 'amber',
+    },
+    {
+      label: 'Inactive Licenses',
+      value: inactiveLicenses != null ? inactiveLicenses.toLocaleString() : null,
+      caption: 'Paid seats on inactive users',
+      emptyCaption: 'No licensing data yet',
+      accent: inactiveLicenses != null && inactiveLicenses > 0 ? 'red' : 'green',
+    },
+    {
+      label: 'Duplicate Licenses',
+      value: duplicateLicenses != null ? duplicateLicenses.toLocaleString() : null,
+      caption: 'Overlapping assignments',
+      emptyCaption: 'No licensing data yet',
+      accent: duplicateLicenses != null && duplicateLicenses > 0 ? 'amber' : 'green',
+    },
+    {
+      label: 'Topic Findings',
+      value: live.overview ? String(topicFindings.length) : null,
+      caption: 'Licensing-related scan findings',
+      emptyCaption: 'Appears after your first scan',
+      accent: 'violet',
+    },
+  ];
 
   return (
     <AppShell title="Licensing">
-    <div className="min-h-screen technical-grid pb-12 pt-8 text-[#e2e2e2]">
-      {/* Atmosphere radial background light */}
-      <div className="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
-        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[#479ef5]/5 blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#5a3289]/5 blur-[120px]" />
+      <div className="min-h-screen relative">
+        <main className="relative max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
+          {/* 1. Hero — real Licensing pillar score + real Cost Engine stats */}
+          <TopicHero
+            title="Licensing Efficiency"
+            pillarScore={live.pillarScore}
+            everScanned={Boolean(live.status?.scan.everScanned)}
+            scoreCaption="Licensing pillar score from your latest scan"
+            stats={heroStats}
+          />
+
+          {/* 2. SKU inventory + waste distribution — real Cost Engine data */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SkuInventory metrics={live.metrics} licenseWaste={licenseWaste} />
+            <WasteDistribution metrics={live.metrics} licenseWaste={licenseWaste} />
+          </section>
+
+          {/* 3. Hygiene + hygiene trend + Copilot licensing */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <AssignmentHygiene metrics={live.metrics} />
+            <DailyTrendPanel
+              title="HYGIENE TREND"
+              seriesDefs={[
+                { key: 'licensing.inactiveLicenseCount', label: 'Inactive Licenses', color: 'var(--color-status-red)' },
+                { key: 'licensing.duplicateLicenseCount', label: 'Duplicate Licenses', color: 'var(--color-status-amber)' },
+              ]}
+              metrics={live.metrics}
+            />
+            <CopilotEngagement
+              metrics={live.metrics}
+              copilotReadiness={live.status?.copilotReadiness ?? null}
+            />
+          </section>
+
+          {/* 4. Real topic findings ("Priority Insights") */}
+          <TopicFindings
+            title="Priority Licensing Insights"
+            subtitle={
+              otherCount > 0
+                ? `Licensing-related findings from your latest scan · ${otherCount} further finding${otherCount === 1 ? '' : 's'} from other pillars on M365 Health`
+                : 'Licensing-related findings from your latest scan'
+            }
+            findings={topicFindings}
+            loaded={live.loaded}
+            emptyCopy="No licensing-related findings — they appear after your first completed scan."
+            onRemediateFinding={setRemediationFinding}
+          />
+
+          {/* 5. Automation — real linked offers only, honest execution-blocked state */}
+          <AutomationOpportunities
+            findings={topicFindings}
+            loaded={live.loaded}
+            onOpenOffers={() => navigate('/customer-offers')}
+            onRemediateFinding={setRemediationFinding}
+          />
+        </main>
+
+        <TopicRemediationModal
+          finding={remediationFinding}
+          onClose={() => setRemediationFinding(null)}
+          onOpenOffers={() => {
+            setRemediationFinding(null);
+            navigate('/customer-offers');
+          }}
+        />
       </div>
-
-      <main className="max-w-[1440px] mx-auto px-6 space-y-6">
-        {/* Section 0: Header */}
-        <Header
-          filter={filter}
-          onFilterChange={handleFilterChange}
-          onRefresh={handleRefresh}
-          onExport={handleExport}
-          isRefreshing={isRefreshing}
-        />
-
-        {/* Section 1: Hero Band */}
-        <HeroBand
-          efficiencyScore={efficiencyScore}
-          monthlyWaste={monthlyWaste}
-          monthlyWasteChange="2.4%"
-          savingsPotential={savingsPotential}
-          underLicensedUsers={underLicensedUsers}
-          copilotReadiness={copilotReadiness}
-          onCardClick={handleHeroCardClick}
-        />
-
-        {/* Section 2 & 3: SKU Inventory & Hygiene */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8">
-            <SkuInventory
-              skus={skus}
-              onSelectSku={(sku) =>
-                addToast(`Inspecting ${sku.name} (${sku.assignedCount} assigned)`, 'info')
-              }
-            />
-          </div>
-          <div className="lg:col-span-4">
-            <AssignmentHygiene
-              data={hygieneMatrix}
-              onCellClick={handleHygieneCellClick}
-            />
-          </div>
-        </section>
-
-        {/* Section 4, 5 & 6: Waste, Copilot & Priority Insights */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <WasteDistribution onInspectRiskUsers={handleInspectRiskUsers} />
-          <CopilotEngagement
-            onAutoAssignTrigger={() => setSelectedPatch(candidates[2] || null)}
-          />
-          <PriorityInsights
-            insights={insights}
-            onSelectInsight={handleSelectInsight}
-          />
-        </section>
-
-        {/* Section 7: Automation Candidates */}
-        <AutomationCandidates
-          candidates={candidates}
-          onInitializePatch={handleInitializePatch}
-        />
-      </main>
-
-      {/* Interactive Modals */}
-      {selectedPatch && (
-        <PatchModal
-          candidate={selectedPatch}
-          onClose={() => setSelectedPatch(null)}
-          onApplyPatch={handleApplyPatch}
-        />
-      )}
-
-      {inspectModal.open && (
-        <UserInspectModal
-          title={inspectModal.title}
-          subtitle={inspectModal.subtitle}
-          users={inspectModal.users}
-          onClose={() =>
-            setInspectModal((prev) => ({ ...prev, open: false }))
-          }
-          onFixUser={handleFixUser}
-        />
-      )}
-
-      {/* Toast System */}
-      <ToastContainer toasts={toasts} onDismiss={handleDismissToast} />
-    </div>
     </AppShell>
   );
 }

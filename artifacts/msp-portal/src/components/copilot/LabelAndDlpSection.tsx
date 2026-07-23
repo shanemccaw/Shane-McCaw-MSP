@@ -1,163 +1,131 @@
 import React from 'react';
-import { LabelCoverageData, DlpMetric } from './types';
+import { Tags, ShieldCheck } from 'lucide-react';
+import {
+  ResolvedMetric,
+  resolvedValue,
+  riskCountBand,
+  BAND_TEXT_CLASS,
+  scoreBand,
+  BAND_COLOR_VAR,
+} from '@/components/health-suite/useTopicHealthLive';
+import type { CopilotReadinessLive } from '@/components/assessment-test/types';
+
+/**
+ * Labels & DLP — the two data-governance gates for Copilot, wired to REAL
+ * check data (replacing the mock coverage donut + invented per-policy rows):
+ * the real sensitivity-label and DLP readiness indicators with their real
+ * backing counts, plus the compliance.* label/DLP monitor-check metrics.
+ */
 
 interface LabelAndDlpSectionProps {
-  labelCoverage: LabelCoverageData;
-  dlpMetrics: DlpMetric[];
+  metrics: Record<string, ResolvedMetric>;
+  copilotReadiness: CopilotReadinessLive | null;
 }
 
-export const LabelAndDlpSection: React.FC<LabelAndDlpSectionProps> = ({
-  labelCoverage,
-  dlpMetrics
-}) => {
+const indicatorBar = (score: number | null) => {
+  const band = score != null ? scoreBand(score) : null;
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {/* LEFT: Label Coverage Analysis */}
-      <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
-        <h3 className="font-display text-lg font-semibold text-[#f0f0f0] mb-6">
-          Label Coverage Analysis
-        </h3>
+    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+      {score != null && band && (
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: `${score}%`, backgroundColor: BAND_COLOR_VAR[band] }}
+        />
+      )}
+    </div>
+  );
+};
 
-        <div className="flex flex-col sm:flex-row items-center justify-around gap-6 my-auto">
-          {/* Donut SVG */}
-          <div className="relative w-48 h-48 flex-shrink-0">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-              {/* Background ring */}
-              <circle
-                cx="18"
-                cy="18"
-                fill="transparent"
-                r="15.915"
-                stroke="#2b2b2b"
-                strokeWidth="3"
-              />
-              {/* Labeled 75% stroke-dasharray="75 25" offset=0 */}
-              <circle
-                cx="18"
-                cy="18"
-                fill="transparent"
-                r="15.915"
-                stroke="#479ef5"
-                strokeDasharray={`${labelCoverage.labeledPercent} ${100 - labelCoverage.labeledPercent}`}
-                strokeDashoffset="0"
-                strokeWidth="3"
-              />
-              {/* Unlabeled 20% stroke-dasharray="20 80" offset=-75 */}
-              <circle
-                cx="18"
-                cy="18"
-                fill="transparent"
-                r="15.915"
-                stroke="#333535"
-                strokeDasharray={`${labelCoverage.unlabeledPercent} ${100 - labelCoverage.unlabeledPercent}`}
-                strokeDashoffset={`-${labelCoverage.labeledPercent}`}
-                strokeWidth="3"
-              />
-              {/* Mislabeled 5% stroke-dasharray="5 95" offset=-95 */}
-              <circle
-                cx="18"
-                cy="18"
-                fill="transparent"
-                r="15.915"
-                stroke="#f44336"
-                strokeDasharray={`${labelCoverage.mislabeledPercent} ${100 - labelCoverage.mislabeledPercent}`}
-                strokeDashoffset={`-${labelCoverage.labeledPercent + labelCoverage.unlabeledPercent}`}
-                strokeWidth="3"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display text-3xl font-bold text-[#f0f0f0]">
-                {labelCoverage.labeledPercent}%
-              </span>
-              <span className="font-mono text-[10px] text-[#c0c7d3] uppercase tracking-widest">
-                COVERAGE
-              </span>
-            </div>
-          </div>
+export const LabelAndDlpSection: React.FC<LabelAndDlpSectionProps> = ({
+  metrics,
+  copilotReadiness,
+}) => {
+  const labels = copilotReadiness?.sensitivityLabels ?? null;
+  const dlp = copilotReadiness?.dlp ?? null;
 
-          {/* Breakdown Legend */}
-          <div className="space-y-4 w-full sm:w-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-[#479ef5] rounded-full flex-shrink-0" />
-              <div>
-                <p className="font-mono text-xs font-semibold text-[#f0f0f0]">Labeled</p>
-                <p className="text-[#c0c7d3] font-mono text-[11px]">
-                  {labelCoverage.labeledPercent}% ({labelCoverage.labeledCount})
-                </p>
-              </div>
-            </div>
+  const rows: { key: string; label: string }[] = [
+    { key: 'compliance.missingLabelCount', label: 'Missing sensitivity labels' },
+    { key: 'compliance.labelErrorCount', label: 'Label errors' },
+    { key: 'compliance.weakDlpPolicyCount', label: 'Weak DLP policies' },
+    { key: 'compliance.dlpIncidentCount', label: 'DLP incidents (window)' },
+  ];
 
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-[#333535] rounded-full flex-shrink-0" />
-              <div>
-                <p className="font-mono text-xs font-semibold text-[#f0f0f0]">Unlabeled</p>
-                <p className="text-[#c0c7d3] font-mono text-[11px]">
-                  {labelCoverage.unlabeledPercent}% ({labelCoverage.unlabeledCount})
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-[#f44336] rounded-full flex-shrink-0" />
-              <div>
-                <p className="font-mono text-xs font-semibold text-[#f0f0f0]">Mislabeled</p>
-                <p className="text-[#c0c7d3] font-mono text-[11px]">
-                  {labelCoverage.mislabeledPercent}% ({labelCoverage.mislabeledCount})
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT: DLP Effectiveness */}
-      <div className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
-            DLP Effectiveness
-          </h3>
-          <span className="font-mono text-[10px] text-[#c0c7d3] uppercase tracking-wider">
-            LAST 30 DAYS
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Sensitivity labels gate */}
+      <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+        <div className="flex justify-between items-center mb-3">
+          <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+            <Tags className="w-3.5 h-3.5 text-status-violet" />
+            SENSITIVITY LABELS GATE
+          </h4>
+          <span
+            className={`text-xs font-mono font-bold ${
+              labels?.score != null ? BAND_TEXT_CLASS[scoreBand(labels.score)] : 'text-muted-foreground'
+            }`}
+          >
+            {labels?.score != null ? `${labels.score}%` : 'No data yet'}
           </span>
         </div>
+        {indicatorBar(labels?.score ?? null)}
+        <div className="mt-3 space-y-1.5 text-[11px] font-mono flex-grow">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Unlabeled items</span>
+            <span className="font-bold text-foreground">
+              {labels?.unlabeledItems != null ? labels.unlabeledItems.toLocaleString() : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Label errors</span>
+            <span className="font-bold text-foreground">
+              {labels?.labelErrors != null ? labels.labelErrors.toLocaleString() : '—'}
+            </span>
+          </div>
+        </div>
+        <p className="mt-3 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+          {labels?.score != null
+            ? labels.basis === 'ratio'
+              ? 'Real labeled-vs-unlabeled coverage ratio.'
+              : 'Risk-band score (not a coverage %) from your labeling checks.'
+            : 'Appears once the labeling checks have collected data.'}
+        </p>
+      </div>
 
-        <div className="flex-1 flex flex-col justify-between gap-5">
-          {dlpMetrics.map((item) => (
-            <div key={item.id} className="space-y-2">
-              <div className="flex justify-between font-mono text-xs">
-                <span className="text-[#f0f0f0] font-medium">{item.title}</span>
-                <span className="text-[#479ef5] font-semibold">
-                  {item.blockedPercent}% Blocked
+      {/* DLP gate */}
+      <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+        <div className="flex justify-between items-center mb-3">
+          <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-status-blue" />
+            DLP GATE
+          </h4>
+          <span
+            className={`text-xs font-mono font-bold ${
+              dlp?.score != null ? BAND_TEXT_CLASS[scoreBand(dlp.score)] : 'text-muted-foreground'
+            }`}
+          >
+            {dlp?.score != null ? `${dlp.score}%` : 'No data yet'}
+          </span>
+        </div>
+        {indicatorBar(dlp?.score ?? null)}
+        <div className="mt-3 space-y-1.5 text-[11px] font-mono flex-grow">
+          {rows.map(({ key, label }) => {
+            const value = resolvedValue(metrics[key]);
+            const band = value != null ? riskCountBand(value) : null;
+            return (
+              <div key={key} className="flex justify-between">
+                <span className="text-muted-foreground">{label}</span>
+                <span className={`font-bold ${band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'}`}>
+                  {value != null ? value.toLocaleString() : '—'}
                 </span>
               </div>
-              <div className="flex h-6 w-full rounded-sm overflow-hidden bg-[#1a1a1a] p-0.5 border border-[#2b2b2b]">
-                <div
-                  style={{ width: `${item.blockedPercent}%` }}
-                  className="bg-[#479ef5] h-full flex items-center justify-center text-[10px] font-mono font-bold text-black rounded-xs transition-all duration-500"
-                >
-                  {item.blockedPercent >= 15 && 'BLOCKED'}
-                </div>
-                {item.overridePercent > 0 && (
-                  <div
-                    style={{ width: `${item.overridePercent}%` }}
-                    className="bg-amber-500 h-full flex items-center justify-center text-[10px] font-mono font-bold text-black rounded-xs transition-all duration-500"
-                  >
-                    {item.overridePercent >= 10 && 'OVERRIDE'}
-                  </div>
-                )}
-                {item.allowedPercent > 0 && (
-                  <div
-                    style={{ width: `${item.allowedPercent}%` }}
-                    className="bg-[#f44336] h-full flex items-center justify-center text-[10px] font-mono font-bold text-white rounded-xs transition-all duration-500"
-                  >
-                    {item.allowedPercent >= 8 && 'ALLOWED'}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+        <p className="mt-3 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+          Real monitor-check counts — per-policy DLP effectiveness breakdown
+          isn&apos;t collected yet.
+        </p>
       </div>
-    </div>
+    </section>
   );
 };

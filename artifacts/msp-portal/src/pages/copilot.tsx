@@ -1,304 +1,203 @@
-import { useState, useEffect } from 'react';
-import { BadgeCheck } from 'lucide-react';
+/**
+ * /copilot — Copilot Readiness topic page, wired to REAL data end to end
+ * (formerly a mock structure-only page: invented executive metrics, a fake
+ * per-entity permissions heatmap, mock enablement toggles, and simulated
+ * automation runs).
+ *
+ * Real sources (all pre-existing endpoints — see
+ * health-suite/useTopicHealthLive.ts):
+ *   • GET  /api/portal/assessment/status        — the real Copilot Readiness
+ *     pillar score + the real copilot-readiness block (three weighted
+ *     indicators with real backing counts — the page's primary data source).
+ *   • GET  /api/portal/mission-control/overview — real findings + linked
+ *     remediation offers, topic-scoped by transparent keyword filter.
+ *   • POST /api/dashboard/resolve               — copilot.overshareExposureCount
+ *     (with real history), the compliance label/DLP/sharing checks, and the
+ *     Copilot license-readiness signal.
+ *
+ * Content-loss note (HeaderHero removal): HeaderHero displayed real-looking
+ * executive metrics that were mock data. Per the decision already made in the
+ * prior session's content-loss review, that display content is restored as a
+ * real content section — the TopicHero below, showing the same class of
+ * numbers from genuinely real sources (pillar score, real readiness %, real
+ * exposure count). FooterBar's live-feed toggle/export were mock-interactive
+ * only.
+ *
+ * HONEST GAPS: per-user Copilot usage telemetry (registry: not_collected) and
+ * per-site/team permission drill-down (needs a new Graph check) — both stated
+ * in the UI, never simulated.
+ */
+import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { AppShell } from '@/components/app-shell';
-import {
-  initialMetrics,
-  initialHeatmapEntities,
-  initialLabelCoverage,
-  initialDlpMetrics,
-  initialRadarData,
-  initialEnablementControls,
-  initialBlockers,
-  initialAutomationTasks
-} from '@/components/copilot/initialData';
-import {
-  ExecutiveMetrics,
-  HeatmapEntity,
-  ReadinessBlocker,
-  AutomationTask
-} from '@/components/copilot/types';
-
-import { HeaderHero } from '@/components/copilot/HeaderHero';
 import { PermissionsHeatmap } from '@/components/copilot/PermissionsHeatmap';
 import { LabelAndDlpSection } from '@/components/copilot/LabelAndDlpSection';
 import { SafetyRadarChart } from '@/components/copilot/SafetyRadarChart';
 import { EnablementControls } from '@/components/copilot/EnablementControls';
 import { ReadinessBlockers } from '@/components/copilot/ReadinessBlockers';
-import { AutomationPotential } from '@/components/copilot/AutomationPotential';
-import { FooterBar } from '@/components/copilot/FooterBar';
-import { EntityDetailModal } from '@/components/copilot/EntityDetailModal';
-import { ExportReportModal } from '@/components/copilot/ExportReportModal';
+import { TopicHero, HeroStat } from '@/components/health-suite/TopicHero';
+import { DailyTrendPanel } from '@/components/health-suite/DailyTrendPanel';
+import { TopicFindings } from '@/components/health-suite/TopicFindings';
+import { AutomationOpportunities } from '@/components/health-suite/AutomationOpportunities';
+import { TopicRemediationModal } from '@/components/health-suite/TopicRemediationModal';
+import {
+  useTopicHealthLive,
+  filterFindingsByTopic,
+  resolvedValue,
+  TopicFinding,
+} from '@/components/health-suite/useTopicHealthLive';
+
+const METRIC_KEYS = [
+  'copilot.overshareExposureCount',
+  'copilot.usagePerUser',
+  'licensing.copilotLicenseBreakdown',
+  'compliance.missingLabelCount',
+  'compliance.labelErrorCount',
+  'compliance.weakDlpPolicyCount',
+  'compliance.dlpIncidentCount',
+  'compliance.oversharedSiteCount',
+  'compliance.sharePointSiteCount',
+  'compliance.oneDriveExternalCount',
+  'compliance.publicChannelCount',
+];
+
+const HISTORY_KEYS = [
+  'copilot.overshareExposureCount',
+  'compliance.missingLabelCount',
+  'compliance.oversharedSiteCount',
+];
+
+const TOPIC_KEYWORDS = [
+  'copilot',
+  'overshar',
+  'label',
+  'dlp',
+  'sensitiv',
+  'sharing',
+  'sharepoint',
+  'onedrive',
+  'public channel',
+];
 
 export default function CopilotPage() {
-  const [metrics, setMetrics] = useState<ExecutiveMetrics>(initialMetrics);
-  const [entities, setEntities] = useState<HeatmapEntity[]>(
-    initialHeatmapEntities
-  );
-  const [labelCoverage, setLabelCoverage] = useState(initialLabelCoverage);
-  const [dlpMetrics] = useState(initialDlpMetrics);
-  const [radarData, setRadarData] = useState(initialRadarData);
-  const [enablementControls, setEnablementControls] = useState(
-    initialEnablementControls
-  );
-  const [blockers, setBlockers] = useState<ReadinessBlocker[]>(initialBlockers);
-  const [automationTasks, setAutomationTasks] = useState<AutomationTask[]>(
-    initialAutomationTasks
-  );
+  const [, navigate] = useLocation();
+  const live = useTopicHealthLive({
+    pillar: 'copilot',
+    metricKeys: METRIC_KEYS,
+    historyKeys: HISTORY_KEYS,
+  });
+  const [remediationFinding, setRemediationFinding] = useState<TopicFinding | null>(null);
 
-  // Modals & Drawers
-  const [selectedEntity, setSelectedEntity] = useState<HeatmapEntity | null>(
-    null
-  );
-  const [isExportOpen, setIsExportOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const allFindings = live.overview?.findings ?? [];
+  const topicFindings = filterFindingsByTopic(allFindings, TOPIC_KEYWORDS);
+  const otherCount = allFindings.length - topicFindings.length;
 
-  // Mouse Follower Atmospheric Glow Position
-  const [mousePos, setMousePos] = useState({ x: -200, y: -200 });
+  const readiness = live.status?.copilotReadiness ?? null;
+  const overall = readiness?.overall.score ?? null;
+  const exposure = resolvedValue(live.metrics['copilot.overshareExposureCount']);
+  const licenseSignal = resolvedValue(live.metrics['licensing.copilotLicenseBreakdown']);
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
-
-  // Live Data Feed simulated subtle updates
-  useEffect(() => {
-    if (!metrics.liveDataFeedActive) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      const timeStr = `${now.toISOString().replace('T', ' ').substring(0, 19)} UTC`;
-      setMetrics((prev) => ({
-        ...prev,
-        lastUpdated: timeStr
-      }));
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, [metrics.liveDataFeedActive]);
-
-  // Recalculate Aggregate Readiness score based on current state
-  const recalculateReadiness = (scoreBoost: number) => {
-    setMetrics((prev) => {
-      const newScore = Math.min(99, prev.aggregateReadiness + scoreBoost);
-      const newHygiene = Math.min(100, prev.permissionsHygiene + Math.round(scoreBoost * 0.8));
-      const newRisk = Math.max(2, prev.copilotRiskScore - Math.round(scoreBoost * 0.5));
-      let status = 'Ready for Scale';
-      if (newScore >= 90) status = 'Optimal Security Alignment';
-      else if (newScore < 75) status = 'Action Required';
-
-      return {
-        ...prev,
-        aggregateReadiness: newScore,
-        permissionsHygiene: newHygiene,
-        copilotRiskScore: newRisk,
-        readinessStatus: status
-      };
-    });
-  };
-
-  // Remediate Blocker
-  const handleRemediateBlocker = (blockerId: string) => {
-    const blocker = blockers.find((b) => b.id === blockerId);
-    if (!blocker || blocker.remediated) return;
-
-    setBlockers((prev) =>
-      prev.map((b) => (b.id === blockerId ? { ...b, remediated: true } : b))
-    );
-
-    recalculateReadiness(3);
-    showToast(`Resolved "${blocker.title}". Aggregate Readiness score updated (+3)!`);
-  };
-
-  // Remediate Entity (Revoke anonymous links)
-  const handleRemediateEntity = (entityId: string) => {
-    setEntities((prev) =>
-      prev.map((e) =>
-        e.id === entityId ? { ...e, anonymousLinks: 0, riskLevel: 'low' } : e
-      )
-    );
-
-    recalculateReadiness(2);
-    showToast(`Revoked anonymous links on target entity. Permissions hygiene improved!`);
-  };
-
-  // Execute Automation Task
-  const handleExecuteAutomation = (taskId: string) => {
-    setAutomationTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, status: 'running', progress: 10 } : t
-      )
-    );
-
-    let currentProgress = 10;
-    const interval = setInterval(() => {
-      currentProgress += 25;
-      if (currentProgress >= 100) {
-        clearInterval(interval);
-        setAutomationTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, status: 'completed', progress: 100 } : t
-          )
-        );
-
-        if (taskId === 'auto-1') {
-          // Auto-tighten permissions
-          setEntities((prev) =>
-            prev.map((e) => ({
-              ...e,
-              anonymousLinks: Math.max(0, e.anonymousLinks - 10),
-              broadInternal: Math.max(2, Math.round(e.broadInternal * 0.5))
-            }))
-          );
-          recalculateReadiness(5);
-          showToast('Automation Deployed: Inactive sharing links purged across enterprise sites.');
-        } else if (taskId === 'auto-2') {
-          // Auto-label sensitive data
-          setLabelCoverage({
-            labeledPercent: 92,
-            labeledCount: '1.48M files',
-            unlabeledPercent: 6,
-            unlabeledCount: '96K files',
-            mislabeledPercent: 2,
-            mislabeledCount: '32K files'
-          });
-          setEnablementControls((prev) =>
-            prev.map((c) =>
-              c.id === 'ctrl-3'
-                ? { ...c, statusText: '92%', statusType: 'percent' }
-                : c
-            )
-          );
-          setRadarData((prev) =>
-            prev.map((r) =>
-              r.axis === 'Label Coverage' ? { ...r, score: 92 } : r
-            )
-          );
-          recalculateReadiness(4);
-          showToast('Automation Complete: AI auto-classified 20% of unlabeled sensitive files.');
-        } else if (taskId === 'auto-3') {
-          // Enforce CA baseline
-          setEnablementControls((prev) =>
-            prev.map((c) =>
-              c.id === 'ctrl-5'
-                ? { ...c, statusText: 'CLEARED', statusType: 'ready' }
-                : c
-            )
-          );
-          recalculateReadiness(6);
-          showToast('Tenant Hardened: Legacy guest access purged and strict MFA enforced.');
-        }
-      } else {
-        setAutomationTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, progress: currentProgress } : t
-          )
-        );
-      }
-    }, 400);
-  };
-
-  const handleToggleLiveFeed = () => {
-    setMetrics((prev) => ({
-      ...prev,
-      liveDataFeedActive: !prev.liveDataFeedActive
-    }));
-    showToast(
-      metrics.liveDataFeedActive
-        ? 'Live Data Feed Paused.'
-        : 'Live Data Feed Activated. Real-time telemetry streaming.'
-    );
-  };
+  const heroStats: HeroStat[] = [
+    {
+      label: 'Overall Readiness',
+      value: overall != null ? `${overall}%` : null,
+      caption: 'Weighted across data-governance checks',
+      emptyCaption: 'No readiness data yet',
+      accent: 'violet',
+    },
+    {
+      label: 'Overshare Exposure',
+      value: exposure != null ? exposure.toLocaleString() : null,
+      caption: 'Items Copilot could surface today',
+      emptyCaption: 'No exposure data yet',
+      accent: exposure != null && exposure > 0 ? 'amber' : 'green',
+    },
+    {
+      label: 'License Signal',
+      value: licenseSignal != null ? licenseSignal.toLocaleString() : null,
+      caption: 'Copilot license-readiness check',
+      emptyCaption: 'No license data yet',
+      accent: 'blue',
+    },
+    {
+      label: 'Topic Findings',
+      value: live.overview ? String(topicFindings.length) : null,
+      caption: 'Copilot-related scan findings',
+      emptyCaption: 'Appears after your first scan',
+      accent: 'teal',
+    },
+  ];
 
   return (
     <AppShell title="Copilot">
-    <div className="min-h-screen bg-[#1a1a1a] text-[#f0f0f0] relative selection:bg-[#479ef5]/30 selection:text-sky-200">
-      {/* Technical Grid Overlay */}
-      <div className="fixed inset-0 technical-grid pointer-events-none z-0" />
+      <div className="min-h-screen relative">
+        <main className="relative max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
+          {/* 1. Hero — restored HeaderHero content, now from real sources */}
+          <TopicHero
+            title="Copilot Readiness"
+            pillarScore={live.pillarScore}
+            everScanned={Boolean(live.status?.scan.everScanned)}
+            scoreCaption="Copilot Readiness pillar score from your latest scan"
+            stats={heroStats}
+          />
 
-      {/* Atmospheric Mouse Glow */}
-      <div
-        className="fixed w-[400px] h-[400px] pointer-events-none rounded-full blur-[120px] opacity-15 bg-[#479ef5] z-0 transition-transform duration-100 ease-out"
-        style={{
-          transform: `translate3d(${mousePos.x - 200}px, ${mousePos.y - 200}px, 0)`
-        }}
-      />
+          {/* 2. Oversharing exposure — the real permission surface */}
+          <PermissionsHeatmap metrics={live.metrics} copilotReadiness={readiness} />
 
-      {/* Toast Notification Floating Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 bg-card border border-[#479ef5]/40 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fadeIn">
-          <BadgeCheck className="text-[#479ef5] w-5 h-5" />
-          <span className="font-mono text-xs font-medium">{toastMessage}</span>
-        </div>
-      )}
+          {/* 3. Safety radar + blockers + enablement checklist */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <SafetyRadarChart copilotReadiness={readiness} />
+            <ReadinessBlockers copilotReadiness={readiness} />
+            <EnablementControls copilotReadiness={readiness} />
+          </section>
 
-      {/* Main Container */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* SECTION 1: HERO BAND */}
-        <HeaderHero metrics={metrics} />
+          {/* 4. Labels & DLP gates + real exposure trend */}
+          <LabelAndDlpSection metrics={live.metrics} copilotReadiness={readiness} />
 
-        {/* SECTION 2: HEAT MAP TABLE */}
-        <PermissionsHeatmap
-          entities={entities}
-          onSelectEntity={(entity) => setSelectedEntity(entity)}
+          <section className="grid grid-cols-1 gap-6">
+            <DailyTrendPanel
+              title="EXPOSURE TREND"
+              seriesDefs={[
+                { key: 'copilot.overshareExposureCount', label: 'Overshare Exposure', color: 'var(--color-status-amber)' },
+                { key: 'compliance.missingLabelCount', label: 'Missing Labels', color: 'var(--color-status-red)' },
+                { key: 'compliance.oversharedSiteCount', label: 'Overshared Sites', color: 'var(--color-status-violet)' },
+              ]}
+              metrics={live.metrics}
+            />
+          </section>
+
+          {/* 5. Real topic findings */}
+          <TopicFindings
+            title="Copilot Readiness Risks"
+            subtitle={
+              otherCount > 0
+                ? `Copilot-related findings from your latest scan · ${otherCount} further finding${otherCount === 1 ? '' : 's'} from other pillars on M365 Health`
+                : 'Copilot-related findings from your latest scan'
+            }
+            findings={topicFindings}
+            loaded={live.loaded}
+            emptyCopy="No Copilot-related findings — they appear after your first completed scan."
+            onRemediateFinding={setRemediationFinding}
+          />
+
+          {/* 6. Automation — real linked offers only, honest execution-blocked state */}
+          <AutomationOpportunities
+            findings={topicFindings}
+            loaded={live.loaded}
+            onOpenOffers={() => navigate('/customer-offers')}
+            onRemediateFinding={setRemediationFinding}
+          />
+        </main>
+
+        <TopicRemediationModal
+          finding={remediationFinding}
+          onClose={() => setRemediationFinding(null)}
+          onOpenOffers={() => {
+            setRemediationFinding(null);
+            navigate('/customer-offers');
+          }}
         />
-
-        {/* SECTION 3: LABEL COVERAGE & DLP */}
-        <LabelAndDlpSection
-          labelCoverage={labelCoverage}
-          dlpMetrics={dlpMetrics}
-        />
-
-        {/* SECTION 4: RISK SPIDER CHART */}
-        <SafetyRadarChart data={radarData} />
-
-        {/* SECTION 5: ENABLEMENT CONTROLS */}
-        <EnablementControls controls={enablementControls} />
-
-        {/* SECTION 6: READINESS BLOCKERS */}
-        <ReadinessBlockers
-          blockers={blockers}
-          onRemediateBlocker={handleRemediateBlocker}
-        />
-
-        {/* SECTION 7: AUTOMATION POTENTIAL */}
-        <AutomationPotential
-          tasks={automationTasks}
-          onExecuteAutomation={handleExecuteAutomation}
-        />
-
-        {/* FOOTER */}
-        <FooterBar
-          metrics={metrics}
-          onToggleLiveFeed={handleToggleLiveFeed}
-          onOpenExportReport={() => setIsExportOpen(true)}
-        />
-      </main>
-
-      {/* Modals */}
-      <EntityDetailModal
-        entity={selectedEntity}
-        onClose={() => setSelectedEntity(null)}
-        onRemediateEntity={handleRemediateEntity}
-      />
-
-      <ExportReportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        metrics={metrics}
-        entities={entities}
-        blockers={blockers}
-      />
-    </div>
+      </div>
     </AppShell>
   );
 }

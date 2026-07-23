@@ -1,236 +1,119 @@
-import React, { useState } from 'react';
-import { Search, ArrowUp, ArrowDown, Cloud, Users, FolderOpen, Database, Shield } from 'lucide-react';
-import { HeatmapEntity } from './types';
+import React from 'react';
+import { FolderOpen, Shield } from 'lucide-react';
+import {
+  ResolvedMetric,
+  resolvedValue,
+  riskCountBand,
+  BAND_TEXT_CLASS,
+  BAND_COLOR_VAR,
+} from '@/components/health-suite/useTopicHealthLive';
+import type { CopilotReadinessLive } from '@/components/assessment-test/types';
 
-const ENTITY_ICONS: Record<HeatmapEntity['icon'], React.ComponentType<{ className?: string }>> = {
-  cloud: Cloud,
-  groups: Users,
-  folder_open: FolderOpen,
-  database: Database,
-  shield: Shield
-};
+/**
+ * Oversharing Exposure — the REAL permission-exposure surface Copilot would
+ * inherit, replacing the mock per-site/team "permissions heatmap" (a per-entity
+ * sharing matrix isn't served by any endpoint — that per-entity drill-down
+ * needs a new Graph check and is reported as a gap, not simulated).
+ *
+ * Real data shown: the copilot:overshare-exposure check count, the real
+ * overshared-vs-total site ratio (compliance checks + the readiness
+ * indicator's own backing counts), OneDrive external shares, and public
+ * channels.
+ */
 
 interface PermissionsHeatmapProps {
-  entities: HeatmapEntity[];
-  onSelectEntity: (entity: HeatmapEntity) => void;
+  metrics: Record<string, ResolvedMetric>;
+  copilotReadiness: CopilotReadinessLive | null;
 }
 
 export const PermissionsHeatmap: React.FC<PermissionsHeatmapProps> = ({
-  entities,
-  onSelectEntity
+  metrics,
+  copilotReadiness,
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<keyof HeatmapEntity>('broadInternal');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const exposureItems = resolvedValue(metrics['copilot.overshareExposureCount']);
+  const oversharedSites =
+    copilotReadiness?.sharePointTeams.oversharedSites ??
+    resolvedValue(metrics['compliance.oversharedSiteCount']);
+  const totalSites =
+    copilotReadiness?.sharePointTeams.totalSites ??
+    resolvedValue(metrics['compliance.sharePointSiteCount']);
+  const oneDriveExternal = resolvedValue(metrics['compliance.oneDriveExternalCount']);
+  const publicChannels = resolvedValue(metrics['compliance.publicChannelCount']);
 
-  const filteredEntities = entities
-    .filter(
-      (e) =>
-        e.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.type.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a, b) => {
-      const valA = a[sortField];
-      const valB = b[sortField];
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return sortDirection === 'desc' ? valB - valA : valA - valB;
-      }
-      return sortDirection === 'desc'
-        ? String(valB).localeCompare(String(valA))
-        : String(valA).localeCompare(String(valB));
-    });
+  const ratio =
+    oversharedSites != null && totalSites != null && totalSites > 0
+      ? Math.round((oversharedSites / totalSites) * 1000) / 10
+      : null;
 
-  const handleSort = (field: keyof HeatmapEntity) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
-  // Helper function to color cells dynamically based on numeric severity
-  const getHeatCellClass = (value: number) => {
-    if (value === 0) {
-      return 'bg-[#0c0f0f] border-[#2b2b2b] text-[#c0c7d3]';
-    }
-    if (value <= 5) {
-      return 'bg-red-500/10 border-red-500/20 text-red-300';
-    }
-    if (value <= 25) {
-      return 'bg-red-500/25 border-red-500/35 text-red-200';
-    }
-    if (value <= 70) {
-      return 'bg-red-500/50 border-red-500/60 text-white font-medium';
-    }
-    if (value <= 150) {
-      return 'bg-red-600/80 border-red-500 text-white font-semibold';
-    }
-    return 'bg-red-600 border-red-400 text-white font-bold shadow-[0_0_12px_rgba(239,68,68,0.5)]';
-  };
+  const tiles: { label: string; value: number | null; caption: string }[] = [
+    { label: 'Overshare Exposure Items', value: exposureItems, caption: 'From the Copilot exposure check' },
+    { label: 'Overshared Sites', value: oversharedSites, caption: 'Broad-access SharePoint sites' },
+    { label: 'OneDrive External Shares', value: oneDriveExternal, caption: 'Externally shared content' },
+    { label: 'Public Channels', value: publicChannels, caption: 'Org-wide visible channels' },
+  ];
 
   return (
-    <section className="bg-card border border-border rounded-xl p-6 overflow-hidden">
-      {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="font-display text-2xl font-semibold text-[#f0f0f0]">
-            Permissions Hygiene & Data Exposure
-          </h2>
-          <p className="font-body text-xs text-[#c0c7d3] mt-1">
-            Analysis of over-privileged access and external sharing across core storage entities.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Search Box */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2 text-[#c0c7d3] w-4 h-4 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search site / drive..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-3 py-1.5 bg-[#1a1a1a] border border-[#2b2b2b] rounded-md text-xs text-white placeholder-[#8a919d] focus:outline-none focus:border-[#479ef5] transition-all w-48 sm:w-56"
-            />
-          </div>
-
-          {/* Severity Legend */}
-          <div className="flex items-center gap-3 bg-[#1a1a1a]/60 px-3 py-1.5 rounded-md border border-[#2b2b2b]">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-[#1a1a1a] border border-[#404752] rounded-xs" />
-              <span className="font-mono text-[10px] text-[#c0c7d3]">Low</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-red-500/40 border border-red-500/50 rounded-xs" />
-              <span className="font-mono text-[10px] text-[#c0c7d3]">Medium</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-red-600 rounded-xs" />
-              <span className="font-mono text-[10px] text-[#c0c7d3]">High</span>
-            </div>
-          </div>
-        </div>
+    <section className="bg-card border border-border rounded-xl p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+        <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+          <FolderOpen className="w-4 h-4 text-status-amber" />
+          Oversharing Exposure
+        </h3>
+        <span className="text-xs font-mono text-muted-foreground flex items-center gap-1.5">
+          <Shield className="w-3.5 h-3.5" />
+          {ratio != null
+            ? `${ratio}% of ${totalSites?.toLocaleString()} sites overshared`
+            : 'Site ratio pending scan data'}
+        </span>
       </div>
 
-      {/* Table Matrix */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-[#2b2b2b]">
-              <th
-                onClick={() => handleSort('name')}
-                className="py-3 px-2 font-mono text-xs text-[#c0c7d3] uppercase font-medium cursor-pointer hover:text-white transition-colors"
-              >
-                <div className="flex items-center gap-1">
-                  Entity (Sites/Drives)
-                  {sortField === 'name' && (
-                    sortDirection === 'asc' ? (
-                      <ArrowUp className="w-3 h-3" />
-                    ) : (
-                      <ArrowDown className="w-3 h-3" />
-                    )
-                  )}
-                </div>
-              </th>
-              <th
-                onClick={() => handleSort('anonymousLinks')}
-                className="py-3 px-2 font-mono text-xs text-[#c0c7d3] uppercase font-medium text-center cursor-pointer hover:text-white transition-colors"
-              >
-                Anonymous Links
-              </th>
-              <th
-                onClick={() => handleSort('externalUsers')}
-                className="py-3 px-2 font-mono text-xs text-[#c0c7d3] uppercase font-medium text-center cursor-pointer hover:text-white transition-colors"
-              >
-                External Users
-              </th>
-              <th
-                onClick={() => handleSort('broadInternal')}
-                className="py-3 px-2 font-mono text-xs text-[#c0c7d3] uppercase font-medium text-center cursor-pointer hover:text-white transition-colors"
-              >
-                Broad Internal
-              </th>
-              <th
-                onClick={() => handleSort('highPermissionApps')}
-                className="py-3 px-2 font-mono text-xs text-[#c0c7d3] uppercase font-medium text-center cursor-pointer hover:text-white transition-colors"
-              >
-                High-Permission Apps
-              </th>
-            </tr>
-          </thead>
-          <tbody className="font-mono text-xs">
-            {filteredEntities.map((entity) => {
-              const EntityIcon = ENTITY_ICONS[entity.icon];
-              return (
-              <tr
-                key={entity.id}
-                onClick={() => onSelectEntity(entity)}
-                className="border-b border-[#2b2b2b]/40 hover:bg-white/5 transition-colors cursor-pointer group"
-              >
-                <td className="py-3 px-2 flex items-center gap-2 font-mono text-xs text-white">
-                  <EntityIcon className="text-[#479ef5] w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <div>
-                    <span className="font-semibold text-[#f0f0f0] group-hover:text-[#479ef5] transition-colors">
-                      {entity.name}
-                    </span>
-                    <span className="block text-[10px] text-[#8a919d] font-body">
-                      {entity.type}
-                    </span>
-                  </div>
-                </td>
+      {/* Real overshared-site ratio bar */}
+      <div className="mb-4">
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          {ratio != null && (
+            <div
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${Math.min(ratio, 100)}%`,
+                backgroundColor:
+                  BAND_COLOR_VAR[riskCountBand(oversharedSites ?? 0)],
+              }}
+            />
+          )}
+        </div>
+        <p className="text-[10px] font-mono text-muted-foreground mt-1">
+          {ratio != null
+            ? 'Real overshared-vs-total site ratio — what Copilot could surface today'
+            : 'The ratio appears once the SharePoint sharing checks have collected data.'}
+        </p>
+      </div>
 
-                <td className="p-1">
-                  <div
-                    className={`heat-cell h-8 rounded-sm border flex items-center justify-center ${getHeatCellClass(
-                      entity.anonymousLinks
-                    )}`}
-                  >
-                    {entity.anonymousLinks}
-                  </div>
-                </td>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {tiles.map((tile) => {
+          const band = tile.value != null ? riskCountBand(tile.value) : null;
+          return (
+            <div key={tile.label} className="p-3 rounded-lg border border-border bg-secondary/40">
+              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                {tile.label}
+              </p>
+              <p
+                className={`text-2xl font-bold font-mono mt-1 ${
+                  band ? BAND_TEXT_CLASS[band] : 'text-muted-foreground'
+                }`}
+              >
+                {tile.value != null ? tile.value.toLocaleString() : '—'}
+              </p>
+              <p className="text-[10px] text-secondary-foreground/80 mt-0.5">
+                {tile.value != null ? tile.caption : 'No data yet'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
 
-                <td className="p-1">
-                  <div
-                    className={`heat-cell h-8 rounded-sm border flex items-center justify-center ${getHeatCellClass(
-                      entity.externalUsers
-                    )}`}
-                  >
-                    {entity.externalUsers}
-                  </div>
-                </td>
-
-                <td className="p-1">
-                  <div
-                    className={`heat-cell h-8 rounded-sm border flex items-center justify-center ${getHeatCellClass(
-                      entity.broadInternal
-                    )}`}
-                  >
-                    {entity.broadInternal}
-                  </div>
-                </td>
-
-                <td className="p-1">
-                  <div
-                    className={`heat-cell h-8 rounded-sm border flex items-center justify-center ${getHeatCellClass(
-                      entity.highPermissionApps
-                    )}`}
-                  >
-                    {entity.highPermissionApps}
-                  </div>
-                </td>
-              </tr>
-              );
-            })}
-            {filteredEntities.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-8 text-center text-[#8a919d] font-body">
-                  No storage entities found matching "{searchTerm}"
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div className="mt-4 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+        A per-site/per-team permission drill-down isn&apos;t collected yet (needs a
+        new Graph check) — these are your real aggregate exposure counts.
       </div>
     </section>
   );

@@ -1,123 +1,97 @@
 import React from 'react';
-import { 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  Legend 
-} from 'recharts';
-import { CollaborationTrendPoint } from './types';
+import { TrendingUp } from 'lucide-react';
+import {
+  ResolvedMetric,
+  resolvedValue,
+  scoreBand,
+  BAND_TEXT_CLASS,
+  BAND_COLOR_VAR,
+} from '@/components/health-suite/useTopicHealthLive';
+
+/**
+ * Collaboration Adoption Scores — the REAL per-workload adoption-score checks
+ * (usage:*-adoption), replacing the mock 12-month trend chart.
+ *
+ * HONEST GAP, stated in the UI: per-workload adoption HISTORY isn't servable
+ * yet — the resolve endpoint's history path only covers smart-eligible
+ * metrics, and the usage.* checks aren't smart-eligible in the registry (a
+ * small registry/resolver change on existing infrastructure, reported in
+ * PLATFORM_BUILD.md rather than worked around here — those files are
+ * concurrently held by another session). Current real scores render now;
+ * the trend axis lights up once history is servable.
+ */
 
 interface CollaborationTrendProps {
-  data: CollaborationTrendPoint[];
-  inactiveSites?: number;
-  lowCollabSites?: number;
-  highCollabSites?: number;
+  metrics: Record<string, ResolvedMetric>;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-[#1a1c1c] p-3 rounded-lg border border-white/10 shadow-xl font-mono-data text-xs">
-        <p className="text-white font-bold mb-1.5">{label}</p>
-        <p className="text-[#479ef5] flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#479ef5]"></span>
-          Edits: {payload[0]?.value}
-        </p>
-        <p className="text-[#dab9ff] flex items-center gap-1.5 mt-0.5">
-          <span className="w-2 h-2 rounded-full bg-[#dab9ff]"></span>
-          Shares: {payload[1]?.value}
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
+const SCORE_ROWS: { key: string; label: string }[] = [
+  { key: 'usage.teamsUsageCount', label: 'Teams' },
+  { key: 'usage.exchangeUsageCount', label: 'Exchange' },
+  { key: 'usage.sharePointUsageCount', label: 'SharePoint' },
+  { key: 'usage.oneDriveUsageCount', label: 'OneDrive' },
+];
 
-export const CollaborationTrend: React.FC<CollaborationTrendProps> = ({
-  data,
-  inactiveSites = 42,
-  lowCollabSites = 128,
-  highCollabSites = 672
-}) => {
+export const CollaborationTrend: React.FC<CollaborationTrendProps> = ({ metrics }) => {
+  const rows = SCORE_ROWS.map((def) => ({ def, value: resolvedValue(metrics[def.key]) }));
+  const anyData = rows.some((r) => r.value != null);
+
   return (
-    <section className="bg-card border border-border p-6 rounded-xl flex flex-col justify-between h-full">
-      {/* Header & Legend */}
-      <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-        <div>
-          <h2 className="font-headline text-lg font-bold text-white tracking-tight">
-            Collaboration Activity Trend
-          </h2>
-          <p className="text-xs text-[#8a919d] font-body mt-0.5">
-            Document edits & sharing events across SharePoint & OneDrive
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4 font-mono-data text-xs">
-          <span className="flex items-center gap-1.5 text-white">
-            <span className="w-2.5 h-2.5 bg-[#479ef5] rounded-full"></span> Edits
-          </span>
-          <span className="flex items-center gap-1.5 text-white">
-            <span className="w-2.5 h-2.5 bg-[#dab9ff] rounded-full"></span> Shares
-          </span>
-        </div>
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5 text-primary" />
+          COLLABORATION ADOPTION SCORES
+        </h4>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          {anyData ? 'Current readings' : 'AWAITING DATA'}
+        </span>
       </div>
 
-      {/* Chart Canvas */}
-      <div className="w-full h-48 my-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-            <XAxis 
-              dataKey="day" 
-              stroke="#8a919d" 
-              fontSize={10} 
-              tickLine={false} 
-              axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
-              fontFamily="JetBrains Mono"
-            />
-            <YAxis 
-              stroke="#8a919d" 
-              fontSize={10} 
-              tickLine={false} 
-              axisLine={false}
-              fontFamily="JetBrains Mono"
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.03)' }} />
-            <Bar dataKey="edits" fill="#479ef5" radius={[4, 4, 0, 0]} maxBarSize={28} />
-            <Bar dataKey="shares" fill="#dab9ff" radius={[4, 4, 0, 0]} maxBarSize={28} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {anyData ? (
+        <div className="space-y-4 flex-grow">
+          {rows.map(({ def, value }) => {
+            // Adoption scores are 0–100-style check outputs; band with the
+            // shared score thresholds when in range, otherwise show raw.
+            const band = value != null && value <= 100 ? scoreBand(value) : null;
+            return (
+              <div key={def.key} className="space-y-1">
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-secondary-foreground/90">{def.label}</span>
+                  <span
+                    className={`font-bold ${band ? BAND_TEXT_CLASS[band] : value != null ? 'text-foreground' : 'text-muted-foreground'}`}
+                  >
+                    {value != null ? value.toLocaleString() : 'no data'}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  {value != null && (
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(value, 100)}%`,
+                        backgroundColor: band ? BAND_COLOR_VAR[band] : 'var(--color-primary)',
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex-grow flex items-center justify-center text-center px-4 py-8">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Adoption scores appear once the usage checks have collected data for
+            your tenant.
+          </p>
+        </div>
+      )}
 
-      {/* Footer 3 metrics */}
-      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/10 mt-2">
-        <div>
-          <p className="font-mono-data text-[10px] text-[#8a919d] uppercase tracking-wider">
-            Inactive Sites
-          </p>
-          <p className="font-headline text-xl lg:text-2xl font-bold text-red-400 mt-0.5">
-            {inactiveSites}
-          </p>
-        </div>
-        <div>
-          <p className="font-mono-data text-[10px] text-[#8a919d] uppercase tracking-wider">
-            Low-collaboration
-          </p>
-          <p className="font-headline text-xl lg:text-2xl font-bold text-amber-500 mt-0.5">
-            {lowCollabSites}
-          </p>
-        </div>
-        <div>
-          <p className="font-mono-data text-[10px] text-[#8a919d] uppercase tracking-wider">
-            High-collaboration
-          </p>
-          <p className="font-headline text-xl lg:text-2xl font-bold text-[#479ef5] mt-0.5">
-            {highCollabSites}
-          </p>
-        </div>
+      <div className="mt-4 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+        Historical adoption trend isn&apos;t servable yet (usage checks aren&apos;t
+        history-enabled in the metric registry) — current real scores only.
       </div>
-    </section>
+    </div>
   );
 };

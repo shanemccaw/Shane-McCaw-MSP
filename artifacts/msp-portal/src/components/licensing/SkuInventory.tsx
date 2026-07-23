@@ -1,126 +1,103 @@
-import React, { useState } from 'react';
-import { SkuItem } from './types';
-import { Layers, ChevronRight, BarChart2, CheckCircle2 } from 'lucide-react';
+import React from 'react';
+import { Layers } from 'lucide-react';
+import {
+  ResolvedMetric,
+  resolvedBuckets,
+} from '@/components/health-suite/useTopicHealthLive';
+import type { LicenseWasteSummary } from '@/components/assessment-test/types';
+
+/**
+ * SKU Inventory — REAL license data, replacing the mock SKU table. What's
+ * genuinely servable today:
+ *   • The Cost Engine summary (status.stats.licenseWaste): real seat count,
+ *     SKU count, and the top waste SKU with its real monthly cost.
+ *   • licensing.wasteEstimateBreakdown buckets: real per-SKU waste dollars
+ *     (seat counts × sku_price_reference list price).
+ * A full per-SKU assigned-vs-purchased inventory isn't exposed by a resolver
+ * transform yet (the licensing:sku-utilization check collects it, but the
+ * resolve endpoint serves that metric as a scalar) — stated here, reported in
+ * PLATFORM_BUILD.md as a small resolver addition on existing infrastructure.
+ */
 
 interface SkuInventoryProps {
-  skus: SkuItem[];
-  onSelectSku?: (sku: SkuItem) => void;
+  metrics: Record<string, ResolvedMetric>;
+  licenseWaste: LicenseWasteSummary | null;
 }
 
-export const SkuInventory: React.FC<SkuInventoryProps> = ({ skus, onSelectSku }) => {
-  const [selectedSkuId, setSelectedSkuId] = useState<string | null>(null);
+export const SkuInventory: React.FC<SkuInventoryProps> = ({ metrics, licenseWaste }) => {
+  const wasteBuckets = resolvedBuckets(metrics['licensing.wasteEstimateBreakdown'])
+    .slice()
+    .sort((a, b) => b.value - a.value);
+  const maxWaste = Math.max(1, ...wasteBuckets.map((b) => b.value));
+  const anyData = licenseWaste != null || wasteBuckets.length > 0;
 
   return (
-    <div className="bg-card border border-border p-6 rounded-xl h-full flex flex-col justify-between">
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-[#479ef5]" />
-            <h3 className="font-headline text-lg font-semibold text-[#e2e2e2]">
-              SKU Inventory &amp; Utilization
-            </h3>
-          </div>
-          <div className="flex items-center gap-4 text-xs font-mono-tech">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-[#a0c9ff] rounded-xs"></div>
-              <span className="text-[#c0c7d3]">Assigned</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-[#404752] rounded-xs"></div>
-              <span className="text-[#c0c7d3]">Unassigned</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          {skus.map((sku) => {
-            const isSelected = selectedSkuId === sku.id;
-            const isLowUtil = sku.utilizationPercent < 60;
-
-            return (
-              <div
-                key={sku.id}
-                onClick={() => {
-                  setSelectedSkuId(isSelected ? null : sku.id);
-                  if (onSelectSku) onSelectSku(sku);
-                }}
-                className={`p-3 rounded-lg transition-all cursor-pointer border ${
-                  isSelected
-                    ? 'bg-[#1a1c1c] border-[#479ef5]'
-                    : 'bg-transparent border-transparent hover:bg-white/[0.02]'
-                }`}
-              >
-                <div className="flex justify-between text-xs font-mono-tech mb-1.5">
-                  <span className="font-semibold text-[#e2e2e2] flex items-center gap-2">
-                    {sku.name}
-                    {isSelected && (
-                      <span className="text-[10px] text-[#479ef5] bg-[#479ef5]/10 px-1.5 py-0.5 rounded">
-                        Expanded
-                      </span>
-                    )}
-                  </span>
-                  <span className={isLowUtil ? 'text-[#ffb4ab] font-bold' : 'text-[#479ef5] font-semibold'}>
-                    {sku.utilizationPercent}% Utilization
-                  </span>
-                </div>
-
-                {/* Progress Bar Container */}
-                <div className="flex h-9 w-full bg-[#1a1c1c] overflow-hidden rounded-sm border border-white/5 relative group">
-                  <div
-                    className="bg-[#a0c9ff] h-full transition-all duration-700 ease-out border-r border-[#121414] flex items-center px-3"
-                    style={{ width: `${sku.utilizationPercent}%` }}
-                  >
-                    <span className="text-[10px] font-mono-tech text-[#003259] font-bold truncate">
-                      {sku.assignedCount.toLocaleString()} Seats Assigned
-                    </span>
-                  </div>
-                  <div
-                    className="bg-[#404752] h-full flex items-center justify-end px-3 transition-all"
-                    style={{ width: `${100 - sku.utilizationPercent}%` }}
-                  >
-                    {100 - sku.utilizationPercent >= 10 && (
-                      <span className="text-[10px] font-mono-tech text-[#c0c7d3] truncate">
-                        {sku.unassignedCount.toLocaleString()} Idle
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded Details */}
-                {isSelected && (
-                  <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono-tech">
-                    <div className="bg-[#121414] p-2 rounded">
-                      <span className="text-[#c0c7d3] text-[10px] block">Total Allocated</span>
-                      <span className="text-[#e2e2e2] font-bold">{sku.totalCount.toLocaleString()}</span>
-                    </div>
-                    <div className="bg-[#121414] p-2 rounded">
-                      <span className="text-[#c0c7d3] text-[10px] block">Rate / Seat</span>
-                      <span className="text-[#a0c9ff] font-bold">${sku.monthlyCostPerSeat}/mo</span>
-                    </div>
-                    <div className="bg-[#121414] p-2 rounded">
-                      <span className="text-[#c0c7d3] text-[10px] block">Unassigned Waste</span>
-                      <span className="text-[#ffb4ab] font-bold">
-                        ${(sku.unassignedCount * sku.monthlyCostPerSeat).toLocaleString()}/mo
-                      </span>
-                    </div>
-                    <div className="bg-[#121414] p-2 rounded flex items-center justify-center">
-                      <button className="text-[11px] text-[#479ef5] hover:underline flex items-center gap-1 font-bold">
-                        Manage SKU <ChevronRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+          <Layers className="w-3.5 h-3.5 text-primary" />
+          SKU INVENTORY
+        </h4>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          {licenseWaste != null
+            ? `${licenseWaste.skuCount.toLocaleString()} SKUs · ${licenseWaste.seatCount.toLocaleString()} waste seats`
+            : anyData
+              ? 'LIVE DATA'
+              : 'AWAITING DATA'}
+        </span>
       </div>
 
-      <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs font-mono-tech text-[#c0c7d3]">
-        <span className="flex items-center gap-1">
-          <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> Auto-sync enabled via Graph API
-        </span>
-        <span className="text-[10px] text-[#c0c7d3]/70">Last telemetry pull: 4m ago</span>
+      {licenseWaste?.topSku && (
+        <div className="p-3 rounded-lg border border-status-amber/30 bg-status-amber/5 mb-4">
+          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+            Top waste SKU
+          </p>
+          <div className="flex justify-between items-baseline mt-1 gap-2">
+            <span className="text-sm font-semibold text-foreground truncate">
+              {licenseWaste.topSku.displayName}
+            </span>
+            <span className="text-sm font-bold font-mono text-status-amber flex-shrink-0">
+              ${Math.round(licenseWaste.topSku.monthlyCents / 100).toLocaleString()}/mo
+            </span>
+          </div>
+          <p className="text-[10px] text-secondary-foreground/80 mt-0.5">
+            {licenseWaste.topSku.count.toLocaleString()} wasted seat
+            {licenseWaste.topSku.count === 1 ? '' : 's'} at real list price
+          </p>
+        </div>
+      )}
+
+      {wasteBuckets.length > 0 ? (
+        <div className="space-y-2.5 flex-grow">
+          {wasteBuckets.slice(0, 8).map((bucket) => (
+            <div key={bucket.label} className="space-y-1">
+              <div className="flex justify-between text-[11px] font-mono gap-2">
+                <span className="text-secondary-foreground/90 truncate">{bucket.label}</span>
+                <span className="font-bold text-foreground flex-shrink-0">
+                  ${Math.round(bucket.value).toLocaleString()}/mo
+                </span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-status-amber transition-all duration-500"
+                  style={{ width: `${(bucket.value / maxWaste) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-grow flex items-center justify-center text-center px-4 py-8">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Per-SKU waste appears once the license-waste check has collected
+            seat data for your tenant.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-4 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+        Waste dollars per SKU at real list prices — a full assigned-vs-purchased
+        SKU table isn&apos;t servable yet.
       </div>
     </div>
   );

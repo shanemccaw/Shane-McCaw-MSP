@@ -1,339 +1,240 @@
+/**
+ * /architecture — Architecture topic page, wired to REAL data end to end
+ * (formerly a mock structure-only page: invented tenant score composite, a
+ * fabricated node-graph topology, fake per-policy CA map, mock app/OAuth
+ * inventories, and simulated scan/remediation flows).
+ *
+ * Real sources (all pre-existing endpoints — see
+ * health-suite/useTopicHealthLive.ts):
+ *   • GET  /api/portal/assessment/status        — the real Architecture pillar
+ *     score from the package-aware radar.
+ *   • GET  /api/portal/mission-control/overview — real findings + linked
+ *     remediation offers, topic-scoped by transparent keyword filter.
+ *   • POST /api/dashboard/resolve               — real engine snapshot scores
+ *     (health/security/drift, with real history for the trend), the CA and
+ *     app-registration/OAuth drift watchers' real events, identity/role
+ *     density checks, and the real workload inventory counts.
+ *
+ * Content-loss note (mockup Header removal): the removed Header held a mock
+ * environment selector ("TENANT-01 PRODUCTION"), a hardcoded last-analysis
+ * time, and simulated scan/reset controls — no real display content to
+ * restore.
+ *
+ * HONEST GAPS (stated in the UI): per-policy CA inventory, per-app
+ * registration inventory (owners/credential expiry), per-grant OAuth consent
+ * inventory, and a cross-workload relationship graph — all need new Graph
+ * checks on the existing app registration.
+ */
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { AppShell } from '@/components/app-shell';
-import { Header } from '@/components/architecture/Header';
 import { ScoreOverview } from '@/components/architecture/ScoreOverview';
 import { TenantTopology } from '@/components/architecture/TenantTopology';
-import { IdentityRoleDensity } from '@/components/architecture/IdentityRoleDensity';
 import { ConditionalAccessMap } from '@/components/architecture/ConditionalAccessMap';
 import { AppRegistrationInventory } from '@/components/architecture/AppRegistrationInventory';
 import { OAuthPermissionRisk } from '@/components/architecture/OAuthPermissionRisk';
-import { CollaborationMap } from '@/components/architecture/CollaborationMap';
-import { TopRisks } from '@/components/architecture/TopRisks';
-import { AutomationPotential } from '@/components/architecture/AutomationPotential';
-import { ScanModal } from '@/components/architecture/ScanModal';
-import { DetailModal } from '@/components/architecture/DetailModal';
-
+import { TopicHero, HeroStat } from '@/components/health-suite/TopicHero';
+import { MetricGrid } from '@/components/health-suite/MetricGrid';
+import { DailyTrendPanel } from '@/components/health-suite/DailyTrendPanel';
+import { TopicFindings } from '@/components/health-suite/TopicFindings';
+import { AutomationOpportunities } from '@/components/health-suite/AutomationOpportunities';
+import { TopicRemediationModal } from '@/components/health-suite/TopicRemediationModal';
 import {
-  initialTenantScore,
-  initialRoleDensity,
-  initialRoleMatrix,
-  initialCAPolicies,
-  initialAppInventory,
-  initialOAuthRisk,
-  initialCollabItems,
-  initialRisks,
-  initialAutomationTargets,
-} from '@/components/architecture/mockData';
+  useTopicHealthLive,
+  filterFindingsByTopic,
+  resolvedValue,
+  TopicFinding,
+} from '@/components/health-suite/useTopicHealthLive';
+import { Users } from 'lucide-react';
 
-import {
-  TenantScore,
-  AutomationTarget,
-  ArchitectureRisk,
-  CAPolicy,
-  CollabItem,
-} from '@/components/architecture/types';
+const METRIC_KEYS = [
+  // Engine scores (real snapshots, history-capable)
+  'engine.healthScore',
+  'engine.securityScore',
+  'engine.driftScore',
+  // Conditional Access
+  'identity.caFailureCount',
+  'drift.caPolicyDriftCount',
+  'drift.securityDefaultsDriftCount',
+  // Identity & role density
+  'identity.globalAdminCount',
+  'identity.pimPermanentRoleCount',
+  'identity.staleAccountCount',
+  'identity.disabledAccountCount',
+  'identity.mfaRegisteredCount',
+  'identity.passwordlessUserCount',
+  // App registrations + OAuth
+  'drift.appConfigDriftCount',
+  'drift.redirectUriDriftCount',
+  'drift.secretDriftCount',
+  'drift.certificateDriftCount',
+  'drift.permissionDriftCount',
+  'dynamics.permissionGrantCount',
+  'dynamics.orphanedSpCount',
+  'dynamics.appPermissionCount',
+  'dynamics.consentChangeCount',
+  // Tenant surface inventory
+  'compliance.sharePointSiteCount',
+  'collaboration.teamsChannelCount',
+  'collaboration.mailboxCount',
+  'compliance.guestUserCount',
+  'powerPlatform.appCount',
+  'powerPlatform.flowCount',
+];
+
+const HISTORY_KEYS = ['engine.healthScore', 'engine.securityScore', 'engine.driftScore'];
+
+const TOPIC_KEYWORDS = [
+  'architect',
+  'conditional access',
+  'app registration',
+  'oauth',
+  'permission',
+  'consent',
+  'service principal',
+  'secret',
+  'certificate',
+  'mfa',
+  'passwordless',
+  'security defaults',
+  'drift',
+  'legacy auth',
+];
 
 export default function ArchitecturePage() {
-  const [environment, setEnvironment] = useState('TENANT-01 PRODUCTION');
-  const [lastAnalysis, setLastAnalysis] = useState('Today, 04:12 AM');
-  const [isScanning, setIsScanning] = useState(false);
-  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
-
-  const [score, setScore] = useState<TenantScore>(initialTenantScore);
-  const [targets, setTargets] = useState<AutomationTarget[]>(
-    initialAutomationTargets
-  );
-  const [caPolicies, setCaPolicies] = useState<CAPolicy[]>(initialCAPolicies);
-
-  // Modals state
-  const [modalConfig, setModalConfig] = useState<{
-    isOpen: boolean;
-    title: string;
-    subtitle?: string;
-    type: 'anomaly' | 'risk' | 'policy' | 'generic';
-    content?: React.ReactNode;
-  }>({
-    isOpen: false,
-    title: '',
-    type: 'generic',
+  const [, navigate] = useLocation();
+  const live = useTopicHealthLive({
+    pillar: 'architecture',
+    metricKeys: METRIC_KEYS,
+    historyKeys: HISTORY_KEYS,
   });
+  const [remediationFinding, setRemediationFinding] = useState<TopicFinding | null>(null);
 
-  // Notification Toast
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const allFindings = live.overview?.findings ?? [];
+  const topicFindings = filterFindingsByTopic(allFindings, TOPIC_KEYWORDS);
+  const otherCount = allFindings.length - topicFindings.length;
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  };
+  const caFailures = resolvedValue(live.metrics['identity.caFailureCount']);
+  const globalAdmins = resolvedValue(live.metrics['identity.globalAdminCount']);
+  const driftScore = resolvedValue(live.metrics['engine.driftScore']);
 
-  const handleRunScan = () => {
-    setIsScanning(true);
-    setIsScanModalOpen(true);
-  };
-
-  const handleCloseScanModal = () => {
-    setIsScanModalOpen(false);
-    setIsScanning(false);
-    setLastAnalysis('Just now');
-    showToast('Full tenant scan completed successfully.');
-  };
-
-  // Target automations
-  const handleApplyTarget = (targetId: string) => {
-    setTargets((prev) =>
-      prev.map((t) => (t.id === targetId ? { ...t, status: 'executed' } : t))
-    );
-
-    // Update score
-    setScore((prev) => {
-      const target = targets.find((t) => t.id === targetId);
-      const impact = target ? target.scoreImpact : 2;
-      const newOverall = Math.min(100, prev.overall + impact);
-
-      let newCA = prev.caArchitecture;
-      let newOAuth = prev.oauthGovernance;
-      let newCollab = prev.collabStructure;
-
-      if (targetId === 'auto-1') {
-        newCA = 92;
-        // Update CA policy status
-        setCaPolicies((pPrev) =>
-          pPrev.map((p) => ({ ...p, device: 'aligned', risk: 'aligned', enforcement: 'ACTIVE' }))
-        );
-      } else if (targetId === 'auto-2') {
-        newOAuth = 88;
-      } else if (targetId === 'auto-3') {
-        newCollab = 94;
-      }
-
-      return {
-        ...prev,
-        overall: newOverall,
-        caArchitecture: newCA,
-        oauthGovernance: newOAuth,
-        collabStructure: newCollab,
-        trend: `+${((newOverall - 88) + 3.2).toFixed(1)}% from last week`,
-        summary:
-          newOverall >= 94
-            ? 'Optimal alignment achieved across all CA policies, OAuth consent, and site structures.'
-            : 'Automation applied. Tenant security posture improved.',
-      };
-    });
-
-    const tgtName = targets.find((t) => t.id === targetId)?.title || 'Target';
-    showToast(`Successfully executed automation target: ${tgtName}`);
-  };
-
-  const handleApplyAll = () => {
-    setTargets((prev) => prev.map((t) => ({ ...t, status: 'executed' })));
-    setCaPolicies((pPrev) =>
-      pPrev.map((p) => ({
-        ...p,
-        device: 'aligned',
-        location: 'aligned',
-        risk: 'aligned',
-        app: 'aligned',
-        enforcement: 'ACTIVE',
-      }))
-    );
-
-    setScore({
-      overall: 94,
-      projected: 94,
-      trend: '+9.2% from last week',
-      summary:
-        'Optimal tenant alignment achieved across CA, OAuth, and Collaboration structures.',
-      directoryHygiene: 92,
-      caArchitecture: 94,
-      oauthGovernance: 90,
-      collabStructure: 94,
-    });
-
-    showToast('Automated all 3 targets! Architecture score increased to 94/100.');
-  };
-
-  const handleReset = () => {
-    setScore(initialTenantScore);
-    setTargets(initialAutomationTargets);
-    setCaPolicies(initialCAPolicies);
-    showToast('Reset dashboard to original state.');
-  };
-
-  // Modal Openers
-  const handleOpenAnomalies = () => {
-    setModalConfig({
-      isOpen: true,
-      title: 'Structural Anomalies Detected (12)',
-      subtitle: 'Tenant-01 Topology Integrity Engine',
-      type: 'anomaly',
-      content: (
-        <div className="space-y-3">
-          <div className="rounded border border-[#f59e0b]/30 bg-[#f59e0b]/10 p-3">
-            <div className="font-bold text-[#f59e0b]">
-              Orphaned Security Groups (8)
-            </div>
-            <p className="mt-1 text-[#c0c7d3]">
-              8 security groups have no active owners or members assigned following
-              recent OU migration.
-            </p>
-          </div>
-          <div className="rounded border border-[#f59e0b]/30 bg-[#f59e0b]/10 p-3">
-            <div className="font-bold text-[#f59e0b]">
-              Circular Nested Group Dependencies (4)
-            </div>
-            <p className="mt-1 text-[#c0c7d3]">
-              Group &quot;Sec-Dev-Admins&quot; contains circular nested references with
-              &quot;Sec-Cloud-Ops&quot; creating token evaluation loops.
-            </p>
-          </div>
-        </div>
-      ),
-    });
-  };
-
-  const handleSelectRisk = (risk: ArchitectureRisk) => {
-    setModalConfig({
-      isOpen: true,
-      title: risk.title,
-      subtitle: `Data endpoint: ${risk.dataPath}`,
-      type: 'risk',
-      content: (
-        <div className="space-y-3">
-          <div className="rounded bg-[#121414] p-3 border border-[#282a2b]">
-            <div className="font-bold text-[#e2e2e2] mb-1">Impact Analysis</div>
-            <p className="text-[#c0c7d3]">{risk.description}</p>
-          </div>
-          <div className="rounded bg-[#001c37] p-3 border border-[#479ef5]/30">
-            <div className="font-bold text-[#a0c9ff] mb-1">Recommended Remediation</div>
-            <p className="text-[#c0c7d3]">{risk.remediation}</p>
-          </div>
-        </div>
-      ),
-    });
-  };
-
-  const handleSelectPolicy = (pol: CAPolicy) => {
-    setModalConfig({
-      isOpen: true,
-      title: `Policy: ${pol.name}`,
-      subtitle: `Enforcement Mode: ${pol.enforcement}`,
-      type: 'policy',
-      content: (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-center my-2">
-            <div className="p-2 border border-[#282a2b] bg-[#121414] rounded">
-              <span className="text-[#8a919d]">Device Rule:</span>{' '}
-              <strong className="text-[#a0c9ff] uppercase">{pol.device}</strong>
-            </div>
-            <div className="p-2 border border-[#282a2b] bg-[#121414] rounded">
-              <span className="text-[#8a919d]">Location Rule:</span>{' '}
-              <strong className="text-[#a0c9ff] uppercase">{pol.location}</strong>
-            </div>
-            <div className="p-2 border border-[#282a2b] bg-[#121414] rounded">
-              <span className="text-[#8a919d]">Risk Rule:</span>{' '}
-              <strong className="text-[#a0c9ff] uppercase">{pol.risk}</strong>
-            </div>
-            <div className="p-2 border border-[#282a2b] bg-[#121414] rounded">
-              <span className="text-[#8a919d]">App Scope:</span>{' '}
-              <strong className="text-[#a0c9ff] uppercase">{pol.app}</strong>
-            </div>
-          </div>
-        </div>
-      ),
-    });
-  };
-
-  const isAllExecuted = targets.every((t) => t.status === 'executed');
-  const isRemediated = score.overall > initialTenantScore.overall;
+  const heroStats: HeroStat[] = [
+    {
+      label: 'Drift Engine Score',
+      value: driftScore != null ? String(Math.round(driftScore)) : null,
+      caption: 'Configuration drift posture',
+      emptyCaption: 'No drift snapshot yet',
+      accent: 'blue',
+    },
+    {
+      label: 'CA Failures',
+      value: caFailures != null ? caFailures.toLocaleString() : null,
+      caption: 'Conditional Access failures in window',
+      emptyCaption: 'No CA data yet',
+      accent: caFailures != null && caFailures > 0 ? 'amber' : 'green',
+    },
+    {
+      label: 'Global Administrators',
+      value: globalAdmins != null ? globalAdmins.toLocaleString() : null,
+      caption: '2–4 with break-glass is healthy',
+      emptyCaption: 'No identity data yet',
+      accent: 'violet',
+    },
+    {
+      label: 'Topic Findings',
+      value: live.overview ? String(topicFindings.length) : null,
+      caption: 'Architecture-related scan findings',
+      emptyCaption: 'Appears after your first scan',
+      accent: 'teal',
+    },
+  ];
 
   return (
     <AppShell title="Architecture">
-    <div className="min-h-screen bg-[#121414] text-[#e2e2e2] antialiased selection:bg-[#479ef5] selection:text-[#001c37] p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-md border border-[#479ef5]/40 bg-[#001c37] px-4 py-3 font-mono text-xs font-semibold text-[#a0c9ff] shadow-2xl transition-all animate-bounce">
-          {toastMessage}
-        </div>
-      )}
+      <div className="min-h-screen relative">
+        <main className="relative max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
+          {/* 1. Hero — real Architecture pillar score */}
+          <TopicHero
+            title="Architecture Health"
+            pillarScore={live.pillarScore}
+            everScanned={Boolean(live.status?.scan.everScanned)}
+            scoreCaption="Architecture pillar score from your latest scan"
+            stats={heroStats}
+          />
 
-      <Header
-        currentEnvironment={environment}
-        onSelectEnvironment={setEnvironment}
-        lastAnalysisTime={lastAnalysis}
-        isScanning={isScanning}
-        onRunScan={handleRunScan}
-        isRemediated={isRemediated}
-        onReset={handleReset}
-      />
+          {/* 2. Real engine scores */}
+          <ScoreOverview metrics={live.metrics} pillarScore={live.pillarScore} />
 
-      {/* Top Score Row */}
-      <ScoreOverview
-        score={score}
-        onCardClick={(title) => showToast(`Selected metric: ${title}`)}
-      />
+          {/* 3. Tenant surface inventory */}
+          <TenantTopology metrics={live.metrics} />
 
-      {/* Section 1: Topology & Identity Density */}
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <TenantTopology
-          tenantName={environment.split(' ')[0]}
-          onOpenAnomalies={handleOpenAnomalies}
-        />
-        <IdentityRoleDensity
-          roles={initialRoleDensity}
-          matrix={initialRoleMatrix}
+          {/* 4. CA posture + identity density + score trend */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <ConditionalAccessMap metrics={live.metrics} />
+            <MetricGrid
+              title="IDENTITY & ROLE DENSITY"
+              subtitle="Real identity posture checks"
+              icon={Users}
+              columns={2}
+              tiles={[
+                { key: 'identity.globalAdminCount', label: 'Global Admins', caption: 'Role holders' },
+                { key: 'identity.pimPermanentRoleCount', label: 'Standing Priv. Roles', caption: 'Permanent assignments' },
+                { key: 'identity.mfaRegisteredCount', label: 'MFA Registered', caption: 'Users with MFA methods' },
+                { key: 'identity.passwordlessUserCount', label: 'Passwordless Users', caption: 'Phishing-resistant auth' },
+                { key: 'identity.staleAccountCount', label: 'Stale Accounts', caption: 'No recent sign-in' },
+                { key: 'identity.disabledAccountCount', label: 'Disabled Accounts', caption: 'Blocked from sign-in' },
+              ]}
+              metrics={live.metrics}
+            />
+            <DailyTrendPanel
+              title="ENGINE SCORE TREND"
+              seriesDefs={[
+                { key: 'engine.healthScore', label: 'Health', color: 'var(--color-primary)' },
+                { key: 'engine.securityScore', label: 'Security', color: 'var(--color-status-red)' },
+                { key: 'engine.driftScore', label: 'Drift', color: 'var(--color-status-amber)' },
+              ]}
+              metrics={live.metrics}
+            />
+          </section>
+
+          {/* 5. App registrations + OAuth risk */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <AppRegistrationInventory metrics={live.metrics} />
+            <OAuthPermissionRisk metrics={live.metrics} />
+          </section>
+
+          {/* 6. Real topic findings */}
+          <TopicFindings
+            title="Top Architecture Risks"
+            subtitle={
+              otherCount > 0
+                ? `Architecture-related findings from your latest scan · ${otherCount} further finding${otherCount === 1 ? '' : 's'} from other pillars on M365 Health`
+                : 'Architecture-related findings from your latest scan'
+            }
+            findings={topicFindings}
+            loaded={live.loaded}
+            emptyCopy="No architecture-related findings — they appear after your first completed scan."
+            onRemediateFinding={setRemediationFinding}
+          />
+
+          {/* 7. Automation — real linked offers only, honest execution-blocked state */}
+          <AutomationOpportunities
+            findings={topicFindings}
+            loaded={live.loaded}
+            onOpenOffers={() => navigate('/customer-offers')}
+            onRemediateFinding={setRemediationFinding}
+          />
+        </main>
+
+        <TopicRemediationModal
+          finding={remediationFinding}
+          onClose={() => setRemediationFinding(null)}
+          onOpenOffers={() => {
+            setRemediationFinding(null);
+            navigate('/customer-offers');
+          }}
         />
       </div>
-
-      {/* Section 2: Conditional Access Architecture Map */}
-      <ConditionalAccessMap
-        policies={caPolicies}
-        onSelectPolicy={handleSelectPolicy}
-      />
-
-      {/* Section 3: App Inventory & OAuth Risk */}
-      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <AppRegistrationInventory inventory={initialAppInventory} />
-        <OAuthPermissionRisk oauthRisk={initialOAuthRisk} />
-      </div>
-
-      {/* Section 4: Collaboration Structure Map */}
-      <CollaborationMap
-        items={initialCollabItems}
-        onItemClick={(item: CollabItem) =>
-          showToast(`Inspecting ${item.title}: ${item.value}`)
-        }
-      />
-
-      {/* Section 5: Top Risks & Automation Potential */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <TopRisks risks={initialRisks} onSelectRisk={handleSelectRisk} />
-        <AutomationPotential
-          targets={targets}
-          onApplyTarget={handleApplyTarget}
-          onApplyAll={handleApplyAll}
-          isAllExecuted={isAllExecuted}
-        />
-      </div>
-
-      {/* Analysis Scan Modal */}
-      <ScanModal
-        isOpen={isScanModalOpen}
-        onClose={handleCloseScanModal}
-        environmentName={environment}
-      />
-
-      {/* Detail Inspection Modal */}
-      <DetailModal
-        isOpen={modalConfig.isOpen}
-        onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
-        title={modalConfig.title}
-        subtitle={modalConfig.subtitle}
-        type={modalConfig.type}
-        content={modalConfig.content}
-      />
-    </div>
     </AppShell>
   );
 }

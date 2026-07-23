@@ -1,176 +1,106 @@
-import React, { useState } from 'react';
-import { AlertCircle, X, ThumbsUp, Wrench, Check } from 'lucide-react';
-import { ReadinessBlocker } from './types';
+import React from 'react';
+import { AlertCircle, CheckCircle2, CircleDashed } from 'lucide-react';
+import { scoreBand, BAND_TEXT_CLASS } from '@/components/health-suite/useTopicHealthLive';
+import type { CopilotReadinessLive } from '@/components/assessment-test/types';
+
+/**
+ * Readiness Blockers — derived from the REAL Copilot-readiness indicators
+ * (replacing the mock blocker list). An indicator is a blocker when its real
+ * score is below the healthy band (<70, the shared score threshold); an
+ * uncovered indicator is listed as "not measured yet" — a different honest
+ * state from "blocked". Nothing invented, no fake remediate buttons — real
+ * remediation offers surface through the Automation Opportunities section.
+ */
 
 interface ReadinessBlockersProps {
-  blockers: ReadinessBlocker[];
-  onRemediateBlocker: (blockerId: string) => void;
+  copilotReadiness: CopilotReadinessLive | null;
 }
 
-export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({
-  blockers,
-  onRemediateBlocker
-}) => {
-  const [selectedBlocker, setSelectedBlocker] = useState<ReadinessBlocker | null>(
-    null
-  );
+const INDICATORS: {
+  key: 'sharePointTeams' | 'sensitivityLabels' | 'dlp';
+  label: string;
+  blockedCopy: string;
+}[] = [
+  {
+    key: 'sharePointTeams',
+    label: 'SharePoint & Teams exposure',
+    blockedCopy: 'Overshared content would be surfaced by Copilot answers.',
+  },
+  {
+    key: 'sensitivityLabels',
+    label: 'Sensitivity labels',
+    blockedCopy: 'Unlabeled content can’t be protected by label-aware policies.',
+  },
+  {
+    key: 'dlp',
+    label: 'Data loss prevention',
+    blockedCopy: 'Weak DLP coverage lets sensitive data flow into prompts/answers.',
+  },
+];
 
-  const getSeverityBadge = (severity: ReadinessBlocker['severity']) => {
-    switch (severity) {
-      case 'CRITICAL':
-        return (
-          <span className="text-xs font-mono font-bold bg-red-500/20 text-red-400 px-3 py-1 border border-red-500/30 rounded-xs">
-            CRITICAL
-          </span>
-        );
-      case 'HIGH':
-        return (
-          <span className="text-xs font-mono font-bold bg-amber-500/20 text-amber-500 px-3 py-1 border border-amber-500/30 rounded-xs">
-            HIGH
-          </span>
-        );
-      case 'MEDIUM':
-        return (
-          <span className="text-xs font-mono font-bold bg-[#b388ff]/20 text-[#b388ff] px-3 py-1 border border-[#b388ff]/30 rounded-xs">
-            MEDIUM
-          </span>
-        );
-      default:
-        return (
-          <span className="text-xs font-mono font-bold bg-[#8a919d]/20 text-[#8a919d] px-3 py-1 border border-[#8a919d]/30 rounded-xs">
-            LOW
-          </span>
-        );
-    }
-  };
+export const ReadinessBlockers: React.FC<ReadinessBlockersProps> = ({ copilotReadiness }) => {
+  const rows = INDICATORS.map((def) => {
+    const indicator = copilotReadiness?.[def.key] ?? null;
+    const score = indicator?.score ?? null;
+    const state: 'blocked' | 'healthy' | 'unmeasured' =
+      score == null ? 'unmeasured' : score < 70 ? 'blocked' : 'healthy';
+    return { ...def, score, state };
+  });
+  const blockedCount = rows.filter((r) => r.state === 'blocked').length;
 
   return (
-    <section className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="p-6 border-b border-[#2b2b2b] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white/5">
-        <h3 className="font-display text-lg font-semibold text-[#f0f0f0]">
-          Top 5 Copilot Readiness Blockers
-        </h3>
-        <span className="text-xs font-mono text-red-400 uppercase font-semibold flex items-center gap-1.5 bg-red-500/10 px-3 py-1 rounded border border-red-500/20">
-          <AlertCircle className="w-4 h-4" />
-          CRITICAL ACTION REQUIRED
+    <div className="bg-card border border-border rounded-xl p-5 flex flex-col h-full">
+      <div className="flex justify-between items-center mb-3">
+        <h4 className="font-mono text-xs font-semibold text-foreground uppercase flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5 text-status-red" />
+          READINESS BLOCKERS
+        </h4>
+        <span className="text-xs font-mono text-muted-foreground">
+          {copilotReadiness
+            ? blockedCount > 0
+              ? `${blockedCount} blocking`
+              : 'None blocking'
+            : 'Awaiting data'}
         </span>
       </div>
 
-      {/* List */}
-      <div className="divide-y divide-[#2b2b2b]">
-        {blockers.map((item) => (
-          <div
-            key={item.id}
-            onClick={() => setSelectedBlocker(item)}
-            className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors cursor-pointer ${
-              item.remediated
-                ? 'bg-emerald-950/20 opacity-60'
-                : 'hover:bg-white/5'
-            }`}
-          >
-            <div className="flex items-center gap-4">
-              <span className="w-8 font-display text-2xl font-bold opacity-20 text-white flex-shrink-0">
-                {item.rank}
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-mono text-sm font-semibold text-[#f0f0f0]">
-                    {item.title}
-                  </h4>
-                  {item.remediated && (
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                      RESOLVED
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs font-body text-[#c0c7d3] mt-0.5">
-                  {item.description}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between md:justify-end gap-6 min-w-[220px]">
-              {getSeverityBadge(item.severity)}
-              <span className="text-xs font-mono text-[#8a919d]">
-                SOURCE: <strong className="text-[#c0c7d3]">{item.source}</strong>
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Blocker Action Modal/Drawer */}
-      {selectedBlocker && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="max-w-lg w-full rounded-xl border border-[#404752] p-6 space-y-6 shadow-2xl">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2">
-                <span className="font-display text-2xl font-bold text-red-400">
-                  #{selectedBlocker.rank}
-                </span>
-                <div>
-                  <h3 className="font-display text-xl font-bold text-white">
-                    {selectedBlocker.title}
-                  </h3>
-                  <span className="text-xs font-mono text-[#8a919d]">
-                    Source: {selectedBlocker.source}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedBlocker(null)}
-                className="text-[#8a919d] hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 font-body text-xs text-[#c0c7d3]">
-              <div className="p-3 rounded-lg bg-[#1a1a1a] border border-[#2b2b2b]">
-                <strong className="block text-white font-mono uppercase mb-1">
-                  Issue Description
-                </strong>
-                {selectedBlocker.description}
-              </div>
-
-              <div className="p-3 rounded-lg bg-[#1a1a1a] border border-[#479ef5]/30">
-                <strong className="block text-[#479ef5] font-mono uppercase mb-1 flex items-center gap-1">
-                  <ThumbsUp className="w-4 h-4" />
-                  Recommended Action Plan
-                </strong>
-                {selectedBlocker.recommendation}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#2b2b2b]">
-              <button
-                onClick={() => setSelectedBlocker(null)}
-                className="px-4 py-2 font-mono text-xs rounded-md border border-[#2b2b2b] text-[#c0c7d3] hover:text-white hover:bg-white/5 transition-all"
-              >
-                CANCEL
-              </button>
-              {!selectedBlocker.remediated ? (
-                <button
-                  onClick={() => {
-                    onRemediateBlocker(selectedBlocker.id);
-                    setSelectedBlocker(null);
-                  }}
-                  className="px-5 py-2 font-mono text-xs font-semibold rounded-md bg-[#479ef5] text-[#003259] hover:bg-[#3284d6] transition-all shadow-md flex items-center gap-1.5"
+      <ul className="divide-y divide-border flex-grow">
+        {rows.map((row) => (
+          <li key={row.key} className="py-3 flex items-start gap-3">
+            {row.state === 'blocked' ? (
+              <AlertCircle className="w-4 h-4 text-status-red flex-shrink-0 mt-0.5" />
+            ) : row.state === 'healthy' ? (
+              <CheckCircle2 className="w-4 h-4 text-status-green flex-shrink-0 mt-0.5" />
+            ) : (
+              <CircleDashed className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+            )}
+            <div className="min-w-0 flex-grow">
+              <div className="flex justify-between items-baseline gap-2">
+                <p className="text-xs font-semibold text-foreground">{row.label}</p>
+                <span
+                  className={`text-xs font-mono font-bold flex-shrink-0 ${
+                    row.score != null ? BAND_TEXT_CLASS[scoreBand(row.score)] : 'text-muted-foreground'
+                  }`}
                 >
-                  <Wrench className="w-4 h-4" />
-                  REMEDIATE NOW (+{selectedBlocker.impactScore} SCORE)
-                </button>
-              ) : (
-                <span className="font-mono text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                  <Check className="w-4 h-4" />
-                  REMEDIATION COMPLETED
+                  {row.score != null ? `${row.score}%` : 'not measured'}
                 </span>
-              )}
+              </div>
+              <p className="text-[11px] text-secondary-foreground/90 mt-0.5 leading-relaxed">
+                {row.state === 'blocked'
+                  ? row.blockedCopy
+                  : row.state === 'healthy'
+                    ? 'Within the healthy band (≥70).'
+                    : 'This indicator hasn’t been measured yet — it appears once the backing checks collect data.'}
+              </p>
             </div>
-          </div>
-        </div>
-      )}
-    </section>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-2 pt-2 border-t border-border text-[10px] font-mono text-muted-foreground leading-relaxed">
+        Blockers derive from your real readiness indicators (threshold 70) —
+        remediation runs through your MSP&apos;s real offers, not one-click toggles.
+      </div>
+    </div>
   );
 };

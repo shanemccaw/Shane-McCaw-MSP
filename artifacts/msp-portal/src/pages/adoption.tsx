@@ -1,257 +1,200 @@
+/**
+ * /adoption — Adoption topic page, wired to REAL data end to end (formerly a
+ * mock structure-only page: fabricated department heatmap, invented 12-month
+ * collaboration trend, fake Copilot usage split, and fake automation toasts).
+ *
+ * Real sources (all pre-existing endpoints — see
+ * health-suite/useTopicHealthLive.ts):
+ *   • GET  /api/portal/assessment/status        — the real Adoption pillar
+ *     score + the real Copilot-readiness block.
+ *   • GET  /api/portal/mission-control/overview — real findings + linked
+ *     remediation offers, topic-scoped by transparent keyword filter.
+ *   • POST /api/dashboard/resolve               — the real usage.* active-user
+ *     and adoption-score checks, collaboration/mailbox posture checks, and the
+ *     real file-activity day×hour heatmap.
+ *
+ * HONEST GAPS (stated in the UI, reported in PLATFORM_BUILD.md):
+ *   • Per-workload adoption HISTORY — usage.* checks aren't history-enabled
+ *     in the registry (smartEligible=false), so the mock 12-month trend is
+ *     replaced by real current scores with the gap stated.
+ *   • Per-department activity + per-user Copilot usage — not collected by any
+ *     check; never fabricated.
+ *
+ * Content-loss note (mockup Header removal): the removed Header held
+ * timeframe/department filters, search, and refresh/export controls — all
+ * driving mock data only (the department dimension doesn't exist in real
+ * data). No real display content to restore.
+ */
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { AppShell } from '@/components/app-shell';
-import {
-  TimeFrame,
-  Department,
-  Opportunity,
-  AutomationAction
-} from '@/components/adoption/types';
-import {
-  INITIAL_HEATMAP_DATA,
-  COLLABORATION_TREND_DATA,
-  COPILOT_USAGE_DATA,
-  TOP_OPPORTUNITIES,
-  AUTOMATION_ACTIONS
-} from '@/components/adoption/mockData';
-
-import { Header } from '@/components/adoption/Header';
-import { HeroBand } from '@/components/adoption/HeroBand';
 import { TeamsHeatMap } from '@/components/adoption/TeamsHeatMap';
 import { CollaborationTrend } from '@/components/adoption/CollaborationTrend';
 import { EmailProductivity } from '@/components/adoption/EmailProductivity';
 import { CopilotUsage } from '@/components/adoption/CopilotUsage';
-import { TopOpportunities } from '@/components/adoption/TopOpportunities';
-import { AutomationPotential } from '@/components/adoption/AutomationPotential';
-import { ActionModal } from '@/components/adoption/ActionModal';
-import { NotificationToast, ToastMessage } from '@/components/adoption/NotificationToast';
+import { TopicHero, HeroStat } from '@/components/health-suite/TopicHero';
+import { ActivityHeatmapPanel } from '@/components/health-suite/ActivityHeatmapPanel';
+import { TopicFindings } from '@/components/health-suite/TopicFindings';
+import { AutomationOpportunities } from '@/components/health-suite/AutomationOpportunities';
+import { TopicRemediationModal } from '@/components/health-suite/TopicRemediationModal';
+import {
+  useTopicHealthLive,
+  filterFindingsByTopic,
+  resolvedValue,
+  TopicFinding,
+} from '@/components/health-suite/useTopicHealthLive';
+
+const METRIC_KEYS = [
+  // Active users per workload
+  'usage.teamsActiveCount',
+  'usage.exchangeActiveCount',
+  'usage.sharePointActiveCount',
+  'usage.oneDriveActiveCount',
+  // Adoption scores per workload
+  'usage.teamsUsageCount',
+  'usage.exchangeUsageCount',
+  'usage.sharePointUsageCount',
+  'usage.oneDriveUsageCount',
+  // Mailbox / collaboration posture
+  'collaboration.mailboxCount',
+  'collaboration.activeEmailUserCount',
+  'collaboration.forwardingMailboxCount',
+  'collaboration.sharedMailboxSigninEnabledCount',
+  'collaboration.inboxRuleCount',
+  'collaboration.delegationGrantCount',
+  'collaboration.teamsChannelCount',
+  // File activity heatmap (real day×hour aggregation)
+  'collaboration.fileActivity',
+  // Copilot
+  'licensing.copilotLicenseBreakdown',
+  'copilot.usagePerUser',
+];
+
+const TOPIC_KEYWORDS = [
+  'adoption',
+  'usage',
+  'active user',
+  'teams',
+  'exchange',
+  'sharepoint',
+  'onedrive',
+  'mailbox',
+  'email',
+  'copilot',
+  'collaboration',
+];
 
 export default function AdoptionPage() {
-  const [timeframe, setTimeframe] = useState<TimeFrame>('30d');
-  const [selectedDepartment, setSelectedDepartment] = useState<Department>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [selectedModalItem, setSelectedModalItem] = useState<Opportunity | AutomationAction | null>(null);
-  const [activeExecutingActionId, setActiveExecutingActionId] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [, navigate] = useLocation();
+  const live = useTopicHealthLive({ pillar: 'adoption', metricKeys: METRIC_KEYS });
+  const [remediationFinding, setRemediationFinding] = useState<TopicFinding | null>(null);
 
-  // Timeframe scaled metric overrides
-  const getMetrics = () => {
-    switch (timeframe) {
-      case '7d':
-        return {
-          score: 65,
-          scoreChange: '+1.8% from last week',
-          teamsUsers: 11890,
-          sharepointSites: 812,
-          copilotUsers: 1020,
-          emailScore: 82,
-          sent: 1120,
-          received: 2240,
-          unread: 380,
-          inactiveSites: 18,
-          lowCollab: 64,
-          highCollab: 712,
-        };
-      case '90d':
-        return {
-          score: 59,
-          scoreChange: '+8.5% from last quarter',
-          teamsUsers: 13150,
-          sharepointSites: 890,
-          copilotUsers: 1280,
-          emailScore: 74,
-          sent: 12840,
-          received: 24300,
-          unread: 3950,
-          inactiveSites: 68,
-          lowCollab: 195,
-          highCollab: 580,
-        };
-      case '30d':
-      default:
-        return {
-          score: 62,
-          scoreChange: '+4.2% from last month',
-          teamsUsers: 12402,
-          sharepointSites: 842,
-          copilotUsers: 1105,
-          emailScore: 78,
-          sent: 4203,
-          received: 8110,
-          unread: 1452,
-          inactiveSites: 42,
-          lowCollab: 128,
-          highCollab: 672,
-        };
-    }
-  };
+  const allFindings = live.overview?.findings ?? [];
+  const topicFindings = filterFindingsByTopic(allFindings, TOPIC_KEYWORDS);
+  const otherCount = allFindings.length - topicFindings.length;
 
-  const currentMetrics = getMetrics();
+  const teamsActive = resolvedValue(live.metrics['usage.teamsActiveCount']);
+  const emailActive = resolvedValue(live.metrics['collaboration.activeEmailUserCount']);
+  const oneDriveActive = resolvedValue(live.metrics['usage.oneDriveActiveCount']);
 
-  // Filtered opportunities by search or department
-  const filteredOpportunities = TOP_OPPORTUNITIES.filter((opp) => {
-    const matchesSearch = 
-      opp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      opp.severity.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (opp.department && opp.department.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesDept = 
-      selectedDepartment === 'All' || 
-      !opp.department || 
-      opp.department.toLowerCase().includes(selectedDepartment.toLowerCase()) ||
-      opp.department.includes('All');
-
-    return matchesSearch && matchesDept;
-  });
-
-  // Handlers
-  const handleRefreshData = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      setToast({
-        id: Date.now().toString(),
-        type: 'info',
-        title: 'Tenant Telemetry Synchronized',
-        message: 'Successfully polled latest Microsoft Graph API adoption events across 12,402 active users.'
-      });
-    }, 1000);
-  };
-
-  const handleExportReport = () => {
-    // Generate simple CSV download for user
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Metric,Value,Timeframe\n"
-      + `Adoption Health Score,${currentMetrics.score},${timeframe}\n`
-      + `Active Teams Users,${currentMetrics.teamsUsers},${timeframe}\n`
-      + `Active SharePoint Sites,${currentMetrics.sharepointSites},${timeframe}\n`
-      + `Copilot Active Users,${currentMetrics.copilotUsers},${timeframe}\n`
-      + `Email Productivity Score,${currentMetrics.emailScore},${timeframe}\n`;
-      
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Adoption_Intelligence_Report_${timeframe}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setToast({
-      id: Date.now().toString(),
-      type: 'success',
-      title: 'Report Downloaded',
-      message: `Exported Adoption_Intelligence_Report_${timeframe}.csv to your local downloads.`
-    });
-  };
-
-  const handleTriggerAutomation = (action: AutomationAction) => {
-    setActiveExecutingActionId(action.id);
-    setTimeout(() => {
-      setActiveExecutingActionId(null);
-      setToast({
-        id: Date.now().toString(),
-        type: 'success',
-        title: `${action.title} Executed`,
-        message: action.successMessage
-      });
-    }, 800);
-  };
-
-  const handleModalConfirm = (item: Opportunity | AutomationAction) => {
-    setToast({
-      id: Date.now().toString(),
-      type: 'success',
-      title: 'Remediation Command Dispatched',
-      message: `Action confirmed for "${item.title}". Microsoft 365 workflow initiated.`
-    });
-  };
+  const heroStats: HeroStat[] = [
+    {
+      label: 'Teams Active Users',
+      value: teamsActive != null ? teamsActive.toLocaleString() : null,
+      caption: 'From the Teams usage check',
+      emptyCaption: 'No usage data yet',
+      accent: 'blue',
+    },
+    {
+      label: 'Active Email Users',
+      value: emailActive != null ? emailActive.toLocaleString() : null,
+      caption: 'From the email activity check',
+      emptyCaption: 'No usage data yet',
+      accent: 'teal',
+    },
+    {
+      label: 'OneDrive Active Users',
+      value: oneDriveActive != null ? oneDriveActive.toLocaleString() : null,
+      caption: 'From the OneDrive usage check',
+      emptyCaption: 'No usage data yet',
+      accent: 'violet',
+    },
+    {
+      label: 'Topic Findings',
+      value: live.overview ? String(topicFindings.length) : null,
+      caption: 'Adoption-related scan findings',
+      emptyCaption: 'Appears after your first scan',
+      accent: 'amber',
+    },
+  ];
 
   return (
     <AppShell title="Adoption">
-    <div className="grid-overlay min-h-screen p-4 sm:p-6 lg:p-8 font-body">
-      <main className="max-w-[1440px] mx-auto space-y-6">
-        {/* SECTION 0: HEADER */}
-        <Header
-          timeframe={timeframe}
-          setTimeframe={setTimeframe}
-          selectedDepartment={selectedDepartment}
-          setSelectedDepartment={setSelectedDepartment}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          onRefreshData={handleRefreshData}
-          onExportReport={handleExportReport}
-          isRefreshing={isRefreshing}
-        />
-
-        {/* SECTION 1: HERO BAND */}
-        <HeroBand
-          score={currentMetrics.score}
-          scoreChange={currentMetrics.scoreChange}
-          teamsUsers={currentMetrics.teamsUsers}
-          sharepointSites={currentMetrics.sharepointSites}
-          copilotUsers={currentMetrics.copilotUsers}
-        />
-
-        {/* SECTION 2 & 3: HEAT MAP & COLLABORATION TREND */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-          <TeamsHeatMap
-            data={INITIAL_HEATMAP_DATA}
-            selectedDepartment={selectedDepartment}
-            onSelectDepartment={setSelectedDepartment}
+      <div className="min-h-screen relative">
+        <main className="relative max-w-[1440px] mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
+          {/* 1. Hero — real Adoption pillar score + real usage stats */}
+          <TopicHero
+            title="Adoption Health"
+            pillarScore={live.pillarScore}
+            everScanned={Boolean(live.status?.scan.everScanned)}
+            scoreCaption="Adoption pillar score from your latest scan"
+            stats={heroStats}
           />
 
-          <CollaborationTrend
-            data={COLLABORATION_TREND_DATA}
-            inactiveSites={currentMetrics.inactiveSites}
-            lowCollabSites={currentMetrics.lowCollab}
-            highCollabSites={currentMetrics.highCollab}
-          />
-        </div>
-
-        {/* SECTION 4 & 5: EMAIL PRODUCTIVITY & COPILOT USAGE */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          <div className="lg:col-span-5">
-            <EmailProductivity
-              score={currentMetrics.emailScore}
-              sentMessages={currentMetrics.sent}
-              receivedMessages={currentMetrics.received}
-              unreadBacklog={currentMetrics.unread}
+          {/* 2. Workload activity + real file-activity heatmap */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TeamsHeatMap metrics={live.metrics} />
+            <ActivityHeatmapPanel
+              title="FILE ACTIVITY HEATMAP"
+              subtitle="Real OneDrive/SharePoint events"
+              metricKey="collaboration.fileActivity"
+              metrics={live.metrics}
+              emptyCopy="The file-activity heatmap appears once the usage checks have collected raw activity events for your tenant."
             />
-          </div>
+          </section>
 
-          <div className="lg:col-span-7">
-            <CopilotUsage data={COPILOT_USAGE_DATA} />
-          </div>
-        </div>
+          {/* 3. Adoption scores, email posture, Copilot readiness */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <CollaborationTrend metrics={live.metrics} />
+            <EmailProductivity metrics={live.metrics} />
+            <CopilotUsage
+              metrics={live.metrics}
+              copilotReadiness={live.status?.copilotReadiness ?? null}
+            />
+          </section>
 
-        {/* SECTION 6: TOP 5 OPPORTUNITIES */}
-        <TopOpportunities
-          opportunities={filteredOpportunities}
-          onSelectOpportunity={(opp) => setSelectedModalItem(opp)}
+          {/* 4. Real topic findings ("Top Opportunities") */}
+          <TopicFindings
+            title="Top Adoption Opportunities"
+            subtitle={
+              otherCount > 0
+                ? `Adoption-related findings from your latest scan · ${otherCount} further finding${otherCount === 1 ? '' : 's'} from other pillars on M365 Health`
+                : 'Adoption-related findings from your latest scan'
+            }
+            findings={topicFindings}
+            loaded={live.loaded}
+            emptyCopy="No adoption-related findings — they appear after your first completed scan."
+            onRemediateFinding={setRemediationFinding}
+          />
+
+          {/* 5. Automation — real linked offers only, honest execution-blocked state */}
+          <AutomationOpportunities
+            findings={topicFindings}
+            loaded={live.loaded}
+            onOpenOffers={() => navigate('/customer-offers')}
+            onRemediateFinding={setRemediationFinding}
+          />
+        </main>
+
+        <TopicRemediationModal
+          finding={remediationFinding}
+          onClose={() => setRemediationFinding(null)}
+          onOpenOffers={() => {
+            setRemediationFinding(null);
+            navigate('/customer-offers');
+          }}
         />
-
-        {/* SECTION 7: AUTOMATION POTENTIAL */}
-        <AutomationPotential
-          actions={AUTOMATION_ACTIONS}
-          onTriggerAction={(action) => handleTriggerAutomation(action)}
-          activeActionId={activeExecutingActionId}
-        />
-      </main>
-
-      {/* Action Detail Modal */}
-      <ActionModal
-        isOpen={!!selectedModalItem}
-        onClose={() => setSelectedModalItem(null)}
-        item={selectedModalItem}
-        onConfirm={handleModalConfirm}
-      />
-
-      {/* Toast Feedback */}
-      <NotificationToast
-        toast={toast}
-        onDismiss={() => setToast(null)}
-      />
-    </div>
+      </div>
     </AppShell>
   );
 }
