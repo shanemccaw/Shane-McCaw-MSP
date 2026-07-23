@@ -134,6 +134,32 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     const resolvedFulfillmentType = validFulfillmentTypes.includes(fulfillmentType as typeof validFulfillmentTypes[number])
       ? (fulfillmentType as "standard" | "msp_monthly_subscription")
       : undefined;
+    // ── Canonical cents columns: absent key means "leave unchanged" ───────────
+    // Every other field on this handler is set unconditionally, so a key missing
+    // from the body is written as NULL. That is wrong for the three integer-cents
+    // columns, because the admin catalog editor's form schema does not contain
+    // them (ServiceEditorShell.tsx `serviceSchema` carries price/basePrice/
+    // maxPrice only) and neither does the duplicate-service payload
+    // (CatalogProductList.tsx handleDuplicate). Every save through the catalog
+    // editor therefore NULLed price_cents, internal_cost_cents and
+    // annual_price_cents — silently destroying the canonical price written by
+    // POST /admin/services (which writes ONLY price_cents), the MSP wholesale
+    // cost, and an MSP tier's annual price. This is a primary producer of the
+    // platform-wide "price lives only in the legacy decimal column, price_cents
+    // NULL" rows (see lib/db/migrations/manual/2026-07-23-price-cents-backfill.sql).
+    //
+    // Presence-based, not value-based: an explicit `"priceCents": null` in the
+    // body still clears the column, so deliberately unsetting a price still
+    // works. Callers that do send the field (PlanManagement.tsx round-trips the
+    // full GET payload) are unaffected.
+    const centsColumnUpdates: {
+      priceCents?: number | null;
+      internalCostCents?: number | null;
+      annualPriceCents?: number | null;
+    } = {};
+    if ("priceCents" in body) centsColumnUpdates.priceCents = priceCents != null ? Number(priceCents) : null;
+    if ("internalCostCents" in body) centsColumnUpdates.internalCostCents = internalCostCents != null ? Number(internalCostCents) : null;
+    if ("annualPriceCents" in body) centsColumnUpdates.annualPriceCents = annualPriceCents != null ? Number(annualPriceCents) : null;
     const [updated] = await db
       .update(servicesTable)
       .set({
@@ -178,9 +204,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         ...(resolvedFulfillmentType !== undefined ? { fulfillmentType: resolvedFulfillmentType } : {}),
         typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
         associatedDocuments: parseAssociatedDocuments(associatedDocuments),
-        priceCents: priceCents != null ? Number(priceCents) : null,
-        internalCostCents: internalCostCents != null ? Number(internalCostCents) : null,
-        annualPriceCents: annualPriceCents != null ? Number(annualPriceCents) : null,
+        ...centsColumnUpdates,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
@@ -770,11 +794,33 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
 
       const resolvedBillingTypeImport: "one_time" | "recurring_monthly" =
         (item.billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time";
+
+      // ── Derive the canonical price_cents from the legacy decimal input ──────
+      // No product type's import allow-list contains `priceCents`
+      // (PRODUCT_TYPE_IMPORT_FIELDS, productTypeConfig.ts) — types carry `price`
+      // and/or `basePrice` in dollars — and this INSERT did not list the
+      // price_cents column at all. Every imported product therefore landed with
+      // its real price in a legacy decimal column and price_cents NULL, which is
+      // the primary source of the platform-wide NULL-price_cents population that
+      // 2026-07-23-price-cents-backfill.sql repairs. Deriving it here stops the
+      // import re-creating the problem on the next catalog load.
+      //
+      // Precedence is `price ?? basePrice`, identical to the canonical
+      // resolveServicePriceCents (catalog-pricing.ts) — so the derived value can
+      // never disagree with what checkout actually charges for the same row.
+      // Non-numeric input derives NULL rather than NaN.
+      const importLegacyDollars = item.price ?? item.basePrice;
+      const importPriceCents =
+        importLegacyDollars != null &&
+        importLegacyDollars !== "" &&
+        Number.isFinite(Number(importLegacyDollars))
+          ? Math.round(Number(importLegacyDollars) * 100)
+          : null;
       try {
         await db.execute(sql`
           INSERT INTO services (
             slug, name, description, category, category_path, tagline, service_type,
-            billing_type, price, base_price, max_price, duration_days, turnaround,
+            billing_type, price, base_price, max_price, price_cents, duration_days, turnaround,
             is_public, visibility, tier, highlighted, badge, icon_name, hours_per_month,
             sort_order, deliverables, inclusions, features, target_audience, tags,
             required_app_permissions, fulfillment_type_key, triggering_signal_keys,
@@ -785,7 +831,8 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             ${slug}, ${name}, ${item.description ?? null}, ${item.category ?? null},
             ${item.categoryPath ?? null}, ${item.tagline ?? null}, ${item.serviceType ?? null},
             ${resolvedBillingTypeImport}, ${item.price ?? null}, ${item.basePrice ?? null},
-            ${item.maxPrice ?? null}, ${item.durationDays ?? null}, ${item.turnaround ?? null},
+            ${item.maxPrice ?? null}, ${importPriceCents},
+            ${item.durationDays ?? null}, ${item.turnaround ?? null},
             ${item.isPublic ?? item.isActive ?? false}, ${item.visibility ?? "private"}, ${item.tier ?? null},
             ${item.highlighted ?? false}, ${item.badge ?? null}, ${item.iconName ?? null},
             ${item.hoursPerMonth ?? null}, ${item.sortOrder ?? 0},
@@ -814,6 +861,11 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             price = EXCLUDED.price,
             base_price = EXCLUDED.base_price,
             max_price = EXCLUDED.max_price,
+            -- COALESCE, not a bare overwrite: a re-import of a record whose type
+            -- carries no price field at all (e.g. monitoring_tier, priced entirely
+            -- in type_attributes) derives NULL, and must not wipe a canonical
+            -- price_cents that is already correct on the existing row.
+            price_cents = COALESCE(EXCLUDED.price_cents, services.price_cents),
             duration_days = EXCLUDED.duration_days,
             turnaround = EXCLUDED.turnaround,
             is_public = EXCLUDED.is_public,

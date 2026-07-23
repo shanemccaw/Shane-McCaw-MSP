@@ -147,6 +147,18 @@ const addOnService = {
 const freeService = { ...addOnService, priceCents: 0 };
 const projectService = { ...addOnService, serviceClass: "project" };
 const consultationService = { ...addOnService, priceCents: null };
+// A really-priced catalog row whose price lives ONLY in the legacy base_price
+// decimal column — the exact shape POST /admin/catalog/import produces for an
+// assessment (its import allow-list carries basePrice, not price, and never
+// wrote price_cents). toMarketplaceService used to read `price` only, so this
+// resolved to null and was rejected here as "priced on consultation" — a real,
+// publicly-listed, really-priced product that could not be bought.
+const legacyBasePriceService = {
+  ...addOnService, priceCents: null, price: null, basePrice: "250.00", serviceType: "assessment",
+};
+// Non-numeric junk in a legacy column must resolve to "on consultation" (422),
+// never to NaN — a NaN would previously have flowed into a Stripe unit_amount.
+const junkPriceService = { ...addOnService, priceCents: null, price: "TBD", basePrice: null };
 
 /** Queues the 3 scoping selects (own lookup, assertCustomerAccess ownership, staff-scope). */
 function queueScopingSelects(opts?: { unrestricted?: boolean; scopeRows?: unknown[] }) {
@@ -236,6 +248,37 @@ describe("POST /msp/customers/:customerId/marketplace/checkout", () => {
       .set("Authorization", `Bearer ${mspToken()}`)
       .send({ serviceId: SERVICE_ID });
     expect(res.status).toBe(422);
+  });
+
+  it("resolves a legacy base_price-only row instead of 422ing it as consultation-priced", async () => {
+    queueScopingSelects();
+    mockDbSelect.mockReturnValueOnce(selectChain([legacyBasePriceService]));
+    mockDbSelect.mockReturnValueOnce(selectChain([{ stripeCustomerId: "cus_test" }])); // mspSubscriptionsTable
+    mockDbInsert.mockReturnValueOnce(insertChain([{ id: 503 }])); // salesOffersTable insert
+
+    const app = await makeApp();
+    const res = await request(app)
+      .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+      .set("Authorization", `Bearer ${mspToken()}`)
+      .send({ serviceId: SERVICE_ID });
+
+    expect(res.status).toBe(201);
+    expect(res.body.outcome).toBe("payment_processed");
+    const piCall = mockStripePaymentIntentsCreate.mock.calls[0]?.[0] as Record<string, unknown>;
+    // $250.00 base_price → 25_000 retail cents → 70% default wholesale margin
+    expect(piCall["amount"]).toBe(17_500);
+  });
+
+  it("422s a row whose legacy price column holds non-numeric text (never NaN)", async () => {
+    queueScopingSelects();
+    mockDbSelect.mockReturnValueOnce(selectChain([junkPriceService]));
+    const app = await makeApp();
+    const res = await request(app)
+      .post(`/api/msp/customers/${CUSTOMER_ID}/marketplace/checkout`)
+      .set("Authorization", `Bearer ${mspToken()}`)
+      .send({ serviceId: SERVICE_ID });
+    expect(res.status).toBe(422);
+    expect(mockStripePaymentIntentsCreate).not.toHaveBeenCalled();
   });
 
   it("free ($0): skips Stripe, records an accepted offer, calls resolveFulfillment", async () => {

@@ -97,12 +97,33 @@ export interface MarketplaceService {
 type ServiceRow = typeof servicesTable.$inferSelect;
 
 export function toMarketplaceService(row: ServiceRow): MarketplaceService {
-  // Prefer the explicit integer cents column; fall back to the numeric dollar
-  // price; finally fall back to a per-seat monthly figure carried in
+  // Prefer the explicit integer cents column; fall back to the legacy decimal
+  // dollar columns; finally fall back to a per-seat monthly figure carried in
   // typeAttributes (how monitoring tiers express price). null = "on consultation".
+  //
+  // BOTH legacy columns must be read, in the canonical `price ?? basePrice`
+  // precedence that catalog-pricing.ts's resolveServicePriceCents already uses
+  // everywhere else. Reading `price` alone made this the odd resolver out: the
+  // catalog import path writes an assessment's price to base_price ONLY
+  // (`price` is not even in that type's import allow-list — productTypeConfig.ts
+  // PRODUCT_TYPE_IMPORT_FIELDS.assessment), and it never writes price_cents at
+  // all. Every such row therefore resolved to null here and was reported as
+  // "priced on consultation" — which the MSP-staff checkout below turns into a
+  // hard 422, making real, publicly-listed, really-priced assessments
+  // unpurchasable on a customer's behalf.
+  //
+  // This widens coverage only; it cannot weaken a price gate. null (no price
+  // field populated at all) still means "on consultation" and still 422s, and
+  // an explicit 0 still means free — only a real positive price in the other
+  // legacy column newly resolves. Non-numeric junk resolves to null rather than
+  // NaN, which would previously have flowed straight into a Stripe unit_amount.
   const ta = (row.typeAttributes ?? {}) as { pricePerUserMonth?: string | number | null };
-  let priceCents: number | null =
-    row.priceCents ?? (row.price != null ? Math.round(Number(row.price) * 100) : null);
+  const legacyDollars = row.price ?? row.basePrice;
+  const legacyCents =
+    legacyDollars != null && legacyDollars !== "" && Number.isFinite(Number(legacyDollars))
+      ? Math.round(Number(legacyDollars) * 100)
+      : null;
+  let priceCents: number | null = row.priceCents ?? legacyCents;
   let perSeat = false;
   if (priceCents === null && ta.pricePerUserMonth != null && ta.pricePerUserMonth !== "") {
     const perUser = Number(ta.pricePerUserMonth);

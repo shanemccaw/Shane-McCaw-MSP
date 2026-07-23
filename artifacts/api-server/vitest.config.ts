@@ -69,6 +69,7 @@ export default defineConfig({
       "src/routes/admin-observability.test.ts",
       "src/routes/portal-checkout.test.ts",
       "src/routes/admin-services-catalog.test.ts",
+      "src/routes/admin-services-price-cents.test.ts",
       "src/lib/__tests__/node-type-registry.test.ts",
       "src/routes/msp-suspended-banner.test.ts",
       "src/routes/msp-customers-bulk.test.ts",
