@@ -1110,6 +1110,30 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
       res.status(400).json({ error: "Body must contain a 'rules' array or a 'signals' array" }); return;
     }
 
+    // Pre-validate every rule/group BEFORE touching the DB. signal_key/rule_type/source_key
+    // are NOT NULL columns — previously a single malformed row (missing/misnamed field) threw
+    // mid-transaction, rolling back the entire import with a generic "Import failed" and no
+    // indication of which row or field was at fault, making a real import look like a silent
+    // no-op. Surface every problem row up front instead.
+    const validationErrors: string[] = [];
+    if (Array.isArray(importedGroups)) {
+      (importedGroups as Array<Record<string, unknown>>).forEach((g, i) => {
+        if (!(g.signalKey ?? g.signal_key)) validationErrors.push(`groups[${i}]: missing signalKey`);
+      });
+    }
+    (importedRules as Array<Record<string, unknown>>).forEach((r, i) => {
+      if (!(r.signalKey ?? r.signal_key)) validationErrors.push(`rules[${i}]: missing signalKey`);
+      if (!(r.ruleType ?? r.rule_type)) validationErrors.push(`rules[${i}]: missing ruleType`);
+      if (!(r.sourceKey ?? r.source_key)) validationErrors.push(`rules[${i}]: missing sourceKey`);
+    });
+    if (validationErrors.length > 0) {
+      res.status(400).json({
+        error: `Import aborted — ${validationErrors.length} row(s) failed validation. No rows were written.`,
+        details: validationErrors.slice(0, 50),
+      });
+      return;
+    }
+
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
 
     // Capture backup BEFORE the transaction so it is always committed even if the
@@ -1255,7 +1279,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
     res.json({ imported: ruleCount, skipped: 0, errors: [], snapshotId, projectLinksUpdated: projectLinkCount });
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules/import failed");
-    res.status(500).json({ error: "Import failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
 });
 
