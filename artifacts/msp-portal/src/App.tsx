@@ -893,7 +893,8 @@ function AppInner() {
       <Router />
       <SessionExpiryModal />
       <MarketplaceModalHost />
-      <ReconsentModal />
+      {/* Reconsent nudge lives in the sidebar as a subtle pill (ReconsentPill in
+          app-shell.tsx) — deliberately NOT a modal or banner. */}
     </>
   );
 }
@@ -903,7 +904,6 @@ import { ScanStatusProvider } from "@/lib/scan-status-context";
 import { ShellStatusProvider } from "@/lib/shell-status-context";
 import { MarketplaceProvider } from "@/lib/marketplace-context";
 import { MarketplaceModalHost } from "@/components/marketplace-modal-host";
-import { ReconsentModal } from "@/components/reconsent-modal";
 import { ThemeProvider } from "@/lib/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
 

@@ -14,7 +14,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Link, useLocation } from "wouter";
 import { useVersionInfo, formatRunningSince } from "@/hooks/useVersionInfo";
 import { useAuth, type MspRole } from "@/lib/auth-context";
-import { useNeedsReconsent, useStartReconsent } from "@/components/reconsent-modal";
+import { ReconsentPill } from "@/components/reconsent-pill";
 import { useMspSlug } from "@/lib/slug-context";
 import { useSupportChat, type SupportChatMessage } from "@/lib/support-chat-context";
 import { useMarketplace } from "@/lib/marketplace-context";
@@ -1056,27 +1056,6 @@ function ImpersonationBanner({ email }: { email: string }) {
     </div>
   );
 }
-function ReconsentBanner({ offsetTop }: { offsetTop: boolean }) {
-  const { start, starting, error } = useStartReconsent();
-  return (
-    <div className={`fixed inset-x-0 z-[9998] bg-red-600 text-white flex items-center justify-between px-4 py-2 shadow-lg ${offsetTop ? "top-[42px]" : "top-0"}`}>
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-        </svg>
-        Microsoft 365 connection needs to be re-authorized
-        {error && <span className="text-red-200 font-normal">— {error}</span>}
-      </div>
-      <button
-        onClick={() => void start()}
-        disabled={starting}
-        className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 disabled:opacity-60"
-      >
-        {starting ? "Starting…" : "Re-authorize access"}
-      </button>
-    </div>
-  );
-}
 
 
 // ── Customer Documents slide-in panel ─────────────────────────────────────────
@@ -1539,7 +1518,6 @@ interface MspSuspensionState {
 
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
-  const needsReconsent = useNeedsReconsent();
   const { supportOpen, setSupportOpen } = useSupportChat();
   const { open: openMarketplace } = useMarketplace();
   const [, navigate] = useLocation();
@@ -1793,6 +1771,12 @@ export function AppShell({ children, title, actions }: AppShellProps) {
         </div>
       )}
 
+      {/* Subtle reconsent nudge — small amber pill directly above the search box.
+          Renders only when the customer's real M365 consent is revoked/declined;
+          clicking starts the same real reconsent OAuth flow the old modal used.
+          Deliberately quiet: no modal, no banner. */}
+      <ReconsentPill collapsed={collapsed} />
+
       {/* Search trigger */}
       {!collapsed && (
         <div className="px-3 pt-2 pb-1">
@@ -2011,11 +1995,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
     return (
       <>
         {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
-        {needsReconsent && <ReconsentBanner offsetTop={!!user?.impersonatedBy} />}
-        <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${
-          (user?.impersonatedBy ? 1 : 0) + (needsReconsent ? 1 : 0) === 2 ? "pt-[84px]" :
-          (user?.impersonatedBy || needsReconsent) ? "pt-[42px]" : ""
-        }`}>
+        <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
           {/* Desktop sidebar */}
           <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
 
@@ -2070,11 +2050,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   return (
     <>
       {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
-      {needsReconsent && <ReconsentBanner offsetTop={!!user?.impersonatedBy} />}
-      <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${
-        (user?.impersonatedBy ? 1 : 0) + (needsReconsent ? 1 : 0) === 2 ? "pt-[84px]" :
-        (user?.impersonatedBy || needsReconsent) ? "pt-[42px]" : ""
-      }`}>
+      <div className={`flex h-screen max-h-screen overflow-hidden bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
         {/* Desktop sidebar */}
         <div className="hidden md:flex flex-col h-full shrink-0">{sidebarContent}</div>
 

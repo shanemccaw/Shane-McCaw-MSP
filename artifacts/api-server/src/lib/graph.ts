@@ -135,10 +135,21 @@ export async function getAccessTokenForTenant(tenantId: string): Promise<string>
 
   if (!res.ok) {
     const text = await res.text();
-    // 400/401 with invalid_grant or consent_required means admin consent has been revoked
+    // Only DOCUMENTED consent-failure signatures from the AAD token endpoint may
+    // flip tenant consent — never a bare status code. A 401 from the token
+    // endpoint means invalid_client (bad/expired MT app secret — AADSTS7000215/
+    // 7000222): a PLATFORM credential fault, not a tenant consent revocation,
+    // and auto-revoking on it wrongly nuked real, freshly-granted consents.
+    // Real revocation signatures (either 400 or 401):
+    //   - invalid_grant / AADSTS65001: consent not granted or since revoked
+    //   - consent_required
+    //   - AADSTS700016: the app (enterprise app / service principal) was deleted
+    //     from the customer tenant — the definitive "admin removed us" signal.
     const isConsentError =
-      res.status === 401 ||
-      (res.status === 400 && (text.includes("invalid_grant") || text.includes("AADSTS65001") || text.includes("consent_required")));
+      text.includes("invalid_grant") ||
+      text.includes("AADSTS65001") ||
+      text.includes("consent_required") ||
+      text.includes("AADSTS700016");
 
     if (isConsentError) {
       log.warn({ tenantId, status: res.status }, "Graph token: consent revoked for tenant");
@@ -433,13 +444,22 @@ export function buildAdminConsentUrl(
 /**
  * Returns true if a Graph error response body signals that the tenant's
  * admin consent has been revoked or was never fully granted.
+ *
+ * Deliberately does NOT include "InvalidAuthenticationToken": Graph returns
+ * that code for ANY malformed/expired/wrong-audience bearer token (e.g. a check
+ * whose endpoint is a full non-Graph URL called with a Graph-audience token, or
+ * a token that expired mid-run). None of those are consent revocations, and
+ * treating them as one was the root cause of the ~5-min-after-grant auto-revoke:
+ * one such check in a package run tenant-wide revoked a real, fresh consent.
+ * A genuinely revoked consent is detected reliably at the TOKEN endpoint
+ * (invalid_grant / AADSTS65001 / AADSTS700016) — see getAccessTokenForTenant.
  */
 function isConsentErrorBody(body: string): boolean {
   return (
     body.includes("invalid_grant") ||
     body.includes("AADSTS65001") ||
     body.includes("consent_required") ||
-    body.includes("InvalidAuthenticationToken")
+    body.includes("AADSTS700016")
   );
 }
 
@@ -588,17 +608,24 @@ export function applyGraphResponseOverride(endpoint: string, rawData: any, overr
 
 /**
  * Perform a Graph API call against a specific customer tenant.
- * Automatically handles 401 responses AND non-2xx responses whose body signals
- * a consent error (invalid_grant, AADSTS65001, consent_required,
- * InvalidAuthenticationToken). On detection:
+ * Auto-revokes consent ONLY on responses whose body carries a documented
+ * consent-failure signature (invalid_grant, AADSTS65001, consent_required,
+ * AADSTS700016). On detection:
  *   1. Token cache evicted.
  *   2. markTenantConsentRevoked() called — flips tenant_consent + monitor profiles + audit log.
  *   3. ConsentRevokedError thrown — callers must NOT silently swallow it.
+ * A bare 401 with a NON-consent body (expired token, wrong-audience token,
+ * missing app scope) is NOT a revocation signal: the token cache is evicted and
+ * the call retried once with a fresh token; a persisting 401 surfaces as a plain
+ * error Response for the caller. Genuine revocation is still caught reliably —
+ * the fresh-token request fails at the AAD token endpoint with the real
+ * consent signature (see getAccessTokenForTenant).
  */
 export async function graphFetchForTenant(
   tenantId: string,
   path: string,
   options: RequestInit = {},
+  _isRetryWithFreshToken = false,
 ): Promise<Response> {
   const token = await getAccessTokenForTenant(tenantId);
   const res = await fetch(`${GRAPH_BASE}${path}`, {
@@ -614,8 +641,19 @@ export async function graphFetchForTenant(
   // Order of precedence, most-specific first:
   //   1. license/feature gap (tenant lacks the SKU) → LicenseGapError, NO consent
   //      flip — this is a real, known limitation, not a fault or a revocation.
-  //   2. genuine consent problem → auto-revoke + ConsentRevokedError.
-  //   3. any other 401 → treat as consent revocation (unchanged legacy behavior).
+  //   2. genuine consent problem (documented signature in the BODY) → auto-revoke
+  //      + ConsentRevokedError.
+  //   3. any other 401 → NOT a revocation signal by itself. Graph 401s for many
+  //      non-consent reasons (expired/stale cached token, wrong-audience token on
+  //      a full-URL/beta check endpoint, missing app scope on some workloads —
+  //      Intune and Reports return 401 rather than 403). Evict the cached token
+  //      and retry ONCE with a fresh one: if consent is truly revoked, the token
+  //      endpoint itself throws the real ConsentRevokedError (invalid_grant /
+  //      AADSTS65001 — see getAccessTokenForTenant), which still auto-revokes via
+  //      that reliable signal. If the fresh-token call 401s again, it's a genuine
+  //      scope/endpoint problem on THIS check → surface it as a plain error
+  //      response; never tenant-wide revoke. (Previously any bare 401 revoked —
+  //      one misfiring check in a package run nuked a real, fresh grant ~5 min in.)
   //   4. any other non-consent 400/403 → synthetic Response for the caller.
   if (res.status === 401 || res.status === 400 || res.status === 403) {
     const text = await res.text();
@@ -634,15 +672,43 @@ export async function graphFetchForTenant(
       );
     }
 
-    if (res.status === 401 || cls.kind === "consent") {
+    if (cls.kind === "consent") {
       log.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error — auto-revoking consent");
       tenantTokenCache.delete(tenantId);
       await markTenantConsentRevoked(tenantId);
       throw new ConsentRevokedError(tenantId);
     }
 
-    // Non-consent, non-license 400/403 — return the response with the body already
-    // consumed. Re-wrap as a synthetic Response so callers can still check ok/status.
+    if (res.status === 401 && !_isRetryWithFreshToken) {
+      log.warn(
+        { tenantId, path, code: cls.code, body: text.slice(0, 400) },
+        "Graph tenant call: non-consent 401 — evicting cached token and retrying once with a fresh token",
+      );
+      tenantTokenCache.delete(tenantId);
+      try {
+        return await graphFetchForTenant(tenantId, path, options, true);
+      } catch (retryErr) {
+        // If consent is GENUINELY revoked, the fresh-token request fails at the
+        // AAD token endpoint with the authoritative signature (invalid_grant /
+        // AADSTS65001) → getAccessTokenForTenant throws ConsentRevokedError.
+        // Preserve this function's auto-revoke contract for that real case.
+        if (retryErr instanceof ConsentRevokedError) {
+          await markTenantConsentRevoked(tenantId);
+        }
+        throw retryErr;
+      }
+    }
+
+    // Non-consent, non-license 400/403 (or a 401 that persisted with a fresh
+    // token — a scope/audience/endpoint problem on this one call, never a
+    // consent revocation) — return the response with the body already consumed.
+    // Re-wrap as a synthetic Response so callers can still check ok/status.
+    if (res.status === 401 && _isRetryWithFreshToken) {
+      log.warn(
+        { tenantId, path, code: cls.code, body: text.slice(0, 400) },
+        "Graph tenant call: 401 persisted with a fresh token — genuine scope/endpoint error on this call, NOT revoking consent",
+      );
+    }
     return new Response(text, { status: res.status, headers: res.headers });
   }
 

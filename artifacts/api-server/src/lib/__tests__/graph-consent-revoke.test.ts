@@ -2,12 +2,21 @@
  * graph-consent-revoke.test.ts
  *
  * Integration tests for the auto-flip behaviour in graphFetchForTenant:
- * when a live Graph API call returns a 401 (or a 400/403 with a consent-error body)
- * the system must atomically:
+ * when a live Graph API call returns a response whose BODY carries a documented
+ * consent-failure signature (invalid_grant / AADSTS65001 / consent_required /
+ * AADSTS700016) the system must atomically:
  *   (a) flip tenantConsentTable.consentStatus → "revoked"  \
  *       and tenantMonitorProfilesTable rows → "consent_revoked"  }  single transaction
  *   (b) emit a canonical audit log entry (actionType=tenant_consent_revoked)
  *   (c) throw ConsentRevokedError (typed, never a raw Error)
+ *
+ * A bare 401 is NOT a revocation signal (the consent auto-revoke root-cause fix):
+ * Graph 401s for non-consent reasons (expired/stale token — InvalidAuthenticationToken,
+ * wrong-audience token, missing app scope on Intune/Reports-class workloads). On a
+ * non-consent 401 the token cache is evicted and the call retried ONCE with a fresh
+ * token; genuine revocation is then detected authoritatively at the token endpoint.
+ * A 401 that persists with a fresh token is a per-call scope/endpoint error → plain
+ * error response, never a tenant-wide consent flip.
  *
  * Route-level test:
  *   (d) when ConsentRevokedError propagates to the top-level Express handler,
@@ -102,9 +111,24 @@ const tokenOk = () => ({
   json: async () => ({ access_token: "tok", expires_in: 3600 }),
 });
 
-const graph401 = () => ({
+// A 401 whose body carries a REAL consent-revocation signature (the enterprise
+// app was deleted from the customer tenant). This — not the bare status — is
+// what must trigger the auto-revoke.
+const graph401Consent = () => ({
   ok: false,
   status: 401,
+  headers: new Headers(),
+  text: async () => '{"error":{"code":"invalid_grant","message":"AADSTS65001: consent revoked"}}',
+});
+
+// A 401 with an expired/invalid-token body — a token-lifecycle fault, NOT a
+// consent revocation. Previously this misfired the tenant-wide auto-revoke
+// (the ~5-min-after-grant bug); now it must retry with a fresh token and, if
+// the 401 persists, surface a plain error response with no consent flip.
+const graph401StaleToken = () => ({
+  ok: false,
+  status: 401,
+  headers: new Headers(),
   text: async () => '{"error":{"code":"InvalidAuthenticationToken","message":"Expired token"}}',
 });
 
@@ -128,12 +152,15 @@ const graph200 = () => ({
   json: async () => ({ value: [{ id: "u1" }] }),
 });
 
-// ── graphFetchForTenant — 401 auto-revoke ─────────────────────────────────────
+// ── graphFetchForTenant — consent-body auto-revoke + non-consent-401 no-revoke ─
 
-describe("graphFetchForTenant — 401 auto-revoke", () => {
+describe("graphFetchForTenant — consent auto-revoke (body signature, not bare 401)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore mocks after clearAllMocks
+    // Fully reset the fetch stub's queue+implementation so per-test queues are
+    // deterministic regardless of the module-level token cache (unique tenant
+    // ids per test keep token-fetch counts predictable).
+    mockFetch.mockReset();
     const txUpdateWhere = vi.fn().mockResolvedValue([]);
     const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
     mockDb.tx.update.mockReturnValue({ set: txUpdateSet });
@@ -143,46 +170,46 @@ describe("graphFetchForTenant — 401 auto-revoke", () => {
     mockCreateAuditLog.mockResolvedValue(undefined);
   });
 
-  it("throws ConsentRevokedError (not a raw Error) on 401", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
-    await expect(graphFetchForTenant("tenant-abc", "/users")).rejects.toThrow(ConsentRevokedError);
+  it("throws ConsentRevokedError (not a raw Error) on a 401 with a consent-signature body", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
+    await expect(graphFetchForTenant("tenant-revoke-1", "/users")).rejects.toThrow(ConsentRevokedError);
   });
 
   it("attaches the correct tenantId to the thrown error", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
     let err: unknown;
-    try { await graphFetchForTenant("tenant-xyz", "/users"); } catch (e) { err = e; }
+    try { await graphFetchForTenant("tenant-revoke-2", "/users"); } catch (e) { err = e; }
     expect(err).toBeInstanceOf(ConsentRevokedError);
-    expect((err as ConsentRevokedError).tenantId).toBe("tenant-xyz");
+    expect((err as ConsentRevokedError).tenantId).toBe("tenant-revoke-2");
   });
 
-  it("executes DB updates inside a transaction on 401", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
-    await expect(graphFetchForTenant("tenant-abc", "/users")).rejects.toThrow(ConsentRevokedError);
+  it("executes DB updates inside a transaction on a consent-body 401", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
+    await expect(graphFetchForTenant("tenant-revoke-3", "/users")).rejects.toThrow(ConsentRevokedError);
     expect(mockDb.transaction).toHaveBeenCalledOnce();
   });
 
   it("flips tenantConsentTable.consentStatus to revoked inside transaction", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
-    await expect(graphFetchForTenant("tenant-abc", "/users")).rejects.toThrow(ConsentRevokedError);
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
+    await expect(graphFetchForTenant("tenant-revoke-4", "/users")).rejects.toThrow(ConsentRevokedError);
     const setCalls = getTxSetCalls();
     expect(setCalls.some((c) => c?.consentStatus === "revoked")).toBe(true);
   });
 
   it("flips monitor profiles to consent_revoked inside transaction", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
-    await expect(graphFetchForTenant("tenant-abc", "/users")).rejects.toThrow(ConsentRevokedError);
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
+    await expect(graphFetchForTenant("tenant-revoke-5", "/users")).rejects.toThrow(ConsentRevokedError);
     const setCalls = getTxSetCalls();
     expect(setCalls.some((c) => c?.status === "consent_revoked")).toBe(true);
   });
 
-  it("emits audit log with actionType=tenant_consent_revoked on 401", async () => {
-    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401());
-    await expect(graphFetchForTenant("tenant-abc", "/users")).rejects.toThrow(ConsentRevokedError);
+  it("emits audit log with actionType=tenant_consent_revoked on a consent-body 401", async () => {
+    mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph401Consent());
+    await expect(graphFetchForTenant("tenant-revoke-6", "/users")).rejects.toThrow(ConsentRevokedError);
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
     const call = mockCreateAuditLog.mock.calls[0]![0] as Record<string, unknown>;
     expect(call.actionType).toBe("tenant_consent_revoked");
-    expect(call.entityId).toBe("tenant-abc");
+    expect(call.entityId).toBe("tenant-revoke-6");
     expect((call.metadata as Record<string, unknown>)?.autoRevoked).toBe(true);
   });
 
@@ -190,7 +217,7 @@ describe("graphFetchForTenant — 401 auto-revoke", () => {
     mockFetch
       .mockResolvedValueOnce(tokenOk())
       .mockResolvedValueOnce(graph403Consent('{"error":{"code":"invalid_grant"}}'));
-    await expect(graphFetchForTenant("tenant-403", "/groups")).rejects.toThrow(ConsentRevokedError);
+    await expect(graphFetchForTenant("tenant-403-a", "/groups")).rejects.toThrow(ConsentRevokedError);
     expect(mockCreateAuditLog).toHaveBeenCalledOnce();
   });
 
@@ -198,19 +225,31 @@ describe("graphFetchForTenant — 401 auto-revoke", () => {
     mockFetch
       .mockResolvedValueOnce(tokenOk())
       .mockResolvedValueOnce(graph403Consent("AADSTS65001: The user or administrator has not consented"));
-    await expect(graphFetchForTenant("tenant-403", "/groups")).rejects.toThrow(ConsentRevokedError);
+    await expect(graphFetchForTenant("tenant-403-b", "/groups")).rejects.toThrow(ConsentRevokedError);
   });
 
   it("auto-revokes on 403 with consent_required body", async () => {
     mockFetch
       .mockResolvedValueOnce(tokenOk())
       .mockResolvedValueOnce(graph403Consent('{"error":{"code":"consent_required"}}'));
-    await expect(graphFetchForTenant("tenant-403", "/groups")).rejects.toThrow(ConsentRevokedError);
+    await expect(graphFetchForTenant("tenant-403-c", "/groups")).rejects.toThrow(ConsentRevokedError);
+  });
+
+  it("auto-revokes on 401 with AADSTS700016 (app deleted from tenant) body", async () => {
+    mockFetch
+      .mockResolvedValueOnce(tokenOk())
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: async () => "AADSTS700016: Application not found in the directory",
+      });
+    await expect(graphFetchForTenant("tenant-700016", "/users")).rejects.toThrow(ConsentRevokedError);
   });
 
   it("does NOT auto-revoke on a plain 403 Forbidden (no consent keywords)", async () => {
     mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph403Plain());
-    const res = await graphFetchForTenant("tenant-abc", "/users");
+    const res = await graphFetchForTenant("tenant-403-plain", "/users");
     expect(res.status).toBe(403);
     expect(mockCreateAuditLog).not.toHaveBeenCalled();
     expect(mockDb.transaction).not.toHaveBeenCalled();
@@ -218,9 +257,80 @@ describe("graphFetchForTenant — 401 auto-revoke", () => {
 
   it("returns a successful Response on 200 without revoking", async () => {
     mockFetch.mockResolvedValueOnce(tokenOk()).mockResolvedValueOnce(graph200());
-    const res = await graphFetchForTenant("tenant-abc", "/users");
+    const res = await graphFetchForTenant("tenant-200", "/users");
     expect(res.ok).toBe(true);
     expect(mockCreateAuditLog).not.toHaveBeenCalled();
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ── The root-cause fix: non-consent 401 must NEVER tenant-wide revoke ─────────
+// The ~5-min-after-grant auto-revoke: a check in the package run hit a 401 whose
+// body was NOT a consent signature (stale token / wrong-audience token / missing
+// scope on Intune-Reports-class endpoints) and the old unconditional-401 branch
+// flipped the whole tenant to revoked. Now: evict token cache, retry once with a
+// fresh token; a persisting 401 is a per-call error, not a revocation.
+
+describe("graphFetchForTenant — non-consent 401 does NOT revoke (fresh-token retry)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockReset();
+    const txUpdateWhere = vi.fn().mockResolvedValue([]);
+    const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+    mockDb.tx.update.mockReturnValue({ set: txUpdateSet });
+    mockDb.transaction.mockImplementation(async (cb: (tx: { update: Mock }) => Promise<void>) => {
+      await cb(mockDb.tx);
+    });
+    mockCreateAuditLog.mockResolvedValue(undefined);
+  });
+
+  it("retries once with a fresh token and succeeds — no revoke, returns the retried response", async () => {
+    mockFetch
+      .mockResolvedValueOnce(tokenOk())              // initial token
+      .mockResolvedValueOnce(graph401StaleToken())   // graph call: stale-token 401
+      .mockResolvedValueOnce(tokenOk())              // fresh token (cache was evicted)
+      .mockResolvedValueOnce(graph200());            // retried graph call succeeds
+    const res = await graphFetchForTenant("tenant-retry-ok", "/users");
+    expect(res.ok).toBe(true);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockCreateAuditLog).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("401 persisting with a fresh token → plain 401 Response, NO consent flip", async () => {
+    mockFetch
+      .mockResolvedValueOnce(tokenOk())              // initial token
+      .mockResolvedValueOnce(graph401StaleToken())   // graph call: non-consent 401
+      .mockResolvedValueOnce(tokenOk())              // fresh token
+      .mockResolvedValueOnce(graph401StaleToken());  // retry still 401
+    const res = await graphFetchForTenant("tenant-retry-401", "/deviceManagement/managedDevices");
+    expect(res.status).toBe(401);
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(mockCreateAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("genuinely revoked consent is still caught: fresh-token request fails at the token endpoint with AADSTS65001", async () => {
+    mockFetch
+      .mockResolvedValueOnce(tokenOk())              // initial token
+      .mockResolvedValueOnce(graph401StaleToken())   // graph call: bare 401 (revoked mid-flight, cached token now dead)
+      .mockResolvedValueOnce({                       // fresh token request → the authoritative consent failure
+        ok: false,
+        status: 400,
+        text: async () => '{"error":"invalid_grant","error_description":"AADSTS65001: consent revoked"}',
+      });
+    await expect(graphFetchForTenant("tenant-retry-revoked", "/users")).rejects.toThrow(ConsentRevokedError);
+  });
+
+  it("token endpoint 401 invalid_client (bad MT app secret) is a plain Error, never ConsentRevokedError", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => '{"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided."}',
+    });
+    let err: unknown;
+    try { await graphFetchForTenant("tenant-bad-secret", "/users"); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ConsentRevokedError);
     expect(mockDb.transaction).not.toHaveBeenCalled();
   });
 });
@@ -400,6 +510,13 @@ describe("markTenantConsentRevoked", () => {
 // without any operator action.
 
 describe("Top-level Express handler — ConsentRevokedError → 403", () => {
+  beforeEach(() => {
+    // This test drives a real supertest HTTP round-trip — restore the real
+    // global fetch so the stubbed (and by now empty-queued) mockFetch can't
+    // hang superagent's fetch-based transport.
+    vi.unstubAllGlobals();
+  });
+
   it("returns 403 with { code: consent_revoked, reAuthorizeRequired: true } when ConsentRevokedError reaches the handler", async () => {
     const { default: express } = await import("express");
     const { default: request } = await import("supertest");
