@@ -27,13 +27,16 @@ import {
   mspDocumentsTable,
   portalWfRunsTable,
   portalWfOperatorTasksTable,
+  clientServicesTable,
+  servicesTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor";
 import { emitWorkflowEvent } from "./workflow-executor";
 import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
+import { resolveCustomerUserIds } from "./tenant-signals";
 import {
   broadcastDiagnosticsRunProgress,
   broadcastDiagnosticsRunComplete,
@@ -624,8 +627,32 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     }
 
     // 5. Generate HTML report → Document Pipeline
+    // Gated to genuine Assessment-flow scans only — reuses the same real
+    // discriminator as the assessment_doc_gate workflow node (workflow-executor.ts):
+    // does the customer hold an active client_services row for a service whose
+    // deliveryType is "assessment"? Routine monitoring re-scans (5-min Live
+    // Activity Monitor, manual MSPOperator re-check) have no such row and must
+    // never create a "Diagnostics Report" document — findings/checks above are
+    // unaffected either way.
+    let isAssessmentScan = false;
+    if (customerId != null) {
+      const scopeUserIds = await resolveCustomerUserIds(customerId);
+      if (scopeUserIds.length > 0) {
+        const [assessmentOrder] = await db
+          .select({ serviceId: clientServicesTable.serviceId })
+          .from(clientServicesTable)
+          .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+          .where(and(inArray(clientServicesTable.clientUserId, scopeUserIds), eq(servicesTable.deliveryType, "assessment")))
+          .orderBy(desc(clientServicesTable.id))
+          .limit(1);
+        isAssessmentScan = assessmentOrder != null;
+      }
+    }
+
     let documentId: string | undefined;
-    try {
+    if (!isAssessmentScan) {
+      log.info({ runId, mspId, customerId }, "diagnostics-runner: skipping document generation — not an assessment-tier scan");
+    } else try {
       const reportHtml = buildReportHtml({
         customerName,
         runId,
