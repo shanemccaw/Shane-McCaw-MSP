@@ -1,318 +1,104 @@
-import React, { useState, useRef } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { TopHeader } from './components/TopHeader';
-import { ManageTeamCard } from './components/ManageTeamCard';
-import { DownloadDataCard } from './components/DownloadDataCard';
-import { SecurityAccessCard } from './components/SecurityAccessCard';
-import { NotificationChannelsCard } from './components/NotificationChannelsCard';
-import { PrivacyGovernanceCard } from './components/PrivacyGovernanceCard';
-import { DangerZoneCard } from './components/DangerZoneCard';
-import { InviteMemberModal } from './components/InviteMemberModal';
-import { UpgradePlanModal } from './components/UpgradePlanModal';
-import { CancelSubscriptionModal, DeleteWorkspaceModal } from './components/DangerModals';
-import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
-import { OtherTabViews } from './components/OtherTabViews';
-import { ToastContainer, ToastMessage } from './components/Toast';
+/**
+ * Consolidated Customer Settings Hub
+ *
+ * Route: /customer-settings (+ ?tab=team|security|notifications|privacy|cancel)
+ * Accessible to: CustomerUser
+ *
+ * One real, unified settings page consolidating the five previously separate
+ * customer account pages into tabbed sections. Every tab renders the REAL
+ * content component exported by its original source page — no reimplemented
+ * logic, no mock data:
+ *
+ *   - Team           → CustomerTeamContent        (pages/customer-team.tsx)
+ *   - Password & MFA → SecuritySettingsContent    (pages/security.tsx)
+ *   - Notifications  → NotificationSettingsContent(pages/customer-notifications.tsx)
+ *   - Privacy & Data → PrivacySettingsContent     (pages/customer-privacy.tsx)
+ *   - Cancel Services→ CustomerCancelServicesContent (pages/offboarding.tsx)
+ *
+ * The old customer routes redirect here (see App.tsx) so deep links and
+ * bookmarks keep working; ?tab= keeps the active section linkable.
+ */
 
-import { INITIAL_TEAM_MEMBERS, INITIAL_NOTIFICATIONS } from './data/initialData';
-import { MainTab, SidebarTab, TeamMember, Role, NotificationSetting } from './types';
+import { useMemo } from "react";
+import { useLocation, useSearch } from "wouter";
+import { AppShell } from "@/components/app-shell";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Bell, KeyRound, Lock, Settings, Users, XCircle } from "lucide-react";
 
-export default function App() {
-  // Navigation State
-  const [activeMainTab, setActiveMainTab] = useState<MainTab>('General Settings');
-  const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTab>('Team');
+import { CustomerTeamContent } from "@/pages/customer-team";
+import { SecuritySettingsContent } from "@/pages/security";
+import { NotificationSettingsContent } from "@/pages/customer-notifications";
+import { PrivacySettingsContent } from "@/pages/customer-privacy";
+import { CustomerCancelServicesContent } from "@/pages/offboarding";
 
-  // Search & Filters
-  const [searchQuery, setSearchQuery] = useState('');
+const TAB_KEYS = ["team", "security", "notifications", "privacy", "cancel"] as const;
+type TabKey = (typeof TAB_KEYS)[number];
 
-  // Team State
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
+const TABS: Array<{ key: TabKey; label: string; icon: React.ElementType }> = [
+  { key: "team", label: "Manage Team", icon: Users },
+  { key: "security", label: "Password & MFA", icon: KeyRound },
+  { key: "notifications", label: "Notifications", icon: Bell },
+  { key: "privacy", label: "Privacy & Data", icon: Lock },
+  { key: "cancel", label: "Cancel Services", icon: XCircle },
+];
 
-  // Notifications State
-  const [notifications, setNotifications] = useState<NotificationSetting[]>(INITIAL_NOTIFICATIONS);
-  const [hasUnreadBell, setHasUnreadBell] = useState(true);
+export default function CustomerSettingsPage() {
+  const search = useSearch();
+  const [, navigate] = useLocation();
 
-  // Security State
-  const [mfaEnabled, setMfaEnabled] = useState(true);
+  const activeTab: TabKey = useMemo(() => {
+    const requested = new URLSearchParams(search).get("tab");
+    return TAB_KEYS.includes(requested as TabKey) ? (requested as TabKey) : "team";
+  }, [search]);
 
-  // Privacy State
-  const [retentionPolicy, setRetentionPolicy] = useState('Standard (7 Years)');
-
-  // Toast System State
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  // Modal Dialog States
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
-  const [isCancelOpen, setIsCancelOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-
-  // Section Refs for Smooth Scrolling
-  const teamSectionRef = useRef<HTMLDivElement>(null);
-  const securitySectionRef = useRef<HTMLDivElement>(null);
-  const notificationSectionRef = useRef<HTMLDivElement>(null);
-  const dataBillingSectionRef = useRef<HTMLDivElement>(null);
-
-  // Helper to add toast messages
-  const addToast = (type: 'success' | 'error' | 'info', title: string, description?: string) => {
-    const id = Date.now().toString() + Math.random().toString(36).substring(2, 6);
-    setToasts((prev) => [...prev, { id, type, title, description }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Sidebar navigation handler
-  const handleSelectSidebarTab = (tab: SidebarTab) => {
-    setActiveSidebarTab(tab);
-    setActiveMainTab('General Settings');
-
-    if (tab === 'Team' && teamSectionRef.current) {
-      teamSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (tab === 'Security' && securitySectionRef.current) {
-      securitySectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (tab === 'Notifications' && notificationSectionRef.current) {
-      notificationSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else if (tab === 'Data & Billing' && dataBillingSectionRef.current) {
-      dataBillingSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
-  // Team Actions
-  const handleInviteMember = (name: string, email: string, role: Role) => {
-    const initials = name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2);
-
-    const newMember: TeamMember = {
-      id: Date.now().toString(),
-      name,
-      email,
-      role,
-      lastActive: 'Just now',
-      avatarInitials: initials || 'TM',
-      avatarBg: 'bg-[#282a2b]',
-    };
-
-    setTeamMembers((prev) => [...prev, newMember]);
-    addToast('success', 'Invitation Sent', `Sent invitation to ${email} as ${role}.`);
-  };
-
-  const handleUpdateRole = (id: string, newRole: Role) => {
-    setTeamMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, role: newRole } : m))
-    );
-    addToast('info', 'Member Role Updated', `Role updated to ${newRole}.`);
-  };
-
-  const handleRemoveMember = (id: string) => {
-    const target = teamMembers.find((m) => m.id === id);
-    setTeamMembers((prev) => prev.filter((m) => m.id !== id));
-    addToast('info', 'Member Removed', `Removed ${target?.name || 'user'} from workspace.`);
-  };
-
-  // Toggle MFA
-  const handleToggleMfa = (enabled: boolean) => {
-    setMfaEnabled(enabled);
-    addToast(
-      'info',
-      enabled ? 'MFA Enabled' : 'MFA Disabled',
-      enabled
-        ? 'Mobile app verification code required upon sign-in.'
-        : 'Multi-factor authentication turned off.'
-    );
-  };
-
-  // Update Password
-  const handleUpdatePassword = (success: boolean, msg: string) => {
-    if (success) {
-      addToast('success', 'Password Updated', msg);
-    } else {
-      addToast('error', 'Password Reset Failed', msg);
-    }
-  };
-
-  // Notification Channels Toggle
-  const handleToggleNotification = (id: string, enabled: boolean) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, enabled } : n))
-    );
-    const item = notifications.find((n) => n.id === id);
-    addToast(
-      'info',
-      'Preference Saved',
-      `Channel "${item?.title}" set to ${enabled ? 'Active' : 'Disabled'}.`
-    );
-  };
-
-  // Retention policy change
-  const handleChangeRetentionPolicy = (val: string) => {
-    setRetentionPolicy(val);
-    addToast('success', 'Data Retention Updated', `Policy set to "${val}".`);
-  };
-
-  // Export Toast
-  const handleExportToast = (format: 'JSON' | 'CSV') => {
-    addToast(
-      'success',
-      `Export ${format} Ready`,
-      `Workspace audit logs compiled & downloaded successfully.`
-    );
-  };
-
-  // Support / Sign Out handlers
-  const handleOpenSupport = () => {
-    addToast('info', 'Tenant Intelligence Support', 'Support ticket window opened (24/7 priority line).');
-  };
-
-  const handleSignOut = () => {
-    addToast('info', 'Signed Out', 'You have been safely signed out of Tenant Intelligence.');
+  const handleTabChange = (value: string) => {
+    // Keep the active tab in the URL so sections stay linkable/bookmarkable
+    // (and so redirects from the old standalone routes land on the right tab).
+    navigate(`/customer-settings?tab=${value}`, { replace: true });
   };
 
   return (
-    <div className="min-h-screen bg-[#121414] text-[#e2e2e2] flex font-sans antialiased">
-      {/* Left Sidebar Navigation */}
-      <Sidebar
-        activeTab={activeSidebarTab}
-        onSelectTab={handleSelectSidebarTab}
-        onOpenUpgrade={() => setIsUpgradeOpen(true)}
-        onOpenSupport={handleOpenSupport}
-        onSignOut={handleSignOut}
-      />
+    <AppShell title="Settings">
+      <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+            <Settings className="size-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Settings</h1>
+            <p className="text-sm text-muted-foreground">
+              Team, sign-in security, notifications, your data, and service cancellation — all in one place
+            </p>
+          </div>
+        </div>
 
-      {/* Main View Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header Bar */}
-        <TopHeader
-          activeMainTab={activeMainTab}
-          onSelectMainTab={setActiveMainTab}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          unreadNotifications={hasUnreadBell}
-          onToggleNotificationPanel={() => {
-            setHasUnreadBell(false);
-            addToast('info', 'Notifications Read', 'All system notifications marked as read.');
-          }}
-          onOpenProfileModal={() => {
-            addToast('info', 'User Profile', 'Signed in as Sarah Nguyen (ADMIN).');
-          }}
-        />
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList className="h-auto flex-wrap justify-start gap-1">
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <TabsTrigger key={key} value={key} className="gap-1.5 text-xs sm:text-sm">
+                <Icon className="size-3.5" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        {/* Dynamic View Body */}
-        <main className="flex-1 p-6 md:p-8 max-w-[1440px] w-full mx-auto">
-          {activeMainTab === 'General Settings' ? (
-            <div className="space-y-6">
-              {/* Row 1: Manage Team (Left) & Download Data (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2" ref={teamSectionRef}>
-                  <ManageTeamCard
-                    members={teamMembers}
-                    searchQuery={searchQuery}
-                    onOpenInviteModal={() => setIsInviteOpen(true)}
-                    onUpdateRole={handleUpdateRole}
-                    onRemoveMember={handleRemoveMember}
-                  />
-                </div>
-
-                <div className="lg:col-span-1" ref={dataBillingSectionRef}>
-                  <DownloadDataCard
-                    members={teamMembers}
-                    onExportToast={handleExportToast}
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Security & Access (Left) & Notification Channels (Right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div ref={securitySectionRef}>
-                  <SecurityAccessCard
-                    mfaEnabled={mfaEnabled}
-                    onToggleMfa={handleToggleMfa}
-                    onUpdatePassword={handleUpdatePassword}
-                  />
-                </div>
-
-                <div ref={notificationSectionRef}>
-                  <NotificationChannelsCard
-                    notifications={notifications}
-                    onToggleNotification={handleToggleNotification}
-                  />
-                </div>
-              </div>
-
-              {/* Row 3: Privacy & Data Governance (Full Width) */}
-              <div>
-                <PrivacyGovernanceCard
-                  retentionPolicy={retentionPolicy}
-                  onChangeRetentionPolicy={handleChangeRetentionPolicy}
-                  onOpenPrivacyModal={() => setIsPrivacyOpen(true)}
-                />
-              </div>
-
-              {/* Row 4: Danger Zone (Full Width) */}
-              <div>
-                <DangerZoneCard
-                  onOpenCancelModal={() => setIsCancelOpen(true)}
-                  onOpenDeleteModal={() => setIsDeleteOpen(true)}
-                />
-              </div>
-            </div>
-          ) : (
-            <OtherTabViews
-              activeTab={activeMainTab}
-              onNavigateToSettings={() => setActiveMainTab('General Settings')}
-            />
-          )}
-        </main>
+          <TabsContent value="team" className="mt-6">
+            <CustomerTeamContent />
+          </TabsContent>
+          <TabsContent value="security" className="mt-6">
+            <SecuritySettingsContent />
+          </TabsContent>
+          <TabsContent value="notifications" className="mt-6">
+            <NotificationSettingsContent />
+          </TabsContent>
+          <TabsContent value="privacy" className="mt-6">
+            <PrivacySettingsContent />
+          </TabsContent>
+          <TabsContent value="cancel" className="mt-6">
+            <CustomerCancelServicesContent />
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Interactive Modals */}
-      <InviteMemberModal
-        isOpen={isInviteOpen}
-        onClose={() => setIsInviteOpen(false)}
-        onInvite={handleInviteMember}
-      />
-
-      <UpgradePlanModal
-        isOpen={isUpgradeOpen}
-        onClose={() => setIsUpgradeOpen(false)}
-        onSelectPlan={(pName) => {
-          setIsUpgradeOpen(false);
-          addToast('success', 'Plan Selection Updated', `Selected workspace plan: ${pName}.`);
-        }}
-      />
-
-      <CancelSubscriptionModal
-        isOpen={isCancelOpen}
-        onClose={() => setIsCancelOpen(false)}
-        onConfirm={() => {
-          addToast('info', 'Subscription Canceled', 'Your plan will downgrade at the end of the billing cycle.');
-        }}
-      />
-
-      <DeleteWorkspaceModal
-        isOpen={isDeleteOpen}
-        onClose={() => setIsDeleteOpen(false)}
-        onConfirmDelete={() => {
-          addToast('error', 'Workspace Wiped', 'Workspace data deletion initiated across all server clusters.');
-        }}
-      />
-
-      <PrivacyPolicyModal
-        isOpen={isPrivacyOpen}
-        onClose={() => setIsPrivacyOpen(false)}
-      />
-
-      {/* Global Toast Container */}
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
-    </div>
+    </AppShell>
   );
 }

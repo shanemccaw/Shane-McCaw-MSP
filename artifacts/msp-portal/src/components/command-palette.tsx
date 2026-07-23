@@ -106,10 +106,10 @@ const CUSTOMER_NAV_ENTRIES: NavEntry[] = [
   { icon: Gift, label: "My Offers", href: "/customer-offers", roles: ["CustomerUser"] },
   { icon: Store, label: "Marketplace", href: "/marketplace", roles: ["Assessment", "CustomerUser"] },
   { icon: ShieldCheck, label: "Service Levels", href: "/customer-sla", roles: ["CustomerUser"] },
-  { icon: Users, label: "Team Members", href: "/customer-team", roles: ["CustomerUser"] },
+  { icon: Users, label: "Team Members", href: "/customer-settings?tab=team", roles: ["CustomerUser"] },
   { icon: CreditCard, label: "Billing", href: "/customer-billing", roles: ["CustomerUser"] },
-  { icon: Lock, label: "Privacy & Data", href: "/customer-privacy", roles: ["CustomerUser"] },
-  { icon: Settings, label: "Settings", href: "/settings", roles: ["CustomerUser"] },
+  { icon: Lock, label: "Privacy & Data", href: "/customer-settings?tab=privacy", roles: ["CustomerUser"] },
+  { icon: Settings, label: "Settings", href: "/customer-settings", roles: ["CustomerUser"] },
 ];
 
 interface CommandPaletteProps {

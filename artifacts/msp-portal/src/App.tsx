@@ -103,6 +103,7 @@ import ExecutiveModePage from "@/pages/executive-mode";
 import AssessmentShellPage from "@/pages/assessment-shell";
 import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
+import CustomerSettingsPage from "@/pages/customer-settings";
 import ComingSoonPage from "@/pages/coming-soon";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -219,6 +220,32 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+// ── Consolidated customer-settings redirects ───────────────────────────────────
+// The five formerly-standalone customer account pages (team, password & MFA,
+// notifications, privacy, cancel services) now live as tabs inside the single
+// /customer-settings hub. For CustomerUser, the old routes redirect to the
+// matching tab so bookmarks and deep links keep working. Non-customer roles
+// keep the original page where it still genuinely serves them:
+//   /settings/security — the only MFA/password/session UI for admin/MSP roles
+//   /offboarding       — the real MSPAdmin 3-step offboarding flow
+//   /customer-privacy  — linked from the admin top-bar menu
+// These wrappers render inside ProtectedRoute, so `user` is always resolved.
+function makeCustomerTabRedirect(tab: string, Fallback: React.ComponentType) {
+  return function CustomerTabRedirect() {
+    const { user } = useAuth();
+    if (user?.mspRole === "CustomerUser") {
+      return <Redirect to={`/customer-settings?tab=${tab}`} />;
+    }
+    return <Fallback />;
+  };
+}
+
+const TeamRouteOrRedirect = makeCustomerTabRedirect("team", CustomerTeamPage);
+const SecurityRouteOrRedirect = makeCustomerTabRedirect("security", SecurityPage);
+const NotificationsRouteOrRedirect = makeCustomerTabRedirect("notifications", CustomerNotificationsPage);
+const PrivacyRouteOrRedirect = makeCustomerTabRedirect("privacy", CustomerPrivacyPage);
+const OffboardingRouteOrRedirect = makeCustomerTabRedirect("cancel", OffboardingPage);
+
 // ── Slug-scoped inner switch ───────────────────────────────────────────────────
 // Rendered inside a WouterRouter whose base is /portal/{slug}.
 // Every navigate() and <Link> in this subtree automatically resolves relative
@@ -324,13 +351,17 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={SettingsCustomDomainPage} />
       </Route>
       <Route path="/settings/security">
-        <ProtectedRoute component={SecurityPage} />
+        {/* CustomerUser → Password & MFA tab of the consolidated hub;
+            admin/MSP roles keep the standalone page (their only MFA UI). */}
+        <ProtectedRoute component={SecurityRouteOrRedirect} />
       </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />
       </Route>
       <Route path="/offboarding">
-        <ProtectedRoute component={OffboardingPage} />
+        {/* CustomerUser → Cancel Services tab of the consolidated hub;
+            MSPAdmin keeps the real 3-step MSP offboarding flow. */}
+        <ProtectedRoute component={OffboardingRouteOrRedirect} />
       </Route>
       <Route path="/webhooks">
         <ProtectedRoute component={WebhooksPage} />
@@ -551,19 +582,28 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={MarketplacePage} />
       </Route>
 
-      {/* Customer Privacy & Data — customer-facing */}
+      {/* Consolidated Customer Settings hub — team, password & MFA,
+          notifications, privacy & data, and cancel services as tabs. */}
+      <Route path="/customer-settings">
+        <ProtectedRoute component={CustomerSettingsPage} />
+      </Route>
+
+      {/* Customer Privacy & Data — CustomerUser redirects to the hub's
+          Privacy tab; admin roles (whose top-bar menu links here) keep the
+          standalone page. */}
       <Route path="/customer-privacy">
-        <ProtectedRoute component={CustomerPrivacyPage} />
+        <ProtectedRoute component={PrivacyRouteOrRedirect} />
       </Route>
 
-      {/* Customer Notification Preferences — customer-facing */}
+      {/* Customer Notification Preferences — redirects to the hub's
+          Notifications tab. */}
       <Route path="/customer-notifications">
-        <ProtectedRoute component={CustomerNotificationsPage} />
+        <ProtectedRoute component={NotificationsRouteOrRedirect} />
       </Route>
 
-      {/* Customer Team Management — customer-facing */}
+      {/* Customer Team Management — redirects to the hub's Team tab. */}
       <Route path="/customer-team">
-        <ProtectedRoute component={CustomerTeamPage} />
+        <ProtectedRoute component={TeamRouteOrRedirect} />
       </Route>
 
       {/* Customer Billing — customer-facing */}

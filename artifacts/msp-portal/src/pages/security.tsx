@@ -808,9 +808,12 @@ function LoginHistoryCard() {
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Content (shared) ──────────────────────────────────────────────────────────
+// The full real Password & MFA experience, sans AppShell, so the consolidated
+// /customer-settings hub can embed it as a tab while /settings/security keeps
+// serving it standalone to admin/MSP roles. Same data fetching, same actions.
 
-export default function SecurityPage() {
+export function SecuritySettingsContent() {
   const { fetchWithAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [enrollments, setEnrollments] = useState<Enrollments>({
@@ -842,52 +845,62 @@ export default function SecurityPage() {
   const mfaActive = enrollments.totp || enrollments.sms || enrollments.passkey;
 
   return (
-    <AppShell title="Account Security">
-      <div className="p-6 max-w-2xl space-y-6">
-        <div>
-          <h2 className="text-lg font-semibold">Account Security</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Set up an additional second factor. Once enabled, you will be prompted after entering your password.
-          </p>
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Account Security</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Set up an additional second factor. Once enabled, you will be prompted after entering your password.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
         </div>
+      ) : (
+        <div className="space-y-4">
+          <TotpCard
+            enrolled={enrollments.totp}
+            onRefresh={() => void fetchEnrollments()}
+          />
+          <SmsCard
+            enrolled={enrollments.sms}
+            enrolledPhone={enrollments.smsPhone}
+            onRefresh={() => void fetchEnrollments()}
+          />
+          <PasskeyCard
+            enrolled={enrollments.passkey}
+            passkeyCount={enrollments.passkeyCount}
+            onRefresh={() => void fetchEnrollments()}
+          />
 
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <TotpCard
-              enrolled={enrollments.totp}
-              onRefresh={() => void fetchEnrollments()}
-            />
-            <SmsCard
-              enrolled={enrollments.sms}
-              enrolledPhone={enrollments.smsPhone}
-              onRefresh={() => void fetchEnrollments()}
-            />
-            <PasskeyCard
-              enrolled={enrollments.passkey}
-              passkeyCount={enrollments.passkeyCount}
-              onRefresh={() => void fetchEnrollments()}
-            />
-
-            {mfaActive && (
-              <div className="bg-primary/5 border border-primary/20 rounded-lg px-5 py-4">
-                <p className="text-xs text-primary font-semibold">
-                  MFA is active on your account. You will be asked for a second factor each time you sign in.
-                </p>
-              </div>
-            )}
-
-            <div className="pt-2">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Password &amp; Sessions</h3>
+          {mfaActive && (
+            <div className="bg-primary/5 border border-primary/20 rounded-lg px-5 py-4">
+              <p className="text-xs text-primary font-semibold">
+                MFA is active on your account. You will be asked for a second factor each time you sign in.
+              </p>
             </div>
-            <PasswordCard />
-            <SessionsCard />
-            <LoginHistoryCard />
+          )}
+
+          <div className="pt-2">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Password &amp; Sessions</h3>
           </div>
-        )}
+          <PasswordCard />
+          <SessionsCard />
+          <LoginHistoryCard />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function SecurityPage() {
+  return (
+    <AppShell title="Account Security">
+      <div className="p-6">
+        <SecuritySettingsContent />
       </div>
     </AppShell>
   );

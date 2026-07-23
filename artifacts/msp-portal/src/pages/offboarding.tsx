@@ -91,30 +91,22 @@ function OffboardingStep({
   );
 }
 
-export default function OffboardingPage() {
+// ── Customer cancel-services flow (shared) ───────────────────────────────────
+// The full real CustomerUser cancellation experience, sans AppShell, so the
+// consolidated /customer-settings hub can embed it as a tab. Same real state
+// tracking (/api/portal/dashboard customerStatus), same real actions
+// (/api/portal/customer/offboard, /api/portal/customer/export), same
+// managed-by-external-MSP gate (mspId !== 1).
+
+export function CustomerCancelServicesContent() {
   const { fetchWithAuth, user } = useAuth();
   const [, navigate] = useLocation();
-  const [info, setInfo] = useState<OffboardingInfo | null>(null);
   const [requesting, setRequesting] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [loading, setLoading] = useState(user?.mspRole === "CustomerUser");
+  const [loading, setLoading] = useState(true);
   const [customerStatus, setCustomerStatus] = useState<string>("active");
 
   useEffect(() => {
-    if (user?.mspRole === "MSPAdmin") {
-      fetchWithAuth("/api/msp/dashboard")
-        .then((r) => r.json())
-        .then((d) => {
-          if (d?.msp) {
-            setInfo({
-              offboardingState: d.msp.offboardingState,
-              offboardingRequestedAt: d.msp.offboardingRequestedAt,
-              exportReadyAt: d.msp.exportReadyAt,
-            });
-          }
-        })
-        .catch(() => null);
-    } else if (user?.mspRole === "CustomerUser" && user?.mspId === 1) {
+    if (user?.mspId === 1) {
       setLoading(true);
       fetchWithAuth("/api/portal/dashboard")
         .then((r) => r.json())
@@ -123,148 +115,85 @@ export default function OffboardingPage() {
         })
         .catch(() => null)
         .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
-  }, [fetchWithAuth, user?.mspRole, user?.mspId]);
+  }, [fetchWithAuth, user?.mspId]);
 
-  const currentState: OffboardingState = info?.offboardingState ?? null;
+  if (user?.mspId !== 1) {
+    return (
+      <div className="max-w-md mx-auto mt-10">
+        <Card className="border-red-500/30 bg-red-500/10 backdrop-blur-sm shadow-lg overflow-hidden relative">
+          <div className="absolute top-0 right-0 size-32 bg-red-500/10 rounded-full blur-2xl pointer-events-none" />
+          <CardHeader className="pb-3 text-center">
+            <div className="size-12 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="size-6" />
+            </div>
+            <CardTitle className="text-lg font-bold text-red-300">
+              Contact Your Service Provider
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto leading-relaxed">
+              Your account is managed by an external Managed Service Provider (MSP). To cancel or modify your subscriptions and monitoring services, please contact your MSP coordinator directly.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center pb-6 pt-2">
+            <Button onClick={() => navigate("/customer-home")} variant="outline" className="border-red-500/30 text-red-300 hover:bg-red-500/10">
+              Back to Portal
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  async function handleRequestCancellation() {
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const downloadCustomerData = async () => {
+    try {
+      const res = await fetchWithAuth("/api/portal/customer/export");
+      if (!res.ok) throw new Error("Failed to export data");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customer-data-export-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Data export downloaded successfully");
+    } catch (err) {
+      toast.error("Failed to download data export");
+    }
+  };
+
+  const handleCustomerOffboard = async () => {
     setRequesting(true);
     try {
-      const res = await fetchWithAuth("/api/msp/offboarding/request", {
+      const res = await fetchWithAuth("/api/portal/customer/offboard", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        headers: { "Content-Type": "application/json" }
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Request failed");
-      }
-      const data = (await res.json()) as OffboardingInfo;
-      setInfo(data);
-      toast.success("Cancellation request submitted");
+      if (!res.ok) throw new Error("Offboarding failed");
+      setCustomerStatus("inactive");
+      toast.success("Successfully offboarded. Your services and monitoring have been deactivated.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to request cancellation");
+      toast.error("Failed to complete offboarding");
     } finally {
       setRequesting(false);
     }
-  }
+  };
 
-  async function handleGenerateExport() {
-    setExporting(true);
-    try {
-      const res = await fetchWithAuth("/api/msp/offboarding/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Export failed");
-      }
-      const data = (await res.json()) as OffboardingInfo;
-      setInfo(data);
-      toast.success("Export package generated");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to generate export");
-    } finally {
-      setExporting(false);
-    }
-  }
+  const isCustomerInactive = customerStatus === "inactive" || customerStatus === "archived";
 
-  function downloadExport() {
-    if (!info?.export) return;
-    const blob = new Blob([JSON.stringify(info.export, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `msp-export-${info.export.msp.slug}-${new Date().toISOString().split("T")[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  if (user?.mspRole === "CustomerUser") {
-    if (user.mspId !== 1) {
-      return (
-        <AppShell title="Offboarding">
-          <div className="max-w-md mx-auto p-6 mt-10">
-            <Card className="border-red-500/30 bg-red-500/10 backdrop-blur-sm shadow-lg overflow-hidden relative">
-              <div className="absolute top-0 right-0 size-32 bg-red-500/10 rounded-full blur-2xl pointer-events-none" />
-              <CardHeader className="pb-3 text-center">
-                <div className="size-12 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="size-6" />
-                </div>
-                <CardTitle className="text-lg font-bold text-red-300">
-                  Contact Your Service Provider
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground mt-2 max-w-sm mx-auto leading-relaxed">
-                  Your account is managed by an external Managed Service Provider (MSP). To cancel or modify your subscriptions and monitoring services, please contact your MSP coordinator directly.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-center pb-6 pt-2">
-                <Button onClick={() => navigate("/customer-home")} variant="outline" className="border-red-500/30 text-red-300 hover:bg-red-500/10">
-                  Back to Portal
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </AppShell>
-      );
-    }
-
-    if (loading) {
-      return (
-        <AppShell title="Offboarding">
-          <div className="min-h-[50vh] flex items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
-        </AppShell>
-      );
-    }
-
-    const downloadCustomerData = async () => {
-      try {
-        const res = await fetchWithAuth("/api/portal/customer/export");
-        if (!res.ok) throw new Error("Failed to export data");
-        const data = await res.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `customer-data-export-${new Date().toISOString().split("T")[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success("Data export downloaded successfully");
-      } catch (err) {
-        toast.error("Failed to download data export");
-      }
-    };
-
-    const handleCustomerOffboard = async () => {
-      setRequesting(true);
-      try {
-        const res = await fetchWithAuth("/api/portal/customer/offboard", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        });
-        if (!res.ok) throw new Error("Offboarding failed");
-        setCustomerStatus("inactive");
-        toast.success("Successfully offboarded. Your services and monitoring have been deactivated.");
-      } catch (err) {
-        toast.error("Failed to complete offboarding");
-      } finally {
-        setRequesting(false);
-      }
-    };
-
-    const isCustomerInactive = customerStatus === "inactive" || customerStatus === "archived";
-
-    return (
-      <AppShell title="Offboarding">
-        <div className="max-w-2xl mx-auto p-6 space-y-6">
-          {isCustomerInactive ? (
+  return (
+    <div className="max-w-2xl space-y-6">
+      {isCustomerInactive ? (
             <>
               <Card className="border-emerald-500/30 bg-emerald-500/10 backdrop-blur-sm shadow-md overflow-hidden relative">
                 <div className="absolute top-0 right-0 size-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
@@ -363,6 +292,101 @@ export default function OffboardingPage() {
               </CardContent>
             </Card>
           )}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+// CustomerUser renders the shared cancel-services content; MSPAdmin (and other
+// MSP-side roles) keep the original 3-step MSP offboarding flow below.
+
+export default function OffboardingPage() {
+  const { fetchWithAuth, user } = useAuth();
+  const [info, setInfo] = useState<OffboardingInfo | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    if (user?.mspRole === "MSPAdmin") {
+      fetchWithAuth("/api/msp/dashboard")
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.msp) {
+            setInfo({
+              offboardingState: d.msp.offboardingState,
+              offboardingRequestedAt: d.msp.offboardingRequestedAt,
+              exportReadyAt: d.msp.exportReadyAt,
+            });
+          }
+        })
+        .catch(() => null);
+    }
+  }, [fetchWithAuth, user?.mspRole]);
+
+  const currentState: OffboardingState = info?.offboardingState ?? null;
+
+  async function handleRequestCancellation() {
+    setRequesting(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/offboarding/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error ?? "Request failed");
+      }
+      const data = (await res.json()) as OffboardingInfo;
+      setInfo(data);
+      toast.success("Cancellation request submitted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to request cancellation");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  async function handleGenerateExport() {
+    setExporting(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/offboarding/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        throw new Error(data.error ?? "Export failed");
+      }
+      const data = (await res.json()) as OffboardingInfo;
+      setInfo(data);
+      toast.success("Export package generated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate export");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function downloadExport() {
+    if (!info?.export) return;
+    const blob = new Blob([JSON.stringify(info.export, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `msp-export-${info.export.msp.slug}-${new Date().toISOString().split("T")[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (user?.mspRole === "CustomerUser") {
+    return (
+      <AppShell title="Offboarding">
+        <div className="max-w-2xl mx-auto p-6">
+          <CustomerCancelServicesContent />
         </div>
       </AppShell>
     );

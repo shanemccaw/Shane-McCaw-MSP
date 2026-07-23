@@ -336,32 +336,43 @@ function WebhookCard() {
   );
 }
 
+// The full real Notification Preferences experience, sans AppShell, so the
+// consolidated /customer-settings hub can embed it as a tab. Same endpoints
+// (/api/portal/notification-preferences, /api/portal/webhooks), same actions.
+export function NotificationSettingsContent() {
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Notification Preferences</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Control what you hear from us, and where.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm">
+        <div className="flex items-start gap-3">
+          <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold mb-0.5">These settings control delivery, not detection</p>
+            <p className="text-muted-foreground">
+              Turning a category off stops it from reaching you — it does not change the thresholds or escalation
+              rules your provider has configured for your monitoring.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <CategoryPreferencesCard />
+      <WebhookCard />
+    </div>
+  );
+}
+
 export default function CustomerNotificationsPage() {
   return (
     <AppShell title="Notification Preferences">
-      <div className="p-6 max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Notification Preferences</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Control what you hear from us, and where.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm">
-          <div className="flex items-start gap-3">
-            <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold mb-0.5">These settings control delivery, not detection</p>
-              <p className="text-muted-foreground">
-                Turning a category off stops it from reaching you — it does not change the thresholds or escalation
-                rules your provider has configured for your monitoring.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <CategoryPreferencesCard />
-        <WebhookCard />
+      <div className="p-6 max-w-2xl mx-auto">
+        <NotificationSettingsContent />
       </div>
     </AppShell>
   );

@@ -250,8 +250,12 @@ const MFA_BADGE: Record<MfaStatus, { color: string; icon: React.ElementType }> =
 };
 
 // ── Main Component ────────────────────────────────────────────────────────────
+// Exported sans AppShell so the consolidated /customer-settings hub can embed
+// the full real team-management experience as a tab. Same /api/portal/team/*
+// endpoints, same actions (invite, suspend, unlock, reset password/MFA,
+// emergency bypass, revoke sessions).
 
-export default function CustomerTeamPage() {
+export function CustomerTeamContent() {
   const { fetchWithAuth, user: currentUser } = useAuth();
 
   // State
@@ -594,8 +598,7 @@ export default function CustomerTeamPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <AppShell>
-      <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      <div className="space-y-6 max-w-[1400px]">
         {/* Page Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1351,6 +1354,15 @@ export default function CustomerTeamPage() {
             )}
           </DialogContent>
         </Dialog>
+      </div>
+  );
+}
+
+export default function CustomerTeamPage() {
+  return (
+    <AppShell>
+      <div className="p-6 max-w-[1400px] mx-auto">
+        <CustomerTeamContent />
       </div>
     </AppShell>
   );

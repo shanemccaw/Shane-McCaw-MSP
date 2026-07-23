@@ -282,46 +282,58 @@ function DeletionRequestCard() {
   );
 }
 
+// The full real Privacy & Data experience (Download My Data + deletion
+// request), sans AppShell, so the consolidated /customer-settings hub can
+// embed it as a tab. Same endpoints (/api/portal/data-export,
+// /api/portal/deletion-request), same actions.
+export function PrivacySettingsContent() {
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Privacy & Data</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Download a copy of your data or request account deletion — your rights under applicable privacy law.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm">
+        <div className="flex items-start gap-3">
+          <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold mb-0.5">Your data rights</p>
+            <p className="text-muted-foreground">
+              Shane McCaw Consulting LLC stores your data in US-based infrastructure. You have the right to access a copy of your data and to request its deletion. Deletion requests are processed within 30 days.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <DataExportCard />
+      <DeletionRequestCard />
+
+      <div className="rounded-xl border border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground space-y-1">
+        <p className="font-semibold text-foreground text-sm mb-2">Platform compliance posture</p>
+        <p>• <strong>Data residency:</strong> US-only. All servers, databases, and storage are hosted in US data centers.</p>
+        <p>• <strong>SOC 2:</strong> Targeted for Phase 2 (12–18 months). Controls are documented and available for review under NDA.</p>
+        <p>• <strong>Accessibility:</strong> WCAG 2.1 AA target. Formal audit planned for Phase 2.</p>
+        <p>• Questions? Email <a href="mailto:info@shanemccaw.com" className="text-primary underline underline-offset-2">info@shanemccaw.com</a>.</p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant="outline">GDPR</Badge>
+        <Badge variant="outline">CCPA</Badge>
+        <Badge variant="outline">Data Portability</Badge>
+        <Badge variant="outline">Right to Erasure</Badge>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerPrivacyPage() {
   return (
     <AppShell title="Privacy & Data">
-      <div className="p-6 max-w-2xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Privacy & Data</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Download a copy of your data or request account deletion — your rights under applicable privacy law.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 text-sm">
-          <div className="flex items-start gap-3">
-            <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold mb-0.5">Your data rights</p>
-              <p className="text-muted-foreground">
-                Shane McCaw Consulting LLC stores your data in US-based infrastructure. You have the right to access a copy of your data and to request its deletion. Deletion requests are processed within 30 days.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <DataExportCard />
-        <DeletionRequestCard />
-
-        <div className="rounded-xl border border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground space-y-1">
-          <p className="font-semibold text-foreground text-sm mb-2">Platform compliance posture</p>
-          <p>• <strong>Data residency:</strong> US-only. All servers, databases, and storage are hosted in US data centers.</p>
-          <p>• <strong>SOC 2:</strong> Targeted for Phase 2 (12–18 months). Controls are documented and available for review under NDA.</p>
-          <p>• <strong>Accessibility:</strong> WCAG 2.1 AA target. Formal audit planned for Phase 2.</p>
-          <p>• Questions? Email <a href="mailto:info@shanemccaw.com" className="text-primary underline underline-offset-2">info@shanemccaw.com</a>.</p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline">GDPR</Badge>
-          <Badge variant="outline">CCPA</Badge>
-          <Badge variant="outline">Data Portability</Badge>
-          <Badge variant="outline">Right to Erasure</Badge>
-        </div>
+      <div className="p-6 max-w-2xl mx-auto">
+        <PrivacySettingsContent />
       </div>
     </AppShell>
   );
