@@ -684,7 +684,7 @@ const SIGNAL_INTELLIGENCE_FIELDS = {
   decayRate: numeric("decay_rate", { precision: 4, scale: 3 }).notNull().default("0"),
   ttlDays: integer("ttl_days").notNull().default(0),
   confidence: integer("confidence").notNull().default(0),
-  severity: text("severity", { enum: ["low", "medium", "high", "critical"] }).notNull().default("low"),
+  severity: text("severity", { enum: ["informational", "low", "medium", "high", "critical"] }).notNull().default("low"),
   category: text("category").notNull().default(""),
   pillar: text("pillar").notNull().default(""),
   crmFitContribution: integer("crm_fit_contribution").notNull().default(0),
@@ -704,7 +704,7 @@ export type SignalCategoryPrefix = typeof SIGNAL_CATEGORY_PREFIXES[number];
 export const SIGNAL_TREND_DIRECTIONS = ["up", "down", "flat"] as const;
 export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];
 
-export const SIGNAL_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export const SIGNAL_SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
 export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
 
 export const signalRuleGroupsTable = pgTable("signal_rule_groups", {

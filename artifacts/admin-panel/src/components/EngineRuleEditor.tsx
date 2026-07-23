@@ -22,7 +22,7 @@ interface SignalIntelligenceFields {
   decayRate: number;
   ttlDays: number;
   confidence: number;
-  severity: "low" | "medium" | "high" | "critical";
+  severity: "informational" | "low" | "medium" | "high" | "critical";
   category: string;
   pillar: string;
   crmFitContribution: number;
@@ -155,6 +155,7 @@ function IntelligenceFieldsPanel({ value, onChange }: { value: IntelFormFields; 
             <label className={lbl}>Severity</label>
             <select value={value.severity} onChange={e => set("severity", e.target.value)} className={sel}>
               <option value="">— low —</option>
+              <option value="informational">informational</option>
               <option value="low">low</option><option value="medium">medium</option>
               <option value="high">high</option><option value="critical">critical</option>
             </select>

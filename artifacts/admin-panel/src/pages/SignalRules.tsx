@@ -127,7 +127,7 @@ const ruleTypeMeta = (value: string) => RULE_TYPES.find(t => t.value === value);
 // SIGNAL_SEVERITIES in api-server lib/tenant-signals.ts (same convention as
 // TenantSignals.tsx / EngineRuleEditor.tsx).
 const TREND_DIRECTIONS = ["up", "down", "flat"] as const;
-const SEVERITIES = ["low", "medium", "high", "critical"] as const;
+const SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
 
 // ─── Intelligence form state (strings; blanks omitted from request bodies so
 // PATCH merges against the stored row instead of clobbering it) ───────────────

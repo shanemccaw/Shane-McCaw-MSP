@@ -1259,7 +1259,10 @@ router.post("/admin/engines/:key/import", requireAdmin, async (req: Request, res
 
       if (Array.isArray(importedGroups)) {
         for (const g of importedGroups as Array<Record<string, unknown>>) {
-          const { values: gIntel } = parseIntelligenceFields(g);
+          const { values: gIntel, error: gIntelError } = parseIntelligenceFields(g);
+          if (gIntelError) {
+            throw new Error(`Import aborted — group for signal "${g.signalKey ?? g.signal_key}": ${gIntelError}`);
+          }
           const signalKey = String(g.signalKey ?? g.signal_key ?? "");
           if (!signalKey) continue;
           const result = await tx.execute(sql`
@@ -1291,7 +1294,10 @@ router.post("/admin/engines/:key/import", requireAdmin, async (req: Request, res
       for (const r of importedRules as Array<Record<string, unknown>>) {
         const groupRef = String(r.groupSignalKey ?? r.group_signal_key ?? "");
         const mappedGroupId = groupRef ? (groupIdBySignalKey.get(groupRef) ?? null) : null;
-        const { values: rIntel } = parseIntelligenceFields(r);
+        const { values: rIntel, error: rIntelError } = parseIntelligenceFields(r);
+        if (rIntelError) {
+          throw new Error(`Import aborted — rule for signal "${r.signalKey ?? r.signal_key}" (sourceKey "${r.sourceKey ?? r.source_key}"): ${rIntelError}`);
+        }
         await tx.execute(sql`
           INSERT INTO signal_derivation_rules (
             signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,

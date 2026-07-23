@@ -649,7 +649,7 @@ export async function getBuiltinSignalKeys(): Promise<Set<string>> {
 export const SIGNAL_TREND_DIRECTIONS = ["up", "down", "flat"] as const;
 export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];
 
-export const SIGNAL_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export const SIGNAL_SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
 export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
 
 export const SIGNAL_CATEGORY_PREFIXES = [

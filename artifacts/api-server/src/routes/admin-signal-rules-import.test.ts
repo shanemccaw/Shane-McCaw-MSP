@@ -56,7 +56,7 @@ vi.mock("../lib/tenant-signals", () => ({
   projectMatchesSignals: vi.fn().mockReturnValue({ included: false }),
   getDisabledSignalKeys: vi.fn().mockResolvedValue(new Set()),
   SIGNAL_TREND_DIRECTIONS: ["up", "down", "flat"],
-  SIGNAL_SEVERITIES: ["low", "medium", "high", "critical"],
+  SIGNAL_SEVERITIES: ["informational", "low", "medium", "high", "critical"],
   coerceDecayRate: (rows: unknown[]) => rows,
 }));
 
@@ -302,5 +302,112 @@ describe("POST /api/admin/signal-rules/versions/:id/restore", () => {
     // Inert defaults, never undefined/NULL for the NOT NULL intelligence columns.
     expect(ruleParams).toEqual(expect.arrayContaining([0, "flat", "low"]));
     expect(ruleParams).not.toEqual(expect.arrayContaining([undefined]));
+  });
+
+  // Regression for: real historical data (live snapshot id=1) uses a 5th
+  // severity value, "informational", that SIGNAL_SEVERITIES did not allow.
+  // parseIntelligenceFields correctly rejected it, but the restore endpoint's
+  // call site only destructured `{ values }` and never checked `.error`, so
+  // it silently proceeded with an empty values object — every intelligence
+  // column for that row became `undefined`, which drizzle's sql template
+  // renders as a blank parameter slot, producing the malformed
+  // "$8 onward blank" query Shane hit live.
+  it("restores a row with severity 'informational' successfully with its real values intact", async () => {
+    const snapshot = {
+      groups: [{
+        id: 50, signalKey: "signal.adoption.email-activity-trend", logic: "OR", label: "Informational Group", sortOrder: 0,
+        priority: 1, weight: 10, pricingImpact: 0, priorityScoreContribution: 0, pricingValueContribution: 0,
+        governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 40, copilotImpact: 0,
+        architectureImpact: 0, trendValue: 0, trendDirection: "flat", decayRate: 0, ttlDays: 0, confidence: 60,
+        severity: "informational", category: "adoption:email-trend", pillar: "adoption",
+        crmFitContribution: 0, crmPainContribution: 0, crmMaturityContribution: 0, crmIntentContribution: 0, crmUrgencyContribution: 0,
+      }],
+      rules: [{
+        id: 3001, signalKey: "signal.adoption.email-activity-trend", groupId: 50, ruleType: "profile_key_truthy", sourceKey: "hasEmailActivityDrop",
+        compareValue: null, description: "informational rule", sortOrder: 0,
+        priority: 1, weight: 10, pricingImpact: 0, priorityScoreContribution: 0, pricingValueContribution: 0,
+        governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 40, copilotImpact: 0,
+        architectureImpact: 0, trendValue: 0, trendDirection: "flat", decayRate: 0, ttlDays: 0, confidence: 60,
+        severity: "informational", category: "adoption:email-trend", pillar: "adoption",
+        crmFitContribution: 0, crmPainContribution: 0, crmMaturityContribution: 0, crmIntentContribution: 0, crmUrgencyContribution: 0,
+      }],
+    };
+
+    mockExecute.mockImplementation(async (q: unknown) => {
+      const text = extractSqlText(q);
+      if (text.includes("FROM signal_rule_versions") && text.includes("SELECT snapshot")) {
+        return { rows: [{ snapshot }], rowCount: 1 };
+      }
+      if (text.includes("FROM signal_derivation_rules") || text.includes("FROM signal_rule_groups")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [{ id: 1 }], rowCount: 1 };
+    });
+
+    const txQueries: unknown[] = [];
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        execute: vi.fn(async (q: unknown) => { txQueries.push(q); return { rows: [{ id: 9002 }], rowCount: 1 }; }),
+      };
+      await cb(tx);
+    });
+
+    const res = await request(app)
+      .post("/admin/signal-rules/versions/7/restore")
+      .set(authHeader)
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.restored).toBe(1);
+
+    const groupInsert = txQueries.find(q => extractSqlText(q).includes("INSERT INTO signal_rule_groups"));
+    const ruleInsert = txQueries.find(q => extractSqlText(q).includes("INSERT INTO signal_derivation_rules"));
+    expect(extractSqlParams(groupInsert)).toEqual(expect.arrayContaining(["informational", 40, 60]));
+    expect(extractSqlParams(ruleInsert)).toEqual(expect.arrayContaining(["informational", 40, 60]));
+  });
+
+  // Regression for the same silent-error-swallowing bug: a genuinely invalid
+  // severity value must now abort the whole restore with a clear per-row
+  // error message instead of writing blank/undefined INSERT params.
+  it("aborts the restore with a clear per-row error when severity is genuinely invalid", async () => {
+    const snapshot = {
+      groups: [],
+      rules: [{
+        id: 4001, signalKey: "signal.bad.severity", groupId: null, ruleType: "profile_key_truthy", sourceKey: "hasSomething",
+        compareValue: null, description: "bad severity rule", sortOrder: 0,
+        severity: "apocalyptic",
+      }],
+    };
+
+    mockExecute.mockImplementation(async (q: unknown) => {
+      const text = extractSqlText(q);
+      if (text.includes("FROM signal_rule_versions") && text.includes("SELECT snapshot")) {
+        return { rows: [{ snapshot }], rowCount: 1 };
+      }
+      if (text.includes("FROM signal_derivation_rules") || text.includes("FROM signal_rule_groups")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [{ id: 1 }], rowCount: 1 };
+    });
+
+    const txQueries: unknown[] = [];
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        execute: vi.fn(async (q: unknown) => { txQueries.push(q); return { rows: [{ id: 9003 }], rowCount: 1 }; }),
+      };
+      // Real drizzle transactions reject when the callback throws.
+      await cb(tx);
+    });
+
+    const res = await request(app)
+      .post("/admin/signal-rules/versions/8/restore")
+      .set(authHeader)
+      .send({});
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/severity must be one of/i);
+    expect(res.body.error).toContain("signal.bad.severity");
+    // No INSERT for the bad row should have been attempted.
+    expect(txQueries.some(q => extractSqlText(q).includes("INSERT INTO signal_derivation_rules"))).toBe(false);
   });
 });

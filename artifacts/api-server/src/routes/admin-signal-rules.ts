@@ -1163,7 +1163,10 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
 
       if (Array.isArray(importedGroups)) {
         for (const g of importedGroups as Array<Record<string, unknown>>) {
-          const { values: gIntel } = parseIntelligenceFields(g);
+          const { values: gIntel, error: gIntelError } = parseIntelligenceFields(g);
+          if (gIntelError) {
+            throw new Error(`Import aborted — group for signal "${g.signalKey ?? g.signal_key}": ${gIntelError}`);
+          }
           const result = await tx.execute(sql`
             INSERT INTO signal_rule_groups (
               signal_key, logic, label, sort_order,
@@ -1193,7 +1196,10 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
       for (const r of importedRules as Array<Record<string, unknown>>) {
         const originalGroupId = r.groupId ?? r.group_id;
         const mappedGroupId = originalGroupId ? (groupIdMap.get(Number(originalGroupId)) ?? null) : null;
-        const { values: rIntel } = parseIntelligenceFields(r);
+        const { values: rIntel, error: rIntelError } = parseIntelligenceFields(r);
+        if (rIntelError) {
+          throw new Error(`Import aborted — rule for signal "${r.signalKey ?? r.signal_key}" (sourceKey "${r.sourceKey ?? r.source_key}"): ${rIntelError}`);
+        }
         await tx.execute(sql`
           INSERT INTO signal_derivation_rules (
             signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
@@ -1583,7 +1589,10 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
           // every intelligence field is present in camelCase. Previously this INSERT
           // wrote only the base columns, silently resetting all intelligence data to
           // column defaults on every restore.
-          const { values: gIntel } = parseIntelligenceFields(g);
+          const { values: gIntel, error: gIntelError } = parseIntelligenceFields(g);
+          if (gIntelError) {
+            throw new Error(`Restore aborted — group for signal "${g.signalKey}": ${gIntelError}`);
+          }
           const result = await tx.execute(sql`
             INSERT INTO signal_rule_groups (
               signal_key, logic, label, sort_order, msp_id,
@@ -1614,7 +1623,10 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
           const mappedGroupId = originalGroupId ? (groupIdMap.get(Number(originalGroupId)) ?? null) : null;
           // Same truncation fix as groups above — snapshot rules carry the full
           // camelCase intelligence field set from getAllRules().
-          const { values: rIntel } = parseIntelligenceFields(r);
+          const { values: rIntel, error: rIntelError } = parseIntelligenceFields(r);
+          if (rIntelError) {
+            throw new Error(`Restore aborted — rule for signal "${r.signalKey}" (sourceKey "${r.sourceKey}"): ${rIntelError}`);
+          }
           await tx.execute(sql`
             INSERT INTO signal_derivation_rules (
               signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id,
@@ -1648,7 +1660,7 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
     res.json({ restored: ruleCount, backupSnapshotId: backupId });
   } catch (err) {
     log.error({ err }, "POST /admin/signal-rules/versions/:id/restore failed");
-    res.status(500).json({ error: "Restore failed" });
+    res.status(500).json({ error: err instanceof Error ? err.message : "Restore failed" });
   }
 });
 
