@@ -130,6 +130,8 @@ interface CheckDef {
   key: string;
   mapping?: Array<{ sourceField: string; targetField: string; transform?: string }>;
   properties?: string[];
+  /** Defaults false (Graph check) — the monitor_checks schema default. */
+  requiresCustomerScript?: boolean;
 }
 
 /** Wires the mocked module boundaries for one scenario. The db.select mock
@@ -146,6 +148,7 @@ function wireScenario(opts: {
     key: d.key,
     mapping: d.mapping ?? [],
     properties: d.properties ?? [],
+    requiresCustomerScript: d.requiresCustomerScript ?? false,
   }));
   vi.mocked(db.select).mockImplementation((() => ({
     from: (table: unknown) => {
@@ -316,6 +319,50 @@ describe("getPillarCoverage — real check→signal linkage (mapping targetField
 
     expect(await getPillarCoverage("core:enhanced-monitoring", 4)).toEqual([]);
   });
+
+  it("runtime license-gap flags (hasAADP1orP2/hasDefender) count as producible for any package with a Graph check — even with NO mapping targeting them", async () => {
+    // Real live shape: the 2026-07-22 seeded rules read hasAADP1orP2/hasDefender,
+    // but NO monitor_checks.mapping row ever lists those targetFields — they are
+    // stamped at runtime by executeMonitorCheck on a LicenseGapError and merged
+    // by mergeMonitorProfileRows regardless of row status. Enumerating mapping
+    // targetFields alone misses this producer entirely (the gap this test pins).
+    const rules = [
+      makeRule({
+        signalKey: "security:lacks_entra_premium", ruleType: "profile_key_falsy",
+        sourceKey: "hasAADP1orP2", securityImpact: 15,
+      }),
+      makeRule({
+        signalKey: "security:lacks_defender", ruleType: "profile_key_falsy",
+        sourceKey: "hasDefender", securityImpact: 12,
+      }),
+    ];
+    wireScenario({
+      // A Graph check with NO mapping at all — the flags must still count.
+      packageCheckKeys: ["teams:orphaned-teams"],
+      checkDefinitions: [{ key: "teams:orphaned-teams" }],
+      rules,
+      profile: {},
+    });
+
+    expect((await getPillarCoverage("core:enhanced-monitoring", 4)).map((c) => c.pillar)).toEqual(["security"]);
+  });
+
+  it("license-gap flags are NOT producible by an all-script package (script checks never call Graph)", async () => {
+    const rules = [
+      makeRule({
+        signalKey: "security:lacks_entra_premium", ruleType: "profile_key_falsy",
+        sourceKey: "hasAADP1orP2", securityImpact: 15,
+      }),
+    ];
+    wireScenario({
+      packageCheckKeys: ["script:local-ad-audit"],
+      checkDefinitions: [{ key: "script:local-ad-audit", requiresCustomerScript: true }],
+      rules,
+      profile: {},
+    });
+
+    expect(await getPillarCoverage("core:script-only", 4)).toEqual([]);
+  });
 });
 
 describe("buildProducibleProfileKeys / ruleIsFedByPackage — pure linkage helpers", () => {
@@ -340,11 +387,29 @@ describe("buildProducibleProfileKeys / ruleIsFedByPackage — pure linkage helpe
       // bridged, gated on identity:ca-policy-count being covered
       "conditionalAccessPolicyCount",
       "conditionalAccessPoliciesCount",
+      // runtime license-gap flags — producible by any Graph (non-script) check
+      "hasAADP1orP2",
+      "hasDefender",
     ]) {
       expect(keys.has(expected), expected).toBe(true);
     }
     expect(keys.has("notCovered")).toBe(false);
     expect(keys.has("securityScore")).toBe(false); // its producer check is not covered
+  });
+
+  it("license-gap flags are gated on at least one Graph (non-script) covered check", () => {
+    const scriptOnly = buildProducibleProfileKeys(new Set(["script:audit"]), [
+      { key: "script:audit", mapping: [], properties: [], requiresCustomerScript: true },
+    ]);
+    expect(scriptOnly.has("hasAADP1orP2")).toBe(false);
+    expect(scriptOnly.has("hasDefender")).toBe(false);
+
+    const withGraph = buildProducibleProfileKeys(new Set(["script:audit", "teams:orphaned-teams"]), [
+      { key: "script:audit", mapping: [], properties: [], requiresCustomerScript: true },
+      { key: "teams:orphaned-teams", mapping: [], properties: [] }, // absent flag = Graph (schema default)
+    ]);
+    expect(withGraph.has("hasAADP1orP2")).toBe(true);
+    expect(withGraph.has("hasDefender")).toBe(true);
   });
 
   it("ruleIsFedByPackage dispatches by ruleType", () => {

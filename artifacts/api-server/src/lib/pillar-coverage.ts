@@ -45,6 +45,15 @@
  *         package (bridgeLegacyProfileKeys: `conditionalAccessPolicyCount` /
  *         `conditionalAccessPoliciesCount` ← `identity:ca-policy-count`,
  *         `securityScore` ← `security:secure-score`), or
+ *       – a runtime license-gap flag (`LICENSE_GAP_PROFILE_FLAG_KEYS` —
+ *         `hasAADP1orP2` / `hasDefender`), which `executeMonitorCheck` stamps
+ *         onto ANY Graph check's row when the tenant's own Graph response
+ *         proves it lacks the SKU (LicenseGapError → licenseGapProfileFlags),
+ *         and `mergeMonitorProfileRows` merges regardless of row status.
+ *         These are producible by any package containing at least one Graph
+ *         (non-script) check — no `monitor_checks.mapping` entry ever lists
+ *         them, so enumerating mapping targetFields alone misses this real
+ *         producer entirely. Or
  *       – the bare check key (defensive: a mapping is free to target the check
  *         key itself, and the original narrow-package verification relied on
  *         exactly that shape — kept so it can never regress).
@@ -62,6 +71,7 @@
 
 import { db, monitoringPackageChecksTable, monitorChecksTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { LICENSE_GAP_PROFILE_FLAG_KEYS } from "./monitor-executor.ts";
 import {
   HEALTH_PILLARS,
   PILLAR_FIELD,
@@ -121,6 +131,11 @@ interface CheckDefinitionRow {
   key: string;
   mapping: Array<{ sourceField: string; targetField: string; transform?: string }> | null;
   properties: string[] | null;
+  /** Graph checks (false — the schema default) can hit LicenseGapError and
+   *  stamp the runtime license-gap flags; script-only checks (true) never call
+   *  Graph and can't. Optional so the pure helper stays callable with minimal
+   *  literals; absent is treated as the schema default (Graph). */
+  requiresCustomerScript?: boolean;
 }
 
 /**
@@ -141,8 +156,10 @@ export function buildProducibleProfileKeys(
     producible.add(`${checkKey}__itemCount`);
   }
 
+  let hasGraphCheck = false;
   for (const def of checkDefinitions) {
     if (!coveredCheckKeys.has(def.key)) continue;
+    if (!def.requiresCustomerScript) hasGraphCheck = true;
     for (const rule of def.mapping ?? []) {
       if (rule?.targetField) producible.add(rule.targetField);
     }
@@ -152,6 +169,15 @@ export function buildProducibleProfileKeys(
       producible.add(`${prop}_first`);
       producible.add(`${prop}_values`);
     }
+  }
+
+  // Runtime license-gap flags — stamped by executeMonitorCheck (NOT by any
+  // mapping) when a Graph check's own tenant response proves the SKU is
+  // missing, then merged into the profile by mergeMonitorProfileRows even on
+  // non-ok rows. Any package with at least one Graph (non-script) check can
+  // genuinely produce them (see the file header).
+  if (hasGraphCheck) {
+    for (const key of LICENSE_GAP_PROFILE_FLAG_KEYS) producible.add(key);
   }
 
   for (const [bridgedKey, producerCheck] of Object.entries(BRIDGED_KEY_PRODUCER_CHECK)) {
@@ -216,6 +242,7 @@ export async function getPillarCoverage(
       key: monitorChecksTable.key,
       mapping: monitorChecksTable.mapping,
       properties: monitorChecksTable.properties,
+      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
     })
     .from(monitorChecksTable)
     .where(inArray(monitorChecksTable.key, [...coveredCheckKeys]));

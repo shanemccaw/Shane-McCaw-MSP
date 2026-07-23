@@ -454,13 +454,25 @@ export async function graphFetchPaginated(
 // Graph-only scan (no customer-side PowerShell run required). Only definitive
 // mappings are emitted; an unrecognized feature contributes no flag (the
 // _licenseGapFeature marker still records what was missing).
+
+/**
+ * Every merged-profile key `licenseGapProfileFlags` can stamp — the runtime
+ * (non-mapping) profile-key producer that any Graph check in a package can
+ * trigger by hitting a LicenseGapError. `licenseGapProfileFlags` builds its
+ * returns FROM this constant so the two can never drift; pillar-coverage.ts
+ * imports it to count these keys as producible by any package containing at
+ * least one Graph (non-script) check.
+ */
+export const LICENSE_GAP_PROFILE_FLAG_KEYS = ["hasAADP1orP2", "hasDefender"] as const;
+
 export function licenseGapProfileFlags(feature: string): Record<string, boolean> {
+  const [ENTRA_KEY, DEFENDER_KEY] = LICENSE_GAP_PROFILE_FLAG_KEYS;
   const f = feature.toLowerCase();
   if (f.includes("entra") || f.includes("premium") || f.includes("p1") || f.includes("p2") || f.includes("azure ad")) {
-    return { hasAADP1orP2: false };
+    return { [ENTRA_KEY]: false };
   }
   if (f.includes("defender")) {
-    return { hasDefender: false };
+    return { [DEFENDER_KEY]: false };
   }
   return {};
 }
