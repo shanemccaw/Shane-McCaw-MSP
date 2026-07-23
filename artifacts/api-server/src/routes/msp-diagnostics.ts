@@ -118,6 +118,9 @@ router.post(
               eq(clientServicesTable.status, "active"),
             )
           )
+          // Deterministic: most recent active subscription wins when a
+          // customer holds more than one (unordered LIMIT 1 was arbitrary).
+          .orderBy(desc(clientServicesTable.id))
           .limit(1);
         packageKey = pkgRow?.packageKey ?? "core:security-baseline";
       }
@@ -199,6 +202,9 @@ router.get(
             eq(clientServicesTable.status, "active"),
           )
         )
+        // Deterministic: most recent active subscription wins when a customer
+        // holds more than one (unordered LIMIT 1 was arbitrary).
+        .orderBy(desc(clientServicesTable.id))
         .limit(1);
 
       res.json({

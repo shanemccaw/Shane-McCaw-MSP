@@ -21,13 +21,18 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("drizzle-orm", () => ({
-  eq: (...args: unknown[]) => ({ type: "eq", args }),
-  and: (...args: unknown[]) => ({ type: "and", args }),
-  desc: (...args: unknown[]) => ({ type: "desc", args }),
-  inArray: (...args: unknown[]) => ({ type: "inArray", args }),
-  sql: (strings: TemplateStringsArray, ...vals: unknown[]) => ({ type: "sql", strings, vals }),
-}));
+vi.mock("drizzle-orm", () => {
+  const sqlFn = (strings: TemplateStringsArray, ...vals: unknown[]) => ({ type: "sql", strings, vals });
+  (sqlFn as unknown as { raw: (s: string) => unknown }).raw = (s: string) => ({ type: "sql.raw", s });
+  return {
+    eq: (...args: unknown[]) => ({ type: "eq", args }),
+    and: (...args: unknown[]) => ({ type: "and", args }),
+    asc: (...args: unknown[]) => ({ type: "asc", args }),
+    desc: (...args: unknown[]) => ({ type: "desc", args }),
+    inArray: (...args: unknown[]) => ({ type: "inArray", args }),
+    sql: sqlFn,
+  };
+});
 
 vi.mock("./logger", () => {
   const stub = { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() };
@@ -36,31 +41,45 @@ vi.mock("./logger", () => {
 
 vi.mock("./sla-engine", () => ({ startSlaTimer: vi.fn() }));
 
-// Chainable + thenable stub — .from/.innerJoin/.where all return the same
-// object, and awaiting it (or calling .where() as the last link) resolves
-// to the queued rows.
+// Chainable + thenable stub — .from/.innerJoin/.where/.orderBy/.limit all
+// return the same thenable object; awaiting it at any link resolves to the
+// queued rows (mirrors drizzle's builder being awaitable at any stage).
 function chainStub(rows: unknown[]): Record<string, unknown> {
   const obj: Record<string, unknown> = {
     from: () => obj,
     innerJoin: () => obj,
-    where: () => Promise.resolve(rows),
+    where: () => obj,
+    orderBy: () => obj,
+    limit: () => obj,
+    then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+      Promise.resolve(rows).then(resolve, reject),
   };
   return obj;
 }
 
 let selectRows: unknown[] = [];
+// getStabilizedSignals now resolves the customer's linked users first
+// (resolveCustomerUserIds — the customer-scoped tenant_signal_history read).
+// That query is recognized by its select shape ({ userId: ... } only) and
+// answered from `customerUserRows`; every other select (derivation rules)
+// falls through to `selectRows`.
+const customerUserRows: Array<{ userId: number }> = [{ userId: 42 }];
 const { mockSelect, mockExecute } = vi.hoisted(() => ({
   mockSelect: vi.fn(),
   mockExecute: vi.fn(),
 }));
-mockSelect.mockImplementation(() => chainStub(selectRows));
+mockSelect.mockImplementation((shape?: Record<string, unknown>) => {
+  const keys = shape ? Object.keys(shape) : [];
+  const isUserResolution = keys.length === 1 && keys[0] === "userId";
+  return chainStub(isUserResolution ? customerUserRows : selectRows);
+});
 
 vi.mock("@workspace/db", () => ({
   db: { select: mockSelect, execute: mockExecute },
   clientM365ProfilesTable: {},
   scriptRunResultsTable: {},
   mspCustomersTable: { id: "id", tenantId: "tenantId", mspId: "mspId" },
-  mspUsersTable: { userId: "userId", customerId: "customerId", isActive: "isActive" },
+  mspUsersTable: { id: "id", userId: "userId", customerId: "customerId", isActive: "isActive", mspRole: "mspRole", createdAt: "createdAt" },
   tenantMonitorProfilesTable: {},
   signalDerivationRulesTable: { signalKey: "signalKey", sourceKey: "sourceKey" },
   monitorChecksTable: { key: "key", frequency: "frequency" },
@@ -132,8 +151,9 @@ describe("getStabilizedSignals", () => {
     mockOpenRows([]);
     const result = await getStabilizedSignals(CUSTOMER_ID);
     expect(result.size).toBe(0);
-    // no derivation-rule lookup needed when there's nothing open
-    expect(mockSelect).not.toHaveBeenCalled();
+    // Exactly ONE select ran (the customer→linked-users resolution); no
+    // derivation-rule lookup is needed when there's nothing open.
+    expect(mockSelect).toHaveBeenCalledTimes(1);
   });
 
   it("stabilizes a legacy (no-rule) signal using the flat 4h default", async () => {

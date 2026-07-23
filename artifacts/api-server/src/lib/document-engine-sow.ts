@@ -6,12 +6,13 @@ import {
   mspCustomersTable,
   mspUsersTable,
 } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { getDocumentStylePrefix, getPrompt, getSowPricingFormulaBlock } from "./prompt-loader";
 import { extractAiHtml } from "./sow-pricing";
 import { logger } from "./logger";
 import { runSalesOfferEngineForTenant } from "./sales-offer-engine";
+import { resolveSiblingUserIds } from "./tenant-signals";
 import { generateOmgCardsFromTelemetry } from "./omg-card-generator-v2";
 
 const log = logger.child({ channel: "workflow.doc-pipeline" });
@@ -96,6 +97,12 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
 
     // Real grounding data: structured findings already stored on prior STANDALONE
     // documents for this client/project — never re-parsed from rendered HTML.
+    // CUSTOMER-scoped: prior documents are a property of the customer, so a
+    // standalone doc generated under any sibling login of the same customer
+    // (insights_generated_documents.customerId is a users.id-shaped FK) still
+    // grounds this SOW — never silently empty grounding because an earlier doc
+    // landed under a different linked user.
+    const groundingOwnerUserIds = await resolveSiblingUserIds(clientUserId);
     const priorDocs = await db
       .select({
         generationInput: insightsGeneratedDocumentsTable.generationInput,
@@ -104,7 +111,7 @@ export async function generateSowDocument(params: GenerateSowParams): Promise<Ge
       .innerJoin(documentTypesTable, eq(documentTypesTable.key, insightsGeneratedDocumentsTable.docType))
       .where(
         and(
-          eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+          inArray(insightsGeneratedDocumentsTable.customerId, groundingOwnerUserIds),
           eq(insightsGeneratedDocumentsTable.projectId, projectId),
           eq(documentTypesTable.pipelineCategory, "standalone"),
         ),

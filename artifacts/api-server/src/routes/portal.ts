@@ -7561,25 +7561,27 @@ router.post(
       return;
     }
 
-    // Find the portal user linked to this customer
-    const [mspUserRow] = await db
-      .select({ userId: mspUsersTable.userId })
-      .from(mspUsersTable)
-      .where(eq(mspUsersTable.customerId, customerId))
-      .limit(1);
-    if (!mspUserRow) {
+    // Find the portal user linked to this customer — impersonation genuinely
+    // needs a single real login, so use the canonical deterministic resolver:
+    // ACTIVE rows only (never land staff in a deactivated login) with the
+    // shared role-ranked/earliest-created tiebreak, instead of the old
+    // unordered no-filter LIMIT 1 that picked an arbitrary (possibly
+    // deactivated) user.
+    const { resolveCustomerPortalUserId: resolveImpersonationTarget } = await import("../lib/tenant-signals");
+    const impersonationUserId = await resolveImpersonationTarget(customerId);
+    if (impersonationUserId == null) {
       log.warn(
         { actorUserId: req.user!.id, mspId, customerId, targetSlug: ownerMsp.slug },
-        "impersonate_customer: no portal user found for customer",
+        "impersonate_customer: no active portal user found for customer",
       );
-      res.status(404).json({ error: "No portal user found for this customer" });
+      res.status(404).json({ error: "No active portal user found for this customer" });
       return;
     }
 
     const [targetUser] = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.id, mspUserRow.userId))
+      .where(eq(usersTable.id, impersonationUserId))
       .limit(1);
     if (!targetUser) {
       log.warn(

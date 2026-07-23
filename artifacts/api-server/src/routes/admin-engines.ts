@@ -27,6 +27,7 @@ import {
   evaluateRule,
   projectMatchesSignals,
   getAllSignalDefinitions,
+  resolveCustomerPortalUserId,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -470,12 +471,10 @@ router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", require
       return res.status(400).json({ error: "Customer not found or is not a testbed customer" });
     }
 
-    const [portalUser] = await db
-      .select({ userId: mspUsersTable.userId })
-      .from(mspUsersTable)
-      .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
-      .limit(1);
-    if (!portalUser) {
+    // Deterministic canonical active user (shared role-ranked/earliest-created
+    // rule) — never an arbitrary unordered pick among multiple active users.
+    const mirrorUserId = await resolveCustomerPortalUserId(customerId);
+    if (mirrorUserId == null) {
       return res.status(400).json({ error: "This testbed customer has no active portal user to mirror. Create one first, the same way you would for a real customer." });
     }
 
@@ -485,7 +484,7 @@ router.post("/admin/simulator/testbeds/:customerId/portal-mirror-token", require
 
     await db.insert(impersonationTokensTable).values({
       token,
-      clientUserId: portalUser.userId,
+      clientUserId: mirrorUserId,
       adminUserId: req.user!.id,
       expiresAt,
     });

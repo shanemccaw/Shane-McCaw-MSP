@@ -42,10 +42,10 @@ import {
   servicesTable,
   type WriteActionCatalog,
 } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireRole, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth";
 import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement";
-import { resolveCustomerPortalUserId } from "../lib/tenant-signals";
+import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "engine.launch-control" });
@@ -76,21 +76,25 @@ function resolveTierRank(tierName: string | null | undefined): number | null {
 
 /**
  * Resolve a customer's purchased Monitoring tier (services.tier) via the
- * real join chain: msp_customers.id -> msp_users (active) -> users.id ->
- * client_services.clientUserId -> client_services.serviceId -> services.id.
- * Deliberately NOT the MSP sales-bundle / monitoring_packages path — that
- * path can't distinguish an Enhanced customer from a Premium one, since both
- * share the same monitoring_packages.key.
+ * real join chain: msp_customers.id -> ALL msp_users of the customer ->
+ * users.id -> client_services.clientUserId -> client_services.serviceId ->
+ * services.id. Deliberately NOT the MSP sales-bundle / monitoring_packages
+ * path — that path can't distinguish an Enhanced customer from a Premium one,
+ * since both share the same monitoring_packages.key.
+ *
+ * CUSTOMER-scoped: the purchased tier is a property of the customer, so the
+ * lookup spans every linked login (the old single-arbitrary-user resolution
+ * missed the subscription entirely when it hung off a different sibling user).
  */
 async function resolveCustomerMonitoringTier(customerId: number): Promise<string | null> {
-  const portalUserId = await resolveCustomerPortalUserId(customerId);
-  if (portalUserId === null) return null;
+  const customerUserIds = await resolveCustomerUserIds(customerId);
+  if (customerUserIds.length === 0) return null;
 
   const [row] = await db
     .select({ tier: servicesTable.tier })
     .from(clientServicesTable)
     .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-    .where(and(eq(clientServicesTable.clientUserId, portalUserId), eq(clientServicesTable.status, "active")))
+    .where(and(inArray(clientServicesTable.clientUserId, customerUserIds), eq(clientServicesTable.status, "active")))
     .orderBy(asc(clientServicesTable.id))
     .limit(1);
 

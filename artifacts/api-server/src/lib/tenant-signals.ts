@@ -9,7 +9,7 @@ import {
   monitorChecksTable,
   type MonitorCheckFrequency,
 } from "@workspace/db";
-import { sql, eq, and, desc, inArray } from "drizzle-orm";
+import { sql, eq, and, asc, desc, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.signals" });
 import { startSlaTimer } from "./sla-engine";
@@ -82,23 +82,100 @@ export async function getDisabledSignalKeys(): Promise<Set<string>> {
 }
 
 /**
- * Resolve the active portal user (`usersTable.id`) for an engine customerId
- * (`mspCustomersTable.id`) via the `msp_users` bridge. Returns null when the
- * customer has no active portal user — a valid state for an unclaimed customer,
- * not an error.
+ * Deterministic preference order for picking THE canonical portal user of a
+ * customer that has more than one active linked login. A customer's scan
+ * results, documents, and SOW are properties of the customer/tenant — the
+ * pipeline only collapses to a single users.id where a users.id-shaped FK or a
+ * real human recipient genuinely requires one, and when it does, the pick must
+ * be stable across runs (an unordered LIMIT 1 resolved a different, wrong user
+ * per run — the confirmed customerId=4 → users.id=21 bug):
+ *
+ *   1. Customer-facing role rank: CustomerUser (full customer account) beats
+ *      Assessment beats Free; any MSP-side/service role attached to the
+ *      customer ranks last — customer documents and notifications must never
+ *      land on MSP staff or machine identities when a real customer login exists.
+ *   2. Earliest created_at — the original account-holder (the person who
+ *      actually signed up / consented first), not whoever was invited latest.
+ *   3. Lowest msp_users.id — a total-order tiebreak so two rows created in the
+ *      same instant still resolve identically every time.
+ */
+// Built lazily (a function, not a module-level const) so importing this module
+// never evaluates drizzle operators at load time — several test files partial-
+// mock drizzle-orm and import tenant-signals only transitively.
+const canonicalPortalUserOrder = () => [
+  sql`CASE ${mspUsersTable.mspRole}
+    WHEN 'CustomerUser' THEN 0
+    WHEN 'Assessment' THEN 1
+    WHEN 'Free' THEN 2
+    ELSE 3 END`,
+  asc(mspUsersTable.createdAt),
+  asc(mspUsersTable.id),
+];
+
+/**
+ * Resolve the canonical active portal user (`usersTable.id`) for an engine
+ * customerId (`mspCustomersTable.id`) via the `msp_users` bridge. Returns null
+ * when the customer has no active portal user — a valid state for an unclaimed
+ * customer, not an error.
  *
  * This is the single canonical customer→portal-user resolver. It lives here
  * (rather than per-engine) because `buildTenantProfile` needs it to key the
  * two `users.id`-scoped data tables, and every other consumer (e.g. sales-offer
- * notification routing) should resolve the recipient the exact same way.
+ * notification routing, the assessment_doc_gate's document-owner identity)
+ * should resolve the recipient the exact same way. Deterministic: filtered to
+ * active rows and ordered by canonicalPortalUserOrder(), never an arbitrary
+ * unordered LIMIT 1.
  */
 export async function resolveCustomerPortalUserId(customerId: number): Promise<number | null> {
   const [row] = await db
     .select({ userId: mspUsersTable.userId })
     .from(mspUsersTable)
     .where(and(eq(mspUsersTable.customerId, customerId), eq(mspUsersTable.isActive, true)))
+    .orderBy(...canonicalPortalUserOrder())
     .limit(1);
   return row?.userId ?? null;
+}
+
+/**
+ * ALL portal users (`usersTable.id`) linked to a customer — active AND
+ * inactive. This is the customer-scoped read key for the users.id-shaped data
+ * tables (`insights_generated_documents.customerId`, `projects.clientUserId`,
+ * `client_services.clientUserId`, `client_m365_profiles.clientId`,
+ * `user_sessions.userId`, `tenant_signal_history.customer_id`): data written
+ * under ANY of a customer's linked logins — including one since deactivated —
+ * belongs to the customer, so "the customer's documents/project/purchase/login"
+ * must be answered across the full set, never a single arbitrarily-picked row.
+ * Deactivated rows are deliberately included: deactivating a login must never
+ * make the customer's existing documents or purchase history invisible.
+ */
+export async function resolveCustomerUserIds(customerId: number): Promise<number[]> {
+  const rows = await db
+    .select({ userId: mspUsersTable.userId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.customerId, customerId))
+    .orderBy(...canonicalPortalUserOrder());
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * The full users.id set of the CUSTOMER a given portal user belongs to —
+ * i.e. the user plus every sibling login linked to the same msp_customers row.
+ * Always includes the input user itself (even when it has no msp_users bridge
+ * or no customer — a direct-business/unclaimed user degrades to a one-element
+ * set), so it is always safe as an `inArray` read key wherever a single
+ * `eq(column, clientUserId)` used to be. Use this to answer "the customer's
+ * documents/purchases/project" from a users.id entry point without collapsing
+ * the customer down to one arbitrary login.
+ */
+export async function resolveSiblingUserIds(clientUserId: number): Promise<number[]> {
+  const [bridge] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, clientUserId))
+    .limit(1);
+  if (bridge?.customerId == null) return [clientUserId];
+  const siblings = await resolveCustomerUserIds(bridge.customerId);
+  return siblings.includes(clientUserId) ? siblings : [...siblings, clientUserId];
 }
 
 // ─── Monitor-profile merge (shared by every signal-evaluation assembly site) ──
@@ -324,19 +401,23 @@ export async function buildTenantProfile(customerId: number): Promise<{
   const tenantId = customerRow?.tenantId ?? null;
   const mspId = customerRow?.mspId ?? null;
 
-  // profile + script-run findings — keyed by the customer's active *portal user*
-  // id, since both those tables FK to users.id. Null portal user = unclaimed
-  // customer: contribute an empty profile/findings rather than error.
-  const portalUserId = await resolveCustomerPortalUserId(customerId);
+  // profile + script-run findings — both those tables FK to users.id, but the
+  // data they hold is a property of the customer/tenant, not of whichever
+  // single login happened to upload it. So they are read CUSTOMER-scoped:
+  // across ALL of the customer's linked portal users (active and inactive —
+  // deactivating a login must not erase the tenant's telemetry), never a
+  // single arbitrarily-picked user. Empty user set = unclaimed customer:
+  // contribute an empty profile/findings rather than error.
+  const customerUserIds = await resolveCustomerUserIds(customerId);
 
   let mergedProfile: Record<string, unknown> = {};
   let findings: string[] = [];
-  if (portalUserId != null) {
-    const [profileRow] = await db
-      .select({ profile: clientM365ProfilesTable.profile })
+  if (customerUserIds.length > 0) {
+    const profileRows = await db
+      .select({ profile: clientM365ProfilesTable.profile, updatedAt: clientM365ProfilesTable.updatedAt })
       .from(clientM365ProfilesTable)
-      .where(eq(clientM365ProfilesTable.clientId, portalUserId))
-      .limit(1);
+      .where(inArray(clientM365ProfilesTable.clientId, customerUserIds))
+      .orderBy(clientM365ProfilesTable.updatedAt);
 
     const scriptRuns = await db
       .select({
@@ -344,17 +425,19 @@ export async function buildTenantProfile(customerId: number): Promise<{
         profileUpdates: scriptRunResultsTable.profileUpdates,
       })
       .from(scriptRunResultsTable)
-      .where(and(eq(scriptRunResultsTable.customerId, portalUserId), eq(scriptRunResultsTable.status, "completed")))
+      .where(and(inArray(scriptRunResultsTable.customerId, customerUserIds), eq(scriptRunResultsTable.status, "completed")))
       .orderBy(desc(scriptRunResultsTable.createdAt))
       .limit(50);
 
-    mergedProfile = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
+    // Oldest-updated profile row first so the freshest linked user's row wins
+    // on key collision — same newest-wins convention as the script-run merge.
+    for (const row of profileRows) Object.assign(mergedProfile, (row.profile as Record<string, unknown> | null) ?? {});
     for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
     findings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
   } else {
     log.warn(
       { customerId },
-      "buildTenantProfile: customer has no active portal user — profile/script-run signals contribute nothing (unclaimed customer)",
+      "buildTenantProfile: customer has no linked portal users — profile/script-run signals contribute nothing (unclaimed customer)",
     );
   }
 
@@ -864,15 +947,23 @@ async function recordSignalTransitions(
     // tenant_signal_history.customer_id's live FK constraint actually targets
     // users.id (not mspCustomers.id, despite the column name) — see
     // resolveCustomerPortalUserId's doc comment for the same drift.
+    //
+    // READS span ALL of the customer's linked users (the old arbitrary limit-1
+    // resolution could pick a different user per run, splitting one customer's
+    // open-signal history across two users.id values — which breaks
+    // stabilization windows and double-fires transitions). WRITES land on the
+    // single deterministic canonical user so new history stays consolidated.
     const portalUserId = await resolveCustomerPortalUserId(customerId);
     if (portalUserId === null) {
       log.warn({ customerId, mspId }, "recordSignalTransitions: no active portal user for customer, skipping");
       return;
     }
+    const allUserIds = await resolveCustomerUserIds(customerId);
+    const historyUserIds = allUserIds.length > 0 ? allUserIds : [portalUserId];
 
     const openRows = await db.execute(sql`
       SELECT signal_key AS "signalKey" FROM tenant_signal_history
-      WHERE customer_id = ${portalUserId} AND resolved_at IS NULL
+      WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND resolved_at IS NULL
     `);
     const openSignalKeys = new Set((openRows.rows as { signalKey: string }[]).map(r => r.signalKey));
 
@@ -895,7 +986,7 @@ async function recordSignalTransitions(
         await db.execute(sql`
           UPDATE tenant_signal_history
           SET resolved_at = NOW()
-          WHERE customer_id = ${portalUserId} AND signal_key = ${signalKey} AND resolved_at IS NULL
+          WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND signal_key = ${signalKey} AND resolved_at IS NULL
         `);
       } catch (err) {
         log.warn({ err, customerId, portalUserId, mspId, signalKey }, "recordSignalTransitions: failed to resolve row");
@@ -922,9 +1013,17 @@ async function recordSignalTransitions(
  */
 export async function getStabilizedSignals(customerId: number): Promise<Set<string>> {
   try {
+    // customerId here is a REAL msp_customers.id (the Signal Policy Engine's
+    // enumeration space) — but tenant_signal_history.customer_id rows are
+    // written in users.id space (see recordSignalTransitions). Bridge via
+    // msp_users and read across ALL of the customer's linked users so history
+    // written under any login (including the pre-determinism arbitrary picks)
+    // still counts for the customer.
+    const historyUserIds = await resolveCustomerUserIds(customerId);
+    if (historyUserIds.length === 0) return new Set();
     const openRows = await db.execute(sql`
       SELECT signal_key AS "signalKey", fired_at AS "firedAt" FROM tenant_signal_history
-      WHERE customer_id = ${customerId} AND resolved_at IS NULL
+      WHERE customer_id IN ${sql.raw(`(${historyUserIds.map(Number).join(",")})`)} AND resolved_at IS NULL
     `);
     const openSignals = openRows.rows as { signalKey: string; firedAt: string }[];
     if (openSignals.length === 0) return new Set();

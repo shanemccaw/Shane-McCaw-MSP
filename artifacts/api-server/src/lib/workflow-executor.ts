@@ -78,7 +78,7 @@ import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, bro
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
-import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
@@ -2237,10 +2237,16 @@ async function executeNode(
             } else {
               let priorDocId: number | null = null;
               {
+                // Prior-doc supersede lookup is CUSTOMER-scoped: a previous copy
+                // of this doc type generated under any sibling login of the same
+                // customer (incl. a historical arbitrary-user mis-attribution)
+                // is the one being replaced — never leave a duplicate live under
+                // another linked user.
+                const docOwnerUserIds = await resolveSiblingUserIds(clientUserId);
                 const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
                   .from(insightsGeneratedDocumentsTable)
                   .where(and(
-                    eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+                    inArray(insightsGeneratedDocumentsTable.customerId, docOwnerUserIds),
                     ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
                     eq(insightsGeneratedDocumentsTable.docType, resolvedDocType),
                     inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
@@ -2403,8 +2409,23 @@ async function executeNode(
           // Accepts identity from either trigger payload:
           //   - diagnostics.run_completed → customerId (msp_customers.id) + tenantId
           //   - portal.first_login        → userId (users.id)
-          // and resolves a canonical clientUserId (users.id) + the assessment
-          // serviceId + projectId the downstream nodes need.
+          //
+          // ARCHITECTURE (customerId-first): the scan, findings, documents, and
+          // SOW are properties of the CUSTOMER/tenant, not of whichever single
+          // login happens to be attached to it — so every eligibility check
+          // below (assessment-tier, logged-in, scan coverage, idempotency,
+          // project) is evaluated CUSTOMER-scoped, across ALL of the customer's
+          // linked users, never against one arbitrarily-resolved user. A single
+          // users.id ("document owner") is still resolved — but only because
+          // insights_generated_documents.customerId / client_m365_profiles /
+          // build_doc_list are users.id-shaped FKs that downstream nodes must
+          // write under one stable id — and that resolution is deterministic:
+          // the tenant-consent user (if still an active member of the customer),
+          // else the canonical active portal user (resolveCustomerPortalUserId's
+          // role-ranked, earliest-created rule). The old unordered
+          // `msp_users WHERE customerId = X LIMIT 1` picked an arbitrary user
+          // per run (the confirmed customerId=4 → users.id=21 bug), landing the
+          // whole document set on a login the real customer never uses.
           const { clientServicesTable: gClientSvc, userSessionsTable: gSessions,
                   mspDiagnosticRunsTable: gRuns, tenantConsentTable: gConsent } =
             await import("@workspace/db");
@@ -2413,37 +2434,77 @@ async function executeNode(
           const gCustIdRaw   = interp(node.data.customerId as string | undefined, payload) ?? "";
           const gTenantIdRaw = (interp(node.data.tenantId as string | undefined, payload) ?? "").trim();
 
-          let gClientUserId = gUserIdRaw.trim() ? parseInt(gUserIdRaw.trim(), 10) : NaN;
+          const gPayloadUserId = gUserIdRaw.trim() ? parseInt(gUserIdRaw.trim(), 10) : NaN;
           let gCustomerId   = gCustIdRaw.trim() ? parseInt(gCustIdRaw.trim(), 10) : NaN;
           let gTenantId: string | null = gTenantIdRaw || null;
 
-          // Resolve clientUserId when only customer/tenant identity was supplied
-          // (the diagnostics side). tenant_consent.clientUserId is the exact user
-          // who consented; msp_users is the fallback bridge from the customer org.
-          if (isNaN(gClientUserId)) {
-            if (gTenantId) {
-              const [gc] = await db.select({ clientUserId: gConsent.clientUserId })
-                .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
-              if (gc?.clientUserId != null) gClientUserId = gc.clientUserId;
+          // ── Resolve the CUSTOMER first (the pipeline's real subject) ─────────
+          // From the payload's customerId, else bridged from the payload's
+          // userId (msp_users.userId is UNIQUE — deterministic), else from
+          // tenant consent by tenantId.
+          if (isNaN(gCustomerId) && !isNaN(gPayloadUserId)) {
+            const [gmu] = await db.select({ customerId: mspUsersTable.customerId })
+              .from(mspUsersTable).where(eq(mspUsersTable.userId, gPayloadUserId)).limit(1);
+            if (gmu?.customerId != null) gCustomerId = gmu.customerId;
+          }
+          if (isNaN(gCustomerId) && gTenantId) {
+            const [gcn] = await db.select({ customerId: gConsent.customerId })
+              .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
+            if (gcn?.customerId != null) gCustomerId = gcn.customerId;
+          }
+
+          // The customer's full linked-user set — the read key for every
+          // users.id-shaped table below. A user with no customer bridge (direct
+          // business, unclaimed) degrades to a single-user set.
+          const gCustomerUserIds: number[] = !isNaN(gCustomerId)
+            ? await resolveCustomerUserIds(gCustomerId)
+            : (!isNaN(gPayloadUserId) ? [gPayloadUserId] : []);
+          if (!isNaN(gPayloadUserId) && !gCustomerUserIds.includes(gPayloadUserId)) {
+            // Never lose the actually-triggering login (e.g. msp_users row
+            // missing entirely) — its sessions/services still count.
+            gCustomerUserIds.push(gPayloadUserId);
+          }
+
+          // ── Resolve the stable document-owner users.id (deterministic) ───────
+          // 1. tenant_consent.clientUserId — the exact human who consented —
+          //    but only if that user is still an ACTIVE member of this customer
+          //    (a stale/deactivated consent row must not own new documents).
+          // 2. resolveCustomerPortalUserId — canonical active user (role-ranked,
+          //    earliest-created, deterministic).
+          // 3. The payload's userId (login side, when no customer bridge exists).
+          let gClientUserId = NaN;
+          if (gTenantId) {
+            const [gc] = await db.select({ clientUserId: gConsent.clientUserId })
+              .from(gConsent).where(eq(gConsent.tenantId, gTenantId)).limit(1);
+            if (gc?.clientUserId != null) {
+              if (isNaN(gCustomerId)) {
+                gClientUserId = gc.clientUserId;
+              } else {
+                const [gActive] = await db.select({ id: mspUsersTable.id })
+                  .from(mspUsersTable)
+                  .where(and(
+                    eq(mspUsersTable.userId, gc.clientUserId),
+                    eq(mspUsersTable.customerId, gCustomerId),
+                    eq(mspUsersTable.isActive, true),
+                  ))
+                  .limit(1);
+                if (gActive) gClientUserId = gc.clientUserId;
+              }
             }
-            if (isNaN(gClientUserId) && !isNaN(gCustomerId)) {
-              const [gm] = await db.select({ userId: mspUsersTable.userId })
-                .from(mspUsersTable).where(eq(mspUsersTable.customerId, gCustomerId)).limit(1);
-              if (gm?.userId != null) gClientUserId = gm.userId;
-            }
+          }
+          if (isNaN(gClientUserId) && !isNaN(gCustomerId)) {
+            const gCanonical = await resolveCustomerPortalUserId(gCustomerId);
+            if (gCanonical != null) gClientUserId = gCanonical;
+          }
+          if (isNaN(gClientUserId) && !isNaN(gPayloadUserId)) {
+            gClientUserId = gPayloadUserId;
           }
 
           if (isNaN(gClientUserId)) {
             output = { eligible: false, reason: "could not resolve client users.id from payload" };
-            log.info({ runId }, "assessment_doc_gate: no resolvable client user — skip");
+            log.info({ runId, gCustomerId: !isNaN(gCustomerId) ? gCustomerId : null }, "assessment_doc_gate: no resolvable client user — skip");
           } else {
-            // Backfill customer/tenant context from the resolved user, for the
-            // scan-scoping query (mirrors resolveCustomerContextForUser).
-            if (isNaN(gCustomerId)) {
-              const [gmu] = await db.select({ customerId: mspUsersTable.customerId })
-                .from(mspUsersTable).where(eq(mspUsersTable.userId, gClientUserId)).limit(1);
-              if (gmu?.customerId != null) gCustomerId = gmu.customerId;
-            }
+            // Backfill tenant context (needed for the scan-scoping query).
             if (!gTenantId) {
               const [gcn] = await db.select({ tenantId: gConsent.tenantId, customerId: gConsent.customerId })
                 .from(gConsent).where(eq(gConsent.clientUserId, gClientUserId)).limit(1);
@@ -2456,19 +2517,28 @@ async function executeNode(
               if (gcust?.tenantId != null) gTenantId = gcust.tenantId;
             }
 
+            // Read scope for users.id-shaped tables: all of the customer's
+            // linked users (falls back to just the resolved owner).
+            const gScopeUserIds = gCustomerUserIds.length > 0 ? gCustomerUserIds : [gClientUserId];
+
             // 1) Assessment-tier discriminator — keeps paid monitoring subs untouched.
-            //    Also captures the assessment serviceId (drives find_object "service").
+            //    CUSTOMER-scoped: the assessment purchase belongs to the customer,
+            //    whichever linked login it was bought under. Also captures the
+            //    assessment serviceId (drives find_object "service").
             const [gAssess] = await db
               .select({ serviceId: gClientSvc.serviceId })
               .from(gClientSvc)
               .innerJoin(servicesTable, eq(servicesTable.id, gClientSvc.serviceId))
-              .where(and(eq(gClientSvc.clientUserId, gClientUserId), eq(servicesTable.deliveryType, "assessment")))
+              .where(and(inArray(gClientSvc.clientUserId, gScopeUserIds), eq(servicesTable.deliveryType, "assessment")))
+              .orderBy(desc(gClientSvc.id))
               .limit(1);
 
-            // 2) Logged-in signal — a real standard user_sessions row.
+            // 2) Logged-in signal — a real standard user_sessions row from ANY of
+            //    the customer's linked users ("has the customer engaged", not
+            //    "has one specific login been used").
             const [gLogin] = await db.select({ id: gSessions.id })
               .from(gSessions)
-              .where(and(eq(gSessions.userId, gClientUserId), eq(gSessions.sessionType, "standard")))
+              .where(and(inArray(gSessions.userId, gScopeUserIds), eq(gSessions.sessionType, "standard")))
               .limit(1);
 
             // 3) Coverage-graded scan signal — DB source of truth, scoped by
@@ -2503,33 +2573,49 @@ async function executeNode(
               }
             }
 
-            // 4) Idempotency — skip if this customer already has a delivered SOW
+            // 4) Idempotency — skip if this CUSTOMER already has a delivered SOW
             //    (the whole flow finished; SOW is always last) OR one is currently
-            //    generating (a concurrent run holds the slot).
+            //    generating (a concurrent run holds the slot). Customer-scoped:
+            //    a SOW generated under ANY of the customer's linked users (incl.
+            //    a historical mis-attributed one) holds the slot — one SOW per
+            //    customer, never one per login.
             const [gExisting] = await db
               .select({ status: insightsGeneratedDocumentsTable.status })
               .from(insightsGeneratedDocumentsTable)
               .where(and(
-                eq(insightsGeneratedDocumentsTable.customerId, gClientUserId),
+                inArray(insightsGeneratedDocumentsTable.customerId, gScopeUserIds),
                 eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
                 inArray(insightsGeneratedDocumentsTable.status, ["delivered", "approved", "generating"]),
               ))
               .limit(1);
             const gAlreadyDone = gExisting != null;
 
-            // 5) Resolve the client's project for generate_document (most recent).
+            // 5) Resolve the customer's project for generate_document — the
+            //    engagement project belongs to the customer; most recent across
+            //    all linked users.
             let gProjectId = NaN;
             const [gProj] = await db.select({ id: projectsTable.id })
               .from(projectsTable)
-              .where(eq(projectsTable.clientUserId, gClientUserId))
+              .where(inArray(projectsTable.clientUserId, gScopeUserIds))
               .orderBy(desc(projectsTable.id))
               .limit(1);
             if (gProj?.id != null) gProjectId = gProj.id;
 
             // Client display identity for the final presentation (best-effort).
+            // The presentation is addressed to the CUSTOMER (company), so the
+            // customer record's name wins; the resolved owner-user's company/
+            // name is the fallback. The email is genuinely user-specific — it
+            // is the deterministic owner-user's real address.
             const [gUserRow] = await db
               .select({ name: usersTable.name, email: usersTable.email, company: usersTable.company })
               .from(usersTable).where(eq(usersTable.id, gClientUserId)).limit(1);
+            let gCustomerName: string | null = null;
+            if (!isNaN(gCustomerId)) {
+              const [gCustRow] = await db
+                .select({ name: mspCustomersTable.name })
+                .from(mspCustomersTable).where(eq(mspCustomersTable.id, gCustomerId)).limit(1);
+              gCustomerName = gCustRow?.name ?? null;
+            }
 
             const gIsAssessment = gAssess != null;
             const gLoggedIn = gLogin != null;
@@ -2554,7 +2640,7 @@ async function executeNode(
               serviceId: gAssess?.serviceId ?? null,
               customerId: !isNaN(gCustomerId) ? gCustomerId : null,
               tenantId: gTenantId,
-              clientName: gUserRow?.company ?? gUserRow?.name ?? "Valued Client",
+              clientName: gCustomerName ?? gUserRow?.company ?? gUserRow?.name ?? "Valued Client",
               clientEmail: gUserRow?.email ?? "",
               // Coverage decision — null until a scan finishes. `docGenerationBlocked`
               // is the honest "scan finished but too dark to generate" terminal
@@ -2566,7 +2652,8 @@ async function executeNode(
               totalChecks: gCoverage?.totalChecks ?? null,
               docGenerationBlocked: gIsAssessment && gScanInsufficient,
             };
-            log.info({ runId, clientUserId: gClientUserId, eligible: gEligible, reason: gReason,
+            log.info({ runId, clientUserId: gClientUserId, customerId: !isNaN(gCustomerId) ? gCustomerId : null,
+                       customerUserIds: gScopeUserIds, eligible: gEligible, reason: gReason,
                        coverageBand: gCoverage?.band ?? null, coveragePct: gCoverage?.coveragePct ?? null },
               "assessment_doc_gate evaluated");
           }
@@ -3558,18 +3645,23 @@ async function executeNode(
               .limit(1);
             const gtsTenantId = customerRow?.tenantId ?? null;
 
-            const [profileRow, scriptRuns, monitorRows] = await Promise.all([
-              db.select({ profile: clientM365ProfilesTable.profile })
+            // CUSTOMER-scoped reads for the two users.id-keyed data tables —
+            // telemetry written under any sibling login of the same customer
+            // belongs to the tenant (mirrors buildTenantProfile's scoping).
+            const gtsScopeUserIds = await resolveSiblingUserIds(gtsClientId);
+
+            const [profileRows, scriptRuns, monitorRows] = await Promise.all([
+              db.select({ profile: clientM365ProfilesTable.profile, updatedAt: clientM365ProfilesTable.updatedAt })
                 .from(clientM365ProfilesTable)
-                .where(eq(clientM365ProfilesTable.clientId, gtsClientId))
-                .limit(1),
+                .where(inArray(clientM365ProfilesTable.clientId, gtsScopeUserIds))
+                .orderBy(clientM365ProfilesTable.updatedAt),
               db.select({
                 parsedFindings: scriptRunResultsTable.parsedFindings,
                 profileUpdates: scriptRunResultsTable.profileUpdates,
               })
               .from(scriptRunResultsTable)
               .where(and(
-                eq(scriptRunResultsTable.customerId, gtsClientId),
+                inArray(scriptRunResultsTable.customerId, gtsScopeUserIds),
                 eq(scriptRunResultsTable.status, "completed"),
               ))
               .orderBy(desc(scriptRunResultsTable.createdAt))
@@ -3585,7 +3677,11 @@ async function executeNode(
             for (const run of [...scriptRuns].reverse()) {
               Object.assign(mergedProfile, run.profileUpdates ?? {});
             }
-            Object.assign(mergedProfile, (profileRow[0]?.profile as Record<string, unknown> | null) ?? {});
+            // Profile rows oldest-updated first so the freshest linked user's
+            // row wins on key collision (same convention as buildTenantProfile).
+            for (const row of profileRows) {
+              Object.assign(mergedProfile, (row.profile as Record<string, unknown> | null) ?? {});
+            }
 
             // Monitor data merged in last so it wins on key collision (it's the
             // fresher, modern pipeline) — via the SAME shared helpers

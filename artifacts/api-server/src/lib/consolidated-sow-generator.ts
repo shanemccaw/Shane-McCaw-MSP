@@ -12,7 +12,7 @@ import {
   mspCustomersTable,
 } from "@workspace/db";
 import { eq, ne, desc, and, inArray, isNull, sql } from "drizzle-orm";
-import { computeTenantSignals, getProjectSignalDefinitions, getAdjustmentSignalDefinitions, projectMatchesSignals, getDisabledSignalKeys, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings } from "./tenant-signals";
+import { computeTenantSignals, getProjectSignalDefinitions, getAdjustmentSignalDefinitions, projectMatchesSignals, getDisabledSignalKeys, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveSiblingUserIds } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import {
   fetchSignalRulesAndGroups,
@@ -348,7 +348,14 @@ export async function generateConsolidatedSowDocument(
   const correlationId = runId;
   if (correlationId) startSowDebugRun(correlationId, clientUserId, projectId);
 
-  const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
+  // The SOW's subject is the CUSTOMER — prior documents, M365 profile, script
+  // findings, and health history written under ANY sibling login of the same
+  // customer (these tables are all users.id-keyed) belong to it. Read them
+  // customer-scoped instead of only under the single caller-supplied user, so
+  // a doc/profile that landed under another linked user still grounds the SOW.
+  const sowScopeUserIds = await resolveSiblingUserIds(clientUserId);
+
+  const [existingDocs, engagementProjects, customerRow, m365ProfileRows, scriptRuns, scoresRow] = await Promise.all([
     db.select({
       id:       insightsGeneratedDocumentsTable.id,
       title:    insightsGeneratedDocumentsTable.title,
@@ -358,7 +365,7 @@ export async function generateConsolidatedSowDocument(
     })
     .from(insightsGeneratedDocumentsTable)
     .where(and(
-      eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+      inArray(insightsGeneratedDocumentsTable.customerId, sowScopeUserIds),
       // Exclude existing SOW docs — they're what we're regenerating
     ))
     .orderBy(desc(insightsGeneratedDocumentsTable.createdAt)),
@@ -372,10 +379,10 @@ export async function generateConsolidatedSowDocument(
     db.select({ name: usersTable.name, company: usersTable.company })
       .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1),
 
-    db.select({ profile: clientM365ProfilesTable.profile })
+    db.select({ profile: clientM365ProfilesTable.profile, updatedAt: clientM365ProfilesTable.updatedAt })
       .from(clientM365ProfilesTable)
-      .where(eq(clientM365ProfilesTable.clientId, clientUserId))
-      .limit(1),
+      .where(inArray(clientM365ProfilesTable.clientId, sowScopeUserIds))
+      .orderBy(clientM365ProfilesTable.updatedAt),
 
     db.select({
       scriptName:      scriptRunResultsTable.scriptName,
@@ -387,7 +394,7 @@ export async function generateConsolidatedSowDocument(
     })
     .from(scriptRunResultsTable)
     .where(and(
-      eq(scriptRunResultsTable.customerId, clientUserId),
+      inArray(scriptRunResultsTable.customerId, sowScopeUserIds),
       eq(scriptRunResultsTable.status, "completed"),
     ))
     .orderBy(desc(scriptRunResultsTable.createdAt))
@@ -398,7 +405,7 @@ export async function generateConsolidatedSowDocument(
       score:    clientHealthHistoryTable.score,
     })
     .from(clientHealthHistoryTable)
-    .where(eq(clientHealthHistoryTable.clientId, clientUserId))
+    .where(inArray(clientHealthHistoryTable.clientId, sowScopeUserIds))
     .orderBy(desc(clientHealthHistoryTable.recordedAt))
     .limit(50),
   ]);
@@ -818,9 +825,13 @@ export async function generateConsolidatedSowDocument(
   const { resolvedKeys, unresolvedTitles } = resolveWorkstreamKeys(rawProjectTitles);
   const workstreamContextBlock = buildWorkstreamContextBlock(rawProjectTitles, resolvedKeys, unresolvedTitles);
 
-  // Tenant telemetry
+  // Tenant telemetry — profile rows for ALL sibling users merged oldest-updated
+  // first (freshest linked user's values win on key collision — same
+  // newest-wins convention as buildTenantProfile).
   const telemetryLines: string[] = [];
-  const profile = (m365ProfileRow[0]?.profile ?? null) as Record<string, unknown> | null;
+  const mergedM365Profile: Record<string, unknown> = {};
+  for (const row of m365ProfileRows) Object.assign(mergedM365Profile, (row.profile as Record<string, unknown> | null) ?? {});
+  const profile: Record<string, unknown> | null = Object.keys(mergedM365Profile).length > 0 ? mergedM365Profile : null;
   if (profile && Object.keys(profile).length > 0) {
     telemetryLines.push("M365 HEALTH PROFILE FLAGS:");
     for (const [k, v] of Object.entries(profile)) {
@@ -971,13 +982,15 @@ export async function generateConsolidatedSowDocument(
     + (adjConstraintBlock ? `\n\n${adjConstraintBlock}` : "")
     + (engineOutputsBlock ? `\n\n${engineOutputsBlock}` : "");
 
-  // Find prior completed doc to replace on success
+  // Find prior completed doc to replace on success — customer-scoped: a prior
+  // SOW generated under any sibling login of the same customer is the one
+  // being replaced (one SOW per customer, never one per login).
   let priorSowId: number | null = null;
   if (clientUserId && projectId) {
     const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
       .from(insightsGeneratedDocumentsTable)
       .where(and(
-        eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+        inArray(insightsGeneratedDocumentsTable.customerId, sowScopeUserIds),
         eq(insightsGeneratedDocumentsTable.projectId, projectId),
         eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
         inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
@@ -1177,10 +1190,12 @@ export async function generateConsolidatedSowDocument(
     // completed consolidated_sow row for this customer+project — exactly one row
     // (this newly-approved docId) stays "approved"/active; the rest become "archived"
     // (superseded, hidden by the reader filters, but still retrievable by exact match).
+    // Customer-scoped (all sibling logins) so a prior SOW that landed under a
+    // different linked user of the same customer never stays live alongside this one.
     await db.update(insightsGeneratedDocumentsTable)
       .set({ status: "archived", updatedAt: new Date() })
       .where(and(
-        eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+        inArray(insightsGeneratedDocumentsTable.customerId, sowScopeUserIds),
         projectId != null
           ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
           : isNull(insightsGeneratedDocumentsTable.projectId),

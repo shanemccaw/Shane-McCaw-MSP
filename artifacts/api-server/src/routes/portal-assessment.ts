@@ -86,6 +86,7 @@ import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-g
 import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/copilot-readiness";
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
+import { resolveSiblingUserIds } from "../lib/tenant-signals";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -145,9 +146,15 @@ router.get(
       const scanActive =
         latestRun != null && (ACTIVE_RUN_STATUSES as readonly string[]).includes(latestRun.status);
 
-      // ── Document state (users.id space) ──────────────────────────────────
+      // ── Document state (users.id space, read CUSTOMER-scoped) ────────────
       // Non-archived docs only; archived rows are superseded regenerations that
       // should not hold the wizard open or count toward readiness.
+      // insights_generated_documents.customerId is a users.id-shaped FK, but
+      // the documents belong to the CUSTOMER — a customer with multiple linked
+      // logins must see the same document set from any of them (and documents
+      // that historically landed under an arbitrarily-resolved sibling user
+      // must not be invisible to the real primary user).
+      const docScopeUserIds = await resolveSiblingUserIds(userId);
       const docRows = await db
         .select({
           id: insightsGeneratedDocumentsTable.id,
@@ -158,7 +165,7 @@ router.get(
           createdAt: insightsGeneratedDocumentsTable.createdAt,
         })
         .from(insightsGeneratedDocumentsTable)
-        .where(eq(insightsGeneratedDocumentsTable.customerId, userId))
+        .where(inArray(insightsGeneratedDocumentsTable.customerId, docScopeUserIds))
         .orderBy(insightsGeneratedDocumentsTable.createdAt);
 
       const documents = docRows.filter((d) => d.status !== "archived");
@@ -185,7 +192,8 @@ router.get(
         .select({ associatedDocuments: servicesTable.associatedDocuments })
         .from(clientServicesTable)
         .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-        .where(and(eq(clientServicesTable.clientUserId, userId), eq(servicesTable.deliveryType, "assessment")))
+        .where(and(inArray(clientServicesTable.clientUserId, docScopeUserIds), eq(servicesTable.deliveryType, "assessment")))
+        .orderBy(desc(clientServicesTable.id))
         .limit(1);
       const isSowDocType = (dt: string) => dt === "sow" || dt === "consolidated_sow" || dt === "scoped_sow";
       const expectedDocuments = (assessmentService?.associatedDocuments ?? [])
@@ -628,7 +636,11 @@ router.get(
     }
 
     try {
-      // Scope strictly to the caller's own documents (users.id space).
+      // Scope to the caller's CUSTOMER's documents: the doc row's customerId is
+      // a users.id-shaped FK, and any linked login of the same customer may
+      // read the customer's own assessment documents (never another customer's
+      // — the sibling set is derived server-side from msp_users).
+      const viewerScopeUserIds = await resolveSiblingUserIds(userId);
       const [doc] = await db
         .select({
           id: insightsGeneratedDocumentsTable.id,
@@ -644,7 +656,7 @@ router.get(
         .where(
           and(
             eq(insightsGeneratedDocumentsTable.id, documentId),
-            eq(insightsGeneratedDocumentsTable.customerId, userId),
+            inArray(insightsGeneratedDocumentsTable.customerId, viewerScopeUserIds),
           ),
         )
         .limit(1);
@@ -715,13 +727,15 @@ router.post(
     }
 
     try {
+      // Same customer-scoped ownership check as the document read above.
+      const viewScopeUserIds = await resolveSiblingUserIds(userId);
       const [doc] = await db
         .select({ id: insightsGeneratedDocumentsTable.id, title: insightsGeneratedDocumentsTable.title })
         .from(insightsGeneratedDocumentsTable)
         .where(
           and(
             eq(insightsGeneratedDocumentsTable.id, documentId),
-            eq(insightsGeneratedDocumentsTable.customerId, userId),
+            inArray(insightsGeneratedDocumentsTable.customerId, viewScopeUserIds),
           ),
         )
         .limit(1);
@@ -794,6 +808,9 @@ router.post(
             eq(clientServicesTable.status, "active"),
           )
         )
+        // Deterministic: most recent active subscription wins when a customer
+        // holds more than one (unordered LIMIT 1 was arbitrary).
+        .orderBy(desc(clientServicesTable.id))
         .limit(1);
       const packageKey = pkgRow?.packageKey ?? "core:security-baseline";
 
@@ -951,7 +968,10 @@ interface SowDocRow {
   createdAt: Date;
 }
 
-function loadSowDocs(userId: number): Promise<SowDocRow[]> {
+async function loadSowDocs(userId: number): Promise<SowDocRow[]> {
+  // CUSTOMER-scoped: the SOW belongs to the customer; a version generated
+  // under any sibling login of the same customer is part of the same set.
+  const sowScopeUserIds = await resolveSiblingUserIds(userId);
   return db
     .select({
       id: insightsGeneratedDocumentsTable.id,
@@ -966,7 +986,7 @@ function loadSowDocs(userId: number): Promise<SowDocRow[]> {
     .from(insightsGeneratedDocumentsTable)
     .where(
       and(
-        eq(insightsGeneratedDocumentsTable.customerId, userId),
+        inArray(insightsGeneratedDocumentsTable.customerId, sowScopeUserIds),
         eq(insightsGeneratedDocumentsTable.docType, SOW_DOC_TYPE),
         ne(insightsGeneratedDocumentsTable.status, "failed"),
       ),
@@ -1140,12 +1160,15 @@ router.post(
             .set({ status: "approved", approvedAt: new Date(), updatedAt: new Date() })
             .where(eq(insightsGeneratedDocumentsTable.id, match.id));
         }
+        // Customer-scoped archival — a superseded version generated under a
+        // sibling login of the same customer must not stay live.
+        const archiveScopeUserIds = await resolveSiblingUserIds(userId);
         await db
           .update(insightsGeneratedDocumentsTable)
           .set({ status: "archived", updatedAt: new Date() })
           .where(
             and(
-              eq(insightsGeneratedDocumentsTable.customerId, userId),
+              inArray(insightsGeneratedDocumentsTable.customerId, archiveScopeUserIds),
               projectId != null
                 ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
                 : isNull(insightsGeneratedDocumentsTable.projectId),
