@@ -179,10 +179,26 @@ export function SqlQueryOutput({ output }: { output: SqlOutput }) {
           ))}
         </div>
         {statements && total > 0 && (
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3 text-emerald-400" />
             {total} stmt{total === 1 ? "" : "s"} · {totalMs}ms
             {failed > 0 && <span className="text-destructive"> · {failed} failed</span>}
+            <CopyButton
+              value={JSON.stringify(
+                statements.map((s) => ({
+                  statementIndex: s.statementIndex,
+                  statementText: s.statementText,
+                  success: s.success,
+                  rowCount: s.rowCount,
+                  rows: s.rows,
+                  error: s.error ?? null,
+                })),
+                null,
+                2,
+              )}
+              title="Copy All"
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            />
           </span>
         )}
       </div>
