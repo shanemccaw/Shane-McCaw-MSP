@@ -38,6 +38,8 @@ export interface ScanStatusPayload {
   isTestbed: boolean;
   /** Real tenant_consent.consent_status for this customer's tenant, or null if no row yet. */
   consentStatus: "pending" | "granted" | "declined" | "revoked" | null;
+  /** True when consentStatus is "granted" but the tenant's stored scopesGranted snapshot is missing a scope in the current REQUIRED_MT_SCOPES union — new permissions were added to the app registration since this tenant last consented. */
+  scopesStale: boolean;
 }
 
 interface ScanStatusContextValue {

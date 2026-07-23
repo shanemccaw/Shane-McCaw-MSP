@@ -88,6 +88,7 @@ import { computeCopilotReadiness, type CopilotReadinessResult } from "../lib/cop
 import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { resolveSiblingUserIds } from "../lib/tenant-signals";
+import { REQUIRED_MT_SCOPES } from "../lib/graph";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -514,13 +515,20 @@ router.get(
         .limit(1);
 
       let consentStatus: string | null = null;
+      let scopesStale = false;
       if (customerRow?.tenantId) {
         const [consentRow] = await db
-          .select({ consentStatus: tenantConsentTable.consentStatus })
+          .select({ consentStatus: tenantConsentTable.consentStatus, scopesGranted: tenantConsentTable.scopesGranted })
           .from(tenantConsentTable)
           .where(eq(tenantConsentTable.tenantId, customerRow.tenantId))
           .limit(1);
         consentStatus = consentRow?.consentStatus ?? null;
+        // Only a "granted" tenant can be scope-stale — revoked/declined/pending
+        // are already surfaced via consentStatus itself and take priority.
+        if (consentStatus === "granted") {
+          const granted = new Set(consentRow?.scopesGranted ?? []);
+          scopesStale = REQUIRED_MT_SCOPES.some((scope) => !granted.has(scope));
+        }
       }
 
       res.json({
@@ -538,6 +546,7 @@ router.get(
           : null,
         isTestbed: customerRow?.isTestbed === true,
         consentStatus,
+        scopesStale,
       });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/scan-status failed");
