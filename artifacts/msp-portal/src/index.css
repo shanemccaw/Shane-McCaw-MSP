@@ -338,6 +338,37 @@
   }
 }
 
+/* Heartbeat / ECG hero trace — a bright pulse segment that travels along an
+ * SVG heartbeat path (security-overview + m365-health hero bands). The path
+ * sets pathLength="100"; the dasharray is a 14-unit bright segment on an
+ * 86-unit gap, and animating dashoffset from 100 → -14 carries the segment
+ * fully across and off the end of the trace before wrapping. Paired with
+ * `ecg-blip`, a soft opacity throb for the static under-trace so the whole
+ * line "beats" in time with the traveling pulse. */
+@theme {
+  --animate-ecg-trace: ecg-trace 3.6s linear infinite;
+  --animate-ecg-blip: ecg-blip 3.6s ease-in-out infinite;
+
+  @keyframes ecg-trace {
+    0% {
+      stroke-dashoffset: 100;
+    }
+    100% {
+      stroke-dashoffset: -14;
+    }
+  }
+
+  @keyframes ecg-blip {
+    0%,
+    100% {
+      opacity: 0.10;
+    }
+    50% {
+      opacity: 0.22;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

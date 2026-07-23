@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Info, ShieldCheck, AlertTriangle, AlertOctagon, CircleDashed } from 'lucide-react';
+import { Info, Shield, ShieldCheck, AlertTriangle, AlertOctagon, CircleDashed } from 'lucide-react';
+import { HeartbeatTrace } from '@/components/security-overview/HeartbeatTrace';
 import {
   HealthRadarPillar,
   scoreBand,
@@ -64,6 +65,14 @@ export const HeroHealthScore: React.FC<HeroHealthScoreProps> = ({
 
   return (
     <section className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-card border border-border p-6 md:p-8 rounded-xl relative overflow-hidden mb-6">
+      {/* Decorative background — the shared shield + live heartbeat treatment
+          (same real elements as the Security Intelligence hero band). Rendered
+          before the content so it paints underneath; pointer-events-none. */}
+      <div aria-hidden className="absolute -right-12 -top-12 opacity-[0.05] pointer-events-none text-foreground">
+        <Shield className="w-[320px] h-[320px]" />
+      </div>
+      <HeartbeatTrace />
+
       {/* Main Gauge + Headline */}
       <div className="md:col-span-5 lg:col-span-4 flex items-center space-x-6">
         <div className="relative">

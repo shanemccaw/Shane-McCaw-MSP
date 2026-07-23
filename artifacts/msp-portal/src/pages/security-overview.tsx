@@ -1,4 +1,30 @@
+/**
+ * /security-overview — the Security Intelligence page, wired to REAL data end
+ * to end (formerly the mock "obsidian" structure-only page).
+ *
+ * Real sources (see useSecurityOverviewLive.ts for the full contract):
+ *   • POST /api/dashboard/resolve                 — identity/security monitor
+ *     check metrics (global admins, PIM standing roles, risky users, high-risk
+ *     sign-ins, failed sign-ins, impossible travel, active alerts) + the
+ *     high-risk sign-in collection history for the Sign-In Risk Trend.
+ *   • GET  /api/portal/mission-control/overview   — real findings feed with
+ *     server-linked remediation offers (Top Security Risks + Automation).
+ *   • GET  /api/portal/mission-control/engines    — security engine severity
+ *     badge for the hero.
+ *   • GET  /api/portal/engines/security/history   — real score history +
+ *     per-day signal fired/resolved deltas (tenant_engine_snapshots +
+ *     engine_score_daily_rollup) for the hero Risk Index and Daily Alert
+ *     Volume, with honest "not enough history yet" states for new tenants.
+ *
+ * The timeframe selector genuinely re-scopes both historical charts
+ * (windowDays on the resolver + start on the history route); refresh
+ * genuinely re-fetches. The mock local-state mutations (fake score bumps,
+ * fake policy execution, fake mitigation) are gone — automated execution is
+ * honestly blocked pending the tenant's Azure app registration, matching
+ * m365-health's RemediationModal treatment.
+ */
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { AppShell } from '@/components/app-shell';
 import { HeaderHeroBand } from '@/components/security-overview/HeaderHeroBand';
 import { IdentityRiskDistribution } from '@/components/security-overview/IdentityRiskDistribution';
@@ -7,196 +33,92 @@ import { AlertVolumeCard } from '@/components/security-overview/AlertVolumeCard'
 import { TopSecurityRisks } from '@/components/security-overview/TopSecurityRisks';
 import { SecurityAutomation } from '@/components/security-overview/SecurityAutomation';
 import { RiskDetailDrawer } from '@/components/security-overview/RiskDetailDrawer';
-import { ToastContainer } from '@/components/security-overview/ToastContainer';
-
-import {
-  initialMetrics,
-  initialRiskDistribution,
-  initialSignInTrend,
-  initialPrivilegedMetrics,
-  initialAlertVolume,
-  initialSecurityRisks,
-  initialAutomationPolicies,
-} from '@/components/security-overview/mockData';
-
-import {
-  SecurityMetrics,
-  RiskDistribution,
-  TimeFrame,
-  SecurityRiskItem,
-  AutomationPolicy,
-  ToastMessage,
-} from '@/components/security-overview/types';
+import { useSecurityOverviewLive } from '@/components/security-overview/useSecurityOverviewLive';
+import type { LiveFinding } from '@/components/m365-health/useM365HealthLive';
 
 export default function SecurityOverviewPage() {
-  const [metrics, setMetrics] = useState<SecurityMetrics>(initialMetrics);
-  const [riskDistribution, setRiskDistribution] = useState<RiskDistribution>(initialRiskDistribution);
-  const [signInTrend, setSignInTrend] = useState(initialSignInTrend);
-  const [privilegedMetrics, setPrivilegedMetrics] = useState(initialPrivilegedMetrics);
-  const [alertVolume, setAlertVolume] = useState(initialAlertVolume);
-  const [risks, setRisks] = useState<SecurityRiskItem[]>(initialSecurityRisks);
-  const [policies, setPolicies] = useState<AutomationPolicy[]>(initialAutomationPolicies);
+  const [, navigate] = useLocation();
+  const live = useSecurityOverviewLive();
 
-  const [timeframe, setTimeframe] = useState<TimeFrame>('24h');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedRisk, setSelectedRisk] = useState<SecurityRiskItem | null>(null);
-  const [activeProcessingPolicyId, setActiveProcessingPolicyId] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [selectedFinding, setSelectedFinding] = useState<LiveFinding | null>(null);
 
-  // Add toast helper
-  const addToast = (title: string, description: string, type: 'info' | 'success' = 'info') => {
-    const id = Date.now().toString();
-    setToasts((prev) => [...prev, { id, title, description, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Handle Timeframe Switch
-  const handleTimeframeChange = (newTf: TimeFrame) => {
-    setTimeframe(newTf);
-    if (newTf === '24h') {
-      setMetrics((m) => ({ ...m, criticalAlerts24h: 5 }));
-    } else if (newTf === '7d') {
-      setMetrics((m) => ({ ...m, criticalAlerts24h: 24 }));
-    } else {
-      setMetrics((m) => ({ ...m, criticalAlerts24h: 89 }));
-    }
-    addToast('Timeframe Updated', `Telemetry scope switched to ${newTf.toUpperCase()}.`, 'info');
-  };
-
-  // Refresh Telemetry Stream
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      setMetrics((m) => ({
-        ...m,
-        healthScore: Math.min(100, m.healthScore + 1),
-      }));
-      addToast('Telemetry Stream Synced', 'Graph API streaming connection re-established with latest claims.', 'success');
-    }, 800);
-  };
-
-  // Trigger Automation Policy Action
-  const handleTriggerPolicy = (policy: AutomationPolicy) => {
-    setActiveProcessingPolicyId(policy.id);
-    setTimeout(() => {
-      setActiveProcessingPolicyId(null);
-
-      setPolicies((prev) =>
-        prev.map((p) => {
-          if (p.id === policy.id) {
-            const nextStatus =
-              p.actionType === 'ENFORCE'
-                ? 'enforced'
-                : p.actionType === 'SYNC'
-                ? 'synced'
-                : 'reviewed';
-            return { ...p, status: nextStatus };
-          }
-          return p;
-        })
-      );
-
-      setMetrics((m) => ({
-        ...m,
-        healthScore: Math.min(100, m.healthScore + 4),
-        potentialRiskReduction: Math.max(0, m.potentialRiskReduction - 8),
-      }));
-
-      addToast(
-        `Policy ${policy.actionType} Executed`,
-        `${policy.title} policy applied across tenant directory.`,
-        'success'
-      );
-    }, 1000);
-  };
-
-  // Mitigate / Remediate Selected Risk
-  const handleMitigateRisk = (riskId: string, actionName: string) => {
-    setRisks((prev) =>
-      prev.map((r) => (r.id === riskId ? { ...r, status: 'mitigated' } : r))
-    );
-
-    setMetrics((m) => ({
-      ...m,
-      highRiskIdentities: Math.max(0, m.highRiskIdentities - 1),
-      healthScore: Math.min(100, m.healthScore + 3),
-    }));
-
-    addToast(
-      'Risk Remediation Ingested',
-      `Action "${actionName}" deployed to conditional access rule engine.`,
-      'success'
-    );
+  const openOffers = () => {
+    setSelectedFinding(null);
+    navigate('/customer-offers');
   };
 
   return (
     <AppShell title="Security Intelligence">
-    <div className="tech-grid min-h-screen p-4 md:p-6 lg:p-8 font-body">
-      <main className="max-w-[1440px] mx-auto space-y-4 md:space-y-6">
-        {/* Row 1: Header Hero Band + Identity Risk Distribution */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          <div className="lg:col-span-8">
-            <HeaderHeroBand
-              metrics={metrics}
-              timeframe={timeframe}
-              onTimeframeChange={handleTimeframeChange}
-              onRefresh={handleRefresh}
-              isRefreshing={isRefreshing}
-            />
-          </div>
-          <div className="lg:col-span-4">
-            <IdentityRiskDistribution
-              distribution={riskDistribution}
-              trend={signInTrend}
-            />
-          </div>
-        </section>
+      <div className="min-h-screen p-4 md:p-6 lg:p-8">
+        <main className="max-w-[1440px] mx-auto space-y-4 md:space-y-6">
+          {/* Row 1: Hero band + Identity Risk Distribution */}
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+            <div className="lg:col-span-8">
+              <HeaderHeroBand
+                riskIndex={live.riskIndex}
+                securityStatus={live.securityStatus}
+                riskyUsers={live.riskyUsers}
+                summary={live.summary}
+                lastScanAt={live.lastScanAt}
+                scanActive={live.scanActive}
+                timeframe={live.timeframe}
+                onTimeframeChange={live.setTimeframe}
+                onRefresh={live.refresh}
+                isRefreshing={live.refreshing}
+              />
+            </div>
+            <div className="lg:col-span-4">
+              <IdentityRiskDistribution
+                distribution={live.identityRisk}
+                trend={live.signInTrend}
+                timeframe={live.timeframe}
+              />
+            </div>
+          </section>
 
-        {/* Row 2: Privileged Exposure & Alert Volume */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          <div className="lg:col-span-5">
-            <PrivilegedExposureCard metrics={privilegedMetrics} />
-          </div>
-          <div className="lg:col-span-7">
-            <AlertVolumeCard volumeData={alertVolume} mtta={metrics.mtta} />
-          </div>
-        </section>
+          {/* Row 2: Privileged Exposure + Daily Alert Volume */}
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+            <div className="lg:col-span-5">
+              <PrivilegedExposureCard
+                globalAdmins={live.globalAdmins}
+                pimStandingRoles={live.pimStandingRoles}
+                riskyUsers={live.riskyUsers}
+                highRiskSignins={live.highRiskSignins}
+              />
+            </div>
+            <div className="lg:col-span-7">
+              <AlertVolumeCard volume={live.alertVolume} activeAlerts={live.activeAlerts} />
+            </div>
+          </section>
 
-        {/* Row 3: Top Security Risks & Security Automation Potential */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          <div className="lg:col-span-6">
-            <TopSecurityRisks
-              risks={risks}
-              onSelectRisk={(r) => setSelectedRisk(r)}
-            />
-          </div>
-          <div className="lg:col-span-6">
-            <SecurityAutomation
-              policies={policies}
-              onTriggerPolicy={handleTriggerPolicy}
-              activeProcessingId={activeProcessingPolicyId}
-            />
-          </div>
-        </section>
-      </main>
+          {/* Row 3: Top Security Risks + Security Automation */}
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
+            <div className="lg:col-span-6">
+              <TopSecurityRisks
+                findings={live.findings}
+                everScanned={live.everScanned}
+                loaded={live.loaded}
+                onSelectFinding={setSelectedFinding}
+              />
+            </div>
+            <div className="lg:col-span-6">
+              <SecurityAutomation
+                offers={live.automationOffers}
+                loaded={live.loaded}
+                lastScanAt={live.lastScanAt}
+                onOpenOffers={openOffers}
+              />
+            </div>
+          </section>
+        </main>
 
-      {/* Side Drawer for Risk Details */}
-      <RiskDetailDrawer
-        risk={selectedRisk}
-        onClose={() => setSelectedRisk(null)}
-        onMitigate={handleMitigateRisk}
-      />
-
-      {/* Action Feedback Toast Messages */}
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
-    </div>
+        {/* Real finding detail drawer */}
+        <RiskDetailDrawer
+          finding={selectedFinding}
+          onClose={() => setSelectedFinding(null)}
+          onOpenOffers={openOffers}
+        />
+      </div>
     </AppShell>
   );
 }

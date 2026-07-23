@@ -1,53 +1,112 @@
 import React from 'react';
-import { SecurityMetrics, TimeFrame } from './types';
-import { TrendingUp, Shield, RefreshCw, Activity } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { Shield, ShieldCheck, AlertTriangle, AlertOctagon, CircleDashed, RefreshCw, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { HeartbeatTrace } from './HeartbeatTrace';
+import type { LiveMetric, RiskIndexLive, TimeFrame } from './useSecurityOverviewLive';
+import type { OverviewSlice } from '@/components/m365-health/useM365HealthLive';
+
+/**
+ * Hero band — real content section (restored per the pre-wiring mockup, now
+ * wired to real data):
+ *   • Security Risk Index — the latest REAL security engine score from
+ *     tenant_engine_snapshots (higher is worse — labeled so), with the real
+ *     delta vs the previous snapshot and the engine strip's severity badge.
+ *   • Risky Users / Critical Findings / Warnings / Checks Passing — real
+ *     monitor-check + diagnostics-run numbers, each with an honest "—" when
+ *     not collected.
+ *   • Severity mini-bar — the real critical/warning/info finding split.
+ *   • Timeframe selector + refresh — genuinely re-scope and re-fetch the
+ *     page's two historical charts (no fake number nudging).
+ * Decoration: the original 320px Shield background element, plus the animated
+ * HeartbeatTrace (the "live telemetry heartbeat", shared with m365-health).
+ */
 
 interface HeaderHeroBandProps {
-  metrics: SecurityMetrics;
+  riskIndex: RiskIndexLive | null;
+  securityStatus: { severity: 'good' | 'watch' | 'high' | 'info'; statusLabel: string } | null;
+  riskyUsers: LiveMetric;
+  summary: OverviewSlice['summary'] | null;
+  lastScanAt: string | null;
+  scanActive: boolean;
   timeframe: TimeFrame;
   onTimeframeChange: (tf: TimeFrame) => void;
   onRefresh: () => void;
   isRefreshing: boolean;
 }
 
+const STATUS_BADGE_META = {
+  good: { icon: ShieldCheck, cls: 'bg-status-green/15 text-status-green border-status-green/30' },
+  watch: { icon: AlertTriangle, cls: 'bg-status-amber/15 text-status-amber border-status-amber/30' },
+  high: { icon: AlertOctagon, cls: 'bg-status-red/15 text-status-red border-status-red/30' },
+  info: { icon: CircleDashed, cls: 'bg-muted text-muted-foreground border-border' },
+} as const;
+
 export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
-  metrics,
+  riskIndex,
+  securityStatus,
+  riskyUsers,
+  summary,
+  lastScanAt,
+  scanActive,
   timeframe,
   onTimeframeChange,
   onRefresh,
   isRefreshing,
 }) => {
+  const badge = securityStatus ? STATUS_BADGE_META[securityStatus.severity] : null;
+  const BadgeIcon = badge?.icon ?? CircleDashed;
+
+  // Risk index is higher-is-worse: a positive delta means risk went UP (red).
+  const delta = riskIndex?.delta ?? null;
+  const DeltaIcon = delta == null || delta === 0 ? Minus : delta > 0 ? TrendingUp : TrendingDown;
+  const deltaCls =
+    delta == null || delta === 0 ? 'text-muted-foreground' : delta > 0 ? 'text-status-red' : 'text-status-green';
+
+  const findingsTotal = summary ? summary.critical + summary.warning + summary.info : 0;
+
   return (
-    <div className="bg-card rounded-xl p-6 relative overflow-hidden flex flex-col justify-between border border-white/10 shadow-2xl">
-      {/* Top Bar with Title, Controls and Health Score */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10">
+    <div className="bg-card rounded-xl p-6 relative overflow-hidden flex flex-col justify-between border border-border shadow-md h-full">
+      {/* Top bar: title, live state, controls, risk index */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 relative">
         <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="font-headline text-2xl md:text-3xl font-semibold text-[#a0c9ff] tracking-tight">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
+            <h1 className="text-2xl md:text-3xl font-semibold text-foreground tracking-tight">
               Security Intelligence Overview
             </h1>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-[#479ef5]/10 text-[#a0c9ff] border border-[#479ef5]/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#40c463] animate-pulse"></span>
-              LIVE
-            </span>
+            {scanActive ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-status-blue/10 text-status-blue border border-status-blue/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-status-blue animate-pulse" />
+                SCAN RUNNING
+              </span>
+            ) : lastScanAt ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-status-green/10 text-status-green border border-status-green/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-status-green animate-pulse" />
+                MONITORED
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground border border-border">
+                AWAITING FIRST SCAN
+              </span>
+            )}
           </div>
-          <p className="text-[#c0c7d3] font-mono text-xs tracking-wide">
-            Real-time Tenant Telemetry | Graph API v2.1
+          <p className="text-muted-foreground font-mono text-xs tracking-wide">
+            {lastScanAt
+              ? `Tenant telemetry via Microsoft Graph · last scan ${formatDistanceToNow(new Date(lastScanAt), { addSuffix: true })}`
+              : 'Tenant telemetry via Microsoft Graph · runs after your first scan'}
           </p>
         </div>
 
-        {/* Action Controls & Health Score */}
+        {/* Controls + Risk Index */}
         <div className="flex items-center gap-6 self-end md:self-auto">
-          {/* Timeframe Selector & Refresh */}
-          <div className="hidden sm:flex items-center gap-2 bg-[#0c0f0f]/80 p-1 rounded-lg border border-[#404752]/50">
+          <div className="hidden sm:flex items-center gap-2 bg-secondary/60 p-1 rounded-lg border border-border">
             {(['24h', '7d', '30d'] as TimeFrame[]).map((tf) => (
               <button
                 key={tf}
                 onClick={() => onTimeframeChange(tf)}
                 className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
                   timeframe === tf
-                    ? 'bg-[#479ef5] text-[#003259] font-medium shadow'
-                    : 'text-[#c0c7d3] hover:text-white hover:bg-white/5'
+                    ? 'bg-primary text-primary-foreground font-medium shadow'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
               >
                 {tf.toUpperCase()}
@@ -56,69 +115,122 @@ export const HeaderHeroBand: React.FC<HeaderHeroBandProps> = ({
             <button
               onClick={onRefresh}
               disabled={isRefreshing}
-              title="Refresh telemetry stream"
-              className="p-1.5 text-[#c0c7d3] hover:text-[#a0c9ff] hover:bg-white/5 rounded transition-colors"
+              title="Refresh telemetry"
+              className="p-1.5 text-muted-foreground hover:text-primary hover:bg-muted rounded transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#a0c9ff]' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-primary' : ''}`} />
             </button>
           </div>
 
-          {/* Health Score Box */}
-          <div className="flex flex-col items-end pl-4 border-l border-[#404752]/50">
-            <span className="text-[#c0c7d3] font-mono text-[10px] uppercase tracking-widest font-medium">
-              Health Score
+          {/* Risk Index — real security engine score, higher is worse */}
+          <div className="flex flex-col items-end pl-4 border-l border-border">
+            <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-widest font-medium">
+              Security Risk Index
             </span>
             <div className="flex items-center gap-2">
-              <span className="font-headline text-4xl md:text-5xl font-bold text-[#a0c9ff] metric-glow">
-                {metrics.healthScore}
+              <span
+                className={`text-4xl md:text-5xl font-bold font-mono ${
+                  securityStatus
+                    ? securityStatus.severity === 'high'
+                      ? 'text-status-red'
+                      : securityStatus.severity === 'watch'
+                        ? 'text-status-amber'
+                        : 'text-status-green'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {riskIndex ? riskIndex.score : '—'}
               </span>
-              <TrendingUp className="w-6 h-6 text-[#c8ffc8] stroke-[2.5]" />
+              <DeltaIcon className={`w-6 h-6 stroke-[2.5] ${deltaCls}`} />
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              {securityStatus && badge && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${badge.cls}`}
+                >
+                  <BadgeIcon className="w-3 h-3" />
+                  {securityStatus.statusLabel.toUpperCase()}
+                </span>
+              )}
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {riskIndex ? 'lower is better' : 'awaiting first engine run'}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Metric Cards Row */}
-      <div className="mt-6 pt-5 border-t border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 z-10">
+      {/* Real metric row */}
+      <div className="mt-6 pt-5 border-t border-border grid grid-cols-2 md:grid-cols-4 gap-4 z-10 relative">
         <div>
-          <div className="text-[#c0c7d3] font-mono text-xs mb-1">High-Risk Identities</div>
-          <div className="font-headline text-2xl font-bold text-[#ffb4ab]">
-            {metrics.highRiskIdentities}
+          <div className="text-muted-foreground font-mono text-xs mb-1">Risky Users</div>
+          <div className="text-2xl font-bold font-mono text-status-red">
+            {riskyUsers.collected ? riskyUsers.value : '—'}
           </div>
+          {!riskyUsers.collected && (
+            <div className="text-[10px] text-muted-foreground mt-0.5">not collected yet</div>
+          )}
         </div>
 
         <div>
-          <div className="text-[#c0c7d3] font-mono text-xs mb-1">Critical Alerts (24h)</div>
-          <div className="font-headline text-2xl font-bold text-[#ffb4ab]">
-            {metrics.criticalAlerts24h}
-          </div>
+          <div className="text-muted-foreground font-mono text-xs mb-1">Critical Findings</div>
+          <div className="text-2xl font-bold font-mono text-status-red">{summary ? summary.critical : '—'}</div>
+          {!summary && <div className="text-[10px] text-muted-foreground mt-0.5">no completed scan yet</div>}
         </div>
 
         <div>
-          <div className="text-[#c0c7d3] font-mono text-xs mb-1">Potential Risk Reduction</div>
-          <div className="font-headline text-2xl font-bold text-[#c8ffc8]">
-            {metrics.potentialRiskReduction}%
-          </div>
+          <div className="text-muted-foreground font-mono text-xs mb-1">Warnings</div>
+          <div className="text-2xl font-bold font-mono text-status-amber">{summary ? summary.warning : '—'}</div>
         </div>
 
         <div className="flex flex-col justify-end">
-          <div className="flex gap-1 h-2 w-full bg-[#0c0f0f] rounded-full overflow-hidden p-0.5 border border-white/5">
-            <div className="bg-[#ffb4ab] w-1/4 rounded-full" title="Critical"></div>
-            <div className="bg-[#5a3289] w-1/3 rounded-full" title="High"></div>
-            <div className="bg-[#8a919d] w-5/12 rounded-full" title="Medium"></div>
+          <div className="text-muted-foreground font-mono text-xs mb-1">
+            Checks Passing{' '}
+            <span className="text-foreground font-semibold">
+              {summary?.checksOk != null && summary?.checksTotal != null
+                ? `${summary.checksOk}/${summary.checksTotal}`
+                : '—'}
+            </span>
           </div>
-          <div className="flex justify-between text-[10px] text-[#c0c7d3] mt-1.5 font-mono">
-            <span className="text-[#ffb4ab]">CRIT</span>
-            <span className="text-[#dab9ff]">HIGH</span>
-            <span className="text-[#8a919d]">MED</span>
-          </div>
+          {/* Real severity split of the last scan's findings */}
+          {summary && findingsTotal > 0 ? (
+            <>
+              <div className="flex gap-1 h-2 w-full bg-secondary/60 rounded-full overflow-hidden p-0.5 border border-border">
+                <div
+                  className="bg-status-red rounded-full"
+                  style={{ width: `${(summary.critical / findingsTotal) * 100}%` }}
+                  title={`Critical: ${summary.critical}`}
+                />
+                <div
+                  className="bg-status-amber rounded-full"
+                  style={{ width: `${(summary.warning / findingsTotal) * 100}%` }}
+                  title={`Warning: ${summary.warning}`}
+                />
+                <div
+                  className="bg-status-blue rounded-full"
+                  style={{ width: `${(summary.info / findingsTotal) * 100}%` }}
+                  title={`Info: ${summary.info}`}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] mt-1.5 font-mono">
+                <span className="text-status-red">CRIT {summary.critical}</span>
+                <span className="text-status-amber">WARN {summary.warning}</span>
+                <span className="text-status-blue">INFO {summary.info}</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-[10px] text-muted-foreground font-mono">
+              {summary ? 'no open findings' : 'severity split appears after your first scan'}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Decorative Background Icon */}
-      <div className="absolute -right-12 -top-12 opacity-[0.04] pointer-events-none text-white">
+      {/* Decorative background: the original Shield + the live heartbeat trace */}
+      <div className="absolute -right-12 -top-12 opacity-[0.05] pointer-events-none text-foreground">
         <Shield className="w-[320px] h-[320px]" />
       </div>
+      <HeartbeatTrace />
     </div>
   );
 };

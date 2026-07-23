@@ -1237,8 +1237,12 @@ export async function resolveMetricHistory(
   def: MetricDef,
   ctx: ResolveContext,
 ): Promise<{ t: string; value: number }[] | null> {
-  // Only smart-eligible scalar customer metrics get a sparkline history.
-  if (!def.smartEligible || def.shape !== "scalar" || def.scope !== "customer") return null;
+  // Only smart-eligible scalar/trend customer metrics get a sparkline history.
+  // "trend"-shaped monitor_profile metrics (risky users, high-risk sign-ins)
+  // resolve their current value as a scalar through the same
+  // monitorScalarForTenant path, so their per-row history means exactly what
+  // the scalar means — same honesty contract as the "scalar" shape.
+  if (!def.smartEligible || (def.shape !== "scalar" && def.shape !== "trend") || def.scope !== "customer") return null;
   if (def.status === "not_collected" || def.sourceKey.startsWith("not_collected:")) return null;
   if (ctx.customerId == null) return null;
 

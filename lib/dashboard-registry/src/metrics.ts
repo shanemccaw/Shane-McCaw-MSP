@@ -130,6 +130,37 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartBands: RISK_COUNT_BANDS,
   },
   {
+    // Global Admin sprawl — the identity:global-admin-count check counts real
+    // Global Administrator role holders. Not smart-eligible: the healthy target
+    // is a small non-zero band (2–4 with break-glass), not 0, so the shared
+    // RISK_COUNT_BANDS "target 0" semantics would mis-grade it.
+    key: "identity.globalAdminCount",
+    label: "Global Administrators",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "identity:global-admin-count",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    // Standing (permanent, non-PIM-eligible) privileged role assignments from
+    // the identity:pim-permanent-roles check. NOTE: this check currently needs
+    // a Graph scope the multi-tenant app doesn't have yet (known, backlogged) —
+    // until then it resolves not_available/no_data, which consumers must
+    // surface honestly rather than fabricate around.
+    key: "identity.pimPermanentRoleCount",
+    label: "Standing Privileged Roles",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "identity:pim-permanent-roles",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
     key: "identity.riskyUserCount",
     label: "Risky Users",
     valueType: "count",

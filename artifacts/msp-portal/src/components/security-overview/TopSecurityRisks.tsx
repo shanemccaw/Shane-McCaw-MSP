@@ -1,67 +1,117 @@
 import React from 'react';
-import { SecurityRiskItem } from './types';
-import { AlertOctagon, ExternalLink, ShieldAlert } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { AlertOctagon, AlertTriangle, Info, ExternalLink, ShieldCheck, CircleDashed } from 'lucide-react';
+import type { LiveFinding, LiveFindingSeverity } from '@/components/m365-health/useM365HealthLive';
+
+/**
+ * Top Security Risks — the 5 most severe REAL findings from the last completed
+ * diagnostics run (mission-control overview feed, already severity-sorted
+ * server-side). Severity chips use the app's status tokens with icon + label
+ * (never color alone). Honest empty states distinguish "never scanned" from
+ * "scan came back clean".
+ */
 
 interface TopSecurityRisksProps {
-  risks: SecurityRiskItem[];
-  onSelectRisk: (risk: SecurityRiskItem) => void;
+  findings: LiveFinding[];
+  everScanned: boolean;
+  loaded: boolean;
+  onSelectFinding: (finding: LiveFinding) => void;
 }
 
-export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({ risks, onSelectRisk }) => {
+const SEVERITY_META: Record<
+  LiveFindingSeverity,
+  { label: string; icon: typeof AlertOctagon; chip: string; hover: string }
+> = {
+  critical: {
+    label: 'CRIT',
+    icon: AlertOctagon,
+    chip: 'text-status-red border-status-red/30 bg-status-red/10',
+    hover: 'hover:border-status-red/60 hover:bg-status-red/5',
+  },
+  warning: {
+    label: 'WARN',
+    icon: AlertTriangle,
+    chip: 'text-status-amber border-status-amber/30 bg-status-amber/10',
+    hover: 'hover:border-status-amber/60 hover:bg-status-amber/5',
+  },
+  info: {
+    label: 'INFO',
+    icon: Info,
+    chip: 'text-status-blue border-status-blue/30 bg-status-blue/10',
+    hover: 'hover:border-status-blue/60 hover:bg-status-blue/5',
+  },
+};
+
+export const TopSecurityRisks: React.FC<TopSecurityRisksProps> = ({
+  findings,
+  everScanned,
+  loaded,
+  onSelectFinding,
+}) => {
+  const top = findings.slice(0, 5);
+
   return (
-    <div className="bg-card rounded-xl p-6 border border-white/10 shadow-xl h-full flex flex-col justify-between">
-      <div>
-        <h2 className="font-headline text-lg font-semibold text-[#a0c9ff] mb-4 flex items-center gap-2">
-          <AlertOctagon className="w-5 h-5 text-[#ffb4ab]" />
-          Top 5 Security Risks
-        </h2>
+    <div className="bg-card rounded-xl p-6 border border-border shadow-md h-full flex flex-col">
+      <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+        <AlertOctagon className="w-5 h-5 text-status-red" />
+        Top Security Risks
+      </h2>
 
+      {top.length > 0 ? (
         <div className="space-y-2.5">
-          {risks.map((risk) => {
-            const isCrit = risk.severity === 'critical';
-            const isHigh = risk.severity === 'high';
-            const rankColor = isCrit
-              ? 'text-[#ffb4ab] border-[#ffb4ab]/30'
-              : isHigh
-              ? 'text-[#dab9ff] border-[#dab9ff]/30'
-              : 'text-[#a0c9ff] border-[#a0c9ff]/30';
-
-            const hoverBorder = isCrit
-              ? 'hover:border-[#ffb4ab]/80 hover:bg-[#ffb4ab]/5'
-              : isHigh
-              ? 'hover:border-[#dab9ff]/80 hover:bg-[#dab9ff]/5'
-              : 'hover:border-[#a0c9ff]/80 hover:bg-[#a0c9ff]/5';
-
+          {top.map((finding, idx) => {
+            const meta = SEVERITY_META[finding.severity];
+            const SeverityIcon = meta.icon;
             return (
               <div
-                key={risk.id}
-                onClick={() => onSelectRisk(risk)}
-                className={`flex items-center gap-3.5 p-3.5 bg-[#1a1c1c] rounded-lg border border-[#404752]/60 cursor-pointer transition-all duration-200 group ${hoverBorder}`}
+                key={finding.id}
+                onClick={() => onSelectFinding(finding)}
+                className={`flex items-center gap-3.5 p-3.5 bg-secondary/40 rounded-lg border border-border cursor-pointer transition-all duration-200 group ${meta.hover}`}
               >
-                {/* Rank Number Tag */}
-                <span className={`font-mono text-sm font-semibold px-2 py-0.5 rounded border ${rankColor}`}>
-                  {risk.rank}
+                {/* Rank */}
+                <span className="font-mono text-sm font-semibold px-2 py-0.5 rounded border border-border text-muted-foreground">
+                  {String(idx + 1).padStart(2, '0')}
                 </span>
 
-                {/* Risk Description */}
+                {/* Severity chip */}
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border font-mono text-[10px] font-semibold ${meta.chip}`}
+                >
+                  <SeverityIcon className="w-3 h-3" />
+                  {meta.label}
+                </span>
+
+                {/* Real finding */}
                 <div className="flex-grow min-w-0">
-                  <p className="font-body text-sm text-[#e2e2e2] font-medium truncate group-hover:text-white">
-                    {risk.title}
-                  </p>
-                  <p className="text-[#c0c7d3] text-xs font-mono truncate mt-0.5">
-                    {risk.locationOrIdentity}
+                  <p className="text-sm text-foreground font-medium truncate">{finding.title}</p>
+                  <p className="text-muted-foreground text-xs font-mono truncate mt-0.5">
+                    {finding.checkLabel ?? 'Diagnostics'} ·{' '}
+                    {formatDistanceToNow(new Date(finding.createdAt), { addSuffix: true })}
                   </p>
                 </div>
 
-                {/* External Action / Details Icon */}
-                <span className="p-1.5 text-[#c0c7d3] opacity-60 group-hover:opacity-100 group-hover:text-[#a0c9ff] transition-all">
+                <span className="p-1.5 text-muted-foreground opacity-60 group-hover:opacity-100 group-hover:text-primary transition-all">
                   <ExternalLink className="w-4 h-4" />
                 </span>
               </div>
             );
           })}
         </div>
-      </div>
+      ) : everScanned && loaded ? (
+        <div className="flex-grow flex items-center">
+          <div className="flex items-start gap-2 text-xs text-secondary-foreground/90">
+            <ShieldCheck className="w-4 h-4 text-status-green flex-shrink-0 mt-0.5" />
+            <span>No open findings — your last scan came back clean.</span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-grow flex items-center">
+          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+            <CircleDashed className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>Findings appear here after your first tenant scan completes.</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
