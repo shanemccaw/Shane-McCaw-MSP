@@ -61,6 +61,7 @@ import {
   scriptModulesTable,
   clientAppRegistrationsTable,
   servicesTable,
+  documentTypesTable,
   type PsScriptPermissions,
   type WfGraph,
   type WfNode,
@@ -75,6 +76,8 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent, broadcastWorkflowRunProgress, broadcastWorkflowRunComplete, broadcastWorkflowRunError } from "./sse-channels";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
+import { generateDocument } from "./document-engine.ts";
+import { generateSowDocument } from "./document-engine-sow.ts";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { getEngineDef } from "./engine-registry.ts";
@@ -2159,6 +2162,7 @@ async function executeNode(
             output = { error: "generate_document requires a valid clientId" };
           } else {
             const docType     = (interp(node.data.docType as string | undefined, payload) ?? "executive_summary") as string;
+            const resolvedDocType = docType === "consolidated_sow" ? "sow" : docType;
             const docCategory = ((node.data.docCategory as string | undefined) ?? "report") === "consulting" ? "consulting" : "report";
             const docTitle    = interp(node.data.docTitle as string | undefined, payload)
               ?? (CONSULTING_TYPE_LABELS[docType] ?? REPORT_DOC_TYPE_LABELS[docType] ?? docType);
@@ -2167,83 +2171,16 @@ async function executeNode(
             // The generic consulting path below uses scores/findings and invents
             // phases from scratch. consolidated_sow MUST use the real engagement
             // projects catalogue from the DB, which the shared lib handles.
-            let sowHandled = false;
-            if (docType === "consolidated_sow" && docCategory === "consulting") {
-              sowHandled = true;
-              try {
-                const rawPresId = payload.presentationId;
-                const presId = typeof rawPresId === "number" ? rawPresId
-                  : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
-                const sowSignalsOverride = resolveSignalsOverride(
-                  node.data.signalsOverride as string | undefined,
-                  payload,
-                  interp,
-                );
-                const sowResult = await generateConsolidatedSowDocument({
-                  clientUserId,
-                  projectId: !isNaN(projectId) ? projectId : null,
-                  title: docTitle,
-                  runId: runId != null ? String(runId) : undefined,
-                  signalsOverride: sowSignalsOverride,
-                });
-                if (!isNaN(presId)) {
-                  broadcastPresentationDocsChange(presId);
-                  log.info({ runId, presId, docId: sowResult.docId }, "wf-executor: consolidated_sow broadcast docs_changed for presentation");
-                }
-                if (!isNaN(projectId)) {
-                  void broadcastSowChangeForProject(projectId);
-                  void broadcastDocsChangeForProject(projectId);
-                }
-                output = { documentId: sowResult.docId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
-              } catch (sowErr) {
-                nodeError = true;
-                const sowErrMsg = sowErr instanceof Error ? sowErr.message : String(sowErr);
-                output = {
-                  error: sowErrMsg,
-                  customerError: "SOW generation failed — please retry or contact support if the problem persists.",
-                };
-                log.error({ runId, err: sowErr }, "wf-executor: consolidated_sow generation failed");
-              }
-            }
+            const [docTypeRow] = await db
+              .select({ pipelineCategory: documentTypesTable.pipelineCategory, category: documentTypesTable.category, label: documentTypesTable.label })
+              .from(documentTypesTable)
+              .where(eq(documentTypesTable.key, resolvedDocType))
+              .limit(1);
 
-            if (!sowHandled) {
-            // Fetch supporting data in parallel (common to both report and consulting paths)
-            const [runs, customerRow, projectRow] = await Promise.all([
-              igFetchRuns(clientUserId, 50),
-              db.select({ name: usersTable.name, company: usersTable.company })
-                .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1),
-              !isNaN(projectId)
-                ? db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1)
-                : Promise.resolve([] as { title: string }[]),
-            ]);
-
-            const healthScores = await igFetchClientHealthScores(clientUserId);
-            const scores = healthScores ?? igComputeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
-            const { findings, recommendations } = igCollectFindings(runs as { parsedFindings: string[] | null; recommendations: string[] | null }[]);
-
-            const clientName  = customerRow[0]?.company ?? customerRow[0]?.name ?? "Client";
-            const projectName = projectRow[0]?.title ?? "";
-            const projectLine = projectName ? ` · Project: ${projectName}` : "";
-            const dateStr     = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-
-            // Merge all profileUpdates into one object (most-recent run wins) so
-            // critical metrics like totalUserCount and sharepointSiteCount are never
-            // silently dropped by a per-run slice cap.
-            const mergedWfProfile: Record<string, unknown> = {};
-            for (const run of [...(runs as { profileUpdates: Record<string, unknown> | null }[])].reverse()) {
-              Object.assign(mergedWfProfile, run.profileUpdates ?? {});
-            }
-            const profileSample = Object.entries(mergedWfProfile)
-              .map(([k, v]) => `  ${k}: ${String(v)}`)
-              .join("\n") || "  No telemetry captured yet.";
-
-            const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
-
-            // Build the AI prompt — consulting and report use different templates and token shapes
-            let prompt: string;
-            if (docCategory === "consulting" && docType === "task_execution_guide") {
-              // Resolve the SOW HTML: prefer sowDocumentId (look up from DB) over
-              // inline sowHtml, so the builder only needs a document ID reference.
+            if (!docTypeRow) {
+              nodeError = true;
+              output = { error: `generate_document: unknown document type "${resolvedDocType}"` };
+            } else if (docCategory === "consulting" && resolvedDocType === "task_execution_guide") {
               let sowHtmlForDoc = interp(node.data.sowHtml as string | undefined, payload) ?? "";
               const sowDocumentIdRaw = interp(node.data.sowDocumentId as string | undefined, payload) ?? "";
               const sowDocumentId = sowDocumentIdRaw ? parseInt(sowDocumentIdRaw, 10) : NaN;
@@ -2256,153 +2193,101 @@ async function executeNode(
                 if (sowDocRow?.htmlContent) sowHtmlForDoc = sowDocRow.htmlContent;
               }
 
-              // task_execution_guide uses ONLY the SOW HTML — no scores, findings, or telemetry.
               const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
-              prompt = igSubstituteTokens(rawTemplate, {
+              const [customerRow] = await db.select({ name: usersTable.name, company: usersTable.company }).from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1);
+              const clientName = customerRow?.company ?? customerRow?.name ?? "Client";
+              const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+              const prompt = igSubstituteTokens(rawTemplate, {
                 clientName,
                 title: docTitle,
                 date: dateStr,
                 sowHtml: sowHtmlForDoc || "(No SOW provided — generate based on available context)",
               });
-            } else if (docCategory === "consulting") {
-              const typeLabel    = CONSULTING_TYPE_LABELS[docType] ?? docType;
-              const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include all relevant sections for this consulting deliverable";
-              const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
-              const recsInline     = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
-              const rawTemplate = await getPrompt(`insights-consulting-${docType}`, INSIGHTS_CONSULTING_PROMPT_FALLBACK, ["{{sowHtml}}", "{{engagementStart}}", "{{existingDocs}}"]);
-              prompt = igSubstituteTokens(rawTemplate, {
-                typeLabel,
-                clientName,
-                projectLine,
-                title: docTitle,
-                date: dateStr,
-                scores: scoresBlock,
-                findings: findingsInline,
-                recommendations: recsInline,
-                profileSample: profileSample || "  No telemetry captured yet.",
-                sectionHints,
-                priorDocsSummary: "",
-              });
-            } else {
-              const docLabel      = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
-              const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet.";
-              const recsBlock     = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
-              const rawTemplate   = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK, ["{{typeLabel}}", "{{sectionHints}}", "{{sowHtml}}"]);
-              prompt = igSubstituteTokens(rawTemplate, {
-                docLabel,
-                clientName,
-                projectLine,
-                title: docTitle,
-                date: dateStr,
-                scores: scoresBlock,
-                findingsCount: String(findings.length),
-                findings: findingsBlock,
-                recommendationsCount: String(recommendations.length),
-                recommendations: recsBlock,
-                profileSample: profileSample || "  No telemetry captured yet.",
-                runCount: String(runs.length),
-              });
-            }
 
-            // Find any prior completed doc for same customer+project+docType (to replace on success)
-            let priorWfDocId: number | null = null;
-            {
-              const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
-                .from(insightsGeneratedDocumentsTable)
-                .where(and(
-                  eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
-                  ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
-                  eq(insightsGeneratedDocumentsTable.docType, docType),
-                  inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
-                ))
-                .limit(1);
-              priorWfDocId = prior[0]?.id ?? null;
-            }
+              const [genWfRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+                customerId: clientUserId, projectId: !isNaN(projectId) ? projectId : null,
+                category: docCategory, docType: resolvedDocType, title: docTitle, htmlContent: "", status: "generating",
+              }).returning({ id: insightsGeneratedDocumentsTable.id });
+              const tegDocId = genWfRow!.id;
 
-            // Always INSERT a new generating row — fresh createdAt sorts to top; prior doc untouched until success
-            const [genWfRow] = await db.insert(insightsGeneratedDocumentsTable).values({
-              customerId: clientUserId,
-              projectId: !isNaN(projectId) ? projectId : null,
-              category: docCategory,
-              docType,
-              title: docTitle,
-              htmlContent: "",
-              status: "generating",
-            }).returning({ id: insightsGeneratedDocumentsTable.id });
-            const reportDocId = genWfRow!.id;
-
-            let htmlContent: string;
-            try {
-              const docStylePrefix = await getDocumentStylePrefix();
-              // Use streaming + finalMessage() for all doc generation.
-              // task_execution_guide is a comprehensive step-by-step guide that can
-              // easily exceed 8 k tokens, so we give it 16 k.  Other doc types keep
-              // a 8 k ceiling but also benefit from streaming avoiding the hard
-              // 10-min messages.create() timeout on slow completions.
-              const docMaxTokens = docType === "task_execution_guide" ? 16384 : 8192;
-              const stream = anthropic.messages.stream({
-                model: "claude-haiku-4-5",
-                max_tokens: docMaxTokens,
-                messages: [{ role: "user", content: docStylePrefix + prompt }],
-              });
-              const aiResp = await stream.finalMessage();
-              const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
-              htmlContent = igExtractHtml(rawText);
-            } catch (aiErr) {
-              // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
-              const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-              await db.update(insightsGeneratedDocumentsTable)
-                .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
-                .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
-              throw aiErr;
-            }
-
-            // Update generating row with finished content
-            await db.update(insightsGeneratedDocumentsTable)
-              .set({ title: docTitle, htmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date() })
-              .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
-
-            // For consolidated SOW documents, also write pricing lines so the
-            // client's Scope & Pricing step shows correct prices immediately —
-            // without requiring a separate calculate_pricing node or admin action.
-            if (docType === "consolidated_sow") {
+              let tegHtmlContent: string;
               try {
-                await persistSowPricing(reportDocId, htmlContent);
-              } catch (pricingErr) {
-                log.warn({ runId, reportDocId, err: pricingErr }, "wf-executor: generate_document — persistSowPricing failed (non-fatal)");
+                const docStylePrefix = await getDocumentStylePrefix();
+                const stream = anthropic.messages.stream({
+                  model: "claude-haiku-4-5", max_tokens: 16384,
+                  messages: [{ role: "user", content: docStylePrefix + prompt }],
+                });
+                const aiResp = await stream.finalMessage();
+                const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
+                tegHtmlContent = igExtractHtml(rawText);
+              } catch (aiErr) {
+                const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
+                await db.update(insightsGeneratedDocumentsTable)
+                  .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
+                  .where(eq(insightsGeneratedDocumentsTable.id, tegDocId));
+                throw aiErr;
               }
 
-              // Notify any open presentation SSE channels so the client's
-              // SowGeneratingCard transitions to the document view immediately
-              // rather than waiting for the next poll cycle.
-              const rawPresId = payload.presentationId;
-              const presId = typeof rawPresId === "number"
-                ? rawPresId
-                : typeof rawPresId === "string"
-                ? parseInt(rawPresId, 10)
-                : NaN;
-              if (!isNaN(presId)) {
-                broadcastPresentationDocsChange(presId);
-                log.info({ runId, presId, reportDocId }, "wf-executor: generate_document — broadcast docs_changed for presentation");
+              await db.update(insightsGeneratedDocumentsTable)
+                .set({ title: docTitle, htmlContent: tegHtmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date(), pdfUrl: `/api/admin/insights/documents/${tegDocId}/download` })
+                .where(eq(insightsGeneratedDocumentsTable.id, tegDocId));
+
+              log.info({ runId, reportDocId: tegDocId, docType: resolvedDocType, docCategory, clientUserId }, "wf-executor: generate_document (task_execution_guide) completed");
+              output = { documentId: tegDocId, docType: resolvedDocType, category: docCategory, title: docTitle, clientId: clientUserId, htmlContent: tegHtmlContent };
+            } else {
+              let priorDocId: number | null = null;
+              {
+                const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
+                  .from(insightsGeneratedDocumentsTable)
+                  .where(and(
+                    eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+                    ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
+                    eq(insightsGeneratedDocumentsTable.docType, resolvedDocType),
+                    inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
+                  ))
+                  .limit(1);
+                priorDocId = prior[0]?.id ?? null;
+              }
+
+              try {
+                const isPipelineOutput = docTypeRow.pipelineCategory === "pipeline_output";
+                const engineResult = isPipelineOutput
+                  ? await generateSowDocument({ clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType })
+                  : await generateDocument({ clientUserId, projectId: !isNaN(projectId) ? projectId : 0, docTypeKey: resolvedDocType });
+
+                await db.update(insightsGeneratedDocumentsTable)
+                  .set({ pdfUrl: `/api/admin/insights/documents/${engineResult.documentId}/download` })
+                  .where(eq(insightsGeneratedDocumentsTable.id, engineResult.documentId));
+
+                if (isPipelineOutput) {
+                  const rawPresId = payload.presentationId;
+                  const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
+                  if (!isNaN(presId)) {
+                    broadcastPresentationDocsChange(presId);
+                    log.info({ runId, presId, documentId: engineResult.documentId }, "wf-executor: generate_document (sow) broadcast docs_changed for presentation");
+                  }
+                  if (!isNaN(projectId)) {
+                    void broadcastSowChangeForProject(projectId);
+                    void broadcastDocsChangeForProject(projectId);
+                  }
+                }
+
+                if (priorDocId !== null) {
+                  await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, priorDocId));
+                }
+
+                log.info({ runId, reportDocId: engineResult.documentId, docType: resolvedDocType, docCategory, clientUserId }, "wf-executor: generate_document completed (real engine)");
+                output = { documentId: engineResult.documentId, docType: resolvedDocType, category: docTypeRow.category, title: docTypeRow.label, clientId: clientUserId };
+              } catch (engineErr) {
+                nodeError = true;
+                const engineErrMsg = engineErr instanceof Error ? engineErr.message : String(engineErr);
+                output = {
+                  error: engineErrMsg,
+                  customerError: "Document generation failed — please retry or contact support if the problem persists.",
+                };
+                log.error({ runId, err: engineErr, docType: resolvedDocType }, "wf-executor: generate_document (real engine) failed");
               }
             }
-
-            // Remove superseded prior doc now that the new one is live
-            if (priorWfDocId !== null) {
-              await db.delete(insightsGeneratedDocumentsTable)
-                .where(eq(insightsGeneratedDocumentsTable.id, priorWfDocId));
-            }
-
-            // Set the canonical PDF download URL
-            await db.update(insightsGeneratedDocumentsTable)
-              .set({ pdfUrl: `/api/admin/insights/documents/${reportDocId}/download` })
-              .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
-
-            log.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
-            output = docType === "task_execution_guide"
-              ? { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId, htmlContent }
-              : { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
-            } // end if (!sowHandled)
           }
         } else if (actionType === "emit_event") {
           const emitEventType = interp(node.data.eventType as string | undefined, payload)
