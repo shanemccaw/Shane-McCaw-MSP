@@ -86,9 +86,27 @@ vi.mock("../lib/logger", () => ({
 }));
 
 // The reuse point under test — mocked, not reimplemented.
+//
+// `executeMonitorCheck` is the ONLY export stubbed here: it is the network
+// boundary, and stubbing it is what lets these tests assert that "Re-evaluate"
+// never crosses it. `applyMapping` is deliberately re-exported REAL (via
+// importActual) because the trace route runs it for real — replacing it with a
+// stub would let a mapping regression pass unnoticed, which is the exact failure
+// mode this phase is meant to prevent.
 const executeMonitorCheck = vi.fn();
-vi.mock("../lib/monitor-executor", () => ({
-  executeMonitorCheck: (...args: unknown[]) => executeMonitorCheck(...args),
+vi.mock("../lib/monitor-executor", async () => {
+  const actual = await vi.importActual<typeof import("../lib/monitor-executor")>("../lib/monitor-executor");
+  return {
+    ...actual,
+    executeMonitorCheck: (...args: unknown[]) => executeMonitorCheck(...args),
+  };
+});
+
+// The rule fetch the trace route uses. Mocked because it is a DB read (an INPUT
+// to the trace), not part of the trace's logic — `evaluateRule` itself stays real.
+const getAllRules = vi.fn(() => Promise.resolve([] as unknown[]));
+vi.mock("./admin-signal-rules", () => ({
+  getAllRules: () => getAllRules(),
 }));
 
 import router, { _resetMonitorCheckRuns } from "./admin-monitor-check-runs";
@@ -115,8 +133,30 @@ async function waitForTerminal(app: Express, runId: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectQueue = [];
+  getAllRules.mockResolvedValue([]);
   _resetMonitorCheckRuns();
 });
+
+/** Starts a run that completes ok with the given captured items, and returns its runId. */
+async function startCompletedRun(
+  app: Express,
+  items: unknown[],
+  check: Record<string, unknown> = CHECK,
+): Promise<string> {
+  selectQueue = [[check], [CUSTOMER]];
+  executeMonitorCheck.mockResolvedValue({
+    checkKey: check.key,
+    status: "ok",
+    extractedProperties: {},
+    severityMatched: null,
+    itemCount: items.length,
+    pageCount: 1,
+    items,
+  });
+  const res = await auth(request(app).post(`/api/admin/monitor-checks/${check.key}/run`)).send({ customerId: 42 });
+  await waitForTerminal(app, res.body.runId);
+  return res.body.runId as string;
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -315,5 +355,147 @@ describe("GET /admin/monitor-check-runs/:runId", () => {
     expect(res.body.run.request.method).toBe("GET");
     expect(res.body.run.checkKey).toBe(CHECK.key);
     expect(res.body.run.tenantId).toBe("tenant-guid-abc");
+  });
+});
+
+// ── Phase 2: engine trace ─────────────────────────────────────────────────────
+
+const MAPPED_CHECK = {
+  ...CHECK,
+  key: "identity:mfa-registration",
+  properties: [],
+  mapping: [{ sourceField: "isMfaRegistered", targetField: "mfaRegisteredCount", transform: "countTruthy" }],
+};
+
+const MFA_ITEMS = [
+  { id: "u1", isMfaRegistered: true },
+  { id: "u2", isMfaRegistered: true },
+  { id: "u3", isMfaRegistered: false },
+];
+
+describe("POST /admin/monitor-check-runs/:runId/trace — RE-EVALUATE", () => {
+  it("rejects an unauthenticated trace", async () => {
+    const res = await request(makeApp()).post("/api/admin/monitor-check-runs/whatever/trace").send({});
+    expect(res.status).toBe(401);
+  });
+
+  it("404s for an unknown run", async () => {
+    const res = await auth(request(makeApp()).post("/api/admin/monitor-check-runs/nope/trace")).send({});
+    expect(res.status).toBe(404);
+  });
+
+  it("does NOT trigger a new network call — the whole point of Re-evaluate", async () => {
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+
+    // One call so far: the run itself.
+    expect(executeMonitorCheck).toHaveBeenCalledTimes(1);
+
+    // Re-evaluate, repeatedly.
+    for (let i = 0; i < 3; i++) {
+      const res = await auth(request(app).post(`/api/admin/monitor-check-runs/${runId}/trace`)).send({});
+      expect(res.status).toBe(200);
+    }
+
+    // STILL one call. Re-evaluate never reaches the executor, so it never
+    // reaches Graph — it re-reads the response the run already captured.
+    expect(executeMonitorCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("traces the captured response through the REAL applyMapping", async () => {
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+
+    const res = await auth(request(app).post(`/api/admin/monitor-check-runs/${runId}/trace`)).send({});
+    expect(res.status).toBe(200);
+
+    const key = res.body.trace.keys.find((k: any) => k.key === "mfaRegisteredCount");
+    expect(key).toBeDefined();
+    // countTruthy over the real captured items: 2 of 3.
+    expect(key.value).toBe(2);
+    expect(key.transform).toBe("countTruthy");
+  });
+
+  it("evaluates real rules returned by the msp_id-IS-NULL-scoped fetch", async () => {
+    getAllRules.mockResolvedValue([
+      {
+        id: 55,
+        signalKey: "security:mfa-gap",
+        groupId: null,
+        ruleType: "profile_key_lt",
+        sourceKey: "mfaRegisteredCount",
+        compareValue: "5",
+        description: null,
+        sortOrder: 0,
+        createdAt: new Date(0),
+        updatedAt: new Date(0),
+      },
+    ]);
+
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+    const res = await auth(request(app).post(`/api/admin/monitor-check-runs/${runId}/trace`)).send({});
+
+    const key = res.body.trace.keys.find((k: any) => k.key === "mfaRegisteredCount");
+    expect(key.uncovered).toBe(false);
+    expect(key.rules).toHaveLength(1);
+    // 2 < 5 — the real evaluateRule result and its own reason string.
+    expect(key.rules[0].result).toBe(true);
+    expect(key.rules[0].reason).toBe("profile[mfaRegisteredCount] = 2 < 5");
+  });
+
+  it("409s rather than tracing a run that never produced a usable response", async () => {
+    selectQueue = [[MAPPED_CHECK], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: MAPPED_CHECK.key,
+      status: "error",
+      extractedProperties: {},
+      severityMatched: null,
+      errorMessage: "Graph API error 503",
+      itemCount: 0,
+      pageCount: 0,
+    });
+    const app = makeApp();
+    const start = await auth(request(app).post(`/api/admin/monitor-checks/${MAPPED_CHECK.key}/run`)).send({ customerId: 42 });
+    await waitForTerminal(app, start.body.runId);
+
+    const res = await auth(request(app).post(`/api/admin/monitor-check-runs/${start.body.runId}/trace`)).send({});
+    // Never a confident "this response produces no keys" over a failed run.
+    expect(res.status).toBe(409);
+    expect(res.body.runStatus).toBe("failed");
+  });
+
+  it("asks the executor to hand back the untruncated item list", async () => {
+    const app = makeApp();
+    await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+    const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
+    // Without this the trace would have to re-read the persisted rawResponse,
+    // which holds only page 1 (and only 5 rows of a CSV report).
+    expect(arg.includeItems).toBe(true);
+  });
+
+  it("keeps the item payload off the one-second poll response", async () => {
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs/${runId}`));
+    expect(res.status).toBe(200);
+    expect(res.body.run.items).toBeUndefined();
+  });
+});
+
+describe("RE-RUN is a genuinely different action from RE-EVALUATE", () => {
+  it("re-running DOES trigger a new execution, while re-evaluating does not", async () => {
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+    expect(executeMonitorCheck).toHaveBeenCalledTimes(1);
+
+    // Re-evaluate: no new execution.
+    await auth(request(app).post(`/api/admin/monitor-check-runs/${runId}/trace`)).send({});
+    expect(executeMonitorCheck).toHaveBeenCalledTimes(1);
+
+    // Re-run: a real second execution against the live tenant.
+    const secondRunId = await startCompletedRun(app, MFA_ITEMS, MAPPED_CHECK);
+    expect(executeMonitorCheck).toHaveBeenCalledTimes(2);
+    expect(secondRunId).not.toBe(runId);
   });
 });

@@ -15,58 +15,29 @@ import {
   RotateCcw,
   Save,
 } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import BundleImportExport from "@/components/signal-rules/BundleImportExport";
 import EvaluatePreviewTester from "@/components/signal-rules/EvaluatePreviewTester";
 import RuleGroupsAndSignalsManager from "@/components/signal-rules/RuleGroupsAndSignalsManager";
 import ConflictsHealthPanel from "@/components/signal-rules/ConflictsHealthPanel";
 import SimulationProfilesManager from "@/components/signal-rules/SimulationProfilesManager";
+// The rule create/edit form, its rule-type metadata and its intelligence-field
+// handling were extracted from this file into a shared component so the
+// Simulator Studio's engine trace could edit rules through the SAME form rather
+// than a second, drifting copy. This page's behaviour is unchanged.
+import SignalRuleEditorModal, {
+  emptyRuleForm,
+  ruleFormFromRule,
+  ruleFormToBody,
+  ruleTypeMeta,
+  type RuleForm,
+  type RuleConflict,
+  type SignalIntelligenceFields,
+  type SignalRule,
+} from "@/components/signal-rules/SignalRuleEditorModal";
 
-// ─── API shapes (match artifacts/api-server/src/routes/admin-signal-rules.ts) ──
-// NOTE: licensingImpact exists in the DB but the admin API neither returns nor
-// accepts it, so it is deliberately absent here.
-
-interface SignalIntelligenceFields {
-  priority: number;
-  weight: number;
-  pricingImpact: number;
-  priorityScoreContribution: number;
-  pricingValueContribution: number;
-  governanceImpact: number;
-  securityImpact: number;
-  complianceImpact: number;
-  adoptionImpact: number;
-  copilotImpact: number;
-  architectureImpact: number;
-  trendValue: number;
-  trendDirection: string;
-  decayRate: number;
-  ttlDays: number;
-  confidence: number;
-  severity: string;
-  category: string;
-  pillar: string;
-  crmFitContribution: number;
-  crmPainContribution: number;
-  crmMaturityContribution: number;
-  crmIntentContribution: number;
-  crmUrgencyContribution: number;
-}
-
-interface SignalRule extends Partial<SignalIntelligenceFields> {
-  id: number;
-  signalKey: string;
-  groupId: number | null;
-  ruleType: string;
-  sourceKey: string;
-  compareValue: string | null;
-  description: string | null;
-  sortOrder: number;
-}
+// ─── API shapes still owned by this page ──────────────────────────────────────
+// (SignalIntelligenceFields / SignalRule / RuleConflict now live alongside the
+// shared editor, since the form is what defines their contract.)
 
 interface SignalGroup extends Partial<SignalIntelligenceFields> {
   id: number;
@@ -74,11 +45,6 @@ interface SignalGroup extends Partial<SignalIntelligenceFields> {
   logic: "AND" | "OR";
   label: string | null;
   sortOrder: number;
-}
-
-interface RuleConflict {
-  ruleIds: number[];
-  description: string;
 }
 
 // Whole-ruleset snapshots (signal_rule_versions) — NOT per-rule history. A
@@ -102,104 +68,10 @@ interface AuditLogEntry {
   createdAt: string;
 }
 
-// ─── Rule-type metadata ───────────────────────────────────────────────────────
-// The evaluator (api-server lib/tenant-signals.ts evaluateRule) recognizes
-// exactly these seven types. compareValue is only read by eq/gt/lt/threshold.
-
-const RULE_TYPES: Array<{
-  value: string;
-  label: string;
-  sourceKeyLabel: string;
-  compare: null | { label: string; hint: string };
-}> = [
-  { value: "profile_key_truthy", label: "Profile key is truthy", sourceKeyLabel: "Profile field path", compare: null },
-  { value: "profile_key_falsy", label: "Profile key is falsy", sourceKeyLabel: "Profile field path", compare: null },
-  { value: "profile_key_eq", label: "Profile key equals", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "String equality" } },
-  { value: "profile_key_gt", label: "Profile key greater than", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "Numeric threshold" } },
-  { value: "profile_key_lt", label: "Profile key less than", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "Numeric threshold" } },
-  { value: "threshold", label: "Monitor item-count threshold", sourceKeyLabel: "Monitor key", compare: { label: "Item count above", hint: "Fires when the monitor's item count exceeds this number" } },
-  { value: "findings_keyword", label: "Findings keyword match", sourceKeyLabel: "Keyword", compare: null },
-];
-
-const ruleTypeMeta = (value: string) => RULE_TYPES.find(t => t.value === value);
-
-// No endpoint serves these enums; values mirror SIGNAL_TREND_DIRECTIONS /
-// SIGNAL_SEVERITIES in api-server lib/tenant-signals.ts (same convention as
-// TenantSignals.tsx / EngineRuleEditor.tsx).
-const TREND_DIRECTIONS = ["up", "down", "flat"] as const;
-const SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
-
-// ─── Intelligence form state (strings; blanks omitted from request bodies so
-// PATCH merges against the stored row instead of clobbering it) ───────────────
-
-type IntelForm = Record<string, string>;
-
-const INTEL_NUMERIC_FIELDS = [
-  "priority", "weight", "pricingImpact", "priorityScoreContribution", "pricingValueContribution",
-  "governanceImpact", "securityImpact", "complianceImpact", "adoptionImpact", "copilotImpact",
-  "architectureImpact", "trendValue", "decayRate", "ttlDays", "confidence",
-  "crmFitContribution", "crmPainContribution", "crmMaturityContribution", "crmIntentContribution",
-  "crmUrgencyContribution",
-] as const;
-const INTEL_TEXT_FIELDS = ["trendDirection", "severity", "category", "pillar"] as const;
-// Shown inline in the form; everything else lives under "Advanced Scoring".
-const INTEL_COMMON_FIELDS = new Set(["priority", "weight", "severity"]);
-
-const EMPTY_INTEL: IntelForm = Object.fromEntries(
-  [...INTEL_NUMERIC_FIELDS, ...INTEL_TEXT_FIELDS].map(f => [f, ""]),
-);
-
-function intelFromRow(row: Partial<SignalIntelligenceFields>): IntelForm {
-  const out: IntelForm = { ...EMPTY_INTEL };
-  for (const f of INTEL_NUMERIC_FIELDS) {
-    const v = row[f as keyof SignalIntelligenceFields];
-    if (v !== undefined && v !== null) out[f] = String(v);
-  }
-  for (const f of INTEL_TEXT_FIELDS) {
-    const v = row[f as keyof SignalIntelligenceFields];
-    if (v !== undefined && v !== null) out[f] = String(v);
-  }
-  return out;
-}
-
-const INTEL_TEXT_DEFAULTS: Record<(typeof INTEL_TEXT_FIELDS)[number], string> = {
-  trendDirection: "flat",
-  severity: "low",
-  category: "",
-  pillar: "",
-};
-
-/**
- * Blank fields are omitted on CREATE (backend applies its defaults) but sent
- * as explicit defaults on EDIT — the stored row always has concrete values, so
- * a blanked field / "(default: …)" selection unambiguously means "reset", and
- * omitting it would make the PATCH merge silently keep the old value.
- */
-function intelToBody(form: IntelForm, opts?: { blankAsDefault?: boolean }): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of INTEL_NUMERIC_FIELDS) {
-    if (form[f] !== undefined && form[f].trim() !== "") out[f] = Number(form[f]);
-    else if (opts?.blankAsDefault) out[f] = 0;
-  }
-  for (const f of INTEL_TEXT_FIELDS) {
-    if (form[f] !== undefined && form[f].trim() !== "") out[f] = form[f].trim();
-    else if (opts?.blankAsDefault) out[f] = INTEL_TEXT_DEFAULTS[f];
-  }
-  return out;
-}
-
-// ─── Rule / group form state ──────────────────────────────────────────────────
-
-interface RuleForm {
-  signalKey: string;
-  groupId: string; // "" = ungrouped
-  ruleType: string;
-  sourceKey: string;
-  compareValue: string;
-  description: string;
-  sortOrder: string;
-  intel: IntelForm;
-}
+// ─── Group form state ─────────────────────────────────────────────────────────
+// (Rule-type metadata, the intelligence-field helpers and RuleForm now live in
+// SignalRuleEditorModal alongside the form that defines them, and are imported
+// above — this page's behaviour is unchanged by that move.)
 
 interface GroupForm {
   signalKey: string;
@@ -207,17 +79,6 @@ interface GroupForm {
   label: string;
   sortOrder: string;
 }
-
-const emptyRuleForm = (signalKey = ""): RuleForm => ({
-  signalKey,
-  groupId: "",
-  ruleType: "profile_key_truthy",
-  sourceKey: "",
-  compareValue: "",
-  description: "",
-  sortOrder: "0",
-  intel: { ...EMPTY_INTEL },
-});
 
 const inputCls =
   "w-full border border-border bg-background text-foreground rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60";
@@ -242,7 +103,6 @@ export default function SignalRulesPage() {
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleConflicts, setRuleConflicts] = useState<RuleConflict[] | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Group modal state.
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -407,25 +267,14 @@ export default function SignalRulesPage() {
     setRuleForm(emptyRuleForm(signalKey));
     setRuleConflicts(null);
     setRuleError(null);
-    setAdvancedOpen(false);
     setRuleModalOpen(true);
   };
 
   const openEditRule = (rule: SignalRule) => {
     setEditingRule(rule);
-    setRuleForm({
-      signalKey: rule.signalKey,
-      groupId: rule.groupId != null ? String(rule.groupId) : "",
-      ruleType: rule.ruleType,
-      sourceKey: rule.sourceKey,
-      compareValue: rule.compareValue ?? "",
-      description: rule.description ?? "",
-      sortOrder: String(rule.sortOrder),
-      intel: intelFromRow(rule),
-    });
+    setRuleForm(ruleFormFromRule(rule));
     setRuleConflicts(null);
     setRuleError(null);
-    setAdvancedOpen(false);
     setRuleModalOpen(true);
   };
 
@@ -437,20 +286,7 @@ export default function SignalRulesPage() {
     setRuleSaving(true);
     setRuleConflicts(null);
     setRuleError(null);
-    const meta = ruleTypeMeta(ruleForm.ruleType);
-    const body: Record<string, unknown> = {
-      signalKey: ruleForm.signalKey,
-      ruleType: ruleForm.ruleType,
-      sourceKey: ruleForm.sourceKey.trim(),
-      // For unrecognized rule types (e.g. seeded example:* rows) the key is
-      // omitted entirely: PATCH preserves the stored compareValue when the key
-      // is absent, and nulling it here would silently destroy it.
-      ...(meta ? { compareValue: meta.compare ? ruleForm.compareValue.trim() || null : null } : {}),
-      description: ruleForm.description.trim() || null,
-      groupId: ruleForm.groupId ? Number(ruleForm.groupId) : null,
-      sortOrder: Number(ruleForm.sortOrder) || 0,
-      ...intelToBody(ruleForm.intel, { blankAsDefault: !!editingRule }),
-    };
+    const body = ruleFormToBody(ruleForm, !!editingRule);
     try {
       const res = await fetchWithAuth(
         editingRule ? `/api/admin/signal-rules/${editingRule.id}` : "/api/admin/signal-rules",
@@ -565,7 +401,6 @@ export default function SignalRulesPage() {
     }
   };
 
-  const currentRuleTypeMeta = ruleTypeMeta(ruleForm.ruleType);
   const groupsForFormSignal = bySignal[ruleForm.signalKey]?.groups ?? [];
 
   const renderRuleRow = (rule: SignalRule) => {
@@ -940,229 +775,22 @@ export default function SignalRulesPage() {
         </div>
       )}
 
-      {/* ── Rule create/edit modal ── */}
-      {ruleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !ruleSaving && setRuleModalOpen(false)}>
-          <div
-            className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[85vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <h2 className="text-base font-bold text-foreground mb-4">
-              {editingRule ? "Edit Rule" : "New Rule"}
-            </h2>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Signal</label>
-                <select
-                  className={selectCls}
-                  value={ruleForm.signalKey}
-                  disabled={!!editingRule}
-                  onChange={e => setRuleForm(f => ({ ...f, signalKey: e.target.value, groupId: "" }))}
-                >
-                  <option value="">Select a signal…</option>
-                  {signalKeys.map(k => (
-                    <option key={k} value={k}>{k}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Rule group</label>
-                <select
-                  className={selectCls}
-                  value={ruleForm.groupId}
-                  onChange={e => setRuleForm(f => ({ ...f, groupId: e.target.value }))}
-                >
-                  <option value="">Ungrouped</option>
-                  {groupsForFormSignal.map(g => (
-                    <option key={g.id} value={String(g.id)}>
-                      {g.label ?? `Group #${g.id}`} ({g.logic})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Rule type</label>
-                <select
-                  className={selectCls}
-                  value={ruleForm.ruleType}
-                  onChange={e => setRuleForm(f => ({ ...f, ruleType: e.target.value }))}
-                >
-                  {editingRule && !ruleTypeMeta(editingRule.ruleType) && (
-                    <option value={editingRule.ruleType}>
-                      {editingRule.ruleType} (unrecognized — never fires)
-                    </option>
-                  )}
-                  {RULE_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">
-                  {currentRuleTypeMeta?.sourceKeyLabel ?? "Source key"}
-                </label>
-                <input
-                  className={inputCls}
-                  value={ruleForm.sourceKey}
-                  onChange={e => setRuleForm(f => ({ ...f, sourceKey: e.target.value }))}
-                  placeholder={ruleForm.ruleType === "findings_keyword" ? "e.g. legacy auth" : "e.g. securityDefaults.isEnabled"}
-                />
-              </div>
-              {currentRuleTypeMeta?.compare && (
-                <div>
-                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">
-                    {currentRuleTypeMeta.compare.label}
-                    <span className="ml-1 text-muted-foreground/60">({currentRuleTypeMeta.compare.hint})</span>
-                  </label>
-                  <input
-                    className={inputCls}
-                    value={ruleForm.compareValue}
-                    onChange={e => setRuleForm(f => ({ ...f, compareValue: e.target.value }))}
-                  />
-                </div>
-              )}
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Sort order</label>
-                <input
-                  type="number"
-                  className={inputCls}
-                  value={ruleForm.sortOrder}
-                  onChange={e => setRuleForm(f => ({ ...f, sortOrder: e.target.value }))}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Description</label>
-                <input
-                  className={inputCls}
-                  value={ruleForm.description}
-                  onChange={e => setRuleForm(f => ({ ...f, description: e.target.value }))}
-                  placeholder="Why this rule exists"
-                />
-              </div>
-
-              {/* Common intelligence fields, inline */}
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Priority</label>
-                <input
-                  type="number"
-                  className={inputCls}
-                  value={ruleForm.intel.priority}
-                  placeholder="0"
-                  onChange={e => setRuleForm(f => ({ ...f, intel: { ...f.intel, priority: e.target.value } }))}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Weight</label>
-                <input
-                  type="number"
-                  className={inputCls}
-                  value={ruleForm.intel.weight}
-                  placeholder="0"
-                  onChange={e => setRuleForm(f => ({ ...f, intel: { ...f.intel, weight: e.target.value } }))}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Severity</label>
-                <select
-                  className={selectCls}
-                  value={ruleForm.intel.severity}
-                  onChange={e => setRuleForm(f => ({ ...f, intel: { ...f.intel, severity: e.target.value } }))}
-                >
-                  <option value="">(default: low)</option>
-                  {SEVERITIES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Advanced Scoring — the rest of the intelligence fields, collapsed */}
-            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} className="mt-4">
-              <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                {advancedOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                Advanced Scoring
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div className="mt-2 grid grid-cols-3 gap-3 rounded-lg border border-border bg-background/40 p-3">
-                  {INTEL_NUMERIC_FIELDS.filter(f => !INTEL_COMMON_FIELDS.has(f)).map(f => (
-                    <div key={f}>
-                      <label className="block text-[11px] font-medium text-muted-foreground mb-1">{f}</label>
-                      <input
-                        type="number"
-                        className={inputCls}
-                        value={ruleForm.intel[f]}
-                        placeholder="0"
-                        onChange={e => setRuleForm(prev => ({ ...prev, intel: { ...prev.intel, [f]: e.target.value } }))}
-                      />
-                    </div>
-                  ))}
-                  <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">trendDirection</label>
-                    <select
-                      className={selectCls}
-                      value={ruleForm.intel.trendDirection}
-                      onChange={e => setRuleForm(prev => ({ ...prev, intel: { ...prev.intel, trendDirection: e.target.value } }))}
-                    >
-                      <option value="">(default: flat)</option>
-                      {TREND_DIRECTIONS.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">category</label>
-                    <input
-                      className={inputCls}
-                      value={ruleForm.intel.category}
-                      onChange={e => setRuleForm(prev => ({ ...prev, intel: { ...prev.intel, category: e.target.value } }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">pillar</label>
-                    <input
-                      className={inputCls}
-                      value={ruleForm.intel.pillar}
-                      onChange={e => setRuleForm(prev => ({ ...prev, intel: { ...prev.intel, pillar: e.target.value } }))}
-                    />
-                  </div>
-                </div>
-              </CollapsibleContent>
-            </Collapsible>
-
-            {(ruleError || (ruleConflicts && ruleConflicts.length > 0)) && (
-              <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300">
-                <div className="flex items-center gap-2 font-semibold mb-1">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  {ruleError ?? "Save rejected due to rule conflicts"}
-                </div>
-                {ruleConflicts && ruleConflicts.length > 0 && (
-                  <ul className="list-disc pl-5 space-y-0.5">
-                    {ruleConflicts.map((c, i) => (
-                      <li key={i}>
-                        {c.description}
-                        {c.ruleIds.length > 0 && (
-                          <span className="text-amber-300/60"> (rule id{c.ruleIds.length !== 1 ? "s" : ""}: {c.ruleIds.join(", ")})</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
-              <button onClick={() => setRuleModalOpen(false)} disabled={ruleSaving} className={btnGhostCls}>
-                Cancel
-              </button>
-              <button onClick={() => void handleRuleSave()} disabled={ruleSaving} className={btnPrimaryCls}>
-                {ruleSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {editingRule ? "Save Changes" : "Create Rule"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Rule create/edit modal — the SHARED editor, also used by the
+           Simulator Studio's engine trace so both surfaces edit rules through
+           one form rather than two drifting copies. ── */}
+      <SignalRuleEditorModal
+        open={ruleModalOpen}
+        form={ruleForm}
+        onFormChange={setRuleForm}
+        editingRule={editingRule}
+        signalKeys={signalKeys}
+        groupOptions={groupsForFormSignal}
+        saving={ruleSaving}
+        error={ruleError}
+        conflicts={ruleConflicts}
+        onSave={() => void handleRuleSave()}
+        onClose={() => setRuleModalOpen(false)}
+      />
 
       {/* ── Group create/edit modal ── */}
       {groupModalOpen && (

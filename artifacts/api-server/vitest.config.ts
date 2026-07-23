@@ -109,6 +109,7 @@ export default defineConfig({
       "src/routes/msp-engine-history.test.ts",
       "src/routes/admin-monitor-check-runs.test.ts",
       "src/routes/admin-monitor-checks-crud.test.ts",
+      "src/lib/monitor-check-trace.test.ts",
     ],
     coverage: {
       provider: "v8",

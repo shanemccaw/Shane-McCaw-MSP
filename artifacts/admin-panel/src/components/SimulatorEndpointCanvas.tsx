@@ -9,8 +9,14 @@
 // customer's real connected tenant via POST /api/admin/monitor-checks/:key/run,
 // then polls GET /api/admin/monitor-check-runs/:runId for real progress.
 //
-// Deliberately NOT here (later phases, per the sequenced spec): engine-trace
-// integration, bulk run, run history/diff, auto-classification, write endpoints.
+// Phase 2 adds the engine trace below the response (SimulatorEngineTrace): what
+// profile keys this response really produces, which real signal_derivation_rules
+// read them, whether each fires, and editable suggestions for keys no rule
+// covers. "Re-evaluate" there re-traces the captured response with no network
+// call; "Re-run" calls handleRun below, hitting the live tenant again.
+//
+// Deliberately NOT here (later phases, per the sequenced spec): bulk run, run
+// history/diff, auto-classification, write endpoints.
 //
 // Editing a parameter here does NOT mutate the catalog row — the run route takes
 // per-run overrides. Persisting a change is the explicit "Save changes" action,
@@ -23,6 +29,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
+import { SimulatorEngineTrace } from "./SimulatorEngineTrace";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -460,6 +467,17 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         value={run?.result ?? (run?.error ? { error: run.error } : undefined)}
         emptyLabel="Run this endpoint to see the real tenant response"
         className="min-h-[160px]"
+      />
+
+      {/* Engine trace — response -> mapping -> profile keys -> rules -> fired?
+          "Re-run" is wired to the same handleRun the header's Run button uses,
+          so the live-tenant path is one code path, not two. */}
+      <SimulatorEngineTrace
+        runId={run?.runId ?? null}
+        checkKey={check.key}
+        runStatus={run?.status ?? null}
+        onRerun={() => void handleRun()}
+        rerunning={isRunning}
       />
     </div>
   );

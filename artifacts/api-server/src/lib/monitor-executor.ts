@@ -62,6 +62,21 @@ export interface CheckResult {
   profileId?: string;
   /** For status "license_gap": the customer-safe name of the missing M365 add-on. */
   licenseFeature?: string;
+  /**
+   * The FULL fetched item list, returned only when the caller passes
+   * `includeItems: true` (the Simulator Studio's engine trace).
+   *
+   * This exists because the persisted `tenant_monitor_profiles.rawResponse` is
+   * NOT a faithful basis for re-running `applyMapping`: `graphFetchPaginated`
+   * stores only the FIRST page (`if (pageCount === 0) rawResponse = page`), and
+   * for a CSV usage report only the first five rows
+   * (`value: csvRows.slice(0, 5)`). Re-applying a mapping to that truncated
+   * snapshot would silently produce wrong counts on every paginated or CSV
+   * check — exactly the kind of plausible-but-wrong number the trace view
+   * exists to eliminate. Scheduled package runs leave this undefined, so no
+   * extra memory is retained on the hot path.
+   */
+  items?: unknown[];
 }
 
 export interface PackageRunResult {
@@ -588,6 +603,13 @@ export async function executeMonitorCheck(opts: {
   tenantId: string;
   triggerId: string;
   skipIdempotency?: boolean;
+  /**
+   * Return the full fetched item list on the result (see `CheckResult.items`).
+   * Off by default so scheduled package runs keep their current memory profile;
+   * the Simulator Studio's engine trace opts in because it must re-apply the
+   * real mapping to the real, untruncated response.
+   */
+  includeItems?: boolean;
 }): Promise<CheckResult> {
   const { check, tenantId, triggerId } = opts;
   const idempotencyKey = `${tenantId}:${check.key}:${triggerId}`;
@@ -710,6 +732,7 @@ export async function executeMonitorCheck(opts: {
       itemCount: items.length,
       pageCount,
       profileId: row?.profileId,
+      ...(opts.includeItems ? { items } : {}),
     };
   } catch (err) {
     if (err instanceof ConsentRevokedError) {
