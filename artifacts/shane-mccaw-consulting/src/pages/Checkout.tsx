@@ -268,6 +268,9 @@ export default function Checkout() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentCanceled, setPaymentCanceled] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // The server refused to issue a consent URL because the checkout session is
+  // expired/invalid (it will never hand out a state-less URL for this flow).
+  const [consentSessionGone, setConsentSessionGone] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const { toast } = useToast();
   const contractIdRef = useRef<number | null>(null);
@@ -386,14 +389,40 @@ export default function Checkout() {
   // Fetch (or refetch) the admin-consent URL whenever the sessionId changes.
   // This ensures the URL carries the correct `state` parameter even when
   // sessionId is set after the initial catalog load (i.e. after guest-info submit).
+  //
+  // HARD RULE: never fetch (or render) a consent URL without a sessionId. A
+  // consent link without `state` completes at Microsoft but reaches the callback
+  // unlinked to the checkout session — no account provisioning fires, and the
+  // buyer can still go on to PAY for a non-functional account (confirmed live:
+  // "Seven Hundred"). Previously this effect prefetched a state-less URL at
+  // mount (before guest-info created the session), leaving a live, clickable
+  // state-less consent link on the consent step until the session-bound refetch
+  // landed. The `cancelled` guard also prevents a stale in-flight response from
+  // overwriting the current session's URL.
   useEffect(() => {
     if (catalogLoading || !service?.fulfillmentTypeKey) return;
     const sid = sessionId ?? loadSessionId();
-    const qs = sid ? `?sessionId=${encodeURIComponent(sid)}` : "";
-    fetch(`/api/public/consent-url${qs}`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ url: string | null }>) : { url: null }))
-      .then((d) => setConsentUrl(d.url))
-      .catch(() => setConsentUrl(null));
+    if (!sid) {
+      setConsentUrl(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/public/consent-url?sessionId=${encodeURIComponent(sid)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ url: string | null; error?: string }>) : { url: null }))
+      .then((d: { url: string | null; error?: string }) => {
+        if (cancelled) return;
+        setConsentUrl(d.url);
+        // Server refused to issue a state-less URL: the session is expired or
+        // invalid. Surface it so the consent step offers a restart instead of
+        // showing "Loading consent link…" forever.
+        setConsentSessionGone(!d.url && (d.error === "session_expired" || d.error === "session_invalid"));
+      })
+      .catch(() => {
+        if (!cancelled) setConsentUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   // Re-run whenever sessionId changes so the URL includes the correct `state`
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogLoading, service?.fulfillmentTypeKey, sessionId]);
@@ -862,6 +891,30 @@ export default function Checkout() {
                         Grant admin consent in Microsoft{" "}
                         <ExternalLink className="size-4" />
                       </a>
+                    ) : consentSessionGone ? (
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <Clock className="size-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="font-semibold text-amber-300 text-sm">Session expired</p>
+                            <p className="text-sm text-amber-200/80 mt-0.5">
+                              Your checkout session timed out before consent was granted. Go back
+                              and re-enter your details to start a fresh session.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            clearSessionId();
+                            setConsentSessionGone(false);
+                            setConsentUrl(null);
+                            setStep("guest-info");
+                          }}
+                          className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-amber-500/40 text-amber-300 font-semibold text-sm hover:bg-amber-500/10 transition-colors"
+                        >
+                          <ArrowLeft className="size-4" /> Start over
+                        </button>
+                      </div>
                     ) : (
                       <div className="rounded-xl bg-charcoal-1 border border-white/[0.06] p-4 text-sm text-text-secondary">
                         Loading consent link…

@@ -323,7 +323,18 @@ export async function provisionProspectAccount(opts: {
     customerId = await ensureDirectCustomerRecord(userId, opts.tenantId ?? undefined);
     await ensureClientMspUser(userId, opts.tenantId ?? undefined, customerId, opts.role);
   } catch (err) {
-    log.warn({ err, userId }, "provisionProspectAccount: ensure customer/msp_user failed (non-fatal)");
+    // error (not warn): a swallowed failure here leaves a users row with NO
+    // msp_customers/msp_users bridge — a fully non-functional account that can
+    // still complete a paid checkout (confirmed live: "Seven Hundred",
+    // users.id=21). The caller keeps going (idempotent retry happens on the
+    // payment webhook, which verifies and alerts), but this is never routine.
+    log.error({ err, userId, tenantId: opts.tenantId }, "provisionProspectAccount: ensure customer/msp_user FAILED — user exists without a customer bridge");
+  }
+  if (customerId == null) {
+    log.error(
+      { userId, tenantId: opts.tenantId },
+      "provisionProspectAccount: no msp_customers id resolved for Prospect — account has no customer bridge yet",
+    );
   }
 
   // Funnel-entry lead (captured at name+email) transitions new → converted here.
@@ -350,6 +361,73 @@ export async function promoteMspUserToCustomer(userId: number): Promise<void> {
       .where(and(eq(mspUsersTable.userId, userId), inArray(mspUsersTable.mspRole, ["Assessment", "Free"])));
   } catch (err) {
     log.warn({ err, userId }, "promoteMspUserToCustomer: role promotion failed (non-fatal)");
+  }
+}
+
+/**
+ * Post-purchase verification that the msp_customers/msp_users bridge actually
+ * exists for a buyer — the backstop that makes a silent bridge failure
+ * impossible.
+ *
+ * Context: two real paid signups ("Jane Smith" users.id=9, "Seven Hundred"
+ * users.id=21) completed real payment while every provisioning attempt
+ * (consent-time provisionProspectAccount AND the webhook's ensure* calls)
+ * failed with only warn-level logs — leaving a users row with no
+ * msp_customers/msp_users record and a portal that shows "no data" everywhere.
+ *
+ * This function never throws and never blocks the purchase (the money has
+ * already moved) — but when the bridge is missing it:
+ *   1. logs at ERROR level with a stable, greppable message,
+ *   2. creates a bell notification for every admin, and
+ *   3. sends an admin SMS,
+ * so a broken paid account is discovered in minutes, not on the customer's
+ * first empty dashboard.
+ *
+ * Returns { ok, customerId } so callers can branch if they want to.
+ */
+export async function verifyCustomerBridge(
+  userId: number,
+  context: string,
+): Promise<{ ok: boolean; customerId: number | null }> {
+  try {
+    const [link] = await db
+      .select({ customerId: mspUsersTable.customerId, mspId: mspUsersTable.mspId })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, userId))
+      .limit(1);
+
+    if (link?.customerId != null) return { ok: true, customerId: link.customerId };
+
+    log.error(
+      { userId, context, hasMspUsersRow: !!link, mspId: link?.mspId ?? null },
+      "verifyCustomerBridge: completed signup has NO msp_customers/msp_users bridge — account is non-functional; manual admin repair required",
+    );
+
+    try {
+      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+      if (admins.length > 0) {
+        await db.insert(notificationsTable).values(
+          admins.map((a) => ({
+            userId: a.id,
+            title: "URGENT: customer bridge missing after purchase",
+            body: `User #${userId} completed ${context} but has no msp_customers/msp_users record — their portal will show no data. Manual repair required.`,
+            type: "general" as const,
+            linkPath: "/dashboard",
+          })),
+        );
+      }
+    } catch (notifyErr) {
+      log.error({ err: notifyErr, userId }, "verifyCustomerBridge: failed to create admin notifications for missing bridge");
+    }
+
+    sendAdminSms(
+      `URGENT: user #${userId} completed ${context} with NO customer bridge - their portal is broken. Manual repair needed.`,
+    ).catch((smsErr) => log.warn({ err: smsErr, userId }, "verifyCustomerBridge: SMS alert failed (bell notification + error log still fired)"));
+
+    return { ok: false, customerId: null };
+  } catch (err) {
+    log.error({ err, userId, context }, "verifyCustomerBridge: verification query itself failed");
+    return { ok: false, customerId: null };
   }
 }
 
@@ -6149,11 +6227,56 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         }
       }
 
-      await provisionOnboardingProject(req, session, subId, webhookUserIdOverride ?? undefined);
+      // Guarded: project/invoice provisioning must NEVER be able to prevent the
+      // customer bridge below from running. Previously this await was unguarded —
+      // any throw inside provisionOnboardingProject skipped ensureDirectCustomerRecord/
+      // ensureClientMspUser entirely, leaving a paid buyer with a users row and no
+      // msp_customers/msp_users record (the "Seven Hundred" failure mode).
+      try {
+        await provisionOnboardingProject(req, session, subId, webhookUserIdOverride ?? undefined);
+      } catch (provisionErr) {
+        req.log.error(
+          { err: provisionErr, sessionId: session.id, userId: webhookUserIdOverride },
+          "onboarding_purchase: provisionOnboardingProject FAILED — continuing to customer-bridge provisioning; replay via /admin/stripe/replay-session once fixed",
+        );
+      }
+
+      // Fallback tenant resolution: purchaseTenantId is normally captured when the
+      // consent callback marked this buyer's checkout session "consented". If that
+      // linkage was lost (e.g. the consent redirect carried no state), recover the
+      // tenant from the buyer's most recent checkout session that DOES carry one.
+      // Any tenantId stamped on checkout_sessions was written by the consent
+      // callback AFTER its cross-MSP guard passed, so reusing it here is safe.
+      if (!purchaseTenantId) {
+        const tenantLookupEmail =
+          session.metadata?.guestEmail ??
+          (session.customer_details as { email?: string } | null)?.email ??
+          null;
+        if (tenantLookupEmail) {
+          const [tenantRow] = await db
+            .select({ tenantId: checkoutSessionsTable.tenantId })
+            .from(checkoutSessionsTable)
+            .where(
+              and(
+                eq(checkoutSessionsTable.email, tenantLookupEmail),
+                isNotNull(checkoutSessionsTable.tenantId),
+              ),
+            )
+            .orderBy(desc(checkoutSessionsTable.updatedAt))
+            .limit(1);
+          if (tenantRow?.tenantId) {
+            purchaseTenantId = tenantRow.tenantId;
+            req.log.info(
+              { tenantId: purchaseTenantId, email: tenantLookupEmail },
+              "onboarding_purchase: recovered tenantId from buyer's checkout session (consent linkage was missing)",
+            );
+          }
+        }
+      }
 
       // Ensure every newly-provisioned client account has an msp_users row so the
-      // portal "no organisation" screen is never shown. Called AFTER provisionOnboardingProject
-      // so the msp_customers row created during provisioning is available for tenantId lookup.
+      // portal "no organisation" screen is never shown. Idempotent — no-ops when
+      // consent-time provisioning (provisionProspectAccount) already created these.
       if (webhookUserIdOverride !== null) {
         try {
           await ensureDirectCustomerRecord(webhookUserIdOverride, purchaseTenantId ?? null);
@@ -6164,8 +6287,18 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           await promoteMspUserToCustomer(webhookUserIdOverride);
           req.log.info({ userId: webhookUserIdOverride, tenantId: purchaseTenantId }, "onboarding_purchase: ensured msp_users row + promoted to CustomerUser");
         } catch (mspErr) {
-          req.log.warn({ err: mspErr, userId: webhookUserIdOverride }, "onboarding_purchase: ensureClientMspUser failed (non-fatal)");
+          req.log.error({ err: mspErr, userId: webhookUserIdOverride }, "onboarding_purchase: customer-bridge provisioning THREW — verifyCustomerBridge below will alert if the bridge is missing");
         }
+        // The backstop that makes silent failure impossible: verify the bridge
+        // actually exists and alert (error log + admin bell + SMS) if not.
+        await verifyCustomerBridge(webhookUserIdOverride, "a paid purchase (Stripe onboarding webhook)");
+      } else {
+        // No metadata.userId AND no resolvable guest email — nothing was (or can
+        // be) provisioned for this PAID session. This must never pass silently.
+        req.log.error(
+          { sessionId: session.id, metadata: session.metadata },
+          "onboarding_purchase: could not resolve ANY buyer (no metadata.userId, no guestEmail, no customer email) — no account or customer bridge was provisioned for a paid session",
+        );
       }
 
       // ── Emit purchase.completed for the document-generation workflow ─────────

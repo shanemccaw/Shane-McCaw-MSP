@@ -233,29 +233,40 @@ router.get("/public/consent-url", async (req: Request, res: Response) => {
   const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri });
 
   // Thread the checkout session ID through as OAuth `state` if provided and valid.
+  //
+  // HARD RULE: when a sessionId IS provided but cannot be resolved (bad UUID,
+  // expired, or missing row), REFUSE to hand out a consent URL rather than
+  // silently degrading to a state-less one. A consent completed via a state-less
+  // URL reaches the callback with no `state`, which skips checkout-session
+  // linking AND the consent-time Prospect provisioning entirely — the flow then
+  // completes payment against an account with no msp_customers/msp_users bridge
+  // (confirmed live: "Seven Hundred" paid-monitoring purchase, users.id=21).
+  // The frontend treats { url: null, error } as "session expired — start over".
   const rawSessionId = req.query.sessionId as string | undefined;
   if (rawSessionId) {
     if (!UUID_RE.test(rawSessionId)) {
-      req.log?.warn?.({ sessionId: rawSessionId }, "consent-url: sessionId is not a valid UUID — building URL without state");
-    } else {
-      const now = new Date();
-      const [sessionRow] = await db
-        .select({ id: checkoutSessionsTable.id })
-        .from(checkoutSessionsTable)
-        .where(
-          and(
-            eq(checkoutSessionsTable.id, rawSessionId),
-            gte(checkoutSessionsTable.expiresAt, now),
-          ),
-        )
-        .limit(1);
-
-      if (sessionRow) {
-        params.set("state", rawSessionId);
-      } else {
-        req.log?.warn?.({ sessionId: rawSessionId }, "consent-url: checkout session not found or expired — building URL without state");
-      }
+      req.log?.warn?.({ sessionId: rawSessionId }, "consent-url: sessionId is not a valid UUID — refusing to build a state-less consent URL");
+      res.json({ url: null, error: "session_invalid" });
+      return;
     }
+    const now = new Date();
+    const [sessionRow] = await db
+      .select({ id: checkoutSessionsTable.id })
+      .from(checkoutSessionsTable)
+      .where(
+        and(
+          eq(checkoutSessionsTable.id, rawSessionId),
+          gte(checkoutSessionsTable.expiresAt, now),
+        ),
+      )
+      .limit(1);
+
+    if (!sessionRow) {
+      req.log?.warn?.({ sessionId: rawSessionId }, "consent-url: checkout session not found or expired — refusing to build a state-less consent URL");
+      res.json({ url: null, error: "session_expired" });
+      return;
+    }
+    params.set("state", rawSessionId);
   }
 
   const url = `https://login.microsoftonline.com/common/adminconsent?${params.toString()}`;

@@ -406,7 +406,28 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
             { tenant, userId: prospect.userId, customerId: prospect.customerId, serviceType },
             "consent callback: provisioned Prospect account at consent time",
           );
+          if (prospect.customerId == null) {
+            // The users row exists but ensureDirectCustomerRecord/ensureClientMspUser
+            // failed inside provisionProspectAccount (its own catch logs the cause).
+            // Surface it loudly here too — this is exactly the state that produced
+            // a paid, non-functional account ("Seven Hundred", users.id=21). The
+            // Stripe webhook re-attempts the bridge and verifies+alerts on failure
+            // (verifyCustomerBridge), so this is not the last line of defense, but
+            // it must never pass silently.
+            log.error(
+              { tenant, sessionId: state, userId: prospect.userId },
+              "consent callback: Prospect user was created WITHOUT an msp_customers bridge — customer provisioning failed; payment webhook will retry and alert",
+            );
+          }
         }
+      } else {
+        // A checkout-session consent with no resolvable email means NO account and
+        // NO msp_customers/msp_users bridge is created here, and the paid webhook
+        // used to assume this step had already run. Never skip this silently.
+        log.error(
+          { tenant, sessionId: state, hadUpdatedSession: !!updatedSession },
+          "consent callback: checkout session resolved with NO email — Prospect provisioning SKIPPED; bridge now depends entirely on the payment webhook (which verifies and alerts)",
+        );
       }
     }
     // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context) → baseline fallback
@@ -430,7 +451,11 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       log.info({ tenant, packageKey: resolvedPackageKey, clientId }, "consent.granted: event emitted");
     }
   } catch (err) {
-    log.warn({ err, tenant }, "consent.granted: provisioning/emission error — non-fatal, redirect proceeds");
+    // error (not warn): a failure here means the consent-time account/bridge
+    // provisioning silently didn't happen — the exact precursor to a paid,
+    // non-functional account. The redirect still proceeds (never strand the
+    // buyer at Microsoft), but this must be loud and greppable.
+    log.error({ err, tenant, sessionId: state }, "consent.granted: provisioning/emission FAILED — redirect proceeds, payment webhook must create the bridge");
   }
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
