@@ -73,6 +73,16 @@ export interface TracedKey {
   rules: TracedRule[];
   /** True when no rule references this key at all — the uncovered case a suggestion is offered for. */
   uncovered: boolean;
+  /**
+   * A starting suggestion inferred for THIS key (from the same `inferSuggestion`
+   * the uncovered-suggestions list uses), regardless of whether the key is
+   * already covered. The trace UI reads it so its per-property "Add rule" action
+   * can open a pre-filled draft on ANY property — not only uncovered ones —
+   * without a second inference path. Null for values no rule type can read
+   * (object/array/null) and for the synthetic item-count key (whose direction
+   * can't be guessed from a name).
+   */
+  suggestion: RuleSuggestion | null;
 }
 
 export interface RuleSuggestion {
@@ -412,12 +422,18 @@ export function traceCheckResponse(opts: {
 
     const { origin, sourceField, transform } = originOf(key);
     const uncovered = traced.length === 0;
-    keys.push({ key, value: extracted[key], origin, sourceField, transform, rules: traced, uncovered });
+    // Infer a starting suggestion for EVERY readable key, covered or not, so the
+    // trace UI can offer "Add rule" (a pre-filled draft) on any property — not
+    // only uncovered ones. Same inferSuggestion the uncovered-suggestions list
+    // below uses; there is no second inference path. Null for values no rule
+    // type can read (object/array/null).
+    const suggestion = inferSuggestion(key, extracted[key], checkKey);
+    keys.push({ key, value: extracted[key], origin, sourceField, transform, rules: traced, uncovered, suggestion });
 
-    if (uncovered) {
-      const suggestion = inferSuggestion(key, extracted[key], checkKey);
-      if (suggestion) suggestions.push(suggestion);
-    }
+    // The top-level suggestions list stays UNCOVERED-only — it drives the
+    // "Suggested rules — N uncovered properties" cards, whose whole point is
+    // surfacing gaps. Covered keys carry their suggestion on the key itself.
+    if (uncovered && suggestion) suggestions.push(suggestion);
   }
 
   // The item-count key, traced the same way (never suggested for: a threshold
@@ -456,6 +472,10 @@ export function traceCheckResponse(opts: {
     origin: "itemCount",
     rules: itemCountTraced,
     uncovered: itemCountTraced.length === 0,
+    // Deliberately no suggestion: a threshold's direction depends on what the
+    // endpoint returns (which the operator knows and a name-pattern cannot).
+    // The trace UI's "Add rule" falls back to a bare threshold draft here.
+    suggestion: null,
   });
 
   const coveredKeyCount = keys.filter((k) => !k.uncovered).length;

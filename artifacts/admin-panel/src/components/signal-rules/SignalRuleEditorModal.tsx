@@ -12,10 +12,17 @@
 // would drift on exactly the details that matter (which blanks reset a field,
 // which rule types carry a compareValue, how a 422 conflict is surfaced).
 //
+// The PURE (React-free) half of that shared code — types, the rule-type table,
+// the intelligence-field helpers, the request-body builders, the validator, and
+// the trace "add rule" draft helpers — lives in ./signalRuleForm so it can be
+// unit-tested (this project's vitest is node-env / .test.ts only). This file
+// re-exports all of it, so importers of "./SignalRuleEditorModal" are unchanged.
+//
 // The two call sites differ only in how the form is opened:
 //   • SignalRules.tsx opens it from a rule row or a "New Rule" button.
-//   • SimulatorEngineTrace.tsx opens it from a traced rule (edit) or from an
-//     accepted suggestion (create, pre-filled — never silently inserted).
+//   • SimulatorEngineTrace.tsx opens it from a traced rule (edit), from an
+//     accepted suggestion (create, pre-filled), or from the per-property
+//     "Add rule" action (create, pre-filled) — never silently inserted.
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Trash2 } from "lucide-react";
@@ -25,243 +32,28 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
-// ─── API shapes (match artifacts/api-server/src/routes/admin-signal-rules.ts) ──
-// NOTE: licensingImpact exists in the DB but the admin API neither returns nor
-// accepts it, so it is deliberately absent here.
+import {
+  RULE_TYPES,
+  ruleTypeMeta,
+  INTEL_NUMERIC_FIELDS,
+  TREND_DIRECTIONS,
+  SEVERITIES,
+  NEW_SIGNAL_OPTION,
+  NEW_GROUP_OPTION,
+  type RuleForm,
+  type SignalRule,
+  type SignalGroupOption,
+  type RuleConflict,
+} from "./signalRuleForm";
 
-export interface SignalIntelligenceFields {
-  priority: number;
-  weight: number;
-  pricingImpact: number;
-  priorityScoreContribution: number;
-  pricingValueContribution: number;
-  governanceImpact: number;
-  securityImpact: number;
-  complianceImpact: number;
-  adoptionImpact: number;
-  copilotImpact: number;
-  architectureImpact: number;
-  trendValue: number;
-  trendDirection: string;
-  decayRate: number;
-  ttlDays: number;
-  confidence: number;
-  severity: string;
-  category: string;
-  pillar: string;
-  crmFitContribution: number;
-  crmPainContribution: number;
-  crmMaturityContribution: number;
-  crmIntentContribution: number;
-  crmUrgencyContribution: number;
-}
+// Re-export the whole pure layer so existing importers of this module keep
+// working (emptyRuleForm, ruleFormFromRule, ruleFormToBody, validateRuleForm,
+// the types, RULE_TYPES, etc.). New code may prefer importing ./signalRuleForm
+// directly.
+export * from "./signalRuleForm";
 
-export interface SignalRule extends Partial<SignalIntelligenceFields> {
-  id: number;
-  signalKey: string;
-  groupId: number | null;
-  ruleType: string;
-  sourceKey: string;
-  compareValue: string | null;
-  description: string | null;
-  sortOrder: number;
-}
-
-export interface SignalGroupOption {
-  id: number;
-  label: string | null;
-  logic: "AND" | "OR";
-}
-
-export interface RuleConflict {
-  ruleIds: number[];
-  description: string;
-}
-
-// ─── Rule-type metadata ───────────────────────────────────────────────────────
-// The evaluator (api-server lib/tenant-signals.ts evaluateRule) recognizes
-// exactly these seven types. compareValue is only read by eq/gt/lt/threshold.
-
-export const RULE_TYPES: Array<{
-  value: string;
-  label: string;
-  sourceKeyLabel: string;
-  compare: null | { label: string; hint: string };
-}> = [
-  { value: "profile_key_truthy", label: "Profile key is truthy", sourceKeyLabel: "Profile field path", compare: null },
-  { value: "profile_key_falsy", label: "Profile key is falsy", sourceKeyLabel: "Profile field path", compare: null },
-  { value: "profile_key_eq", label: "Profile key equals", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "String equality" } },
-  { value: "profile_key_gt", label: "Profile key greater than", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "Numeric threshold" } },
-  { value: "profile_key_lt", label: "Profile key less than", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "Numeric threshold" } },
-  { value: "threshold", label: "Monitor item-count threshold", sourceKeyLabel: "Monitor key", compare: { label: "Item count above", hint: "Fires when the monitor's item count exceeds this number" } },
-  { value: "findings_keyword", label: "Findings keyword match", sourceKeyLabel: "Keyword", compare: null },
-];
-
-export const ruleTypeMeta = (value: string) => RULE_TYPES.find(t => t.value === value);
-
-// No endpoint serves these enums; values mirror SIGNAL_TREND_DIRECTIONS /
-// SIGNAL_SEVERITIES in api-server lib/tenant-signals.ts.
-const TREND_DIRECTIONS = ["up", "down", "flat"] as const;
-const SEVERITIES = ["informational", "low", "medium", "high", "critical"] as const;
-
-// ─── Intelligence form state (strings; blanks omitted from request bodies so
-// PATCH merges against the stored row instead of clobbering it) ───────────────
-
-export type IntelForm = Record<string, string>;
-
-export const INTEL_NUMERIC_FIELDS = [
-  "priority", "weight", "pricingImpact", "priorityScoreContribution", "pricingValueContribution",
-  "governanceImpact", "securityImpact", "complianceImpact", "adoptionImpact", "copilotImpact",
-  "architectureImpact", "trendValue", "decayRate", "ttlDays", "confidence",
-  "crmFitContribution", "crmPainContribution", "crmMaturityContribution", "crmIntentContribution",
-  "crmUrgencyContribution",
-] as const;
-export const INTEL_TEXT_FIELDS = ["trendDirection", "severity", "category", "pillar"] as const;
 // Shown inline in the form; everything else lives under "Advanced Scoring".
 const INTEL_COMMON_FIELDS = new Set(["priority", "weight", "severity"]);
-
-export const EMPTY_INTEL: IntelForm = Object.fromEntries(
-  [...INTEL_NUMERIC_FIELDS, ...INTEL_TEXT_FIELDS].map(f => [f, ""]),
-);
-
-export function intelFromRow(row: Partial<SignalIntelligenceFields>): IntelForm {
-  const out: IntelForm = { ...EMPTY_INTEL };
-  for (const f of INTEL_NUMERIC_FIELDS) {
-    const v = row[f as keyof SignalIntelligenceFields];
-    if (v !== undefined && v !== null) out[f] = String(v);
-  }
-  for (const f of INTEL_TEXT_FIELDS) {
-    const v = row[f as keyof SignalIntelligenceFields];
-    if (v !== undefined && v !== null) out[f] = String(v);
-  }
-  return out;
-}
-
-const INTEL_TEXT_DEFAULTS: Record<(typeof INTEL_TEXT_FIELDS)[number], string> = {
-  trendDirection: "flat",
-  severity: "low",
-  category: "",
-  pillar: "",
-};
-
-/**
- * Blank fields are omitted on CREATE (backend applies its defaults) but sent
- * as explicit defaults on EDIT — the stored row always has concrete values, so
- * a blanked field / "(default: …)" selection unambiguously means "reset", and
- * omitting it would make the PATCH merge silently keep the old value.
- */
-export function intelToBody(form: IntelForm, opts?: { blankAsDefault?: boolean }): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of INTEL_NUMERIC_FIELDS) {
-    if (form[f] !== undefined && form[f].trim() !== "") out[f] = Number(form[f]);
-    else if (opts?.blankAsDefault) out[f] = 0;
-  }
-  for (const f of INTEL_TEXT_FIELDS) {
-    if (form[f] !== undefined && form[f].trim() !== "") out[f] = form[f].trim();
-    else if (opts?.blankAsDefault) out[f] = INTEL_TEXT_DEFAULTS[f];
-  }
-  return out;
-}
-
-// ─── Rule form state ──────────────────────────────────────────────────────────
-
-export interface RuleForm {
-  signalKey: string;
-  groupId: string; // "" = ungrouped
-  ruleType: string;
-  sourceKey: string;
-  compareValue: string;
-  description: string;
-  sortOrder: string;
-  intel: IntelForm;
-  // ── New-signal creation (create-only; only surfaces passing
-  // allowNewSignalCreation expose the UI). When true, `signalKey` is the brand-
-  // new key and newSignalLabel/newSignalDescription register its custom_signals
-  // catalog row atomically with the rule. See ruleFormToBody's `newSignal`. ──
-  createNewSignal: boolean;
-  newSignalLabel: string;
-  newSignalDescription: string;
-}
-
-export const emptyRuleForm = (signalKey = ""): RuleForm => ({
-  signalKey,
-  groupId: "",
-  ruleType: "profile_key_truthy",
-  sourceKey: "",
-  compareValue: "",
-  description: "",
-  sortOrder: "0",
-  intel: { ...EMPTY_INTEL },
-  createNewSignal: false,
-  newSignalLabel: "",
-  newSignalDescription: "",
-});
-
-/** Builds the edit-form state for an existing rule row. */
-export const ruleFormFromRule = (rule: SignalRule): RuleForm => ({
-  signalKey: rule.signalKey,
-  groupId: rule.groupId != null ? String(rule.groupId) : "",
-  ruleType: rule.ruleType,
-  sourceKey: rule.sourceKey,
-  compareValue: rule.compareValue ?? "",
-  description: rule.description ?? "",
-  sortOrder: String(rule.sortOrder),
-  intel: intelFromRow(rule),
-  createNewSignal: false,
-  newSignalLabel: "",
-  newSignalDescription: "",
-});
-
-/**
- * The exact request body both call sites send. Shared so an edit made from the
- * engine trace writes the same shape as an edit made from the Signal Rules page.
- */
-export function ruleFormToBody(form: RuleForm, isEdit: boolean): Record<string, unknown> {
-  const meta = ruleTypeMeta(form.ruleType);
-  return {
-    signalKey: form.signalKey.trim(),
-    ruleType: form.ruleType,
-    sourceKey: form.sourceKey.trim(),
-    // For unrecognized rule types (e.g. seeded example:* rows) the key is
-    // omitted entirely: PATCH preserves the stored compareValue when the key
-    // is absent, and nulling it here would silently destroy it.
-    ...(meta ? { compareValue: meta.compare ? form.compareValue.trim() || null : null } : {}),
-    description: form.description.trim() || null,
-    groupId: form.groupId ? Number(form.groupId) : null,
-    sortOrder: Number(form.sortOrder) || 0,
-    ...intelToBody(form.intel, { blankAsDefault: isEdit }),
-    // Register a brand-new catalog signal alongside the rule. The server
-    // creates the custom_signals row and the rule in one transaction; without
-    // this the rule would be an orphan invisible to real scoring, and the
-    // server rejects it. Only sent on create + when the operator chose to
-    // create a new signal.
-    ...(!isEdit && form.createNewSignal
-      ? { newSignal: { label: form.newSignalLabel.trim(), description: form.newSignalDescription.trim() } }
-      : {}),
-  };
-}
-
-/**
- * Client-side pre-validation shared by both call sites' save handlers. Returns
- * a human error string, or null if the form may be submitted. The server
- * enforces the same rules authoritatively (a direct API call can't bypass
- * them); this only spares the operator a round-trip and gives a precise message.
- */
-export function validateRuleForm(form: RuleForm, isEdit: boolean): string | null {
-  if (!form.signalKey.trim() || !form.ruleType || !form.sourceKey.trim()) {
-    return "Signal, rule type, and source key are required.";
-  }
-  if (!isEdit && form.createNewSignal) {
-    if (!form.newSignalLabel.trim() || !form.newSignalDescription.trim()) {
-      return "A new signal needs both a label and a description so it becomes a real, scored catalog entry — not just a bare key.";
-    }
-  }
-  return null;
-}
-
-// Sentinel value for the "create a new signal" dropdown choice — must not
-// collide with any real signal_key.
-const NEW_SIGNAL_OPTION = "__create_new_signal__";
 
 const inputCls =
   "w-full border border-border bg-background text-foreground rounded-md px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60";
@@ -307,6 +99,17 @@ export function SignalRuleEditorModal({
    * page's dropdown-only behaviour, unchanged).
    */
   allowNewSignalCreation = false,
+  /**
+   * Lets this surface create a brand-new rule GROUP inline (an extra "➕ New
+   * group (OR / AND)…" choice in the Rule group dropdown that reveals an OR/AND
+   * selector + optional label). The group is created via the SAME existing
+   * POST /api/admin/signal-rule-groups endpoint the Signal Rules page uses — the
+   * save handler creates it first, then attaches the rule. This is what lets an
+   * operator build a multi-rule OR-group directly while adding a second rule to
+   * a property from the trace. The Signal Rules page has its own dedicated group
+   * modal, so it leaves this false.
+   */
+  allowNewGroupCreation = false,
 }: {
   open: boolean;
   form: RuleForm;
@@ -323,6 +126,7 @@ export function SignalRuleEditorModal({
   deleting?: boolean;
   contextNote?: string;
   allowNewSignalCreation?: boolean;
+  allowNewGroupCreation?: boolean;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -369,9 +173,9 @@ export function SignalRuleEditorModal({
               onChange={e => {
                 const v = e.target.value;
                 if (v === NEW_SIGNAL_OPTION) {
-                  onFormChange(f => ({ ...f, createNewSignal: true, signalKey: "", groupId: "" }));
+                  onFormChange(f => ({ ...f, createNewSignal: true, signalKey: "", groupId: "", createNewGroup: false }));
                 } else {
-                  onFormChange(f => ({ ...f, createNewSignal: false, signalKey: v, groupId: "" }));
+                  onFormChange(f => ({ ...f, createNewSignal: false, signalKey: v, groupId: "", createNewGroup: false }));
                 }
               }}
             >
@@ -388,8 +192,15 @@ export function SignalRuleEditorModal({
             <label className="block text-[11px] font-medium text-muted-foreground mb-1">Rule group</label>
             <select
               className={selectCls}
-              value={form.groupId}
-              onChange={e => onFormChange(f => ({ ...f, groupId: e.target.value }))}
+              value={form.createNewGroup ? NEW_GROUP_OPTION : form.groupId}
+              onChange={e => {
+                const v = e.target.value;
+                if (v === NEW_GROUP_OPTION) {
+                  onFormChange(f => ({ ...f, createNewGroup: true, groupId: "" }));
+                } else {
+                  onFormChange(f => ({ ...f, createNewGroup: false, groupId: v }));
+                }
+              }}
             >
               <option value="">Ungrouped</option>
               {groupOptions.map(g => (
@@ -397,6 +208,9 @@ export function SignalRuleEditorModal({
                   {g.label ?? `Group #${g.id}`} ({g.logic})
                 </option>
               ))}
+              {allowNewGroupCreation && !editingRule && (
+                <option value={NEW_GROUP_OPTION}>➕ New group (OR / AND)…</option>
+              )}
             </select>
           </div>
           <div>
@@ -499,6 +313,44 @@ export function SignalRuleEditorModal({
               </div>
               <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
                 Label and description are required — they make this a real, properly-catalogued signal rather than a bare key.
+              </p>
+            </div>
+          )}
+
+          {/* New-group creation — shown only when the operator chose "New group"
+              in the Rule group dropdown. Saving creates this group first (via the
+              same POST /api/admin/signal-rule-groups endpoint the Signal Rules
+              page uses), then attaches the rule to it — the natural way to start
+              a multi-rule OR-group while adding a rule to a property. */}
+          {form.createNewGroup && !editingRule && (
+            <div className="col-span-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="mb-2 text-[11px] font-semibold text-foreground/90">
+                New rule group — this rule, plus any others you later attach to it, fire the signal together by the logic below
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Logic</label>
+                  <select
+                    className={selectCls}
+                    value={form.newGroupLogic}
+                    onChange={e => onFormChange(f => ({ ...f, newGroupLogic: e.target.value as "AND" | "OR" }))}
+                  >
+                    <option value="OR">OR — any member rule fires the signal</option>
+                    <option value="AND">AND — every member rule must pass</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Group label</label>
+                  <input
+                    className={inputCls}
+                    value={form.newGroupLabel}
+                    placeholder="Optional (e.g. MFA gap conditions)"
+                    onChange={e => onFormChange(f => ({ ...f, newGroupLabel: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">
+                Creating the rule will create this group first, then attach the rule — reusing the same group endpoint as the Signal Rules page.
               </p>
             </div>
           )}

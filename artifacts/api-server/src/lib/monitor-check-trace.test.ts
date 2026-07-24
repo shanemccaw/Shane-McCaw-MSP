@@ -317,6 +317,41 @@ describe("traceCheckResponse — suggestions", () => {
     expect(keys).not.toContain("mfaRegisteredCount");
   });
 
+  it("attaches a per-key suggestion to a COVERED key too, so the trace UI can offer 'Add rule' on it", () => {
+    // The top-level suggestions list stays uncovered-only (the cards), but each
+    // readable key — covered or not — now carries its own inferred suggestion so
+    // the per-property "Add rule" button has a pre-filled draft to accept without
+    // a second inference path. This is what makes multi-rule OR-groups on an
+    // already-covered property one click instead of a from-scratch form.
+    const trace = traceCheckResponse({
+      checkKey: "identity:mfa-registration",
+      items: MFA_ITEMS,
+      mapping: [{ sourceField: "isMfaRegistered", targetField: "mfaRegisteredCount", transform: "countTruthy" }],
+      properties: [],
+      rules: [makeRule({ id: 1, ruleType: "profile_key_lt", sourceKey: "mfaRegisteredCount", compareValue: "5" })],
+    });
+
+    const covered = trace.keys.find(k => k.key === "mfaRegisteredCount")!;
+    expect(covered.uncovered).toBe(false);
+    // Covered, yet it carries a suggestion for the operator's next OR-condition.
+    expect(covered.suggestion).not.toBeNull();
+    expect(covered.suggestion!.sourceKey).toBe("mfaRegisteredCount");
+    // …but it is NOT duplicated into the uncovered-only cards list.
+    expect(trace.suggestions.map(s => s.sourceKey)).not.toContain("mfaRegisteredCount");
+  });
+
+  it("leaves the synthetic item-count key without a suggestion (direction can't be name-guessed)", () => {
+    const trace = traceCheckResponse({
+      checkKey: "identity:mfa-registration",
+      items: MFA_ITEMS,
+      mapping: [],
+      properties: [],
+      rules: [],
+    });
+    const itemCount = trace.keys.find(k => k.key === "identity:mfa-registration__itemCount")!;
+    expect(itemCount.suggestion).toBeNull();
+  });
+
   it("assigns a dominant pillar from the check key's domain with small, bounded spillover", () => {
     const { dominantPillar, pillarImpacts } = suggestPillarImpacts("identity:mfa-registration");
     expect(dominantPillar).toBe("security");

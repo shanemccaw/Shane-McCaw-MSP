@@ -58,6 +58,8 @@ import SignalRuleEditorModal, {
   ruleFormFromRule,
   ruleFormToBody,
   validateRuleForm,
+  draftRuleForTracedKey,
+  groupCreateBodyFromForm,
   type RuleConflict,
   type RuleForm,
   type SignalGroupOption,
@@ -87,6 +89,14 @@ interface TracedKey {
   transform?: string;
   rules: TracedRule[];
   uncovered: boolean;
+  /**
+   * A starting suggestion inferred for this key by the server (same
+   * inferSuggestion the uncovered list uses), present for covered AND uncovered
+   * keys. The per-property "Add rule" action reuses acceptSuggestion(this) so it
+   * opens a pre-filled draft. Null when the value isn't rule-readable
+   * (object/array/null) or for the synthetic item-count key.
+   */
+  suggestion: RuleSuggestion | null;
 }
 
 interface RuleSuggestion {
@@ -299,6 +309,32 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
     setRuleModalOpen(true);
   };
 
+  /**
+   * ADD RULE for a produced key — the universal per-property affordance. Reuses
+   * the SAME acceptSuggestion path whenever the server inferred a suggestion for
+   * the key (covered or not), so the draft carries a real inferred rule_type /
+   * threshold / direction. Falls back to a bare draft (source_key set, signal
+   * left for the operator to pick or create) only when the value isn't
+   * rule-readable or it's the item-count key — no second inference path. Matches
+   * the operator's stated goal: "my only job should be to set the description
+   * and the actual rule".
+   */
+  const addRuleForKey = (k: TracedKey) => {
+    if (k.suggestion) {
+      // Exact same mechanism the uncovered-suggestion "Accept" uses.
+      acceptSuggestion(k.suggestion);
+      return;
+    }
+    setEditingRule(null);
+    setRuleForm(draftRuleForTracedKey({ key: k.key, origin: k.origin }, checkKey));
+    setModalNote(
+      `New rule reading “${k.origin === "itemCount" ? checkKey : k.key}” from the ${checkKey} trace. This property's value isn't one a direction can be guessed from, so pick or create the signal it feeds and set the condition yourself — then Create. Nothing is written until you save.`,
+    );
+    setRuleError(null);
+    setRuleConflicts(null);
+    setRuleModalOpen(true);
+  };
+
   const handleRuleSave = async () => {
     const validationError = validateRuleForm(ruleForm, !!editingRule);
     if (validationError) {
@@ -311,6 +347,27 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
     // Identical request shape to the Signal Rules page — same shared builder.
     const body = ruleFormToBody(ruleForm, !!editingRule);
     try {
+      // NEW GROUP FIRST (create only): when the operator chose "New group", create
+      // it via the SAME POST /api/admin/signal-rule-groups endpoint the Signal
+      // Rules page uses — never a second group-creation mechanism — then point the
+      // rule at the returned id. The group's signal_key has no FK, so creating it
+      // for a not-yet-catalogued new signal is fine (the rule POST registers the
+      // signal atomically).
+      if (!editingRule && ruleForm.createNewGroup) {
+        const groupRes = await fetchWithAuth("/api/admin/signal-rule-groups", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(groupCreateBodyFromForm(ruleForm)),
+        });
+        const groupData = await groupRes.json();
+        if (!groupRes.ok) {
+          setRuleError(groupData.error ?? "Failed to create the rule group");
+          return;
+        }
+        body.groupId = groupData.id as number;
+        // Reflect the new group in the dropdown for any follow-up rule.
+        void loadSignalOptions();
+      }
       const res = await fetchWithAuth(
         editingRule ? `/api/admin/signal-rules/${editingRule.id}` : "/api/admin/signal-rules",
         {
@@ -482,9 +539,10 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
               const firing = k.rules.filter(r => r.result).length;
               return (
                 <div key={k.key} className="rounded border border-border bg-card">
+                  <div className="flex items-center">
                   <button
                     onClick={() => setExpanded(prev => ({ ...prev, [k.key]: !isOpen }))}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/50"
+                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/50"
                   >
                     {k.rules.length > 0 ? (
                       isOpen ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -517,6 +575,22 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
                       )}
                     </span>
                   </button>
+                  {/* Universal "Add rule" — on EVERY property, covered or not.
+                      Reuses the server-inferred suggestion via acceptSuggestion
+                      when there is one (pre-filled type/threshold/direction),
+                      else opens a bare draft with this key as the source. */}
+                  <button
+                    onClick={() => addRuleForKey(k)}
+                    title={
+                      k.suggestion
+                        ? "Add another rule reading this property — opens a pre-filled draft you can accept"
+                        : "Add a rule reading this property — opens a draft with the source key set"
+                    }
+                    className="mr-2 flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Plus className="h-2.5 w-2.5" /> Add rule
+                  </button>
+                  </div>
 
                   {isOpen && k.rules.length > 0 && (
                     <div className="border-t border-border">
@@ -639,6 +713,12 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
         // orphaned from real scoring. The page's dropdown-only behaviour is
         // unchanged.
         allowNewSignalCreation
+        // The trace is where multi-rule OR-groups get built while tuning, so it
+        // also offers creating a real rule GROUP (with an OR/AND selector) inline
+        // — via the same POST /api/admin/signal-rule-groups endpoint the Signal
+        // Rules page uses. The page keeps its own dedicated group modal, so it
+        // leaves this off.
+        allowNewGroupCreation
       />
 
       {/* Plus-button affordance parity with the rules page: add a rule for this
