@@ -101,6 +101,7 @@ export default function SignalRulesPage() {
   const [editingRule, setEditingRule] = useState<SignalRule | null>(null);
   const [ruleForm, setRuleForm] = useState<RuleForm>(emptyRuleForm());
   const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleDeleting, setRuleDeleting] = useState(false);
   const [ruleConflicts, setRuleConflicts] = useState<RuleConflict[] | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
 
@@ -328,6 +329,31 @@ export default function SignalRulesPage() {
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
+    }
+  };
+
+  /**
+   * Delete-from-modal — the modal itself already gathered the confirmation
+   * (window.confirm), so this only performs the request and reconciles state.
+   * Kept separate from handleRuleDelete (used by the row trash icon) since
+   * that path owns its own confirm step too and this one must additionally
+   * close the modal and surface errors inline rather than via toast.
+   */
+  const handleRuleDeleteFromModal = async () => {
+    if (!editingRule) return;
+    setRuleDeleting(true);
+    setRuleError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rules/${editingRule.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete rule");
+      toast({ title: "Rule deleted" });
+      setRuleModalOpen(false);
+      void loadData();
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : "Failed to delete rule");
+    } finally {
+      setRuleDeleting(false);
     }
   };
 
@@ -790,6 +816,8 @@ export default function SignalRulesPage() {
         conflicts={ruleConflicts}
         onSave={() => void handleRuleSave()}
         onClose={() => setRuleModalOpen(false)}
+        onDelete={() => void handleRuleDeleteFromModal()}
+        deleting={ruleDeleting}
       />
 
       {/* ── Group create/edit modal ── */}

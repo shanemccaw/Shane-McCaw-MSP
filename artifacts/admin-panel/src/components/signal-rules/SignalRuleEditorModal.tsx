@@ -18,7 +18,7 @@
 //     accepted suggestion (create, pre-filled — never silently inserted).
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -270,6 +270,8 @@ const btnPrimaryCls =
   "inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors";
 const btnGhostCls =
   "inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-foreground/90 text-xs font-semibold rounded-lg border border-border hover:border-primary/40 disabled:opacity-40 transition-colors";
+const btnDangerCls =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 bg-transparent text-red-400 text-xs font-semibold rounded-lg border border-red-500/40 hover:bg-red-500/10 disabled:opacity-40 transition-colors mr-auto";
 
 // ─── The shared modal ─────────────────────────────────────────────────────────
 
@@ -285,6 +287,15 @@ export function SignalRuleEditorModal({
   conflicts,
   onSave,
   onClose,
+  /**
+   * When provided (and editingRule is set), shows a destructive "Delete rule"
+   * button. The modal itself gathers an explicit confirmation (window.confirm,
+   * matching the discipline the Signal Rules page's own row-delete button
+   * already uses) before invoking this — callers can assume onDelete only
+   * fires once the operator has confirmed.
+   */
+  onDelete,
+  deleting = false,
   /** Optional banner explaining where this draft came from (e.g. an accepted suggestion). */
   contextNote,
   /**
@@ -308,6 +319,8 @@ export function SignalRuleEditorModal({
   conflicts: RuleConflict[] | null;
   onSave: () => void;
   onClose: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   contextNote?: string;
   allowNewSignalCreation?: boolean;
 }) {
@@ -601,10 +614,28 @@ export function SignalRuleEditorModal({
         )}
 
         <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
-          <button onClick={onClose} disabled={saving} className={btnGhostCls}>
+          {editingRule && onDelete && (
+            <button
+              onClick={() => {
+                if (
+                  confirm(
+                    `Delete this ${editingRule.ruleType} rule on "${editingRule.sourceKey}"? This cannot be undone.`,
+                  )
+                ) {
+                  onDelete();
+                }
+              }}
+              disabled={saving || deleting}
+              className={btnDangerCls}
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete rule
+            </button>
+          )}
+          <button onClick={onClose} disabled={saving || deleting} className={btnGhostCls}>
             Cancel
           </button>
-          <button onClick={onSave} disabled={saving} className={btnPrimaryCls}>
+          <button onClick={onSave} disabled={saving || deleting} className={btnPrimaryCls}>
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {editingRule ? "Save Changes" : "Create Rule"}
           </button>

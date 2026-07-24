@@ -162,6 +162,7 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
   const [editingRule, setEditingRule] = useState<SignalRule | null>(null);
   const [ruleForm, setRuleForm] = useState<RuleForm>(emptyRuleForm());
   const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleDeleting, setRuleDeleting] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [ruleConflicts, setRuleConflicts] = useState<RuleConflict[] | null>(null);
   const [modalNote, setModalNote] = useState<string | undefined>(undefined);
@@ -335,6 +336,31 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
       setRuleError(err.message || "Failed to save rule");
     } finally {
       setRuleSaving(false);
+    }
+  };
+
+  /**
+   * Delete-from-modal — the modal itself already gathered the confirmation
+   * (window.confirm). On success, re-evaluate against the same captured
+   * response so the trace immediately reflects the rule's removal, with no
+   * new tenant call.
+   */
+  const handleRuleDeleteFromModal = async () => {
+    if (!editingRule) return;
+    setRuleDeleting(true);
+    setRuleError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rules/${editingRule.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete rule");
+      toast.success("Rule deleted — re-evaluating");
+      setRuleModalOpen(false);
+      void loadSignalOptions();
+      void handleReevaluate();
+    } catch (err: any) {
+      setRuleError(err.message || "Failed to delete rule");
+    } finally {
+      setRuleDeleting(false);
     }
   };
 
@@ -603,6 +629,8 @@ export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
         conflicts={ruleConflicts}
         onSave={() => void handleRuleSave()}
         onClose={() => setRuleModalOpen(false)}
+        onDelete={() => void handleRuleDeleteFromModal()}
+        deleting={ruleDeleting}
         contextNote={modalNote}
         // A suggestion can name a signal that doesn't exist yet, so the trace
         // surface lets the operator create a new CATALOGUED signal inline (key +
