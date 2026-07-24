@@ -21,8 +21,15 @@ import {
 } from "../lib/tenant-signals";
 import { detectRuleConflicts } from "../lib/signal-conflict-detector";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
-import { PILLAR_FIELD, type HealthPillar } from "../lib/health-engine";
-import { computeRuleFedStatus, PILLAR_LABELS, type RadarPillar } from "../lib/pillar-coverage";
+import { PILLAR_FIELD, getSignalHealthImpacts, calculateArchitectureHealthScore, type HealthPillar } from "../lib/health-engine";
+import { computePillarDisplayScore } from "../lib/health-display";
+import {
+  computeRuleFedStatus,
+  fetchEvaluableSignalKeys,
+  PILLAR_LABELS,
+  RADAR_PILLARS,
+  type RadarPillar,
+} from "../lib/pillar-coverage";
 import { buildPillarMatrix } from "../lib/pillar-matrix";
 
 const router: IRouter = Router();
@@ -565,7 +572,7 @@ router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Reques
     const { rules, groups } = await fetchSignalRulesAndGroups();
 
     // Per-rule fed/inert + the evaluable-signal set (reused producible-key logic).
-    const { fedByRuleId, evaluableSignalKeys } = await computeRuleFedStatus(rules);
+    const { fedByRuleId, evaluableSignalKeys, checkKeyByRuleId } = await computeRuleFedStatus(rules);
 
     // Pure builder: filtering, dual-source MAX (getSignalHealthImpacts) and the
     // evaluable-restricted theoreticalMax all live in lib/pillar-matrix.ts.
@@ -575,6 +582,7 @@ router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Reques
       field,
       fedByRuleId,
       evaluableSignalKeys,
+      checkKeyByRuleId,
     );
 
     res.json({
@@ -590,6 +598,42 @@ router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Reques
   } catch (err) {
     log.error({ err }, "GET /admin/signal-rules/pillar-matrix failed");
     res.status(500).json({ error: "Failed to build pillar matrix" });
+  }
+});
+
+// ── GET /api/admin/signal-rules/customer-pillar-scores/:customerId ─────────────
+// The Pillar Matrix's live summary header: this customer's actual 7 pillar
+// display scores, computed with the EXACT same real functions the customer
+// dashboard uses (`calculateArchitectureHealthScore` + `computePillarDisplayScore`,
+// restricted to `fetchEvaluableSignalKeys` — the same chain `/portal/health-benchmark`
+// and `getPillarCoverage` already call). No second scoring path — this just lets
+// Shane verify a Pillar Matrix tuning change's real effect on a testbed customer
+// without logging in as that customer separately.
+router.get("/admin/signal-rules/customer-pillar-scores/:customerId", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const customerId = Number(req.params.customerId);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      res.status(400).json({ error: "Invalid customerId" });
+      return;
+    }
+
+    const [output, { rules, groups }] = await Promise.all([
+      calculateArchitectureHealthScore(customerId),
+      fetchSignalRulesAndGroups(),
+    ]);
+    const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+    const impacts = getSignalHealthImpacts(rules, groups);
+
+    const pillars = RADAR_PILLARS.map((pillar) => ({
+      pillar,
+      label: PILLAR_LABELS[pillar],
+      score: computePillarDisplayScore(pillar, output, impacts, evaluableSignalKeys),
+    }));
+
+    res.json({ customerId, pillars });
+  } catch (err) {
+    log.error({ err }, "GET /admin/signal-rules/customer-pillar-scores/:customerId failed");
+    res.status(500).json({ error: "Failed to compute customer pillar scores" });
   }
 });
 

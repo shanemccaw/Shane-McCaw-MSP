@@ -67,6 +67,7 @@ import {
   buildProducibleProfileKeys,
   ruleIsFedByPackage,
   fetchEvaluableSignalKeys,
+  resolveOwningCheckKey,
 } from "./pillar-coverage.ts";
 import { computePillarDisplayScore, computeDisplayHealth } from "./health-display.ts";
 import {
@@ -424,6 +425,42 @@ describe("buildProducibleProfileKeys / ruleIsFedByPackage — pure linkage helpe
     expect(ruleIsFedByPackage({ ruleType: "findings_keyword", sourceKey: "" }, covered, producible)).toBe(false);
     expect(ruleIsFedByPackage({ ruleType: "profile_key_truthy", sourceKey: "sharepoint:anonymous-links__itemCount" }, covered, producible)).toBe(true);
     expect(ruleIsFedByPackage({ ruleType: "profile_key_truthy", sourceKey: "unproducedField" }, covered, producible)).toBe(false);
+  });
+
+  it("resolveOwningCheckKey finds the real check that owns a rule's sourceKey, by ruleType", () => {
+    const defs = [
+      { key: "sharepoint:anonymous-links", mapping: [], properties: [] },
+      { key: "identity:mfa-registration", mapping: [{ sourceField: "a", targetField: "mfaRegisteredCount" }], properties: ["displayName"] },
+      { key: "identity:ca-policy-count", mapping: [], properties: [] },
+    ];
+
+    // threshold: bare sourceKey must equal a real checkKey.
+    expect(resolveOwningCheckKey({ ruleType: "threshold", sourceKey: "sharepoint:anonymous-links" }, defs)).toBe(
+      "sharepoint:anonymous-links",
+    );
+    expect(resolveOwningCheckKey({ ruleType: "threshold", sourceKey: "no:such-check" }, defs)).toBeNull();
+
+    // findings_keyword: unambiguous single substring match.
+    expect(resolveOwningCheckKey({ ruleType: "findings_keyword", sourceKey: "sharepoint" }, defs)).toBe(
+      "sharepoint:anonymous-links",
+    );
+    expect(resolveOwningCheckKey({ ruleType: "findings_keyword", sourceKey: "identity" }, defs)).toBeNull(); // 2 matches, ambiguous
+    expect(resolveOwningCheckKey({ ruleType: "findings_keyword", sourceKey: "" }, defs)).toBeNull();
+
+    // profile_key_*: mapping targetField, property-derived key, synthetic itemCount, bridged key.
+    expect(resolveOwningCheckKey({ ruleType: "profile_key_gt", sourceKey: "mfaRegisteredCount" }, defs)).toBe(
+      "identity:mfa-registration",
+    );
+    expect(resolveOwningCheckKey({ ruleType: "profile_key_truthy", sourceKey: "displayName_count" }, defs)).toBe(
+      "identity:mfa-registration",
+    );
+    expect(
+      resolveOwningCheckKey({ ruleType: "profile_key_truthy", sourceKey: "sharepoint:anonymous-links__itemCount" }, defs),
+    ).toBe("sharepoint:anonymous-links");
+    expect(
+      resolveOwningCheckKey({ ruleType: "profile_key_eq", sourceKey: "conditionalAccessPolicyCount" }, defs),
+    ).toBe("identity:ca-policy-count");
+    expect(resolveOwningCheckKey({ ruleType: "profile_key_truthy", sourceKey: "unproducedField" }, defs)).toBeNull();
   });
 });
 

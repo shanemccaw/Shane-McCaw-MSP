@@ -43,6 +43,8 @@ export interface PillarMatrixRow {
   fed: boolean;
   /** Whether the signal as a whole is evaluable (some rule of it is fed) → counts toward theoreticalMax. */
   signalEvaluable: boolean;
+  /** The real monitor check that owns/produces this rule's sourceKey, if resolvable — lets the UI jump to that check's real Engine Trace. */
+  checkKey: string | null;
 }
 
 export interface PillarMatrixResult {
@@ -67,6 +69,7 @@ export function buildPillarMatrix(
   field: string,
   fedByRuleId: ReadonlyMap<number, boolean>,
   evaluableSignalKeys: ReadonlySet<string>,
+  checkKeyByRuleId: ReadonlyMap<number, string | null> = new Map(),
 ): PillarMatrixResult {
   const impacts = getSignalHealthImpacts(rules, groups);
 
@@ -106,6 +109,7 @@ export function buildPillarMatrix(
         isWinningSource: ruleImpact >= effectiveSignalImpact,
         fed: fedByRuleId.get(r.id) ?? false,
         signalEvaluable: evaluableSignalKeys.has(r.signalKey),
+        checkKey: checkKeyByRuleId.get(r.id) ?? null,
       };
     })
     .sort((a, b) => b.ruleImpact - a.ruleImpact || a.signalKey.localeCompare(b.signalKey));

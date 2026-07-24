@@ -32,10 +32,13 @@
 // are visually unambiguous (amber left-border + dot, and a per-row revert).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Save, RotateCcw, RefreshCw, AlertTriangle, Zap, ZapOff } from "lucide-react";
+import { Loader2, Save, RotateCcw, RefreshCw, AlertTriangle, Zap, ZapOff, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useTestbedContext } from "@/contexts/TestbedContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
 
 // Mirrors PILLAR_LABELS in api-server lib/pillar-coverage.ts (same order the
 // spec lists them). The pillar key is sent verbatim to the endpoint.
@@ -64,6 +67,8 @@ interface MatrixRow {
   isWinningSource: boolean;
   fed: boolean;
   signalEvaluable: boolean;
+  /** The real monitor check that owns this rule's sourceKey, if resolvable — null means no real check can be opened for it. */
+  checkKey: string | null;
 }
 
 interface MatrixResponse {
@@ -78,8 +83,15 @@ interface MatrixResponse {
   rows: MatrixRow[];
 }
 
+interface CustomerPillarScore {
+  pillar: string;
+  label: string;
+  score: number | null;
+}
+
 export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?: PillarKey }) {
   const { fetchWithAuth } = useAuth();
+  const { selectedCustomerId, selectedCustomer } = useTestbedContext();
 
   const [pillar, setPillar] = useState<PillarKey>(initialPillar ?? "governance");
   const [data, setData] = useState<MatrixResponse | null>(null);
@@ -91,6 +103,62 @@ export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?:
   // (which rebuilds `rows`) can drop resolved edits by comparison.
   const [edits, setEdits] = useState<Record<number, number>>({});
   const [saving, setSaving] = useState(false);
+
+  // Live pillar-score header for whichever customer is selected in the shared
+  // testbed picker — lets Shane verify a tuning change's real effect on that
+  // customer's actual dashboard scores without logging in as them separately.
+  // Reuses the SAME computation the customer dashboard uses (see
+  // GET /admin/signal-rules/customer-pillar-scores/:customerId).
+  const [customerScores, setCustomerScores] = useState<CustomerPillarScore[] | null>(null);
+  const [loadingScores, setLoadingScores] = useState(false);
+
+  const loadCustomerScores = useCallback(
+    async (customerId: number) => {
+      setLoadingScores(true);
+      try {
+        const res = await fetchWithAuth(`/api/admin/signal-rules/customer-pillar-scores/${customerId}`);
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        const json = (await res.json()) as { pillars: CustomerPillarScore[] };
+        setCustomerScores(json.pillars);
+      } catch {
+        setCustomerScores(null);
+      } finally {
+        setLoadingScores(false);
+      }
+    },
+    [fetchWithAuth],
+  );
+
+  useEffect(() => {
+    if (selectedCustomerId != null) {
+      void loadCustomerScores(selectedCustomerId);
+    } else {
+      setCustomerScores(null);
+    }
+  }, [selectedCustomerId, loadCustomerScores]);
+
+  // Rule-row trace modal — reuses the real Phase 2 Engine Trace experience
+  // (SimulatorEngineTrace, embedded in SimulatorEndpointCanvas) exactly as it
+  // renders from the M365 Endpoints tree, scoped to the clicked rule's real
+  // owning check. No second trace surface is built.
+  const [traceCheck, setTraceCheck] = useState<MonitorCheckSummary | null>(null);
+  const [loadingTraceKey, setLoadingTraceKey] = useState<string | null>(null);
+
+  const openRuleTrace = async (checkKey: string) => {
+    setLoadingTraceKey(checkKey);
+    try {
+      const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(checkKey)}`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const json = (await res.json()) as { check: MonitorCheckSummary };
+      setTraceCheck(json.check);
+    } catch (err) {
+      toast.error("Failed to open rule trace", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setLoadingTraceKey(null);
+    }
+  };
 
   // A tree click can re-select the same or a different pillar after mount.
   useEffect(() => {
@@ -190,6 +258,11 @@ export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?:
     // Refetch so theoreticalMax / effective / fed all reflect the new values,
     // and successfully-saved edits drop out of the dirty set.
     await load(pillar);
+    // Recompute the selected customer's real pillar scores so the header
+    // reflects this save's actual effect immediately — no manual reload.
+    if (ok > 0 && selectedCustomerId != null) {
+      void loadCustomerScores(selectedCustomerId);
+    }
   };
 
   return (
@@ -261,6 +334,31 @@ export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?:
             </span>
           </div>
         )}
+
+        {/* Live pillar-score header for the selected testbed customer — the
+            SAME real computeDisplayHealth/computePillarDisplayScore chain the
+            customer dashboard uses, recomputed automatically after every save
+            so a tuning change's real effect is visible immediately. */}
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border/60 pt-2 text-[11px]">
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {loadingScores && <Loader2 className="h-3 w-3 animate-spin" />}
+            {selectedCustomer ? `${selectedCustomer.name} — live scores` : "Live customer scores"}
+          </span>
+          {selectedCustomerId == null ? (
+            <span className="text-muted-foreground/70">Select a testbed customer to see real pillar scores.</span>
+          ) : customerScores ? (
+            customerScores.map((s) => (
+              <span key={s.pillar} className="flex items-baseline gap-1">
+                <span className="font-mono font-semibold tabular-nums text-foreground">
+                  {s.score ?? "—"}
+                </span>
+                <span className="text-muted-foreground">{s.label}</span>
+              </span>
+            ))
+          ) : !loadingScores ? (
+            <span className="text-muted-foreground/70">Failed to load pillar scores for this customer.</span>
+          ) : null}
+        </div>
       </div>
 
       {/* ── Body ── */}
@@ -376,9 +474,31 @@ export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?:
                       {row.effectiveSignalImpact}
                     </td>
 
-                    {/* Source of record — makes the dual-source reality explicit */}
+                    {/* Source of record — makes the dual-source reality explicit.
+                        Clickable when a real check owns this rule's sourceKey: opens
+                        the real Engine Trace for that check, scoped to this rule. */}
                     <td className="px-3 py-1.5 align-top text-[10px]">
-                      {row.isWinningSource ? (
+                      {row.checkKey ? (
+                        <button
+                          onClick={() => void openRuleTrace(row.checkKey!)}
+                          disabled={loadingTraceKey === row.checkKey}
+                          className={`inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 transition-colors hover:text-foreground disabled:opacity-50 ${
+                            row.isWinningSource ? "text-muted-foreground/70" : "text-amber-400/80"
+                          }`}
+                          title={`Open the real Engine Trace for ${row.checkKey}`}
+                        >
+                          {loadingTraceKey === row.checkKey ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          )}
+                          {row.isWinningSource
+                            ? "this rule"
+                            : row.groupImpact >= row.effectiveSignalImpact && row.groupId != null
+                              ? `group (${row.groupImpact}) overrides`
+                              : `sibling rule (${row.effectiveSignalImpact}) overrides`}
+                        </button>
+                      ) : row.isWinningSource ? (
                         <span className="text-muted-foreground/70">this rule</span>
                       ) : (
                         <span className="text-amber-400/80" title="A group or a sibling rule configures a higher value, so this rule's value is inert for scoring">
@@ -395,6 +515,25 @@ export function SimulatorPillarMatrixCanvas({ initialPillar }: { initialPillar?:
           </table>
         ) : null}
       </div>
+
+      {/* Rule trace modal — the real Phase 2 Engine Trace (SimulatorEngineTrace,
+          embedded in SimulatorEndpointCanvas exactly as the M365 Endpoints tab
+          renders it), scoped to the clicked rule's owning check. Overlay, not a
+          navigation — the matrix stays mounted underneath. */}
+      <Dialog open={traceCheck != null} onOpenChange={(open) => { if (!open) setTraceCheck(null); }}>
+        <DialogContent className="flex h-[85vh] max-w-5xl flex-col overflow-hidden p-0">
+          {traceCheck && (
+            <>
+              <DialogHeader className="flex-shrink-0 border-b border-border px-4 py-3">
+                <DialogTitle className="font-mono text-sm">{traceCheck.key}</DialogTitle>
+              </DialogHeader>
+              <div className="min-h-0 flex-1 overflow-auto">
+                <SimulatorEndpointCanvas check={traceCheck} />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

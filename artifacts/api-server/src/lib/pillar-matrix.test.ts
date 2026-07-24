@@ -27,7 +27,7 @@ vi.hoisted(() => {
 });
 
 import { buildPillarMatrix } from "./pillar-matrix.ts";
-import { buildProducibleProfileKeys, ruleIsFedByPackage } from "./pillar-coverage.ts";
+import { buildProducibleProfileKeys, ruleIsFedByPackage, resolveOwningCheckKey } from "./pillar-coverage.ts";
 import type { SignalDerivationRule, SignalRuleGroup } from "./tenant-signals.ts";
 import { parseIntelligenceFields } from "../routes/admin-signal-rules.ts";
 
@@ -148,6 +148,40 @@ describe("buildPillarMatrix — fed indicator matches the real producible-key lo
     // And the inert rows correctly report the signal as non-evaluable.
     expect(rows.find((r) => r.signalKey === "sigThresholdInert")!.signalEvaluable).toBe(false);
     expect(rows.find((r) => r.signalKey === "sigProfileFed")!.signalEvaluable).toBe(true);
+  });
+});
+
+describe("buildPillarMatrix — checkKey threading for the rule-trace modal", () => {
+  it("resolves each row's owning check via the real resolveOwningCheckKey logic, so a click opens the correct check", () => {
+    const checkDefs = [
+      { key: "identity:ca-policy-count", mapping: [{ sourceField: "x", targetField: "conditionalAccessPolicyCount" }], properties: null, requiresCustomerScript: false },
+      { key: "identity:mfa-registration", mapping: [], properties: null, requiresCustomerScript: false },
+    ];
+
+    const rules = [
+      rule({ signalKey: "sigThreshold", ruleType: "threshold", sourceKey: "identity:mfa-registration", governanceImpact: 8 } as Partial<SignalDerivationRule>),
+      rule({ signalKey: "sigProfile", ruleType: "profile_key_gt", sourceKey: "conditionalAccessPolicyCount", governanceImpact: 6 } as Partial<SignalDerivationRule>),
+      rule({ signalKey: "sigInert", ruleType: "profile_key_gt", sourceKey: "keyNoCheckProduces", governanceImpact: 5 } as Partial<SignalDerivationRule>),
+    ];
+
+    const checkKeyByRuleId = new Map<number, string | null>();
+    for (const r of rules) checkKeyByRuleId.set(r.id, resolveOwningCheckKey(r, checkDefs));
+
+    const fed = new Map<number, boolean>(rules.map((r) => [r.id, checkKeyByRuleId.get(r.id) != null]));
+    const evaluable = new Set<string>(rules.filter((r) => checkKeyByRuleId.get(r.id) != null).map((r) => r.signalKey));
+
+    const { rows } = buildPillarMatrix(rules, [], FIELD, fed, evaluable, checkKeyByRuleId);
+    const bySignal = Object.fromEntries(rows.map((r) => [r.signalKey, r.checkKey]));
+
+    expect(bySignal["sigThreshold"]).toBe("identity:mfa-registration");
+    expect(bySignal["sigProfile"]).toBe("identity:ca-policy-count");
+    expect(bySignal["sigInert"]).toBeNull();
+  });
+
+  it("defaults checkKey to null when no map is passed, so the button never renders for old callers", () => {
+    const rules = [rule({ signalKey: "sig", ruleType: "threshold", sourceKey: "x", governanceImpact: 4 } as Partial<SignalDerivationRule>)];
+    const { rows } = buildPillarMatrix(rules, [], FIELD, new Map([[rules[0].id, true]]), new Set(["sig"]));
+    expect(rows[0].checkKey).toBeNull();
   });
 });
 

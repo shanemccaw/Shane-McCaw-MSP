@@ -95,7 +95,7 @@ import type { SignalDerivationRule } from "./tenant-signals.ts";
  * on every rule/group, so the identical real-coverage test applies.
  */
 export type RadarPillar = HealthPillar | "security";
-const RADAR_PILLARS: readonly RadarPillar[] = [...HEALTH_PILLARS, "security"];
+export const RADAR_PILLARS: readonly RadarPillar[] = [...HEALTH_PILLARS, "security"];
 
 /** Mirrors MissionControl.tsx's PILLAR_LABELS so the same pillar reads identically everywhere. */
 export const PILLAR_LABELS: Record<RadarPillar, string> = {
@@ -219,6 +219,53 @@ export function ruleIsFedByPackage(
 }
 
 /**
+ * Which real monitor check owns (can produce) this rule's sourceKey — the same
+ * per-ruleType resolution `ruleIsFedByPackage` uses, but returning the specific
+ * checkKey instead of a boolean. Used by the Simulator Studio Pillar Matrix to
+ * jump from a rule row straight into that check's own Engine Trace, scoped to
+ * the real check the rule actually reads. Returns null when no real check
+ * produces the sourceKey (mirrors `fed: false`) or (for `findings_keyword`)
+ * when more than one check key could match the keyword — an ambiguous case,
+ * not guessed at. Pure; exported for tests.
+ */
+export function resolveOwningCheckKey(
+  rule: Pick<SignalDerivationRule, "ruleType" | "sourceKey">,
+  checkDefinitions: readonly CheckDefinitionRow[],
+): string | null {
+  switch (rule.ruleType) {
+    case "threshold":
+      return checkDefinitions.some((c) => c.key === rule.sourceKey) ? rule.sourceKey : null;
+    case "findings_keyword": {
+      const keyword = (rule.sourceKey ?? "").toLowerCase();
+      if (!keyword) return null;
+      const matches = checkDefinitions.filter((c) => c.key.toLowerCase().includes(keyword));
+      return matches.length === 1 ? matches[0].key : null;
+    }
+    default: {
+      // profile_key_*: find the check whose mapping targetField or raw
+      // property extraction produces this sourceKey, then fall back to the
+      // synthetic itemCount / bare-key / bridged-key producers.
+      for (const def of checkDefinitions) {
+        if ((def.mapping ?? []).some((m) => m?.targetField === rule.sourceKey)) return def.key;
+        for (const prop of def.properties ?? []) {
+          if (!prop) continue;
+          if (rule.sourceKey === `${prop}_count` || rule.sourceKey === `${prop}_first` || rule.sourceKey === `${prop}_values`) {
+            return def.key;
+          }
+        }
+      }
+      for (const def of checkDefinitions) {
+        if (rule.sourceKey === def.key || rule.sourceKey === `${def.key}__itemCount`) return def.key;
+      }
+      for (const [bridgedKey, producerCheck] of Object.entries(BRIDGED_KEY_PRODUCER_CHECK)) {
+        if (rule.sourceKey === bridgedKey && checkDefinitions.some((c) => c.key === producerCheck)) return producerCheck;
+      }
+      return null;
+    }
+  }
+}
+
+/**
  * The set of signal keys that at least one currently-configured monitor check
  * can genuinely feed, evaluated across the ENTIRE monitor_checks catalog (NOT
  * scoped to any single package). Reuses the EXACT Stage-3 producible-key logic
@@ -280,7 +327,11 @@ export async function fetchEvaluableSignalKeys(
  */
 export async function computeRuleFedStatus(
   rules: Pick<SignalDerivationRule, "id" | "ruleType" | "sourceKey" | "signalKey">[],
-): Promise<{ fedByRuleId: Map<number, boolean>; evaluableSignalKeys: Set<string> }> {
+): Promise<{
+  fedByRuleId: Map<number, boolean>;
+  evaluableSignalKeys: Set<string>;
+  checkKeyByRuleId: Map<number, string | null>;
+}> {
   const checkDefinitions: CheckDefinitionRow[] = await db
     .select({
       key: monitorChecksTable.key,
@@ -295,12 +346,14 @@ export async function computeRuleFedStatus(
 
   const fedByRuleId = new Map<number, boolean>();
   const evaluableSignalKeys = new Set<string>();
+  const checkKeyByRuleId = new Map<number, string | null>();
   for (const rule of rules) {
     const fed = ruleIsFedByPackage(rule, allCheckKeys, producibleProfileKeys);
     fedByRuleId.set(rule.id, fed);
     if (fed) evaluableSignalKeys.add(rule.signalKey);
+    checkKeyByRuleId.set(rule.id, resolveOwningCheckKey(rule, checkDefinitions));
   }
-  return { fedByRuleId, evaluableSignalKeys };
+  return { fedByRuleId, evaluableSignalKeys, checkKeyByRuleId };
 }
 
 export async function getPillarCoverage(
