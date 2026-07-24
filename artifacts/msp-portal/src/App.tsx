@@ -104,6 +104,8 @@ import AssessmentSowComparePage from "@/pages/assessment-sow-compare";
 import CustomerTeamPage from "@/pages/customer-team";
 import CustomerSettingsPage from "@/pages/customer-settings";
 import ComingSoonPage from "@/pages/coming-soon";
+import MspTenantsPage from "@/pages/msp-tenants";
+import MspTenantViewPage from "@/pages/msp-tenantview";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -603,6 +605,17 @@ function SlugInnerSwitch() {
       {/* Customer Billing — customer-facing */}
       <Route path="/customer-billing">
         <ProtectedRoute component={CustomerBillingPage} />
+      </Route>
+
+      {/* Temporary nav access for in-progress Stitch pages (msp-tenants,
+          msp-tenantview) — additive-for-now per Shane, same precedent as the
+          M365 Health Suite. Each page owns its own self-contained nav
+          component; routing/nav access only, no internal wiring here. */}
+      <Route path="/msp-tenants">
+        <ProtectedRoute component={MspTenantsPage} />
+      </Route>
+      <Route path="/msp-tenantview">
+        <ProtectedRoute component={MspTenantViewPage} />
       </Route>
 
       {/* Coming-soon placeholders for customer account actions whose backend

@@ -700,6 +700,23 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/chargeback",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
+      // MSP Tenants / Tenant View — additive-for-now per Shane, same
+      // precedent as the M365 Health Suite above: these are in-progress
+      // Stitch-generated pages with their own self-contained nav, linked
+      // here only for quick access while they're being finished. Not a
+      // finished nav placement.
+      {
+        icon: Building2,
+        label: "MSP Tenants",
+        href: "/msp-tenants",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: Network,
+        label: "Tenant View",
+        href: "/msp-tenantview",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
     ],
   },
   {
