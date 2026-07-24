@@ -29,12 +29,24 @@ export interface GenerateDocumentParams {
   projectId: number;
   docTypeKey: string;
   testMode?: boolean;
+  dryRun?: boolean;
 }
 
 export interface GenerateDocumentResult {
   documentId: number;
   htmlContent: string;
   docTypeKey: string;
+}
+
+export interface DryRunDocumentResult {
+  dryRun: true;
+  docTypeKey: string;
+  assembledPrompt: string;
+  stylePrefix: string;
+  scopedProfile: Record<string, unknown>;
+  scopedFindings: string[];
+  sectionText: string;
+  promptKey: string;
 }
 
 function matchesProfilePattern(key: string, pattern: string): boolean {
@@ -55,13 +67,74 @@ async function resolveEngineCustomerId(clientUserId: number): Promise<number | n
   return row?.customerId ?? null;
 }
 
-export async function generateDocument(params: GenerateDocumentParams): Promise<GenerateDocumentResult> {
+export async function generateDocument(params: GenerateDocumentParams & { dryRun: true }): Promise<DryRunDocumentResult>;
+export async function generateDocument(params: GenerateDocumentParams & { dryRun?: false }): Promise<GenerateDocumentResult>;
+export async function generateDocument(params: GenerateDocumentParams): Promise<GenerateDocumentResult | DryRunDocumentResult> {
   const { clientUserId, projectId, docTypeKey, testMode = false } = params;
 
   const [docTypeRow] = await db.select().from(documentTypesTable).where(eq(documentTypesTable.key, docTypeKey)).limit(1);
   if (!docTypeRow) throw new Error(`document-engine: unknown document type "${docTypeKey}"`);
   if (docTypeRow.pipelineCategory === "pipeline_output") {
     throw new Error(`document-engine: "${docTypeKey}" is a pipeline_output type (e.g. SOW) — use the dedicated pipeline generation function once it exists, not generateDocument()`);
+  }
+
+  if (params.dryRun) {
+    const mspCustomerId = await resolveEngineCustomerId(clientUserId);
+    let mspName: string | null = null;
+    let mspPrimaryColor: string | null = null;
+    if (mspCustomerId != null) {
+      const [customerRow] = await db.select({ mspId: mspCustomersTable.mspId }).from(mspCustomersTable).where(eq(mspCustomersTable.id, mspCustomerId)).limit(1);
+      if (customerRow?.mspId != null) {
+        const [msp] = await db.select({ name: mspsTable.name, primaryColor: mspsTable.primaryColor }).from(mspsTable).where(eq(mspsTable.id, customerRow.mspId)).limit(1);
+        mspName = msp?.name ?? null;
+        mspPrimaryColor = msp?.primaryColor ?? null;
+      }
+    }
+
+    let mergedProfile: Record<string, unknown> = {};
+    let findings: string[] = [];
+    if (mspCustomerId != null) {
+      const tenantProfile = await buildTenantProfile(mspCustomerId);
+      mergedProfile = tenantProfile.mergedProfile;
+      findings = tenantProfile.findings;
+    }
+    const profilePatterns = docTypeRow.includedProfileKeyPatterns ?? [];
+    const scopedProfileEntries = profilePatterns.length > 0
+      ? Object.entries(mergedProfile).filter(([k]) => profilePatterns.some((p) => matchesProfilePattern(k, p)))
+      : Object.entries(mergedProfile);
+    const scopedProfile = Object.fromEntries(scopedProfileEntries);
+    const scopedFindings = findings;
+
+    const profileSample = scopedProfileEntries.length > 0
+      ? scopedProfileEntries.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
+      : "  No configuration telemetry was captured for this client. Do NOT invent configuration values, counts, or settings.";
+
+    const sectionText = docTypeRow.sections && docTypeRow.sections.length > 0
+      ? docTypeRow.sections.map((s) => (s.guidance.trim() ? `${s.heading} (${s.guidance.trim()})` : s.heading)).join(", ")
+      : (docTypeRow.sectionHints ?? "Include relevant sections for this type of deliverable");
+
+    let promptKey = `insights-${docTypeRow.category}-${docTypeKey}`;
+    if (docTypeRow.aiPromptId != null) {
+      const [promptRow] = await db.select({ key: aiPromptsTable.key }).from(aiPromptsTable).where(eq(aiPromptsTable.id, docTypeRow.aiPromptId)).limit(1);
+      if (promptRow?.key) promptKey = promptRow.key;
+    }
+    const rawTemplate = await getPrompt(promptKey, "Generate a professional HTML document covering: {{sections}}\n\nTenant data:\n{{profileSample}}\n\nFindings:\n{{findings}}");
+
+    const findingsBlock = scopedFindings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings were recorded for this client. Do NOT invent findings.";
+
+    const assembledPrompt = rawTemplate
+      .replace(/\{\{sections\}\}/g, sectionText)
+      .replace(/\{\{profileSample\}\}/g, profileSample)
+      .replace(/\{\{findings\}\}/g, findingsBlock)
+      .replace(/\{\{docLabel\}\}/g, docTypeRow.label)
+      .replace(/\{\{mspName\}\}/g, mspName ?? "Shane McCaw Consulting")
+      .replace(/\{\{mspPrimaryColor\}\}/g, mspPrimaryColor ?? "#1a73e8");
+
+    const stylePrefix = await getDocumentStylePrefix();
+
+    log.info({ clientUserId, projectId, docTypeKey }, "document-engine: dry-run preview assembled (no AI call, no DB write)");
+
+    return { dryRun: true, docTypeKey, assembledPrompt, stylePrefix, scopedProfile, scopedFindings, sectionText, promptKey };
   }
 
   // Insert a "generating" placeholder immediately so the UI has something real
