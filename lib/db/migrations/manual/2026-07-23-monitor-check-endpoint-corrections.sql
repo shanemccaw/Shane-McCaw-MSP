@@ -249,6 +249,11 @@ WHERE key = 'identity:pim-eligible-roles';
 -- mapping/severity_rules would need to match — and this task is explicitly
 -- forbidden from touching mapping or severity rules. Shane's call.
 --
+-- >> IMPLEMENTED (approved) in 2026-07-24-cae-check-reframe.sql — endpoint +
+-- >> mapping + severity_rules + signal derivation rule, with the direction and the
+-- >> beta-only-sub-property caveat worked out there. Run THAT file, not the line
+-- >> below, for this check. Kept here as the historical record of the proposal.
+--
 -- UPDATE monitor_checks
 -- SET endpoint = '/identity/conditionalAccess/policies?$select=id,displayName,sessionControls', updated_at = now()
 -- WHERE key = 'identity:continuous-access-evaluation';
