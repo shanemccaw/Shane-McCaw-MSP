@@ -1,0 +1,91 @@
+-- adoption:planner-usage — Missing Required Filter: RESEARCH RESOLVED, FIX BLOCKED ON FAN-OUT
+-- Manual doc/record file — read-only. There is NO endpoint change to run here (see below).
+--
+-- ── WHAT THIS FILE IS ────────────────────────────────────────────────────────────
+-- This is the follow-up to the `adoption:planner-usage` open question left in
+-- 2026-07-23-monitor-check-endpoint-corrections.sql (§7, DELIBERATELY NOT UPDATED).
+-- That file couldn't resolve two things without a live tenant test:
+--   (1) whether Planner supports APPLICATION (app-only) permissions at all, and
+--   (2) whether a genuine tenant-wide "all plans" enumeration exists, or whether
+--       covering a tenant requires per-group iteration (fan-out).
+-- Both are now resolved. This file records the answer on the record and leaves the
+-- corrective UPDATE COMMENTED OUT because it is blocked, not because it is unknown.
+--
+-- ── (1) APP-ONLY AUTH: CONFIRMED SUPPORTED ──────────────────────────────────────
+-- The earlier "contradictory Microsoft sources on app-only support" open question
+-- is CLOSED. Two independent confirmations:
+--   * LIVE: hitting the stored endpoint against the real test tenant (via the
+--     Simulator Studio endpoint tool, app-only token) returns a 405 with the
+--     filter-required message below — NOT a 401/403. Auth genuinely succeeded; the
+--     request was rejected only for its query shape. If app-only were unsupported
+--     the token itself would have been rejected (401/403) before filter validation.
+--   * DOCS: learn.microsoft.com/en-us/graph/api/planner-list-plans (v1.0, updated
+--     2025-07-23) lists Application permissions explicitly:
+--         Application | Least privileged: Tasks.Read.All | Higher: Tasks.ReadWrite.All
+--     Tasks.Read.All is already a plausible/consented scope class for this platform.
+-- => Planner CAN be scanned unattended by an MSP app-only token. This check is NOT
+--    a candidate for retirement-due-to-delegated-only, contrary to the earlier note.
+--
+-- ── (2) TENANT-WIDE ENUMERATION: DOES NOT EXIST — FAN-OUT REQUIRED (situation "b") ─
+-- Real error on the live tenant:
+--   "This entity set must be queried with a filter on owner property, or container
+--    type and container external id, or contextScenarioId."
+-- The v1.0 docs (planner-list-plans, "Optional query parameters") state plainly:
+--   "This method requires owner filter to be specified."
+-- The error message itself enumerates the ONLY three valid query forms, and every
+-- one of them scopes to a SINGLE entity:
+--   (a) $filter on `owner`      -> one Microsoft 365 Group (or user) id
+--   (b) container type + external id -> one specific container
+--   (c) contextScenarioId       -> one specific scenario
+-- There is NO wildcard / "all containers" / tenant-wide form. Microsoft's own
+-- documented pattern for a tenant-wide Planner inventory is to LOOP every M365
+-- Group (Get-MgGroup) and call Get-MgGroupPlannerPlan (/groups/{id}/planner/plans)
+-- once per group — i.e. genuine per-group fan-out. Most M365 Planner plans are
+-- owned by Groups, not individual users, so a users-only sweep would also miss the
+-- majority of plans; the correct denominator is groups.
+--
+-- CONCLUSION: this is situation (b) from the task brief. A tenant-wide, single-call
+-- filter does not exist. The check cannot be expressed as one stored URL in the
+-- executor's one-check-one-URL model (monitor-executor.ts: check.endpoint ->
+-- graphFetchPaginated -> exactly one base URL + @odata.nextLink paging + placeholder
+-- substitution; there is no per-group iteration capability anywhere in the path).
+--
+-- ── WHY NO UPDATE IS RUN ─────────────────────────────────────────────────────────
+-- Writing any single-group URL here (e.g. /groups/{groupId}/planner/plans or
+-- /planner/plans?$filter=owner eq '{groupId}') would produce a check that silently
+-- reports on ONE hard-coded group while appearing to cover the whole tenant — the
+-- exact silent-under-report failure the prior migration refused, and worse than the
+-- current honest failure. So the corrective statement stays commented until a real
+-- fan-out capability exists to iterate groups.
+--
+-- ── DEPENDENCY: the fan-out capability has NOT landed ────────────────────────────
+-- The separately-scoped "Fan-Out Capability for Group-Scoped Monitor Checks" work
+-- (the same capability identity:pim-groups §5 was flagged as needing) is NOT present:
+--   * absent from PLATFORM_BUILD.md (no row, IN FLIGHT or DONE),
+--   * no fan-out / per-group-iteration primitive exists in monitor-executor.ts —
+--     executeMonitorCheck/graphFetchPaginated resolve and fetch exactly one URL.
+-- Per the task brief for situation (b): this task does NOT build a second, parallel
+-- fan-out mechanism. Its real remaining scope collapses to a single dependency:
+--
+--   >> WIRE adoption:planner-usage INTO THE REAL FAN-OUT CAPABILITY ONCE IT LANDS. <<
+--
+-- When that capability ships, the fix is: enumerate groups (GET /groups, app-only,
+-- Group.Read.All / GroupMember.Read.All), and for each group GET
+-- /groups/{id}/planner/plans (app-only, Tasks.Read.All), aggregating the results —
+-- reusing whatever the same capability does for identity:pim-groups. At that point
+-- the corrective config below can be filled in to match the capability's convention
+-- (it may be a new column / target-shape rather than a plain `endpoint` string;
+-- match the shape the landed capability defines rather than guessing it now).
+--
+-- ── READ-ONLY: current stored config for the check (before/after on the record) ──
+SELECT key, method, endpoint, status
+FROM monitor_checks
+WHERE key = 'adoption:planner-usage';
+
+-- ── CORRECTIVE UPDATE — INTENTIONALLY COMMENTED; BLOCKED ON FAN-OUT (see above) ──
+-- Do NOT uncomment a single-group URL. Fill this in only when the fan-out capability
+-- exists, matching that capability's per-group target convention:
+--
+-- UPDATE monitor_checks
+-- SET endpoint = '/groups/{groupId}/planner/plans', updated_at = now()
+-- WHERE key = 'adoption:planner-usage';   -- ONLY valid once fan-out iterates {groupId}
