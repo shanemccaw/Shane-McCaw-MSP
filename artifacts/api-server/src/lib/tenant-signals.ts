@@ -741,7 +741,7 @@ export function evaluateRule(
     case "profile_key_truthy": {
       const val = mergedProfile[sourceKey];
       const result = Boolean(val) && val !== 0 && val !== "" && val !== "false";
-      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "truthy" : "falsy"}` };
+      return { result, reason: `requires profile[${sourceKey}] to be truthy to fire; actual value = ${JSON.stringify(val)}` };
     }
     case "profile_key_falsy": {
       // Only fire when the key is explicitly present in the profile.
@@ -750,39 +750,39 @@ export function evaluateRule(
       // symmetric with profile_key_truthy (which correctly does not fire when
       // the key is missing).
       if (!(sourceKey in mergedProfile)) {
-        return { result: false, reason: `profile[${sourceKey}] absent — key not yet written by any script, treating as unknown (not falsy)` };
+        return { result: false, reason: `requires profile[${sourceKey}] to be falsy to fire; key is absent — not yet written by any script, treated as unknown (not falsy)` };
       }
       const val = mergedProfile[sourceKey];
       const result = !val || val === 0 || val === "" || val === "false" || val === false;
-      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "falsy" : "truthy"}` };
+      return { result, reason: `requires profile[${sourceKey}] to be falsy to fire; actual value = ${JSON.stringify(val)}` };
     }
     case "profile_key_eq": {
       const val = mergedProfile[sourceKey];
       const result = String(val) === String(compareValue ?? "");
-      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} ${result ? "==" : "!="} ${compareValue}` };
+      return { result, reason: `requires profile[${sourceKey}] == ${compareValue} to fire; actual value = ${JSON.stringify(val)}` };
     }
     case "profile_key_gt": {
       const val = Number(mergedProfile[sourceKey]);
       const threshold = Number(compareValue ?? 0);
       const result = !isNaN(val) && val > threshold;
-      return { result, reason: `profile[${sourceKey}] = ${val} ${result ? ">" : "<="} ${threshold}` };
+      return { result, reason: `requires profile[${sourceKey}] > ${threshold} to fire; actual value = ${val}` };
     }
     case "profile_key_lt": {
       const val = Number(mergedProfile[sourceKey]);
       const threshold = Number(compareValue ?? 0);
       const result = !isNaN(val) && val < threshold;
-      return { result, reason: `profile[${sourceKey}] = ${val} ${result ? "<" : ">="} ${threshold}` };
+      return { result, reason: `requires profile[${sourceKey}] < ${threshold} to fire; actual value = ${val}` };
     }
     case "threshold": {
       const val = Number(mergedProfile[`${sourceKey}__itemCount`] ?? 0);
       const threshold = Number(compareValue ?? 0);
       const result = !isNaN(val) && val > threshold;
-      return { result, reason: `monitor[${sourceKey}].itemCount = ${val} ${result ? ">" : "<="} ${threshold}` };
+      return { result, reason: `requires monitor[${sourceKey}].itemCount > ${threshold} to fire; actual itemCount = ${val}` };
     }
     case "findings_keyword": {
       const keyword = (sourceKey ?? "").toLowerCase();
       const result = parsedFindings.some(f => f.toLowerCase().includes(keyword));
-      return { result, reason: `findings ${result ? "contain" : "do not contain"} keyword "${sourceKey}"` };
+      return { result, reason: `requires findings to contain keyword "${sourceKey}" to fire; findings ${result ? "contain" : "do not contain"} it` };
     }
     default:
       return { result: false, reason: `unknown ruleType: ${ruleType}` };

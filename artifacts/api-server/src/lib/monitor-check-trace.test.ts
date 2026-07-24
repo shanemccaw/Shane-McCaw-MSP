@@ -142,9 +142,11 @@ describe("traceCheckResponse — identifies fed vs unfed keys against a real res
     expect(gt.result).toBe(false);
 
     // The reason strings are evaluateRule's own format, not a re-worded copy:
-    // `profile[<key>] = <val> < <threshold>`.
-    expect(lt.reason).toBe("profile[mfaRegisteredCount] = 2 < 5");
-    expect(gt.reason).toBe("profile[mfaRegisteredCount] = 2 <= 5");
+    // they always state the real fire condition (never its complement), plus
+    // the actual observed value, so a passing-looking relation next to a
+    // FALSE result badge can never be misread as "should have fired".
+    expect(lt.reason).toBe("requires profile[mfaRegisteredCount] < 5 to fire; actual value = 2");
+    expect(gt.reason).toBe("requires profile[mfaRegisteredCount] > 5 to fire; actual value = 2");
   });
 
   it("traces a threshold rule against the synthetic <checkKey>__itemCount key the real merge produces", () => {

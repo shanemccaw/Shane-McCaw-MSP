@@ -184,10 +184,11 @@ describe("diffCheckRuns", () => {
     expect(change.before).toBe(true);
     expect(change.after).toBe(false);
     // Straight from evaluateRule — never re-authored by the diff.
-    expect(change.reasonBefore).toBe("profile[mfaRegisteredCount] = 2 < 3");
-    // evaluateRule states the failing case in its own words ("3 >= 3"), and the
-    // diff surfaces that verbatim rather than paraphrasing it.
-    expect(change.reasonAfter).toBe("profile[mfaRegisteredCount] = 3 >= 3");
+    expect(change.reasonBefore).toBe("requires profile[mfaRegisteredCount] < 3 to fire; actual value = 2");
+    // evaluateRule always states the real fire condition ("< 3"), never its
+    // complement, so the diff surfaces the same condition on both sides —
+    // only "actual value" differs.
+    expect(change.reasonAfter).toBe("requires profile[mfaRegisteredCount] < 3 to fire; actual value = 3");
   });
 
   it("reports a rule that started firing", () => {

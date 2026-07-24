@@ -23,6 +23,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeTenantSignals,
+  evaluateRule,
   projectMatchesSignals,
   resolveSignalsOverride,
   type SignalDerivationRule,
@@ -295,6 +296,91 @@ describe("computeTenantSignals — findings_keyword", () => {
     const rules = [makeRule({ signalKey: "hasExchangeOnPrem", ruleType: "findings_keyword", sourceKey: "Exchange On-Premises" })];
     const { firedSignals } = computeTenantSignals({}, [], rules, []);
     expect(firedSignals.has("hasExchangeOnPrem")).toBe(false);
+  });
+});
+
+// ── evaluateRule — display text ──────────────────────────────────────────────
+//
+// Regression coverage for the Simulator engine trace's human-readable `reason`
+// string: it must always state the REAL condition a rule tests to fire (a
+// fixed operator per ruleType), never that condition's mathematical
+// complement. Showing the complement (e.g. "0 <= 0" for a rule that actually
+// fires on `> 0`) reads as a passing relation sitting next to a FALSE result
+// badge, which is exactly what let a real wrong-direction rule bug look
+// plausible on sight. One case per rule_type, both a firing and a
+// non-firing evaluation, confirms the fire condition is stated identically
+// either way — only "actual value" changes.
+describe("evaluateRule — display text states the real fire condition, not its complement", () => {
+  it("threshold: states 'requires ... > N' whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "threshold", sourceKey: "identity:mfa-registration", compareValue: "0" });
+
+    const firing = evaluateRule(rule, { "identity:mfa-registration__itemCount": 3 }, []);
+    expect(firing.result).toBe(true);
+    expect(firing.reason).toBe("requires monitor[identity:mfa-registration].itemCount > 0 to fire; actual itemCount = 3");
+
+    const notFiring = evaluateRule(rule, { "identity:mfa-registration__itemCount": 0 }, []);
+    expect(notFiring.result).toBe(false);
+    expect(notFiring.reason).toBe("requires monitor[identity:mfa-registration].itemCount > 0 to fire; actual itemCount = 0");
+  });
+
+  it("profile_key_gt: states 'requires ... > N' whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "profile_key_gt", sourceKey: "copilotLicenseCount", compareValue: "0" });
+
+    const firing = evaluateRule(rule, { copilotLicenseCount: 5 }, []);
+    expect(firing.reason).toBe("requires profile[copilotLicenseCount] > 0 to fire; actual value = 5");
+
+    const notFiring = evaluateRule(rule, { copilotLicenseCount: 0 }, []);
+    expect(notFiring.reason).toBe("requires profile[copilotLicenseCount] > 0 to fire; actual value = 0");
+  });
+
+  it("profile_key_lt: states 'requires ... < N' whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "profile_key_lt", sourceKey: "securityScore", compareValue: "60" });
+
+    const firing = evaluateRule(rule, { securityScore: 40 }, []);
+    expect(firing.reason).toBe("requires profile[securityScore] < 60 to fire; actual value = 40");
+
+    const notFiring = evaluateRule(rule, { securityScore: 85 }, []);
+    expect(notFiring.reason).toBe("requires profile[securityScore] < 60 to fire; actual value = 85");
+  });
+
+  it("profile_key_eq: states 'requires ... == X' whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "profile_key_eq", sourceKey: "conditionalAccessPolicyCount", compareValue: "0" });
+
+    const firing = evaluateRule(rule, { conditionalAccessPolicyCount: 0 }, []);
+    expect(firing.reason).toBe('requires profile[conditionalAccessPolicyCount] == 0 to fire; actual value = 0');
+
+    const notFiring = evaluateRule(rule, { conditionalAccessPolicyCount: 3 }, []);
+    expect(notFiring.reason).toBe('requires profile[conditionalAccessPolicyCount] == 0 to fire; actual value = 3');
+  });
+
+  it("profile_key_truthy: states the truthy fire condition whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "profile_key_truthy", sourceKey: "hasExchangeOnPrem" });
+
+    const firing = evaluateRule(rule, { hasExchangeOnPrem: true }, []);
+    expect(firing.reason).toBe("requires profile[hasExchangeOnPrem] to be truthy to fire; actual value = true");
+
+    const notFiring = evaluateRule(rule, { hasExchangeOnPrem: false }, []);
+    expect(notFiring.reason).toBe("requires profile[hasExchangeOnPrem] to be truthy to fire; actual value = false");
+  });
+
+  it("profile_key_falsy: states the falsy fire condition whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "profile_key_falsy", sourceKey: "mfaEnforced" });
+
+    const firing = evaluateRule(rule, { mfaEnforced: false }, []);
+    expect(firing.reason).toBe("requires profile[mfaEnforced] to be falsy to fire; actual value = false");
+
+    const notFiring = evaluateRule(rule, { mfaEnforced: true }, []);
+    expect(notFiring.reason).toBe("requires profile[mfaEnforced] to be falsy to fire; actual value = true");
+  });
+
+  it("findings_keyword: states the fire condition whether or not it fires", () => {
+    const rule = makeRule({ signalKey: "s", ruleType: "findings_keyword", sourceKey: "Exchange On-Premises" });
+
+    const firing = evaluateRule(rule, {}, ["Exchange On-Premises mailboxes detected"]);
+    expect(firing.reason).toBe('requires findings to contain keyword "Exchange On-Premises" to fire; findings contain it');
+
+    const notFiring = evaluateRule(rule, {}, ["Teams usage: high"]);
+    expect(notFiring.reason).toBe('requires findings to contain keyword "Exchange On-Premises" to fire; findings do not contain it');
   });
 });
 

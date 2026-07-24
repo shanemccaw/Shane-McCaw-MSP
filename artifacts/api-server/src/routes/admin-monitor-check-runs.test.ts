@@ -726,7 +726,7 @@ describe("POST /admin/monitor-check-runs/:runId/trace — RE-EVALUATE", () => {
     expect(key.rules).toHaveLength(1);
     // 2 < 5 — the real evaluateRule result and its own reason string.
     expect(key.rules[0].result).toBe(true);
-    expect(key.rules[0].reason).toBe("profile[mfaRegisteredCount] = 2 < 5");
+    expect(key.rules[0].reason).toBe("requires profile[mfaRegisteredCount] < 5 to fire; actual value = 2");
   });
 
   it("409s rather than tracing a run that never produced a usable response", async () => {
