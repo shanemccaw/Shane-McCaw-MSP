@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tenant } from '../types';
+import { Tenant } from '@/components/msp-tenantview/types';
 
 interface ServiceHealthGridProps {
   tenant: Tenant;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppRegistration } from '../types';
+import { AppRegistration } from '@/components/msp-tenantview/types';
 
 interface AppModalProps {
   isOpen: boolean;

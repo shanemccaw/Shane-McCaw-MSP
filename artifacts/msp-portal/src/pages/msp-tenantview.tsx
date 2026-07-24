@@ -1,28 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar';
-import { Sidebar } from './components/Sidebar';
-import { TenantHeader } from './components/TenantHeader';
-import { ServiceHealthGrid } from './components/ServiceHealthGrid';
-import { SecurityPosture } from './components/SecurityPosture';
-import { AppRegistrationGovernance } from './components/AppRegistrationGovernance';
-import { FooterTelemetry } from './components/FooterTelemetry';
-import { MultiTenantView } from './components/MultiTenantView';
-import { ComplianceOpsView } from './components/ComplianceOpsView';
-import { SecurityDetailView } from './components/SecurityDetailView';
-import { UsersDetailView } from './components/UsersDetailView';
-import { BillingDetailView } from './components/BillingDetailView';
-import { AppModal } from './components/AppModal';
+import { AppShell } from '@/components/app-shell';
+import { ServiceHealthGrid } from '@/components/msp-tenantview/ServiceHealthGrid';
+import { SecurityPosture } from '@/components/msp-tenantview/SecurityPosture';
+import { AppRegistrationGovernance } from '@/components/msp-tenantview/AppRegistrationGovernance';
+import { FooterTelemetry } from '@/components/msp-tenantview/FooterTelemetry';
+import { MultiTenantView } from '@/components/msp-tenantview/MultiTenantView';
+import { ComplianceOpsView } from '@/components/msp-tenantview/ComplianceOpsView';
+import { SecurityDetailView } from '@/components/msp-tenantview/SecurityDetailView';
+import { UsersDetailView } from '@/components/msp-tenantview/UsersDetailView';
+import { BillingDetailView } from '@/components/msp-tenantview/BillingDetailView';
+import { AppModal } from '@/components/msp-tenantview/AppModal';
 
-import { mockTenants, mockNotifications } from './data/mockData';
-import { TabType, NavSection, Tenant } from './types';
+import { mockTenants } from '@/components/msp-tenantview/mockData';
+import { TabType, NavSection, Tenant } from '@/components/msp-tenantview/types';
 
-export default function App() {
+export default function MspTenantviewPage() {
   const [tenants, setTenants] = useState<Tenant[]>(mockTenants);
   const [selectedTenantId, setSelectedTenantId] = useState<string>('tenant-1');
   const [activeTab, setActiveTab] = useState<TabType>('tenant-intelligence');
   const [activeSection, setActiveSection] = useState<NavSection>('overview');
-  const [notifications] = useState(mockNotifications);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
 
   const currentTenant = tenants.find((t) => t.id === selectedTenantId) || tenants[0];
@@ -86,44 +82,62 @@ export default function App() {
     );
   };
 
-  const handleRefreshSync = () => {
-    setTenants((prevTenants) =>
-      prevTenants.map((t) => {
-        if (t.id === currentTenant.id) {
-          return {
-            ...t,
-            syncStatus: 'Active (Just now)',
-          };
-        }
-        return t;
-      })
-    );
-  };
-
   return (
-    <div className="bg-[#111317] text-[#e2e2e6] min-h-screen blueprint-bg pb-14 selection:bg-[#99cbff]/30 font-sans">
-      {/* Navigation Header */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        currentTenant={currentTenant}
-        tenants={tenants}
-        onSelectTenant={handleSelectTenant}
-        notifications={notifications}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
+    <AppShell title="Tenant View">
+      <div className="bg-[#111317] text-[#e2e2e6] min-h-screen blueprint-bg pb-14 selection:bg-[#99cbff]/30 font-sans">
+        {/* Tab / Section Switcher */}
+        <div className="flex flex-wrap items-center gap-2 px-4 md:px-8 pt-4">
+          <button
+            onClick={() => setActiveTab('tenant-intelligence')}
+            className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded-md transition-colors ${
+              activeTab === 'tenant-intelligence'
+                ? 'bg-[#99cbff]/20 text-[#99cbff] font-bold'
+                : 'text-[#bfc7d3] hover:text-[#e2e2e6]'
+            }`}
+          >
+            Tenant Intelligence
+          </button>
+          <button
+            onClick={() => setActiveTab('multi-tenant')}
+            className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded-md transition-colors ${
+              activeTab === 'multi-tenant'
+                ? 'bg-[#99cbff]/20 text-[#99cbff] font-bold'
+                : 'text-[#bfc7d3] hover:text-[#e2e2e6]'
+            }`}
+          >
+            Multi-Tenant
+          </button>
+          <button
+            onClick={() => setActiveTab('compliance-ops')}
+            className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded-md transition-colors ${
+              activeTab === 'compliance-ops'
+                ? 'bg-[#99cbff]/20 text-[#99cbff] font-bold'
+                : 'text-[#bfc7d3] hover:text-[#e2e2e6]'
+            }`}
+          >
+            Compliance Ops
+          </button>
 
-      {/* Main App Layout */}
-      <div className="flex min-h-[calc(100vh-64px)]">
-        {/* Sidebar */}
-        <Sidebar
-          activeSection={activeSection}
-          setActiveSection={(sec) => {
-            setActiveSection(sec);
-            setActiveTab('tenant-intelligence');
-          }}
-        />
+          {activeTab === 'tenant-intelligence' && (
+            <div className="flex items-center gap-2 ml-auto">
+              {(['overview', 'security', 'compliance', 'users', 'billing'] as NavSection[]).map(
+                (section) => (
+                  <button
+                    key={section}
+                    onClick={() => setActiveSection(section)}
+                    className={`px-3 py-1.5 text-[11px] font-mono uppercase rounded-md transition-colors ${
+                      activeSection === section
+                        ? 'bg-[#99cbff]/20 text-[#99cbff] font-bold'
+                        : 'text-[#bfc7d3] hover:text-[#e2e2e6]'
+                    }`}
+                  >
+                    {section}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Main Content Pane */}
         <main className="flex-1 p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto w-full">
@@ -131,24 +145,19 @@ export default function App() {
             <MultiTenantView tenants={tenants} onSelectTenant={handleSelectTenant} />
           )}
 
-          {activeTab === 'compliance-ops' && (
-            <ComplianceOpsView tenant={currentTenant} />
-          )}
+          {activeTab === 'compliance-ops' && <ComplianceOpsView tenant={currentTenant} />}
 
           {activeTab === 'tenant-intelligence' && (
             <>
               {activeSection === 'overview' && (
                 <>
-                  {/* 1. Tenant Header */}
-                  <TenantHeader tenant={currentTenant} onRefreshSync={handleRefreshSync} />
-
-                  {/* 2. Service Health Grid */}
+                  {/* Service Health Grid */}
                   <ServiceHealthGrid
                     tenant={currentTenant}
                     onSelectService={() => setActiveSection('security')}
                   />
 
-                  {/* 3. Security Posture & 4. App Registration Governance */}
+                  {/* Security Posture & App Registration Governance */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     <div className="lg:col-span-4">
                       <SecurityPosture
@@ -168,17 +177,11 @@ export default function App() {
                 </>
               )}
 
-              {activeSection === 'security' && (
-                <SecurityDetailView tenant={currentTenant} />
-              )}
+              {activeSection === 'security' && <SecurityDetailView tenant={currentTenant} />}
 
-              {activeSection === 'compliance' && (
-                <ComplianceOpsView tenant={currentTenant} />
-              )}
+              {activeSection === 'compliance' && <ComplianceOpsView tenant={currentTenant} />}
 
-              {activeSection === 'users' && (
-                <UsersDetailView tenant={currentTenant} />
-              )}
+              {activeSection === 'users' && <UsersDetailView tenant={currentTenant} />}
 
               {activeSection === 'billing' && (
                 <BillingDetailView tenant={currentTenant} />
@@ -186,18 +189,18 @@ export default function App() {
             </>
           )}
         </main>
+
+        {/* Fixed Footer Telemetry Bar */}
+        <FooterTelemetry />
+
+        {/* All App Registrations Modal */}
+        <AppModal
+          isOpen={isAppModalOpen}
+          onClose={() => setIsAppModalOpen(false)}
+          apps={currentTenant.appRegistrations}
+          onUpdateStatus={handleUpdateAppStatus}
+        />
       </div>
-
-      {/* Fixed Footer Telemetry Bar */}
-      <FooterTelemetry />
-
-      {/* All 24 App Registrations Modal */}
-      <AppModal
-        isOpen={isAppModalOpen}
-        onClose={() => setIsAppModalOpen(false)}
-        apps={currentTenant.appRegistrations}
-        onUpdateStatus={handleUpdateAppStatus}
-      />
-    </div>
+    </AppShell>
   );
 }

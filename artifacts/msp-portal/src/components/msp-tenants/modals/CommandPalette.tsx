@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Tenant } from '../../types';
+import { Tenant } from '@/components/msp-tenants/types';
 
 interface CommandPaletteProps {
   isOpen: boolean;

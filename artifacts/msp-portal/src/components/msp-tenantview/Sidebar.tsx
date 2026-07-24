@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavSection } from '../types';
+import { NavSection } from '@/components/msp-tenantview/types';
 
 interface SidebarProps {
   activeSection: NavSection;

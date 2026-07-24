@@ -1,4 +1,4 @@
-import { Tenant, AppRegistration, NotificationItem } from '../types';
+import { Tenant, AppRegistration, NotificationItem } from '@/components/msp-tenantview/types';
 
 export const mockAppRegistrations: AppRegistration[] = [
   {

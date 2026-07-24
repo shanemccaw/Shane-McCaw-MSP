@@ -1,4 +1,4 @@
-import { Tenant, IntentFeedItem } from '../types';
+import { Tenant, IntentFeedItem } from '@/components/msp-tenants/types';
 
 export const INITIAL_TENANTS: Tenant[] = [
   {

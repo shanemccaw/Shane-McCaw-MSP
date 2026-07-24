@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Tenant } from '../types';
-import { mockCompliancePolicies } from '../data/mockData';
+import { Tenant } from '@/components/msp-tenantview/types';
+import { mockCompliancePolicies } from '@/components/msp-tenantview/mockData';
 
 interface ComplianceOpsViewProps {
   tenant: Tenant;

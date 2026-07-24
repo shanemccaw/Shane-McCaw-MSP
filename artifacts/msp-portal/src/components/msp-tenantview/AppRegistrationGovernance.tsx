@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tenant, AppRegistration } from '../types';
+import { Tenant, AppRegistration } from '@/components/msp-tenantview/types';
 
 interface AppRegistrationGovernanceProps {
   tenant: Tenant;

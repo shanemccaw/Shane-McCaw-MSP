@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tenant } from '../types';
+import { Tenant } from '@/components/msp-tenantview/types';
 
 interface SecurityPostureProps {
   tenant: Tenant;

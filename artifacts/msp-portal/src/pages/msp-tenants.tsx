@@ -1,34 +1,27 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
-import { Tenant, IntentFeedItem, ViewMode, EngineType } from './types';
-import { INITIAL_TENANTS, INITIAL_INTENT_FEED } from './data/mockTenants';
-import { TopNavBar } from './components/TopNavBar';
-import { SideNavBar } from './components/SideNavBar';
-import { MomentumRibbon } from './components/MomentumRibbon';
-import { TenantTable } from './components/TenantTable';
-import { TenantGridCardView } from './components/TenantGridCardView';
-import { TenantMapView } from './components/TenantMapView';
-import { IntentFeed } from './components/IntentFeed';
-import { CopilotAdvice } from './components/CopilotAdvice';
-import { StatusBar } from './components/StatusBar';
+import { AppShell } from '@/components/app-shell';
+import { Tenant, IntentFeedItem, ViewMode } from '@/components/msp-tenants/types';
+import { INITIAL_TENANTS, INITIAL_INTENT_FEED } from '@/components/msp-tenants/mockTenants';
+import { MomentumRibbon } from '@/components/msp-tenants/MomentumRibbon';
+import { TenantTable } from '@/components/msp-tenants/TenantTable';
+import { TenantGridCardView } from '@/components/msp-tenants/TenantGridCardView';
+import { TenantMapView } from '@/components/msp-tenants/TenantMapView';
+import { IntentFeed } from '@/components/msp-tenants/IntentFeed';
+import { CopilotAdvice } from '@/components/msp-tenants/CopilotAdvice';
+import { StatusBar } from '@/components/msp-tenants/StatusBar';
 
 // Modals
-import { CommandPalette } from './components/modals/CommandPalette';
-import { TriageModal } from './components/modals/TriageModal';
-import { TerminalModal } from './components/modals/TerminalModal';
-import { NewDeploymentModal } from './components/modals/NewDeploymentModal';
-import { RemediationScriptModal } from './components/modals/RemediationScriptModal';
-import { OpsManualModal } from './components/modals/OpsManualModal';
-import { TenantDetailModal } from './components/modals/TenantDetailModal';
+import { CommandPalette } from '@/components/msp-tenants/modals/CommandPalette';
+import { TriageModal } from '@/components/msp-tenants/modals/TriageModal';
+import { TerminalModal } from '@/components/msp-tenants/modals/TerminalModal';
+import { NewDeploymentModal } from '@/components/msp-tenants/modals/NewDeploymentModal';
+import { RemediationScriptModal } from '@/components/msp-tenants/modals/RemediationScriptModal';
+import { OpsManualModal } from '@/components/msp-tenants/modals/OpsManualModal';
+import { TenantDetailModal } from '@/components/msp-tenants/modals/TenantDetailModal';
 
-export default function App() {
+export default function MspTenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>(INITIAL_TENANTS);
   const [feedItems, setFeedItems] = useState<IntentFeedItem[]>(INITIAL_INTENT_FEED);
-  const [activeEngine, setActiveEngine] = useState<EngineType>('tenants');
   const [viewMode, setViewMode] = useState<ViewMode>('list'); // Default table/list view matching the high-density grid in design
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilteringCritical, setIsFilteringCritical] = useState(false);
@@ -41,10 +34,6 @@ export default function App() {
   const [triageTenant, setTriageTenant] = useState<Tenant | null>(null);
   const [terminalTenant, setTerminalTenant] = useState<Tenant | null>(null);
   const [tenantDetail, setTenantDetail] = useState<Tenant | null>(null);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  // Unread notifications count
-  const unreadCount = feedItems.filter((f) => f.type === 'ALERT').length;
 
   // Filtered Tenants List
   const filteredTenants = tenants.filter((tenant) => {
@@ -139,48 +128,22 @@ export default function App() {
   };
 
   return (
-    <div className="bg-[#0c0e11] text-[#e2e2e6] font-sans overflow-hidden h-screen flex flex-col relative selection:bg-[#99cbff] selection:text-[#003355]">
-      {/* Global Blueprint Grid Overlay */}
-      <div className="fixed inset-0 blueprint-grid pointer-events-none z-0"></div>
+    <AppShell title="Tenant Orchestration">
+      <div className="bg-[#0c0e11] text-[#e2e2e6] font-sans selection:bg-[#99cbff] selection:text-[#003355] min-h-screen">
+        {/* Main Content Area */}
+        <div className="p-4 md:p-6 pb-20">
+          {/* Momentum Ribbon */}
+          <MomentumRibbon
+            activeTriageCount={tenants.filter((t) => t.status === 'critical').length}
+            onFilterCritical={() => setIsFilteringCritical(!isFilteringCritical)}
+            isFilteringCritical={isFilteringCritical}
+          />
 
-      {/* Top Navigation */}
-      <TopNavBar
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-        onOpenNotifications={() => setNotificationsOpen(!notificationsOpen)}
-        unreadNotificationsCount={unreadCount}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
-
-      {/* Side Navigation */}
-      <SideNavBar
-        activeEngine={activeEngine}
-        setActiveEngine={setActiveEngine}
-        onOpenOpsManual={() => setOpsManualOpen(true)}
-      />
-
-      {/* Main Content Area */}
-      <main className="pl-0 md:pl-64 pt-16 h-full flex flex-col overflow-hidden relative z-10">
-        {/* Momentum Ribbon */}
-        <MomentumRibbon
-          activeTriageCount={tenants.filter((t) => t.status === 'critical').length}
-          onFilterCritical={() => setIsFilteringCritical(!isFilteringCritical)}
-          isFilteringCritical={isFilteringCritical}
-        />
-
-        {/* Dynamic Main View */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-20">
           {/* Header & Controls */}
           <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
             <div>
               <h1 className="font-sans font-semibold text-2xl md:text-[28px] text-[#e2e2e6] tracking-tight">
-                {activeEngine === 'tenants'
-                  ? 'Tenant Orchestration'
-                  : activeEngine === 'drift'
-                  ? 'Security Drift Engine'
-                  : activeEngine === 'dashboard'
-                  ? 'MSP Command Overview'
-                  : `${activeEngine.toUpperCase()} ENGINE`}
+                Tenant Orchestration
               </h1>
               <p className="text-[#bfc7d3]/50 text-xs font-sans mt-1">
                 Real-time observability across {tenants.length} managed environments.
@@ -188,6 +151,14 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tenants..."
+                className="bg-[#1a1c1f] border border-white/10 rounded-lg px-3 py-2 text-xs text-[#e2e2e6] placeholder-[#bfc7d3]/40 focus:outline-none font-sans"
+              />
+
               {/* View Switcher */}
               <div className="flex rounded-lg border border-white/10 p-1 glass-dark">
                 <button
@@ -254,10 +225,7 @@ export default function App() {
           )}
 
           {viewMode === 'map' && (
-            <TenantMapView
-              tenants={filteredTenants}
-              onSelectTenant={(t) => setTenantDetail(t)}
-            />
+            <TenantMapView tenants={filteredTenants} onSelectTenant={(t) => setTenantDetail(t)} />
           )}
 
           {/* Lower Panels: Intent Feed & Copilot Advice */}
@@ -266,94 +234,60 @@ export default function App() {
             <CopilotAdvice onGenerateScript={() => setRemediationScriptOpen(true)} />
           </div>
         </div>
-      </main>
 
-      {/* Bottom Status Bar */}
-      <StatusBar
-        highIncidentsCount={tenants.reduce((acc, t) => acc + t.incidentsCount, 0)}
-        alertsCount={feedItems.filter((f) => f.type === 'ALERT').length}
-        messagesCount={8}
-        activeWorkflowsCount={1248}
-      />
+        {/* Bottom Status Bar */}
+        <StatusBar
+          highIncidentsCount={tenants.reduce((acc, t) => acc + t.incidentsCount, 0)}
+          alertsCount={feedItems.filter((f) => f.type === 'ALERT').length}
+          messagesCount={8}
+          activeWorkflowsCount={1248}
+        />
 
-      {/* Notifications Popover */}
-      {notificationsOpen && (
-        <div className="fixed top-16 right-8 w-80 bg-[#1e2023] border border-white/10 rounded-xl shadow-2xl p-4 z-50 animate-fadeIn font-sans">
-          <div className="flex items-center justify-between pb-2 border-b border-white/10">
-            <span className="text-xs font-mono font-bold text-[#e2e2e6]">Active Alerts & Notifications</span>
-            <button
-              onClick={() => setNotificationsOpen(false)}
-              className="text-[#bfc7d3] hover:text-[#e2e2e6]"
-            >
-              <span className="material-symbols-outlined text-sm">close</span>
-            </button>
-          </div>
-          <div className="mt-3 space-y-2 max-h-60 overflow-y-auto text-xs">
-            {feedItems
-              .filter((f) => f.type === 'ALERT')
-              .map((alert) => (
-                <div
-                  key={alert.id}
-                  className="p-2 bg-[#ffb4ab]/10 border border-[#ffb4ab]/20 rounded text-[#e2e2e6]"
-                >
-                  <p className="font-bold text-[#ffb4ab] text-[10px] font-mono">{alert.timestamp}</p>
-                  <p className="text-[11px]">{alert.message}</p>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
+        {/* Modals */}
+        <CommandPalette
+          isOpen={commandPaletteOpen}
+          onClose={() => setCommandPaletteOpen(false)}
+          tenants={tenants}
+          onSelectTenant={(t) => setTenantDetail(t)}
+          onOpenNewDeployment={() => setNewDeploymentOpen(true)}
+          onOpenOpsManual={() => setOpsManualOpen(true)}
+          onGenerateScript={() => setRemediationScriptOpen(true)}
+        />
 
-      {/* Modals */}
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        tenants={tenants}
-        onSelectTenant={(t) => setTenantDetail(t)}
-        onOpenNewDeployment={() => setNewDeploymentOpen(true)}
-        onOpenOpsManual={() => setOpsManualOpen(true)}
-        onGenerateScript={() => setRemediationScriptOpen(true)}
-      />
+        <TriageModal
+          tenant={triageTenant}
+          onClose={() => setTriageTenant(null)}
+          onAutoRemediate={handleAutoRemediate}
+        />
 
-      <TriageModal
-        tenant={triageTenant}
-        onClose={() => setTriageTenant(null)}
-        onAutoRemediate={handleAutoRemediate}
-      />
+        <TerminalModal tenant={terminalTenant} onClose={() => setTerminalTenant(null)} />
 
-      <TerminalModal
-        tenant={terminalTenant}
-        onClose={() => setTerminalTenant(null)}
-      />
+        <NewDeploymentModal
+          isOpen={newDeploymentOpen}
+          onClose={() => setNewDeploymentOpen(false)}
+          onDeployTenant={handleDeployTenant}
+        />
 
-      <NewDeploymentModal
-        isOpen={newDeploymentOpen}
-        onClose={() => setNewDeploymentOpen(false)}
-        onDeployTenant={handleDeployTenant}
-      />
+        <RemediationScriptModal
+          isOpen={remediationScriptOpen}
+          onClose={() => setRemediationScriptOpen(false)}
+        />
 
-      <RemediationScriptModal
-        isOpen={remediationScriptOpen}
-        onClose={() => setRemediationScriptOpen(false)}
-      />
+        <OpsManualModal isOpen={opsManualOpen} onClose={() => setOpsManualOpen(false)} />
 
-      <OpsManualModal
-        isOpen={opsManualOpen}
-        onClose={() => setOpsManualOpen(false)}
-      />
-
-      <TenantDetailModal
-        tenant={tenantDetail}
-        onClose={() => setTenantDetail(null)}
-        onOpenTerminal={(t) => {
-          setTenantDetail(null);
-          setTerminalTenant(t);
-        }}
-        onOpenTriage={(t) => {
-          setTenantDetail(null);
-          setTriageTenant(t);
-        }}
-      />
-    </div>
+        <TenantDetailModal
+          tenant={tenantDetail}
+          onClose={() => setTenantDetail(null)}
+          onOpenTerminal={(t) => {
+            setTenantDetail(null);
+            setTerminalTenant(t);
+          }}
+          onOpenTriage={(t) => {
+            setTenantDetail(null);
+            setTriageTenant(t);
+          }}
+        />
+      </div>
+    </AppShell>
   );
 }

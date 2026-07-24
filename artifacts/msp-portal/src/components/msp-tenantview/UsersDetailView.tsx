@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Tenant } from '../types';
-import { mockUserList } from '../data/mockData';
+import { Tenant } from '@/components/msp-tenantview/types';
+import { mockUserList } from '@/components/msp-tenantview/mockData';
 
 interface UsersDetailViewProps {
   tenant: Tenant;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tenant } from '../../types';
+import { Tenant } from '@/components/msp-tenants/types';
 
 interface TriageModalProps {
   tenant: Tenant | null;

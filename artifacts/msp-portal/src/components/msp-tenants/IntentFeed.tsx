@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IntentFeedItem, IntentType } from '../types';
+import { IntentFeedItem, IntentType } from '@/components/msp-tenants/types';
 
 interface IntentFeedProps {
   feedItems: IntentFeedItem[];

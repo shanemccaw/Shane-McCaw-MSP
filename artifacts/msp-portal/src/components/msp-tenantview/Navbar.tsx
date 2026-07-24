@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TabType, Tenant, NotificationItem } from '../types';
+import { TabType, Tenant, NotificationItem } from '@/components/msp-tenantview/types';
 
 interface NavbarProps {
   activeTab: TabType;

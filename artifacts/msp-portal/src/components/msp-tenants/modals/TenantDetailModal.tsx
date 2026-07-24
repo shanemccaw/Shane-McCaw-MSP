@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tenant } from '../../types';
+import { Tenant } from '@/components/msp-tenants/types';
 
 interface TenantDetailModalProps {
   tenant: Tenant | null;

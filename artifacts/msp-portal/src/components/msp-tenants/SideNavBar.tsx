@@ -1,5 +1,5 @@
 import React from 'react';
-import { EngineType } from '../types';
+import { EngineType } from '@/components/msp-tenants/types';
 
 interface SideNavBarProps {
   activeEngine: EngineType;
