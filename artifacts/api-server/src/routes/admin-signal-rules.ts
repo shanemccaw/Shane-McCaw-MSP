@@ -20,6 +20,10 @@ import {
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
 import { detectRuleConflicts } from "../lib/signal-conflict-detector";
+import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
+import { PILLAR_FIELD, type HealthPillar } from "../lib/health-engine";
+import { computeRuleFedStatus, PILLAR_LABELS, type RadarPillar } from "../lib/pillar-coverage";
+import { buildPillarMatrix } from "../lib/pillar-matrix";
 
 const router: IRouter = Router();
 
@@ -38,6 +42,7 @@ const INTELLIGENCE_FIELDS_SELECT = sql`
   adoption_impact AS "adoptionImpact",
   copilot_impact AS "copilotImpact",
   architecture_impact AS "architectureImpact",
+  licensing_impact AS "licensingImpact",
   trend_value AS "trendValue",
   trend_direction AS "trendDirection",
   decay_rate AS "decayRate",
@@ -65,6 +70,7 @@ interface IntelligenceFieldInput {
   adoptionImpact?: unknown;
   copilotImpact?: unknown;
   architectureImpact?: unknown;
+  licensingImpact?: unknown;
   trendValue?: unknown;
   trendDirection?: unknown;
   decayRate?: unknown;
@@ -83,7 +89,7 @@ interface IntelligenceFieldInput {
 const INTELLIGENCE_FIELD_DEFAULTS: Record<string, number | string> = {
   priority: 0, weight: 0, pricingImpact: 0, priorityScoreContribution: 0, pricingValueContribution: 0,
   governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 0, copilotImpact: 0,
-  architectureImpact: 0, trendValue: 0, trendDirection: "flat", decayRate: 0, ttlDays: 0, confidence: 0,
+  architectureImpact: 0, licensingImpact: 0, trendValue: 0, trendDirection: "flat", decayRate: 0, ttlDays: 0, confidence: 0,
   severity: "low", category: "", pillar: "", crmFitContribution: 0, crmPainContribution: 0,
   crmMaturityContribution: 0, crmIntentContribution: 0, crmUrgencyContribution: 0,
 };
@@ -124,6 +130,7 @@ export function parseIntelligenceFields(
       adoptionImpact: num(body.adoptionImpact, base.adoptionImpact as number),
       copilotImpact: num(body.copilotImpact, base.copilotImpact as number),
       architectureImpact: num(body.architectureImpact, base.architectureImpact as number),
+      licensingImpact: num(body.licensingImpact, base.licensingImpact as number),
       trendValue: num(body.trendValue, base.trendValue as number),
       trendDirection: str(body.trendDirection, base.trendDirection as string),
       decayRate: num(body.decayRate, base.decayRate as number),
@@ -524,6 +531,68 @@ router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Respo
   }
 });
 
+// ── GET /api/admin/signal-rules/pillar-matrix ──────────────────────────────────
+// Cross-signal tuning view for the Simulator Studio Pillar Matrix. For ONE
+// selected pillar, returns every platform rule (msp_id IS NULL) whose OWN impact
+// value for that pillar is non-zero, each annotated with:
+//   • the per-rule fed / structurally-inert status (same producible-key logic as
+//     the pillar-coverage trace — `computeRuleFedStatus`), and
+//   • the dual-source reality the health engine actually scores: the signal's
+//     effective per-pillar value is the MAX across that signal's rules AND its
+//     group (`getSignalHealthImpacts`), so a non-zero rule value can still be
+//     inert for scoring if the group or a sibling rule configures a higher one.
+// The summary header's `theoreticalMax` uses the identical evaluable-restricted
+// denominator `computePillarDisplayScore` uses, so it matches the live dashboard.
+//
+// Read-only: this route reuses the SAME live-scoring fetch (`fetchSignalRulesAndGroups`)
+// the dashboard uses (it includes `licensingImpact`, unlike `getAllRules`). Edits
+// go back through the existing per-rule `PATCH /admin/signal-rules/:id` — no draft
+// or gating; a saved value takes effect on live scoring immediately.
+router.get("/admin/signal-rules/pillar-matrix", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const pillar = String(req.query.pillar ?? "") as RadarPillar;
+    if (!Object.prototype.hasOwnProperty.call(PILLAR_LABELS, pillar)) {
+      res.status(400).json({ error: `pillar must be one of: ${Object.keys(PILLAR_LABELS).join(", ")}` });
+      return;
+    }
+    // health-engine's PILLAR_FIELD maps every RadarPillar (six health pillars +
+    // security) to its intelligence-field name, e.g. "governanceImpact".
+    const field = PILLAR_FIELD[pillar as HealthPillar | "security"] as keyof SignalDerivationRule;
+
+    // Same source the LIVE scoring, theoreticalMax and getPillarCoverage use —
+    // platform rows, and (crucially for the licensing pillar) it selects
+    // licensing_impact, which the admin getAllRules() SELECT historically dropped.
+    const { rules, groups } = await fetchSignalRulesAndGroups();
+
+    // Per-rule fed/inert + the evaluable-signal set (reused producible-key logic).
+    const { fedByRuleId, evaluableSignalKeys } = await computeRuleFedStatus(rules);
+
+    // Pure builder: filtering, dual-source MAX (getSignalHealthImpacts) and the
+    // evaluable-restricted theoreticalMax all live in lib/pillar-matrix.ts.
+    const { theoreticalMax, contributingSignalCount, rows } = buildPillarMatrix(
+      rules,
+      groups,
+      field,
+      fedByRuleId,
+      evaluableSignalKeys,
+    );
+
+    res.json({
+      pillar,
+      label: PILLAR_LABELS[pillar],
+      field,
+      theoreticalMax,
+      contributingSignalCount,
+      ruleCount: rows.length,
+      fedRuleCount: rows.filter((r) => r.fed).length,
+      rows,
+    });
+  } catch (err) {
+    log.error({ err }, "GET /admin/signal-rules/pillar-matrix failed");
+    res.status(500).json({ error: "Failed to build pillar matrix" });
+  }
+});
+
 // ── POST /api/admin/signal-rules ───────────────────────────────────────────────
 
 router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Response) => {
@@ -731,6 +800,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
           adoption_impact = ${intel.adoptionImpact as number},
           copilot_impact = ${intel.copilotImpact as number},
           architecture_impact = ${intel.architectureImpact as number},
+          licensing_impact = ${intel.licensingImpact as number},
           trend_value = ${intel.trendValue as number},
           trend_direction = ${intel.trendDirection as string},
           decay_rate = ${intel.decayRate as number},

@@ -26,6 +26,7 @@ import {
   FileDiff,
   Globe,
   Archive,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -139,6 +140,19 @@ export interface WriteActionNode {
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
 
+// The seven real radar pillars, mirroring PILLAR_LABELS in api-server
+// lib/pillar-coverage.ts (same order the spec lists them). Each opens the
+// cross-signal Pillar Matrix pre-selected to that pillar.
+const PILLAR_MATRIX_PILLARS: Array<{ key: string; label: string }> = [
+  { key: "governance", label: "Governance" },
+  { key: "security", label: "Security" },
+  { key: "compliance", label: "Compliance" },
+  { key: "adoption", label: "Adoption" },
+  { key: "copilot", label: "Copilot Readiness" },
+  { key: "architecture", label: "Architecture" },
+  { key: "licensing", label: "Licensing" },
+];
+
 export function SimulatorLeftTree() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
@@ -177,10 +191,13 @@ export function SimulatorLeftTree() {
   const [busEventsOpen, setBusEventsOpen] = useState(initialTreeState?.sections.busEvents ?? true);
   const [endpointsOpen, setEndpointsOpen] = useState(initialTreeState?.sections.endpoints ?? true);
   const [writeActionsOpen, setWriteActionsOpen] = useState(initialTreeState?.sections.writeActions ?? true);
+  const [pillarMatrixOpen, setPillarMatrixOpen] = useState(initialTreeState?.sections.pillarMatrix ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
   // Which write-action template the center canvas is showing — highlighted in the tree.
   const [selectedWriteActionId, setSelectedWriteActionId] = useState<string | null>(null);
+  // Which pillar the Pillar Matrix tab is showing — highlighted in the tree.
+  const [selectedPillarKey, setSelectedPillarKey] = useState<string | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
@@ -205,6 +222,7 @@ export function SimulatorLeftTree() {
         busEvents: busEventsOpen,
         endpoints: endpointsOpen,
         writeActions: writeActionsOpen,
+        pillarMatrix: pillarMatrixOpen,
       },
       cats: expandedCats,
     });
@@ -218,6 +236,7 @@ export function SimulatorLeftTree() {
     busEventsOpen,
     endpointsOpen,
     writeActionsOpen,
+    pillarMatrixOpen,
     expandedCats,
   ]);
 
@@ -595,6 +614,14 @@ export function SimulatorLeftTree() {
   const handleWriteActionSelect = (wa: WriteActionNode) => {
     setSelectedWriteActionId(wa.templateId);
     window.dispatchEvent(new CustomEvent("simulator-select-write-action", { detail: wa }));
+  };
+
+  // Selecting a pillar opens the cross-signal Pillar Matrix in the center canvas
+  // (same event-driven hand-off pattern as endpoints/write-actions; the detail
+  // carries which pillar to pre-select).
+  const handlePillarSelect = (pillar: string) => {
+    setSelectedPillarKey(pillar);
+    window.dispatchEvent(new CustomEvent("simulator-select-pillar-matrix", { detail: { pillar } }));
   };
 
   /**
@@ -1441,6 +1468,43 @@ export function SimulatorLeftTree() {
                     </div>
                   ))
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 9: Pillar Matrix — cross-signal per-pillar impact tuning.
+            Distinct from the per-endpoint Engine Trace: pick a pillar and edit
+            every rule that contributes to it, across all signals, in one table.
+            Each pillar row opens the matrix pre-selected to that pillar. */}
+        <div>
+          <div
+            onClick={() => setPillarMatrixOpen(!pillarMatrixOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {pillarMatrixOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <LayoutGrid className="h-3.5 w-3.5 text-primary" />
+            <span className="truncate">Pillar Matrix</span>
+          </div>
+
+          {pillarMatrixOpen && (
+            <div className="ml-[22px] border-l border-accent">
+              {PILLAR_MATRIX_PILLARS.map((p) => (
+                <div
+                  key={p.key}
+                  onClick={() => handlePillarSelect(p.key)}
+                  className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                    selectedPillarKey === p.key ? "bg-accent text-foreground" : "text-foreground/85"
+                  }`}
+                  title={`Tune every rule contributing to the ${p.label} pillar`}
+                >
+                  <LayoutGrid className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                  <span className="flex-1 truncate text-[11px]">{p.label}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>

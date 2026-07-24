@@ -26,6 +26,7 @@ import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
 import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
 import { SimulatorBatchCanvas, type BulkRunTarget } from "./SimulatorBatchCanvas";
 import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
+import { SimulatorPillarMatrixCanvas, type PillarKey } from "./SimulatorPillarMatrixCanvas";
 import type { WriteActionNode } from "./SimulatorLeftTree";
 
 interface Msp {
@@ -61,8 +62,12 @@ export function SimulatorCenterCanvas({
   const { openModal } = useModal();
 
   const [activeTab, setActiveTab] = useState<
-    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action"
+    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action" | "pillar-matrix"
   >("sql");
+
+  // The pillar currently open in the Pillar Matrix tab, set by clicking a pillar
+  // in the Explorer tree. Defaults to governance when the tab is opened directly.
+  const [selectedPillar, setSelectedPillar] = useState<PillarKey>("governance");
 
   // The M365 endpoint currently open in the Endpoint tab, set by clicking an
   // endpoint in the Explorer tree.
@@ -115,12 +120,21 @@ export function SimulatorCenterCanvas({
       setSelectedWriteAction(detail);
       setActiveTab("write-action");
     };
+    // Selecting a pillar in the tree opens the cross-signal Pillar Matrix tab —
+    // same event-driven hand-off pattern; the matrix is a read/edit surface, not
+    // a per-tenant run, so no testbed selection is involved.
+    const handleSelectPillarMatrix = (e: Event) => {
+      const detail = (e as CustomEvent<{ pillar: PillarKey }>).detail;
+      if (detail?.pillar) setSelectedPillar(detail.pillar);
+      setActiveTab("pillar-matrix");
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleLoadScript);
     window.addEventListener("simulator-select-endpoint", handleSelectEndpoint);
     window.addEventListener("simulator-bulk-run", handleBulkRun);
     window.addEventListener("simulator-select-write-action", handleSelectWriteAction);
+    window.addEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
@@ -128,6 +142,7 @@ export function SimulatorCenterCanvas({
       window.removeEventListener("simulator-select-endpoint", handleSelectEndpoint);
       window.removeEventListener("simulator-bulk-run", handleBulkRun);
       window.removeEventListener("simulator-select-write-action", handleSelectWriteAction);
+      window.removeEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
     };
   }, []);
 
@@ -242,6 +257,7 @@ export function SimulatorCenterCanvas({
     { key: "overrides", label: "Overrides" },
     { key: "engines", label: "Run Engines" },
     { key: "deploy", label: "Deploy Console" },
+    { key: "pillar-matrix", label: "Pillar Matrix" },
     // Only present once an endpoint has been picked in the Explorer tree —
     // an empty "Endpoint" tab would be a dead tab with nothing to show.
     ...(selectedEndpoint
@@ -501,6 +517,11 @@ export function SimulatorCenterCanvas({
         {/* Tab 5: Deploy Console — whitelisted git/pnpm operations only */}
         {activeTab === "deploy" && (
           <SimulatorDeployConsolePanel />
+        )}
+        {/* Tab 6: Pillar Matrix — cross-signal per-pillar impact tuning. Keyed on
+            the selected pillar so a tree re-select remounts with fresh state. */}
+        {activeTab === "pillar-matrix" && (
+          <SimulatorPillarMatrixCanvas key={selectedPillar} initialPillar={selectedPillar} />
         )}
       </div>
     </div>

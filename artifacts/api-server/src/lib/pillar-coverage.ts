@@ -262,6 +262,47 @@ export async function fetchEvaluableSignalKeys(
   );
 }
 
+/**
+ * Per-rule "fed / structurally inert" status across the ENTIRE monitor_checks
+ * catalog, for the Simulator Studio Pillar Matrix. Reuses the EXACT producible-
+ * key primitives (`buildProducibleProfileKeys` + `ruleIsFedByPackage`) that
+ * `fetchEvaluableSignalKeys` and `getPillarCoverage` already use — this is the
+ * same "can any real check genuinely produce this rule's sourceKey" test, just
+ * surfaced per rule (by id) instead of collapsed to a set of signal keys.
+ *
+ * The returned `evaluableSignalKeys` set is, by construction, IDENTICAL to what
+ * `fetchEvaluableSignalKeys(rules)` returns (a signal is evaluable iff at least
+ * one of its rules is fed) — so a theoreticalMax the matrix computes from this
+ * set matches the live dashboard's denominator exactly (both flow through
+ * `computePillarDisplayScore`'s evaluable-restricted sum).
+ *
+ * Async — reads monitor_checks once. Exported for the pillar-matrix route.
+ */
+export async function computeRuleFedStatus(
+  rules: Pick<SignalDerivationRule, "id" | "ruleType" | "sourceKey" | "signalKey">[],
+): Promise<{ fedByRuleId: Map<number, boolean>; evaluableSignalKeys: Set<string> }> {
+  const checkDefinitions: CheckDefinitionRow[] = await db
+    .select({
+      key: monitorChecksTable.key,
+      mapping: monitorChecksTable.mapping,
+      properties: monitorChecksTable.properties,
+      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
+    })
+    .from(monitorChecksTable);
+
+  const allCheckKeys = new Set(checkDefinitions.map((c) => c.key));
+  const producibleProfileKeys = buildProducibleProfileKeys(allCheckKeys, checkDefinitions);
+
+  const fedByRuleId = new Map<number, boolean>();
+  const evaluableSignalKeys = new Set<string>();
+  for (const rule of rules) {
+    const fed = ruleIsFedByPackage(rule, allCheckKeys, producibleProfileKeys);
+    fedByRuleId.set(rule.id, fed);
+    if (fed) evaluableSignalKeys.add(rule.signalKey);
+  }
+  return { fedByRuleId, evaluableSignalKeys };
+}
+
 export async function getPillarCoverage(
   packageKey: string,
   customerId: number,
