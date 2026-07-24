@@ -25,6 +25,8 @@ import { SimulatorDeployConsolePanel } from "./SimulatorDeployConsolePanel";
 import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
 import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
 import { SimulatorBatchCanvas, type BulkRunTarget } from "./SimulatorBatchCanvas";
+import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
+import type { WriteActionNode } from "./SimulatorLeftTree";
 
 interface Msp {
   id: number;
@@ -59,12 +61,16 @@ export function SimulatorCenterCanvas({
   const { openModal } = useModal();
 
   const [activeTab, setActiveTab] = useState<
-    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch"
+    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action"
   >("sql");
 
   // The M365 endpoint currently open in the Endpoint tab, set by clicking an
   // endpoint in the Explorer tree.
   const [selectedEndpoint, setSelectedEndpoint] = useState<MonitorCheckSummary | null>(null);
+
+  // The write-action template currently open in the Write Action tab, set by
+  // clicking a write-action in the Explorer tree.
+  const [selectedWriteAction, setSelectedWriteAction] = useState<WriteActionNode | null>(null);
 
   // The bulk run currently open in the Batch tab, set by "Run all" on a domain
   // folder in the Explorer tree.
@@ -100,17 +106,28 @@ export function SimulatorCenterCanvas({
       setBulkRun(detail);
       setActiveTab("batch");
     };
+    // Selecting a write-action in the tree opens its own tenant-MUTATING tab —
+    // deliberately a SEPARATE event from the read endpoint, so a write can never
+    // land in the read canvas (which has no confirmation flow).
+    const handleSelectWriteAction = (e: Event) => {
+      const detail = (e as CustomEvent<WriteActionNode>).detail;
+      if (!detail) return;
+      setSelectedWriteAction(detail);
+      setActiveTab("write-action");
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleLoadScript);
     window.addEventListener("simulator-select-endpoint", handleSelectEndpoint);
     window.addEventListener("simulator-bulk-run", handleBulkRun);
+    window.addEventListener("simulator-select-write-action", handleSelectWriteAction);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
       window.removeEventListener("simulator-run-migration", handleLoadScript);
       window.removeEventListener("simulator-select-endpoint", handleSelectEndpoint);
       window.removeEventListener("simulator-bulk-run", handleBulkRun);
+      window.removeEventListener("simulator-select-write-action", handleSelectWriteAction);
     };
   }, []);
 
@@ -232,6 +249,10 @@ export function SimulatorCenterCanvas({
       : []),
     // Same rule as the Endpoint tab: only present once a bulk run exists.
     ...(bulkRun ? [{ key: "batch" as typeof activeTab, label: `${bulkRun.domain}:* run` }] : []),
+    // Only present once a write-action has been picked in the Explorer tree.
+    ...(selectedWriteAction
+      ? [{ key: "write-action" as typeof activeTab, label: `⚡ ${selectedWriteAction.label}` }]
+      : []),
   ];
 
   return (
@@ -269,6 +290,11 @@ export function SimulatorCenterCanvas({
 
         {/* Tab: bulk run — live per-check summary polled from the persisted batch */}
         {activeTab === "batch" && bulkRun && <SimulatorBatchCanvas key={bulkRun.batchId} target={bulkRun} />}
+
+        {/* Tab: Write Action — real tenant-MUTATING template with confirmation + safety flow */}
+        {activeTab === "write-action" && selectedWriteAction && (
+          <SimulatorWriteActionCanvas key={selectedWriteAction.templateId} action={selectedWriteAction} />
+        )}
 
         {/* Tab 2: Testbeds Dashboard */}
         {activeTab === "testbeds" && (

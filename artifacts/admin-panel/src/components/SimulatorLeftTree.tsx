@@ -104,6 +104,37 @@ interface MonitorCheckNode {
   status: string;
 }
 
+// Real baseline_action_templates rows (the executable write-action universe)
+// from GET /api/admin/write-actions, each with its LEFT-JOINed
+// write_action_catalog safety metadata (or null when the catalog link is not
+// yet established). Grouped by the template's own `category` column.
+export interface WriteActionNode {
+  templateId: string;
+  label: string;
+  description: string | null;
+  category: string;
+  endpoint: string;
+  method: string;
+  requiredVariables: string[];
+  dependsOn: string[];
+  requiresVerificationGate: boolean;
+  reversible: boolean;
+  reverseTemplateId: string | null;
+  reverseTemplateLabel: string | null;
+  status: string;
+  catalogLinked: boolean;
+  catalog: {
+    domain: string;
+    surface: string;
+    requiredPermission: string | null;
+    safeOrGated: "safe" | "gated" | null;
+    minBundledTier: string | null;
+    snapshotNotes: string | null;
+    status: string | null;
+    blockedReason: string | null;
+  } | null;
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -120,6 +151,7 @@ export function SimulatorLeftTree() {
   const [engines, setEngines] = useState<EngineDefSummary[]>([]);
   const [busEventTypes, setBusEventTypes] = useState<BusEventType[]>([]);
   const [monitorChecks, setMonitorChecks] = useState<MonitorCheckNode[]>([]);
+  const [writeActions, setWriteActions] = useState<WriteActionNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   // The domain whose bulk run is being started — one at a time, so a stray
@@ -144,8 +176,11 @@ export function SimulatorLeftTree() {
   const [enginesOpen, setEnginesOpen] = useState(initialTreeState?.sections.engines ?? true);
   const [busEventsOpen, setBusEventsOpen] = useState(initialTreeState?.sections.busEvents ?? true);
   const [endpointsOpen, setEndpointsOpen] = useState(initialTreeState?.sections.endpoints ?? true);
+  const [writeActionsOpen, setWriteActionsOpen] = useState(initialTreeState?.sections.writeActions ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
+  // Which write-action template the center canvas is showing — highlighted in the tree.
+  const [selectedWriteActionId, setSelectedWriteActionId] = useState<string | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
@@ -169,6 +204,7 @@ export function SimulatorLeftTree() {
         engines: enginesOpen,
         busEvents: busEventsOpen,
         endpoints: endpointsOpen,
+        writeActions: writeActionsOpen,
       },
       cats: expandedCats,
     });
@@ -181,6 +217,7 @@ export function SimulatorLeftTree() {
     enginesOpen,
     busEventsOpen,
     endpointsOpen,
+    writeActionsOpen,
     expandedCats,
   ]);
 
@@ -210,6 +247,20 @@ export function SimulatorLeftTree() {
       return acc;
     },
     {} as Record<string, MonitorCheckNode[]>,
+  );
+
+  // Group write-action templates by their own `category` column (Users, Auth/MFA,
+  // Licensing, Groups, Teams, SharePoint/OneDrive...). Keys are namespaced
+  // ("wa:Users") so write-action groups never collide with endpoint/event/script
+  // categories in expandedCats — the same collision guard the others use.
+  const writeActionsByCategory = writeActions.reduce(
+    (acc, wa) => {
+      const cat = wa.category || "Other";
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(wa);
+      return acc;
+    },
+    {} as Record<string, WriteActionNode[]>,
   );
 
   const loadData = async () => {
@@ -294,6 +345,13 @@ export function SimulatorLeftTree() {
       if (checksRes.ok) {
         const checksData = await checksRes.json();
         setMonitorChecks(checksData.checks || []);
+      }
+
+      // 7. Fetch the real baseline_action_templates catalog (Write Actions).
+      const writeActionsRes = await fetchWithAuth("/api/admin/write-actions");
+      if (writeActionsRes.ok) {
+        const writeActionsData = await writeActionsRes.json();
+        setWriteActions(writeActionsData.templates || []);
       }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
@@ -529,6 +587,14 @@ export function SimulatorLeftTree() {
   const handleEndpointSelect = (check: MonitorCheckNode) => {
     setSelectedEndpointKey(check.key);
     window.dispatchEvent(new CustomEvent("simulator-select-endpoint", { detail: check }));
+  };
+
+  // Selecting a write-action opens it in the center canvas (the tenant-MUTATING
+  // sibling of handleEndpointSelect — separate event so the center routes it to
+  // the write-action canvas with its confirmation flow, never the read canvas).
+  const handleWriteActionSelect = (wa: WriteActionNode) => {
+    setSelectedWriteActionId(wa.templateId);
+    window.dispatchEvent(new CustomEvent("simulator-select-write-action", { detail: wa }));
   };
 
   /**
@@ -1253,6 +1319,119 @@ export function SimulatorLeftTree() {
                                 >
                                   <Archive className="h-3.5 w-3.5" />
                                   Retire
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 8: Write Actions (real baseline_action_templates catalog) —
+            the tenant-MUTATING sibling of M365 Endpoints. Testbed-only; the
+            confirmation + safety flow lives in the center canvas. */}
+        <div>
+          <div
+            onClick={() => setWriteActionsOpen(!writeActionsOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {writeActionsOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <Zap className="h-3.5 w-3.5 text-amber-400" />
+            <span className="truncate">Write Actions</span>
+            <span
+              className="ml-auto text-[9px] uppercase tracking-wider text-amber-400/70"
+              title="These execute REAL tenant-mutating writes — testbed customers only"
+            >
+              testbed
+            </span>
+          </div>
+
+          {writeActionsOpen && (
+            <div>
+              {writeActions.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">No write-action templates</div>
+              ) : (
+                Object.keys(writeActionsByCategory)
+                  .sort()
+                  .map((cat) => (
+                    <div key={cat}>
+                      <div
+                        onClick={() => toggleCat(`wa:${cat}`)}
+                        className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
+                      >
+                        {expandedCats[`wa:${cat}`] ? (
+                          <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+                        )}
+                        {expandedCats[`wa:${cat}`] ? (
+                          <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
+                        ) : (
+                          <Folder className="h-3.5 w-3.5 text-amber-400" />
+                        )}
+                        <span className="truncate">{cat}</span>
+                        <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
+                          {writeActionsByCategory[cat]!.length}
+                        </span>
+                      </div>
+
+                      {expandedCats[`wa:${cat}`] && (
+                        <div className="ml-[22px] border-l border-accent">
+                          {writeActionsByCategory[cat]!.map((wa) => (
+                            <ContextMenu key={wa.templateId}>
+                              <ContextMenuTrigger asChild>
+                                <div
+                                  onClick={() => handleWriteActionSelect(wa)}
+                                  className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                                    selectedWriteActionId === wa.templateId
+                                      ? "bg-accent text-foreground"
+                                      : "text-foreground/85"
+                                  } ${wa.status !== "active" ? "opacity-50" : ""}`}
+                                >
+                                  <span
+                                    className={`shrink-0 rounded px-1 text-[8px] font-bold uppercase tracking-wider ${
+                                      wa.method === "DELETE"
+                                        ? "bg-red-500/15 text-red-400"
+                                        : wa.method === "POST"
+                                          ? "bg-emerald-500/15 text-emerald-400"
+                                          : "bg-amber-500/15 text-amber-400"
+                                    }`}
+                                    title={`${wa.method} ${wa.endpoint}`}
+                                  >
+                                    {wa.method}
+                                  </span>
+                                  <span
+                                    className="flex-1 truncate text-[11px]"
+                                    title={wa.description || wa.label}
+                                  >
+                                    {wa.label}
+                                  </span>
+                                  {!wa.reversible && (
+                                    <span
+                                      className="shrink-0 text-[9px] uppercase tracking-wider text-red-400/70"
+                                      title="No single-step rollback path"
+                                    >
+                                      1-way
+                                    </span>
+                                  )}
+                                  {wa.catalog?.safeOrGated === "gated" && (
+                                    <Shield className="h-3 w-3 shrink-0 text-amber-400/70" aria-label="Gated action" />
+                                  )}
+                                </div>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent className="w-44">
+                                <ContextMenuItem onSelect={() => handleWriteActionSelect(wa)} className="gap-2 text-xs">
+                                  <Play className="h-3.5 w-3.5" />
+                                  Open
                                 </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
