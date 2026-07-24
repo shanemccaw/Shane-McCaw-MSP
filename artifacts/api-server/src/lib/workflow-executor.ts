@@ -415,19 +415,41 @@ export interface BaselineTemplateExecutionResult {
 }
 
 /**
- * Resolve a baseline action template's endpoint/body against `payload` and
- * execute it via graphWriteForTenant, recording the attempt in
- * baseline_action_template_audit_log. Shared by the execute_baseline_template
- * node handler and the admin "Testing" endpoint (routes/admin-baseline-templates.ts)
- * so there is exactly one implementation of "run this template for real."
+ * The real, resolved request a baseline action template will send once its
+ * {{variable}} placeholders are substituted — WITHOUT firing anything. Returned
+ * by resolveBaselineTemplateRequest() so a caller can PREVIEW exactly what a
+ * subsequent runBaselineTemplateAgainstTenant() call will POST/PATCH/PUT/DELETE.
  */
-export async function runBaselineTemplateAgainstTenant(
+export interface ResolvedBaselineRequest {
+  templateId: string;
+  label: string;
+  category: string;
+  /** Endpoint AFTER {{variable}} substitution — the actual path the write will hit. */
+  endpoint: string;
+  /** Endpoint BEFORE substitution (the stored template string). */
+  rawEndpoint: string;
+  method: "POST" | "PATCH" | "PUT" | "DELETE";
+  /** Body AFTER {{variable}} substitution — the actual body the write will send. */
+  body: Record<string, unknown>;
+  /** Body template BEFORE substitution. */
+  rawBodyTemplate: Record<string, unknown>;
+  requiredVariables: string[];
+  /** requiredVariables that did NOT resolve to a non-empty value — a Graph call would be refused. */
+  missingVariables: string[];
+}
+
+/**
+ * Resolve a baseline action template's endpoint + body against `payload` WITHOUT
+ * executing anything. This is the exact same substitution that
+ * runBaselineTemplateAgainstTenant() performs immediately before firing
+ * graphWriteForTenant(), extracted so a preview/confirmation surface (the
+ * Simulator's write-action confirm step) shows byte-for-byte what execution will
+ * actually send — one substitution implementation, never two that can drift.
+ */
+export async function resolveBaselineTemplateRequest(
   templateId: string,
-  tenantId: string,
-  customerId: number,
   payload: Record<string, unknown>,
-  source?: string,
-): Promise<BaselineTemplateExecutionResult> {
+): Promise<ResolvedBaselineRequest> {
   const [template] = await db
     .select()
     .from(baselineActionTemplatesTable)
@@ -441,7 +463,8 @@ export async function runBaselineTemplateAgainstTenant(
   // Resolve {{variable}} placeholders in bodyTemplate using interp(). We do this
   // by JSON-serializing the template, running interp on the string, then parsing
   // it back — the same approach as any structured JSON template.
-  const bodyTemplateStr = JSON.stringify(template.bodyTemplate ?? {});
+  const rawBodyTemplate = (template.bodyTemplate ?? {}) as Record<string, unknown>;
+  const bodyTemplateStr = JSON.stringify(rawBodyTemplate);
   const bodyResolved = interp(bodyTemplateStr, payload) ?? "{}";
   const body = JSON.parse(bodyResolved) as Record<string, unknown>;
 
@@ -451,17 +474,53 @@ export async function runBaselineTemplateAgainstTenant(
     const resolved = interp(`{{${varName}}}`, payload);
     return !resolved || resolved.trim() === "";
   });
-  if (missingVariables.length > 0) {
-    return {
-      success: false, status: 400, errorType: "bad_request", data: null,
-      endpoint: template.endpoint, method: template.method, label: template.label,
-      missingVariables,
-    };
-  }
 
   // Resolve the endpoint (may also contain {{variable}} placeholders)
   const endpoint = interp(template.endpoint, payload) ?? template.endpoint;
-  const method = template.method as "POST" | "PATCH" | "PUT" | "DELETE";
+
+  return {
+    templateId: template.templateId,
+    label: template.label,
+    category: template.category,
+    endpoint,
+    rawEndpoint: template.endpoint,
+    method: template.method as "POST" | "PATCH" | "PUT" | "DELETE",
+    body,
+    rawBodyTemplate,
+    requiredVariables: requiredVars,
+    missingVariables,
+  };
+}
+
+/**
+ * Resolve a baseline action template's endpoint/body against `payload` and
+ * execute it via graphWriteForTenant, recording the attempt in
+ * baseline_action_template_audit_log. Shared by the execute_baseline_template
+ * node handler and the admin "Testing" endpoint (routes/admin-baseline-templates.ts)
+ * so there is exactly one implementation of "run this template for real."
+ */
+export async function runBaselineTemplateAgainstTenant(
+  templateId: string,
+  tenantId: string,
+  customerId: number,
+  payload: Record<string, unknown>,
+  source?: string,
+): Promise<BaselineTemplateExecutionResult> {
+  // Same substitution the preview surface sees — resolveBaselineTemplateRequest()
+  // is the single implementation, so a confirmed request executes verbatim.
+  const resolved = await resolveBaselineTemplateRequest(templateId, payload);
+
+  if (resolved.missingVariables.length > 0) {
+    return {
+      success: false, status: 400, errorType: "bad_request", data: null,
+      endpoint: resolved.rawEndpoint, method: resolved.method, label: resolved.label,
+      missingVariables: resolved.missingVariables,
+    };
+  }
+
+  const endpoint = resolved.endpoint;
+  const method = resolved.method;
+  const body = resolved.body;
 
   const { graphWriteForTenant } = await import("./graph");
   const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
@@ -495,7 +554,7 @@ export async function runBaselineTemplateAgainstTenant(
 
   return {
     success: result.success, status: result.status, data: result.data, errorType: result.errorType,
-    endpoint, method, label: template.label, auditLogId,
+    endpoint, method, label: resolved.label, auditLogId,
   };
 }
 

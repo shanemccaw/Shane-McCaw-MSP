@@ -113,6 +113,8 @@ export default defineConfig({
       "src/lib/monitor-check-trace.test.ts",
       "src/lib/simulator-run-diff.test.ts",
       "src/lib/__tests__/monitor-failure-classifier.test.ts",
+      "src/lib/write-action-safety.test.ts",
+      "src/routes/admin-write-actions.test.ts",
     ],
     coverage: {
       provider: "v8",
