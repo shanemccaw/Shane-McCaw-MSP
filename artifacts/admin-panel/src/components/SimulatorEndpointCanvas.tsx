@@ -15,8 +15,13 @@
 // covers. "Re-evaluate" there re-traces the captured response with no network
 // call; "Re-run" calls handleRun below, hitting the live tenant again.
 //
-// Deliberately NOT here (later phases, per the sequenced spec): bulk run, run
-// history/diff, auto-classification, write endpoints.
+// Phase 3 adds the run history panel (SimulatorRunHistory) beneath it. Runs are
+// now persisted in the real `simulator_check_runs` table rather than a
+// process-local Map, so "Open" can load a run started before the last
+// api-server restart back into this canvas, and two runs can be compared.
+//
+// Deliberately NOT here (later phase, per the sequenced spec):
+// auto-classification, tie-failures-to-action, write endpoints.
 //
 // Editing a parameter here does NOT mutate the catalog row — the run route takes
 // per-run overrides. Persisting a change is the explicit "Save changes" action,
@@ -30,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
 import { SimulatorEngineTrace } from "./SimulatorEngineTrace";
+import { SimulatorRunHistory } from "./SimulatorRunHistory";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -90,6 +96,9 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const [run, setRun] = useState<CheckRun | null>(null);
   const [starting, setStarting] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Bumped whenever a run reaches a terminal state, so the persisted history
+  // list refetches instead of showing a stale set.
+  const [historyToken, setHistoryToken] = useState(0);
   const pollRef = useRef<number | null>(null);
 
   // Re-seed every field when a different endpoint is selected in the tree.
@@ -195,6 +204,8 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
               setRun(current);
               if (current.status === "completed" || current.status === "failed") {
                 stopPolling();
+                // The run is now a persisted row — refresh history so it appears.
+                setHistoryToken((t) => t + 1);
                 if (current.status === "completed") toast.success(`${check.key} completed`);
                 else toast.error(current.statusText || "Run failed");
                 return;
@@ -215,6 +226,25 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       toast.error(err.message || "Network error starting run");
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Loads a PERSISTED past run back into the canvas — response, status and the
+  // engine trace below it, all keyed off the stored runId. This is only possible
+  // because runs outlive the process now; the trace route reads that run's own
+  // stored response, so re-evaluating it still issues no Graph request.
+  const handleOpenRun = async (runId: string) => {
+    stopPolling();
+    try {
+      const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to load that run");
+        return;
+      }
+      setRun(data.run as CheckRun);
+    } catch (err: any) {
+      toast.error(err.message || "Network error loading that run");
     }
   };
 
@@ -478,6 +508,14 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         runStatus={run?.status ?? null}
         onRerun={() => void handleRun()}
         rerunning={isRunning}
+      />
+
+      {/* Persisted run history for this endpoint, and the two-run diff. */}
+      <SimulatorRunHistory
+        checkKey={check.key}
+        customerId={selectedCustomerId ?? null}
+        refreshToken={historyToken}
+        onOpenRun={(runId) => void handleOpenRun(runId)}
       />
     </div>
   );

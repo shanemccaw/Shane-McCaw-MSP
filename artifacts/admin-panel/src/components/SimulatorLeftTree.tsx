@@ -121,6 +121,10 @@ export function SimulatorLeftTree() {
   const [monitorChecks, setMonitorChecks] = useState<MonitorCheckNode[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // The domain whose bulk run is being started — one at a time, so a stray
+  // double-click can't queue two full-domain sweeps against the same tenant.
+  const [bulkRunningDomain, setBulkRunningDomain] = useState<string | null>(null);
+
   const [triggeringException, setTriggeringException] = useState(false);
   // Suites with an in-flight run — spinner on the row, re-run blocked.
   const [runningSuites, setRunningSuites] = useState<Record<number, boolean>>({});
@@ -499,6 +503,51 @@ export function SimulatorLeftTree() {
   const handleEndpointSelect = (check: MonitorCheckNode) => {
     setSelectedEndpointKey(check.key);
     window.dispatchEvent(new CustomEvent("simulator-select-endpoint", { detail: check }));
+  };
+
+  /**
+   * Starts a bulk run over one domain prefix and hands the batch to the center
+   * canvas, which polls the real persisted rows for a live summary.
+   *
+   * The server runs each check through the SAME single-run execution path this
+   * tree's per-endpoint Run uses — there is no separate bulk implementation to
+   * drift from it — and one check failing never stops the rest.
+   */
+  const handleBulkRun = async (domain: string) => {
+    if (bulkRunningDomain != null) return;
+    if (selectedCustomerId == null) {
+      toast.error("Select a testbed customer in the header first");
+      return;
+    }
+    setBulkRunningDomain(domain);
+    try {
+      const res = await fetchWithAuth("/api/admin/monitor-checks/bulk-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: selectedCustomerId, domain }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to start bulk run");
+        return;
+      }
+      toast.success(`Running ${data.total} ${domain}:* check${data.total === 1 ? "" : "s"}`);
+      window.dispatchEvent(
+        new CustomEvent("simulator-bulk-run", {
+          detail: {
+            batchId: data.batchId,
+            domain,
+            customerId: selectedCustomerId,
+            total: data.total,
+            skipped: data.skipped ?? [],
+          },
+        }),
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Network error starting bulk run");
+    } finally {
+      setBulkRunningDomain(null);
+    }
   };
 
   const handleEndpointRetire = async (check: MonitorCheckNode) => {
@@ -1083,7 +1132,7 @@ export function SimulatorLeftTree() {
                     <div key={domain}>
                       <div
                         onClick={() => toggleCat(`ep:${domain}`)}
-                        className="flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
+                        className="group flex h-[22px] cursor-pointer items-center gap-1.5 pl-4 pr-2 text-muted-foreground hover:bg-accent"
                       >
                         {expandedCats[`ep:${domain}`] ? (
                           <ChevronDown className="h-3 w-3 text-muted-foreground/70" />
@@ -1096,8 +1145,30 @@ export function SimulatorLeftTree() {
                           <Folder className="h-3.5 w-3.5 text-primary" />
                         )}
                         <span className="truncate capitalize">{domain}</span>
-                        <span className="ml-auto text-[9px] tabular-nums text-muted-foreground/60">
-                          {checksByDomain[domain]!.length}
+                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                          {/* Bulk run: every active check under this domain prefix,
+                              each executed through the same single-run path. */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleBulkRun(domain);
+                            }}
+                            disabled={bulkRunningDomain != null}
+                            className={`shrink-0 items-center gap-1 rounded px-1 text-[9px] uppercase tracking-wider text-muted-foreground/70 transition-colors hover:bg-background hover:text-primary disabled:opacity-40 ${
+                              bulkRunningDomain === domain ? "flex" : "hidden group-hover:flex"
+                            }`}
+                            title={`Run every active check under "${domain}:" against the selected testbed customer`}
+                          >
+                            {bulkRunningDomain === domain ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Play className="h-3 w-3" />
+                            )}
+                            Run all
+                          </button>
+                          <span className="text-[9px] tabular-nums text-muted-foreground/60">
+                            {checksByDomain[domain]!.length}
+                          </span>
                         </span>
                       </div>
 

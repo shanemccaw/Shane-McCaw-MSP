@@ -24,6 +24,7 @@ import { SimulatorEnginesPanel } from "./SimulatorEnginesPanel";
 import { SimulatorDeployConsolePanel } from "./SimulatorDeployConsolePanel";
 import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
 import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
+import { SimulatorBatchCanvas, type BulkRunTarget } from "./SimulatorBatchCanvas";
 
 interface Msp {
   id: number;
@@ -57,11 +58,17 @@ export function SimulatorCenterCanvas({
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
 
-  const [activeTab, setActiveTab] = useState<"sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint">("sql");
+  const [activeTab, setActiveTab] = useState<
+    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch"
+  >("sql");
 
   // The M365 endpoint currently open in the Endpoint tab, set by clicking an
   // endpoint in the Explorer tree.
   const [selectedEndpoint, setSelectedEndpoint] = useState<MonitorCheckSummary | null>(null);
+
+  // The bulk run currently open in the Batch tab, set by "Run all" on a domain
+  // folder in the Explorer tree.
+  const [bulkRun, setBulkRun] = useState<BulkRunTarget | null>(null);
 
   // Testbeds state
   const [msps, setMsps] = useState<Msp[]>([]);
@@ -85,15 +92,25 @@ export function SimulatorCenterCanvas({
       setSelectedEndpoint(detail);
       setActiveTab("endpoint");
     };
+    // "Run all" on a domain folder starts a real batch server-side; this tab
+    // just polls it. Same event-driven hand-off pattern as the two above.
+    const handleBulkRun = (e: Event) => {
+      const detail = (e as CustomEvent<BulkRunTarget>).detail;
+      if (!detail) return;
+      setBulkRun(detail);
+      setActiveTab("batch");
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleLoadScript);
     window.addEventListener("simulator-select-endpoint", handleSelectEndpoint);
+    window.addEventListener("simulator-bulk-run", handleBulkRun);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
       window.removeEventListener("simulator-run-migration", handleLoadScript);
       window.removeEventListener("simulator-select-endpoint", handleSelectEndpoint);
+      window.removeEventListener("simulator-bulk-run", handleBulkRun);
     };
   }, []);
 
@@ -213,6 +230,8 @@ export function SimulatorCenterCanvas({
     ...(selectedEndpoint
       ? [{ key: "endpoint" as typeof activeTab, label: selectedEndpoint.key }]
       : []),
+    // Same rule as the Endpoint tab: only present once a bulk run exists.
+    ...(bulkRun ? [{ key: "batch" as typeof activeTab, label: `${bulkRun.domain}:* run` }] : []),
   ];
 
   return (
@@ -247,6 +266,9 @@ export function SimulatorCenterCanvas({
         {activeTab === "endpoint" && selectedEndpoint && (
           <SimulatorEndpointCanvas key={selectedEndpoint.key} check={selectedEndpoint} />
         )}
+
+        {/* Tab: bulk run — live per-check summary polled from the persisted batch */}
+        {activeTab === "batch" && bulkRun && <SimulatorBatchCanvas key={bulkRun.batchId} target={bulkRun} />}
 
         {/* Tab 2: Testbeds Dashboard */}
         {activeTab === "testbeds" && (
