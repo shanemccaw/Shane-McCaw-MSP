@@ -52,6 +52,7 @@ import {
   type FailureClassification,
 } from "./SimulatorFailureClassification";
 import { stripSelectParam } from "./simulatorFullResponse";
+import { resolveResponseValue, resolveResponseEmptyLabel, isGenuineEmptyRawCapture } from "./simulatorResponseView";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -133,6 +134,18 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   const [rawItems, setRawItems] = useState<unknown[] | null>(null);
   const [rawItemsError, setRawItemsError] = useState<string | null>(null);
   const [loadingRawItems, setLoadingRawItems] = useState(false);
+  // `rawItems === null` used to mean BOTH "never fetched" and "fetch failed" —
+  // indistinguishable from "fetched and the real captured response was a genuine
+  // empty array". This flag is the third state: true only once a fetch has
+  // actually resolved with a real (possibly empty) items array.
+  const [rawItemsLoaded, setRawItemsLoaded] = useState(false);
+  // Whether the Response panel is currently showing the raw captured-items view
+  // rather than the mapped/extracted summary (`run.result`) — true once a Full
+  // Response run has finished (even before its items have loaded) or the
+  // operator clicks "View full response" manually. Kept separate from
+  // `fullResponse` (the toggle for the NEXT run) so flipping the toggle mid-view
+  // doesn't retroactively relabel what's already on screen.
+  const [viewingRaw, setViewingRaw] = useState(false);
 
   // Tie-to-action targets: "Edit endpoint" focuses the real field in the form
   // already on this page. It opens and selects — it never saves.
@@ -151,6 +164,8 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setFullResponse(false);
     setRawItems(null);
     setRawItemsError(null);
+    setRawItemsLoaded(false);
+    setViewingRaw(false);
   }, [check.key]);
 
   /** Opens the edit form on the field the classification points at. Never saves. */
@@ -222,8 +237,10 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   /** Fetches the raw captured items for a completed run — the dedicated Full
    *  Response read, since the poll response deliberately omits `items`. */
   const loadRawItems = async (runId: string) => {
+    setViewingRaw(true);
     setLoadingRawItems(true);
     setRawItemsError(null);
+    setRawItemsLoaded(false);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}/items`);
       const data = await res.json();
@@ -233,6 +250,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         return;
       }
       setRawItems(data.items as unknown[]);
+      setRawItemsLoaded(true);
     } catch (err: any) {
       setRawItemsError(err.message || "Network error loading the full captured response");
       setRawItems(null);
@@ -261,6 +279,8 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setClassification(null);
     setRawItems(null);
     setRawItemsError(null);
+    setRawItemsLoaded(false);
+    setViewingRaw(false);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}/run`, {
         method: "POST",
@@ -337,6 +357,8 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     stopPolling();
     setRawItems(null);
     setRawItemsError(null);
+    setRawItemsLoaded(false);
+    setViewingRaw(false);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}`);
       const data = await res.json();
@@ -647,10 +669,15 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         )}
       </div>
       <JsonResponseViewer
-        value={rawItems ?? run?.result ?? (run?.error ? { error: run.error } : undefined)}
-        emptyLabel="Run this endpoint to see the real tenant response"
+        value={resolveResponseValue({ viewingRaw, rawItemsLoaded, rawItems, runResult: run?.result, runError: run?.error })}
+        emptyLabel={resolveResponseEmptyLabel({ viewingRaw, rawItemsLoaded, loadingRawItems, rawItemsError })}
         className="min-h-[160px]"
       />
+      {isGenuineEmptyRawCapture({ viewingRaw, rawItemsLoaded, rawItems }) && (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          This run's raw captured response genuinely contained 0 items — that is real data, not a failed load.
+        </p>
+      )}
       {rawItemsError && <p className="mt-1 text-[10px] text-destructive">{rawItemsError}</p>}
 
       {/* Property picker — pick ANY real field the full response returned and
