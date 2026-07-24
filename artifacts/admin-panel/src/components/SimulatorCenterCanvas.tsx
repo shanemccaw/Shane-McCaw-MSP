@@ -26,8 +26,9 @@ import { SqlQueryCanvas, type SqlOutput } from "./SqlQueryCanvas";
 import { SimulatorEndpointCanvas, type MonitorCheckSummary } from "./SimulatorEndpointCanvas";
 import { SimulatorBatchCanvas, type BulkRunTarget } from "./SimulatorBatchCanvas";
 import { SimulatorWriteActionCanvas } from "./SimulatorWriteActionCanvas";
+import { SimulatorConfigPackCanvas } from "./SimulatorConfigPackCanvas";
 import { SimulatorPillarMatrixCanvas, type PillarKey } from "./SimulatorPillarMatrixCanvas";
-import type { WriteActionNode } from "./SimulatorLeftTree";
+import type { ConfigPackNode, WriteActionNode } from "./SimulatorLeftTree";
 
 interface Msp {
   id: number;
@@ -62,7 +63,7 @@ export function SimulatorCenterCanvas({
   const { openModal } = useModal();
 
   const [activeTab, setActiveTab] = useState<
-    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action" | "pillar-matrix"
+    "sql" | "testbeds" | "overrides" | "engines" | "deploy" | "endpoint" | "batch" | "write-action" | "pillar-matrix" | "config-pack"
   >("sql");
 
   // The pillar currently open in the Pillar Matrix tab, set by clicking a pillar
@@ -76,6 +77,10 @@ export function SimulatorCenterCanvas({
   // The write-action template currently open in the Write Action tab, set by
   // clicking a write-action in the Explorer tree.
   const [selectedWriteAction, setSelectedWriteAction] = useState<WriteActionNode | null>(null);
+
+  // The config pack currently open in the Config Pack tab, set by clicking a
+  // pack in the Explorer tree.
+  const [selectedConfigPack, setSelectedConfigPack] = useState<ConfigPackNode | null>(null);
 
   // The bulk run currently open in the Batch tab, set by "Run all" on a domain
   // folder in the Explorer tree.
@@ -128,6 +133,15 @@ export function SimulatorCenterCanvas({
       if (detail?.pillar) setSelectedPillar(detail.pillar);
       setActiveTab("pillar-matrix");
     };
+    // Selecting a config pack in the tree opens the orchestrated-run tab. A pack
+    // run reuses the SAME testbed-only + confirmation posture as Write Actions;
+    // single steps within it hand off to the write-action tab (see below).
+    const handleSelectConfigPack = (e: Event) => {
+      const detail = (e as CustomEvent<ConfigPackNode>).detail;
+      if (!detail) return;
+      setSelectedConfigPack(detail);
+      setActiveTab("config-pack");
+    };
     window.addEventListener("simulator-load-script", handleLoadScript);
     window.addEventListener("simulator-run-script", handleLoadScript);
     window.addEventListener("simulator-run-migration", handleLoadScript);
@@ -135,6 +149,7 @@ export function SimulatorCenterCanvas({
     window.addEventListener("simulator-bulk-run", handleBulkRun);
     window.addEventListener("simulator-select-write-action", handleSelectWriteAction);
     window.addEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
+    window.addEventListener("simulator-select-config-pack", handleSelectConfigPack);
     return () => {
       window.removeEventListener("simulator-load-script", handleLoadScript);
       window.removeEventListener("simulator-run-script", handleLoadScript);
@@ -143,6 +158,7 @@ export function SimulatorCenterCanvas({
       window.removeEventListener("simulator-bulk-run", handleBulkRun);
       window.removeEventListener("simulator-select-write-action", handleSelectWriteAction);
       window.removeEventListener("simulator-select-pillar-matrix", handleSelectPillarMatrix);
+      window.removeEventListener("simulator-select-config-pack", handleSelectConfigPack);
     };
   }, []);
 
@@ -269,6 +285,10 @@ export function SimulatorCenterCanvas({
     ...(selectedWriteAction
       ? [{ key: "write-action" as typeof activeTab, label: `⚡ ${selectedWriteAction.label}` }]
       : []),
+    // Only present once a config pack has been picked in the Explorer tree.
+    ...(selectedConfigPack
+      ? [{ key: "config-pack" as typeof activeTab, label: `📦 ${selectedConfigPack.label}` }]
+      : []),
   ];
 
   return (
@@ -310,6 +330,12 @@ export function SimulatorCenterCanvas({
         {/* Tab: Write Action — real tenant-MUTATING template with confirmation + safety flow */}
         {activeTab === "write-action" && selectedWriteAction && (
           <SimulatorWriteActionCanvas key={selectedWriteAction.templateId} action={selectedWriteAction} />
+        )}
+
+        {/* Tab: Config Pack — orchestrated write-action sequence (whole-pack in
+            dependency order, or single step), testbed-only, with live progress */}
+        {activeTab === "config-pack" && selectedConfigPack && (
+          <SimulatorConfigPackCanvas key={selectedConfigPack.packKey} pack={selectedConfigPack} />
         )}
 
         {/* Tab 2: Testbeds Dashboard */}

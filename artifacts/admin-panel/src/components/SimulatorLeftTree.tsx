@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useModal } from "@/contexts/ModalContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
@@ -27,6 +28,7 @@ import {
   Globe,
   Archive,
   LayoutGrid,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -136,6 +138,17 @@ export interface WriteActionNode {
   } | null;
 }
 
+// Real config_packs rows (ordered baseline_action_templates sequences) from
+// GET /api/admin/config-packs. Each opens in the center as a runnable pack:
+// whole-pack (dependency-ordered) or one step at a time — all testbed-only.
+export interface ConfigPackNode {
+  packKey: string;
+  label: string;
+  description: string | null;
+  status: string;
+  categories: string[];
+}
+
 // ~5 minutes of polling at 1500ms per tick.
 const SUITE_POLL_INTERVAL_MS = 1500;
 const SUITE_POLL_MAX_TICKS = 200;
@@ -157,6 +170,7 @@ export function SimulatorLeftTree() {
   const { fetchWithAuth } = useAuth();
   const { openModal } = useModal();
   const { selectedCustomerId } = useTestbedContext();
+  const [, navigate] = useLocation();
 
   const [scenarios, setScenarios] = useState<EventDef[]>([]);
   const [scripts, setScripts] = useState<SavedScript[]>([]);
@@ -166,6 +180,7 @@ export function SimulatorLeftTree() {
   const [busEventTypes, setBusEventTypes] = useState<BusEventType[]>([]);
   const [monitorChecks, setMonitorChecks] = useState<MonitorCheckNode[]>([]);
   const [writeActions, setWriteActions] = useState<WriteActionNode[]>([]);
+  const [configPacks, setConfigPacks] = useState<ConfigPackNode[]>([]);
   const [loading, setLoading] = useState(false);
 
   // The domain whose bulk run is being started — one at a time, so a stray
@@ -192,12 +207,15 @@ export function SimulatorLeftTree() {
   const [endpointsOpen, setEndpointsOpen] = useState(initialTreeState?.sections.endpoints ?? true);
   const [writeActionsOpen, setWriteActionsOpen] = useState(initialTreeState?.sections.writeActions ?? true);
   const [pillarMatrixOpen, setPillarMatrixOpen] = useState(initialTreeState?.sections.pillarMatrix ?? true);
+  const [configPacksOpen, setConfigPacksOpen] = useState(initialTreeState?.sections.configPacks ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
   // Which write-action template the center canvas is showing — highlighted in the tree.
   const [selectedWriteActionId, setSelectedWriteActionId] = useState<string | null>(null);
   // Which pillar the Pillar Matrix tab is showing — highlighted in the tree.
   const [selectedPillarKey, setSelectedPillarKey] = useState<string | null>(null);
+  // Which config pack the center canvas is showing — highlighted in the tree.
+  const [selectedConfigPackKey, setSelectedConfigPackKey] = useState<string | null>(null);
 
   // Categorized expansion states
   const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
@@ -223,6 +241,7 @@ export function SimulatorLeftTree() {
         endpoints: endpointsOpen,
         writeActions: writeActionsOpen,
         pillarMatrix: pillarMatrixOpen,
+        configPacks: configPacksOpen,
       },
       cats: expandedCats,
     });
@@ -237,6 +256,7 @@ export function SimulatorLeftTree() {
     endpointsOpen,
     writeActionsOpen,
     pillarMatrixOpen,
+    configPacksOpen,
     expandedCats,
   ]);
 
@@ -371,6 +391,13 @@ export function SimulatorLeftTree() {
       if (writeActionsRes.ok) {
         const writeActionsData = await writeActionsRes.json();
         setWriteActions(writeActionsData.templates || []);
+      }
+
+      // 8. Fetch the real config_packs catalog (orchestrated write-action sequences).
+      const configPacksRes = await fetchWithAuth("/api/admin/config-packs");
+      if (configPacksRes.ok) {
+        const configPacksData = await configPacksRes.json();
+        setConfigPacks(configPacksData.packs || []);
       }
     } catch (err) {
       console.error("Error loading simulator tree data:", err);
@@ -623,6 +650,20 @@ export function SimulatorLeftTree() {
     setSelectedPillarKey(pillar);
     window.dispatchEvent(new CustomEvent("simulator-select-pillar-matrix", { detail: { pillar } }));
   };
+
+  // Selecting a config pack opens it in the center canvas — the orchestrated
+  // sibling of Write Actions (whole-pack, dependency-ordered, or one step at a
+  // time). Same event-driven hand-off pattern as endpoints/write-actions.
+  const handleConfigPackSelect = (pack: ConfigPackNode) => {
+    setSelectedConfigPackKey(pack.packKey);
+    window.dispatchEvent(new CustomEvent("simulator-select-config-pack", { detail: pack }));
+  };
+
+  // Create/modify packs + steps reuses the real, tested CRUD editor in Baseline
+  // Templates (drag-reorder, per-pack dependsOn overrides, create/edit dialog) —
+  // deep-linked rather than duplicated here. The Simulator's own value-add is
+  // running a pack, not re-implementing its editor.
+  const openConfigPackManager = () => navigate("/delivery/baseline-templates?tab=config-packs");
 
   /**
    * Starts a bulk run over one domain prefix and hands the batch to the center
@@ -1505,6 +1546,77 @@ export function SimulatorLeftTree() {
                   <span className="flex-1 truncate text-[11px]">{p.label}</span>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Section 10: Config Packs — orchestrated sequences of the real Write
+            Actions, run whole (in dependency order) or one step at a time.
+            Testbed-only; the confirmation + safety + progress flow lives in the
+            center canvas. Create/modify the packs themselves in Baseline
+            Templates (deep-linked — that CRUD editor is reused, not rebuilt). */}
+        <div>
+          <div
+            onClick={() => setConfigPacksOpen(!configPacksOpen)}
+            className="flex h-[22px] cursor-pointer items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80 hover:bg-accent"
+          >
+            {configPacksOpen ? (
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+            <Package className="h-3.5 w-3.5 text-amber-400" />
+            <span className="truncate">Config Packs</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openConfigPackManager();
+              }}
+              className="ml-auto rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="Create / edit packs and their steps (Baseline Templates)"
+            >
+              <Edit2 className="h-3 w-3" />
+            </button>
+          </div>
+
+          {configPacksOpen && (
+            <div className="ml-[22px] border-l border-accent">
+              {configPacks.length === 0 ? (
+                <div className="px-4 py-1 text-[11px] italic text-muted-foreground/70">
+                  No config packs — create one in Baseline Templates
+                </div>
+              ) : (
+                configPacks.map((pack) => (
+                  <ContextMenu key={pack.packKey}>
+                    <ContextMenuTrigger asChild>
+                      <div
+                        onClick={() => handleConfigPackSelect(pack)}
+                        className={`group flex h-[22px] cursor-pointer items-center gap-1.5 pl-2 pr-2 transition-colors hover:bg-accent hover:text-foreground ${
+                          selectedConfigPackKey === pack.packKey ? "bg-accent text-foreground" : "text-foreground/85"
+                        } ${pack.status !== "active" ? "opacity-50" : ""}`}
+                      >
+                        <Package className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                        <span className="flex-1 truncate text-[11px]" title={pack.description || pack.label}>
+                          {pack.label}
+                        </span>
+                        {pack.status !== "active" && (
+                          <span className="shrink-0 text-[9px] uppercase tracking-wider text-amber-400/80">{pack.status}</span>
+                        )}
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent className="w-48">
+                      <ContextMenuItem onSelect={() => handleConfigPackSelect(pack)} className="gap-2 text-xs">
+                        <Play className="h-3.5 w-3.5" />
+                        Open runner
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={openConfigPackManager} className="gap-2 text-xs">
+                        <Edit2 className="h-3.5 w-3.5" />
+                        Edit pack & steps
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                ))
+              )}
             </div>
           )}
         </div>
