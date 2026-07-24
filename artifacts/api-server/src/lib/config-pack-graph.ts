@@ -89,6 +89,52 @@ export const configPackDefinitionName = (packKey: string): string => `Config Pac
 
 export const templateNodeId = (templateId: string): string => `tpl-${templateId}`;
 
+/**
+ * Payload keys the orchestrator derives ITSELF for every pack run — from the
+ * customer/tenant/run context, or generated (the break-glass secret), or
+ * produced mid-run by the gate's output-mapping node. They are never required
+ * from the operator, so the run UI must not prompt for them.
+ *
+ * Kept next to runConfigPackForCustomer's payload construction (its source of
+ * truth) so the plan endpoint's operator-input list can't drift from what the
+ * orchestrator actually supplies.
+ */
+export const AUTO_DERIVED_VARIABLES: readonly string[] = [
+  "packKey",
+  "packId",
+  "tenantName",
+  "tenantDomain",
+  "organizationId",
+  "currentDateTime",
+  "roleDefinitionId",
+  "customerId",
+  GATE_SECRET_FIELD,
+  ...MID_RUN_PROVIDED_VARIABLES,
+];
+
+/**
+ * The required variables an OPERATOR must supply for a pack run: the union of
+ * every template's requiredVariables, minus the ones the orchestrator derives
+ * itself (AUTO_DERIVED_VARIABLES). These — e.g. tenantPrefix, which has no
+ * derivable source — are the only inputs the run UI needs to collect, and are
+ * exactly the set runConfigPackForCustomer's missing-variables guard would
+ * otherwise reject at run time. Order follows first appearance in the chain.
+ */
+export function operatorRequiredVariables(ordered: PackTemplateResolved[]): string[] {
+  const derived = new Set(AUTO_DERIVED_VARIABLES);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of ordered) {
+    for (const v of t.requiredVariables) {
+      if (!derived.has(v) && !seen.has(v)) {
+        seen.add(v);
+        out.push(v);
+      }
+    }
+  }
+  return out;
+}
+
 /** Kahn topological sort with sortOrder tie-break. Throws on unknown deps / cycles. */
 export function topologicalOrder(templates: PackTemplateResolved[]): PackTemplateResolved[] {
   const byId = new Map(templates.map((t) => [t.templateId, t]));

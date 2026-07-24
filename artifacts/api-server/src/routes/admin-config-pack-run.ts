@@ -28,7 +28,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
-import { ConfigPackError, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
+import { ConfigPackError, loadConfigPack, runConfigPackForCustomer } from "../lib/config-pack-orchestrator";
+import { buildConfigPackGraph, operatorRequiredVariables } from "../lib/config-pack-graph";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.config-pack" });
 
@@ -52,6 +53,63 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   customer_not_testbed: 422,
   tenant_domain_unresolved: 422,
 };
+
+/**
+ * GET /admin/config-packs/:packKey/run/plan
+ *
+ * Read-only. Returns the REAL execution plan the run endpoint would materialize
+ * — the topologically-ordered step sequence (the same buildConfigPackGraph used
+ * to actually run the pack, so the surfaced order can never diverge from what
+ * executes), which step carries the pack's single verification gate, and which
+ * required variables the operator must supply (everything else is derived by the
+ * orchestrator). No customer, no tenant, no writes — purely materialization.
+ *
+ * Responses:
+ *   200 { packKey, label, ordered[], gatedTemplateId, coalescedGateTemplateIds, operatorVariables }
+ *   404 pack not found
+ *   422 pack not runnable (inactive, empty, unknown dependency, dependency cycle)
+ */
+router.get(
+  "/admin/config-packs/:packKey/run/plan",
+  requireRole("PlatformAdmin"),
+  async (req: Request, res: Response) => {
+    const packKey = req.params.packKey as string;
+    try {
+      const { pack, templates } = await loadConfigPack(packKey);
+      const { ordered, gatedTemplateId, coalescedGateTemplateIds } = buildConfigPackGraph(templates);
+
+      res.json({
+        packKey,
+        label: pack.label,
+        gatedTemplateId,
+        coalescedGateTemplateIds,
+        operatorVariables: operatorRequiredVariables(ordered),
+        ordered: ordered.map((t) => ({
+          templateId: t.templateId,
+          label: t.label,
+          sortOrder: t.sortOrder,
+          effectiveDependsOn: t.effectiveDependsOn,
+          requiresVerificationGate: t.requiresVerificationGate,
+          requiredVariables: t.requiredVariables,
+          // Whether the pack's single spliced gate sits immediately after THIS
+          // step (only the first flagged step in topo order gets the gate).
+          gatedHere: t.templateId === gatedTemplateId,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof ConfigPackError) {
+        res.status(ERROR_STATUS[err.code] ?? 422).json({
+          error: err.message,
+          code: err.code,
+          ...(err.details ?? {}),
+        });
+        return;
+      }
+      log.error({ err, packKey }, "config-pack plan failed");
+      res.status(500).json({ error: "Failed to plan config pack" });
+    }
+  },
+);
 
 router.post(
   "/admin/config-packs/:packKey/run",

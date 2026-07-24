@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_DERIVED_VARIABLES,
   buildConfigPackGraph,
   ConfigPackError,
+  operatorRequiredVariables,
   templateNodeId,
   topologicalOrder,
   type PackTemplateResolved,
@@ -187,5 +189,33 @@ describe("buildConfigPackGraph", () => {
     ]) {
       expect(ids.indexOf(dependent)).toBeGreaterThan(gateIdx);
     }
+  });
+});
+
+describe("operatorRequiredVariables", () => {
+  it("returns only the required vars with no derivable source (the sole operator inputs)", () => {
+    // The quickstart pack's only non-derivable required var is tenantPrefix —
+    // everything else (tenantName, tenantDomain, organizationId, roleDefinitionId,
+    // generatedPassword, breakglassUserId, principalId, currentDateTime) is
+    // supplied by the orchestrator itself.
+    const ordered = topologicalOrder(quickstart());
+    expect(operatorRequiredVariables(ordered)).toEqual(["tenantPrefix"]);
+  });
+
+  it("excludes every AUTO_DERIVED variable even when a template requires it", () => {
+    const ordered = topologicalOrder([
+      t("only-derived", 1, {
+        requiredVariables: [...AUTO_DERIVED_VARIABLES],
+      }),
+    ]);
+    expect(operatorRequiredVariables(ordered)).toEqual([]);
+  });
+
+  it("dedupes across steps and preserves first-appearance order", () => {
+    const ordered = topologicalOrder([
+      t("a", 1, { requiredVariables: ["tenantPrefix", "siteName"] }),
+      t("b", 2, { requiredVariables: ["siteName", "ownerUpn"] }),
+    ]);
+    expect(operatorRequiredVariables(ordered)).toEqual(["tenantPrefix", "siteName", "ownerUpn"]);
   });
 });
