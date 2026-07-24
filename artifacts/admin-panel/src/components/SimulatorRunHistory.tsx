@@ -23,6 +23,7 @@ import { ArrowRight, GitCompare, History, Loader2, RefreshCw, X } from "lucide-r
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { FailureCategoryChip, type FailureClassification } from "./SimulatorFailureClassification";
 
 // ─── API shapes (match api-server lib/simulator-run-store.ts + simulator-run-diff.ts) ───
 
@@ -42,10 +43,17 @@ export interface RunSummary {
   severityMatched: string | null;
   licenseFeature: string | null;
   errorMessage: string | null;
+  requestEndpoint: string | null;
   startedAt: string;
   completedAt: string | null;
   hasTrace: boolean;
   itemsOmitted: boolean;
+  /**
+   * Phase 4 — the server's triage of this run's failure, recomputed on read from
+   * the run's own stored error text. Null for any run that didn't fail, so a
+   * history row can never wear a failure category it doesn't have.
+   */
+  classification?: FailureClassification | null;
 }
 
 interface DiffKeyChange {
@@ -283,6 +291,9 @@ export function SimulatorRunHistory({
                 <span className="w-[64px] shrink-0 text-right font-mono tabular-nums text-muted-foreground/80">
                   {run.itemCount ?? "—"} item
                 </span>
+                {/* The category at a glance. Actions live in the canvas banner —
+                    "Open" loads the run there. */}
+                {run.classification && <FailureCategoryChip classification={run.classification} />}
                 {run.hasTrace && (
                   <span className="shrink-0 rounded-sm border border-primary/30 bg-primary/10 px-1 text-[9px] uppercase tracking-wider text-primary">
                     traced

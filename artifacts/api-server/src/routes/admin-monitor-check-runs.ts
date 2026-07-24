@@ -13,6 +13,15 @@
  *   POST /api/admin/monitor-check-runs/:runId/trace     — engine trace (phase 2)
  *   GET  /api/admin/monitor-check-batches/:batchId      — live bulk-run summary
  *
+ * PHASE 4 — NO NEW ROUTES. Failure auto-classification is added to what the three
+ * READ routes already return: `classification` on a single run and on every
+ * history/batch row, plus a grouped `triage` roll-up on a batch. It is computed
+ * on read from the run's own persisted error text (see classifyRun below), and it
+ * only ever DESCRIBES a failure — no classification changes a scope, an endpoint
+ * or a check's status. Acting on one is a separate human click on an existing,
+ * reviewable route (PATCH/DELETE on the Phase 1 CRUD), and adding a permission is
+ * not offered as an action at all.
+ *
  * PHASE 3 — WHAT MOVED: run tracking used to live in a process-local
  * `Map<runId, run>`, which meant there was no run history at all: every run was
  * lost on api-server restart, so "list past runs" and "diff two runs" had nothing
@@ -64,6 +73,13 @@ import { logger } from "../lib/logger";
 import { executeMonitorCheck, type MappingRule } from "../lib/monitor-executor";
 import { traceCheckResponse } from "../lib/monitor-check-trace";
 import { diffCheckRuns, type DiffSide } from "../lib/simulator-run-diff";
+import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import {
+  aggregateFailureClassifications,
+  classifyRunFailure,
+  type ClassifiedFailure,
+  type FailureClassification,
+} from "../lib/monitor-failure-classifier";
 import {
   completeRun,
   createRun,
@@ -196,6 +212,39 @@ async function startCheckRun(opts: {
   })();
 
   return { run, done };
+}
+
+// ── Phase 4: failure classification ───────────────────────────────────────────
+//
+// COMPUTED ON READ, not stored. Two reasons, both deliberate:
+//   • no schema change is needed, so no migration for a value that is a pure
+//     function of text already persisted;
+//   • improving a signature retro-applies to every historical run. A stored
+//     classification would freeze each run at whatever the rules knew that day and
+//     then silently disagree with the current rules — the sort of quietly-stale
+//     number this whole node exists to eliminate.
+// Cost is a handful of regexes over one string per run.
+//
+// REQUIRED_MT_SCOPES is passed in READ-ONLY, purely so the classifier can say
+// "that permission is already declared, so this is a re-consent problem". Nothing
+// on this path writes to it or to any permission state.
+
+/** Classification for one persisted run, or null when it didn't fail. */
+function classifyRun(run: {
+  status: string;
+  resultStatus?: string | null;
+  errorMessage?: string | null;
+  statusText?: string | null;
+  requestEndpoint?: string | null;
+}): FailureClassification | null {
+  return classifyRunFailure(run, REQUIRED_MT_SCOPES);
+}
+
+/** Attaches `classification` to each summary row (null for runs that didn't fail). */
+function withClassification<T extends Parameters<typeof classifyRun>[0]>(
+  runs: T[],
+): Array<T & { classification: FailureClassification | null }> {
+  return runs.map((r) => ({ ...r, classification: classifyRun(r) }));
 }
 
 /** Loads a customer and asserts it has a connected tenant. */
@@ -378,7 +427,21 @@ router.get("/admin/monitor-check-batches/:batchId", requireAdmin, async (req: Re
     const batchId = req.params.batchId as string;
     const runs = await listRunsForBatch(batchId);
     if (runs.length === 0) return void res.status(404).json({ error: "Batch not found" });
-    res.json({ summary: summarizeBatch(batchId, runs), runs });
+
+    // Phase 4 — the batch is where triage compounds: forty failed checks are not
+    // forty investigations if six of them are one missing permission. Every run
+    // carries its own classification (so a row can offer its own action) and the
+    // batch carries the grouped roll-up.
+    const classified = withClassification(runs);
+    const failures: ClassifiedFailure[] = classified
+      .filter((r): r is typeof r & { classification: FailureClassification } => r.classification != null)
+      .map((r) => ({ checkKey: r.checkKey, classification: r.classification }));
+
+    res.json({
+      summary: summarizeBatch(batchId, runs),
+      runs: classified,
+      triage: aggregateFailureClassifications(failures),
+    });
   } catch (err) {
     log.error({ err }, "admin-monitor-check-runs: failed to load batch");
     res.status(500).json({ error: "Failed to load bulk run" });
@@ -404,7 +467,7 @@ router.get("/admin/monitor-check-runs", requireAdmin, async (req: Request, res: 
       ...(customerId != null ? { customerId } : {}),
       ...(limit != null ? { limit } : {}),
     });
-    res.json({ runs });
+    res.json({ runs: withClassification(runs) });
   } catch (err) {
     log.error({ err }, "admin-monitor-check-runs: failed to list run history");
     res.status(500).json({ error: "Failed to load run history" });
@@ -421,7 +484,19 @@ router.get("/admin/monitor-check-runs/:runId", requireAdmin, async (req: Request
     // objects. It stays server-side for the trace/diff routes rather than riding
     // along on every one-second poll; the response body the UI renders is result.
     const { items: _items, trace: _trace, ...pollable } = run;
-    res.json({ run: pollable });
+
+    // Phase 4 — the classification rides on the poll response so a failure is
+    // triaged the moment the run lands, not hours later via manual SQL. Null for
+    // any run that didn't fail, which is what keeps the banner off a green run.
+    const classification = classifyRun({
+      status: run.status,
+      resultStatus: run.result?.status ?? null,
+      errorMessage: run.result?.errorMessage ?? run.error ?? null,
+      statusText: run.statusText,
+      requestEndpoint: run.request?.endpoint ?? null,
+    });
+
+    res.json({ run: pollable, classification });
   } catch (err) {
     log.error({ err }, "admin-monitor-check-runs: failed to load run");
     res.status(500).json({ error: "Failed to load run" });

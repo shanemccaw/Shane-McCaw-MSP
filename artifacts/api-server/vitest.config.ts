@@ -112,6 +112,7 @@ export default defineConfig({
       "src/routes/admin-monitor-checks-crud.test.ts",
       "src/lib/monitor-check-trace.test.ts",
       "src/lib/simulator-run-diff.test.ts",
+      "src/lib/__tests__/monitor-failure-classifier.test.ts",
     ],
     coverage: {
       provider: "v8",

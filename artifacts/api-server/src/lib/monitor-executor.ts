@@ -32,6 +32,22 @@ const log = logger.child({ channel: "engine.monitor" });
 /** Hard cap on @odata.nextLink page fetches per check to prevent runaway loops. */
 const NEXT_LINK_MAX_PAGES = 50;
 
+/**
+ * How much of a failed Graph response body is kept in the error message.
+ *
+ * Raised from 400 during the Phase 4 audit of what is actually available to
+ * classify against. The classifier's single most valuable output is the REAL
+ * named permission out of a 403 ("Required permission: SecurityEvents.Read.All"),
+ * and the workloads that nest their error JSON inside an outer Graph error —
+ * Intune and the Defender/security endpoints do exactly this — push that phrase
+ * past 400 characters, where it was being cut off. The message is stored in a
+ * plain `text` column on simulator_check_runs, so there is no storage reason for
+ * the tighter bound. (The separate 1000-char slice on the tenant_monitor_profiles
+ * row below is unchanged — that is the production monitoring record, not the
+ * simulator's diagnostic copy.)
+ */
+const GRAPH_ERROR_BODY_CAPTURE_CHARS = 1200;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SeverityRule {
@@ -509,7 +525,7 @@ export async function graphFetchPaginated(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Graph API error ${res.status}: ${text.slice(0, 400)}`);
+      throw new Error(`Graph API error ${res.status}: ${text.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`);
     }
 
     // Usage-report endpoints answer with CSV (via a followed 302), not JSON.
@@ -540,7 +556,7 @@ export async function graphFetchPaginated(
       // rather than crashing with a bare JSON.parse SyntaxError — e.g. the raw
       // IIS "Service Unavailable" HTML some Intune endpoints return.
       throw new Error(
-        `Graph API returned a non-JSON body (content-type: ${res.headers.get("content-type") ?? "none"}): ${bodyText.slice(0, 200)}`,
+        `Graph API returned a non-JSON body (content-type: ${res.headers.get("content-type") ?? "none"}): ${bodyText.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`,
       );
     }
 

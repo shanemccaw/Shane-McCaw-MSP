@@ -981,3 +981,106 @@ describe("GET /admin/monitor-check-runs/:runId/diff", () => {
     expect(res.status).toBe(409);
   });
 });
+
+// ── Phase 4: failure classification rides on the READ routes ──────────────────
+//
+// These assert the WIRING only. The categories themselves, the permission-name
+// extraction and the refusal-to-guess behaviour are covered by the classifier's
+// own suite (lib/__tests__/monitor-failure-classifier.test.ts) against the same
+// real error signatures; re-encoding them here would test a forked copy.
+
+describe("Phase 4 — failure classification on the read routes", () => {
+  /** A real 403 body, wrapped the way monitor-executor really wraps it. */
+  const REAL_403 =
+    'Graph API error 403: {"error":{"code":"Forbidden","message":"The token doesn\'t have the required permissions. Required permission: SecurityEvents.Read.All."}}';
+
+  /** Starts a run whose executor result is a real failure, and returns its runId. */
+  async function startFailedRun(app: Express): Promise<string> {
+    selectQueue = [[CHECK], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: CHECK.key,
+      status: "error",
+      extractedProperties: {},
+      severityMatched: null,
+      errorMessage: REAL_403,
+      itemCount: 0,
+      pageCount: 0,
+    });
+    const start = await auth(request(app).post(`/api/admin/monitor-checks/${CHECK.key}/run`)).send({ customerId: 42 });
+    await waitForTerminal(app, start.body.runId);
+    return start.body.runId as string;
+  }
+
+  it("attaches a classification to a FAILED single run's poll response", async () => {
+    const app = makeApp();
+    const runId = await startFailedRun(app);
+
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs/${runId}`));
+    expect(res.body.run.status).toBe("failed");
+    expect(res.body.classification.category).toBe("missing_scope");
+    // The real named permission, surfaced without anyone reading the raw text.
+    expect(res.body.classification.permissions).toContain("SecurityEvents.Read.All");
+    // Display only — nothing here offers to add it.
+    expect(res.body.classification.action.kind).toBe("show_permission");
+  });
+
+  it("returns a NULL classification for a run that succeeded", async () => {
+    const app = makeApp();
+    const runId = await startCompletedRun(app, MFA_ITEMS);
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs/${runId}`));
+    expect(res.body.run.status).toBe("completed");
+    expect(res.body.classification).toBeNull();
+  });
+
+  it("attaches classifications to the run-history list", async () => {
+    const app = makeApp();
+    await startFailedRun(app);
+
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs?checkKey=${CHECK.key}`));
+    expect(res.body.runs[0].classification.category).toBe("missing_scope");
+    // The endpoint is projected onto the summary so a list row classifies the
+    // same way its detail view does.
+    expect(res.body.runs[0].requestEndpoint).toBe(CHECK.endpoint);
+  });
+
+  it("aggregates a batch's failures into grouped triage with the distinct permissions", async () => {
+    selectQueue = [[CUSTOMER], IDENTITY_CHECKS];
+    executeMonitorCheck.mockImplementation(async (opts: any) => {
+      // Two of the three fail for the SAME real reason — the case the roll-up exists for.
+      if (opts.check.key === "identity:stale-users") {
+        return {
+          checkKey: opts.check.key,
+          status: "ok",
+          extractedProperties: {},
+          severityMatched: null,
+          itemCount: 1,
+          pageCount: 1,
+          items: [{ id: "a" }],
+        };
+      }
+      return {
+        checkKey: opts.check.key,
+        status: "error",
+        extractedProperties: {},
+        severityMatched: null,
+        errorMessage: REAL_403,
+        itemCount: 0,
+        pageCount: 0,
+      };
+    });
+
+    const app = makeApp();
+    const res = await auth(request(app).post("/api/admin/monitor-checks/bulk-run")).send({ customerId: 42, domain: "identity" });
+    const batch = await waitForBatch(app, res.body.batchId);
+
+    expect(batch.triage.totalFailures).toBe(2);
+    expect(batch.triage.classifiedCount).toBe(2);
+    const scope = batch.triage.groups.find((g: any) => g.category === "missing_scope");
+    expect(scope.count).toBe(2);
+    expect(scope.checkKeys).toEqual(["identity:mfa-registration", "identity:guest-accounts"]);
+    // Two failing checks collapse to ONE real permission to go and look at.
+    expect(batch.triage.permissionsNeeded).toEqual(["SecurityEvents.Read.All"]);
+    // The successful run carries no classification.
+    expect(batch.runs.find((r: any) => r.checkKey === "identity:stale-users").classification).toBeNull();
+  });
+});

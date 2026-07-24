@@ -125,6 +125,16 @@ export interface MonitorCheckRunSummary {
   severityMatched: string | null;
   licenseFeature: string | null;
   errorMessage: string | null;
+  /**
+   * Just the endpoint out of the run's `request` jsonb — NOT the whole request.
+   *
+   * Phase 4 needs it: the failure classifier reads the endpoint as corroborating
+   * evidence (a /beta target, a literal non-HTTP scheme prefix), and without it a
+   * run classified from the batch list could disagree with the same run classified
+   * from its detail view. The request body is deliberately not projected — it can
+   * be arbitrarily large and nothing on a list needs it.
+   */
+  requestEndpoint: string | null;
   startedAt: string;
   completedAt: string | null;
   /** True when a trace was saved against this run — the list never carries the payload. */
@@ -199,6 +209,7 @@ function rowToSummary(row: Record<string, any>): MonitorCheckRunSummary {
     severityMatched: row["severityMatched"] ?? null,
     licenseFeature: row["licenseFeature"] ?? null,
     errorMessage: row["errorMessage"] ?? null,
+    requestEndpoint: (row["request"] as { endpoint?: string } | null)?.endpoint ?? null,
     startedAt: iso(row["startedAt"]) ?? new Date(0).toISOString(),
     completedAt: iso(row["completedAt"]) ?? null,
     hasTrace: Boolean(row["hasTrace"]),
@@ -223,6 +234,9 @@ const SUMMARY_COLUMNS = {
   severityMatched: simulatorCheckRunsTable.severityMatched,
   licenseFeature: simulatorCheckRunsTable.licenseFeature,
   errorMessage: simulatorCheckRunsTable.errorMessage,
+  // The endpoint is projected out of this in rowToSummary; `result`/`items`/`trace`
+  // stay excluded, which is what keeps these projections light.
+  request: simulatorCheckRunsTable.request,
   startedAt: simulatorCheckRunsTable.startedAt,
   completedAt: simulatorCheckRunsTable.completedAt,
   tracedAt: simulatorCheckRunsTable.tracedAt,

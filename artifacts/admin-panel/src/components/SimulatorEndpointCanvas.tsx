@@ -20,8 +20,19 @@
 // process-local Map, so "Open" can load a run started before the last
 // api-server restart back into this canvas, and two runs can be compared.
 //
-// Deliberately NOT here (later phase, per the sequenced spec):
-// auto-classification, tie-failures-to-action, write endpoints.
+// Phase 4 adds failure auto-classification and tie-to-action. When a run fails,
+// the server classifies its REAL error text (api-server
+// lib/monitor-failure-classifier.ts) and the verdict renders directly under the
+// run status, above the response — the first thing visible on a failure, because
+// the point of the phase is to replace an evening of reading raw error_message
+// text with a glance. The suggested action never applies itself: "Edit endpoint"
+// focuses a field in the form already on this page, and "Retire this check" runs
+// the same confirmed, reversible archive action the header's Retire button uses.
+// MISSING PERMISSION has no action at all — it names the permission and says
+// where it is declared, because adding one forces re-consent on every connected
+// tenant and stays a deliberate human decision.
+//
+// Deliberately NOT here (later phase, per the sequenced spec): write endpoints.
 //
 // Editing a parameter here does NOT mutate the catalog row — the run route takes
 // per-run overrides. Persisting a change is the explicit "Save changes" action,
@@ -36,6 +47,10 @@ import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
 import { SimulatorEngineTrace } from "./SimulatorEngineTrace";
 import { SimulatorRunHistory } from "./SimulatorRunHistory";
+import {
+  SimulatorFailureClassification,
+  type FailureClassification,
+} from "./SimulatorFailureClassification";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -94,12 +109,21 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   );
 
   const [run, setRun] = useState<CheckRun | null>(null);
+  // The server's classification of THIS run's failure. Null whenever the run
+  // succeeded (or hasn't failed yet), so the banner can never sit over a green run.
+  const [classification, setClassification] = useState<FailureClassification | null>(null);
   const [starting, setStarting] = useState(false);
   const [saving, setSaving] = useState(false);
   // Bumped whenever a run reaches a terminal state, so the persisted history
   // list refetches instead of showing a stale set.
   const [historyToken, setHistoryToken] = useState(0);
   const pollRef = useRef<number | null>(null);
+
+  // Tie-to-action targets: "Edit endpoint" focuses the real field in the form
+  // already on this page. It opens and selects — it never saves.
+  const endpointRef = useRef<HTMLInputElement | null>(null);
+  const selectParamsRef = useRef<HTMLInputElement | null>(null);
+  const requestBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Re-seed every field when a different endpoint is selected in the tree.
   useEffect(() => {
@@ -108,7 +132,20 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setSelectParams(check.selectParams ?? "");
     setRequestBodyText(check.requestBody ? JSON.stringify(check.requestBody, null, 2) : "");
     setRun(null);
+    setClassification(null);
   }, [check.key]);
+
+  /** Opens the edit form on the field the classification points at. Never saves. */
+  const focusRequestField = (field: "endpoint" | "selectParams" | "requestBody") => {
+    const el =
+      field === "selectParams" ? selectParamsRef.current
+      : field === "requestBody" ? requestBodyRef.current
+      : endpointRef.current;
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.focus();
+    el.select();
+  };
 
   useEffect(() => {
     return () => {
@@ -168,6 +205,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
 
     setStarting(true);
     setRun(null);
+    setClassification(null);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}/run`, {
         method: "POST",
@@ -202,6 +240,9 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
               const pollData = await pollRes.json();
               const current = pollData.run as CheckRun;
               setRun(current);
+              // Computed server-side from this run's real error text; null unless
+              // the run actually failed.
+              setClassification((pollData.classification ?? null) as FailureClassification | null);
               if (current.status === "completed" || current.status === "failed") {
                 stopPolling();
                 // The run is now a persisted row — refresh history so it appears.
@@ -243,6 +284,10 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         return;
       }
       setRun(data.run as CheckRun);
+      // A historical failure is triaged the same way a live one is — the
+      // classification is recomputed from that run's own stored error text, so
+      // opening a run from before this phase existed still gets a verdict.
+      setClassification((data.classification ?? null) as FailureClassification | null);
     } catch (err: any) {
       toast.error(err.message || "Network error loading that run");
     }
@@ -403,6 +448,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           ))}
         </select>
         <input
+          ref={endpointRef}
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
           spellCheck={false}
@@ -420,6 +466,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
             Select params
           </label>
           <input
+            ref={selectParamsRef}
             value={selectParams}
             onChange={(e) => setSelectParams(e.target.value)}
             spellCheck={false}
@@ -441,6 +488,7 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
         Request body {method === "GET" && <span className="normal-case text-muted-foreground/60">(unused for GET)</span>}
       </label>
       <textarea
+        ref={requestBodyRef}
         value={requestBodyText}
         onChange={(e) => setRequestBodyText(e.target.value)}
         spellCheck={false}
@@ -487,6 +535,18 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
             </div>
           )}
         </div>
+      )}
+
+      {/* Failure triage — FIRST thing on a failure, above the response. Every
+          action it offers opens a reviewable form or a confirmed, reversible
+          archive; none of them applies a change on click. */}
+      {classification && (
+        <SimulatorFailureClassification
+          classification={classification}
+          onEditEndpoint={focusRequestField}
+          onRetire={() => void handleRetire()}
+          canRetire={check.status === "active"}
+        />
       )}
 
       {/* Response */}

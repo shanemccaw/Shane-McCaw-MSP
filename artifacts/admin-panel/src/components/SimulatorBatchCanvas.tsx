@@ -15,6 +15,14 @@
 // executor status to failed so the UI can never show green over a non-result),
 // but it is NOT a broken check — it means the tenant lacks the M365 SKU. Folding
 // the two together would report a healthy tenant's missing add-on as an error.
+//
+// PHASE 4 — this is where the triage compounds. Forty failed checks are not forty
+// investigations if six of them are one missing permission, so the batch response
+// carries a grouped roll-up (`triage`) alongside the per-run classifications, and
+// it renders ABOVE the per-check rows. Actions stay per-check: "edit" opens that
+// one check's real edit form, "retire" archives that one check behind a confirm.
+// No group-level button changes N checks at once — a bulk mutation from a single
+// click is exactly what this phase is built to not do.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, KeyRound, Loader2, RefreshCw, XCircle } from "lucide-react";
@@ -22,6 +30,11 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
 import type { RunSummary } from "./SimulatorRunHistory";
+import {
+  FailureCategoryChip,
+  SimulatorBatchTriage,
+  type BatchTriage,
+} from "./SimulatorFailureClassification";
 
 interface BatchSummary {
   batchId: string;
@@ -57,8 +70,50 @@ export function SimulatorBatchCanvas({ target }: { target: BulkRunTarget }) {
 
   const [summary, setSummary] = useState<BatchSummary | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [triage, setTriage] = useState<BatchTriage | null>(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<number | null>(null);
+
+  /**
+   * "Edit" on a classified failure: loads that check's real stored config and
+   * opens it in the Endpoint tab's edit form, via the same
+   * `simulator-select-endpoint` event the Explorer tree uses. It opens a form —
+   * it changes nothing.
+   */
+  const openCheckForEdit = async (checkKey: string) => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(checkKey)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to load that check");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("simulator-select-endpoint", { detail: data.check }));
+    } catch (err: any) {
+      toast.error(err.message || "Network error loading that check");
+    }
+  };
+
+  /**
+   * "Retire" on a dead-API failure: the existing Phase 1 reversible archive
+   * (status → "archived"), behind the same confirm the endpoint canvas uses.
+   * Never a hard delete, and never one click away from N checks.
+   */
+  const retireCheck = async (checkKey: string) => {
+    if (!confirm(`Retire "${checkKey}"? It stays in the catalog with status "archived" and can be reactivated.`)) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(checkKey)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to retire endpoint");
+        return;
+      }
+      toast.success(`${checkKey} retired (archived — reversible)`);
+      window.dispatchEvent(new CustomEvent("simulator-endpoints-updated"));
+    } catch (err: any) {
+      toast.error(err.message || "Network error retiring endpoint");
+    }
+  };
 
   const stopPolling = () => {
     if (pollRef.current != null) {
@@ -74,6 +129,7 @@ export function SimulatorBatchCanvas({ target }: { target: BulkRunTarget }) {
       const data = await res.json();
       setSummary(data.summary as BatchSummary);
       setRuns((data.runs ?? []) as RunSummary[]);
+      setTriage((data.triage ?? null) as BatchTriage | null);
       return Boolean(data.summary?.finished);
     } catch {
       // Transient poll error — keep polling until the tick budget runs out.
@@ -87,6 +143,7 @@ export function SimulatorBatchCanvas({ target }: { target: BulkRunTarget }) {
     setLoading(true);
     setSummary(null);
     setRuns([]);
+    setTriage(null);
     void load();
 
     let ticks = 0;
@@ -200,6 +257,16 @@ export function SimulatorBatchCanvas({ target }: { target: BulkRunTarget }) {
         </div>
       )}
 
+      {/* Failure triage — above the per-check rows, because "6 of 40 failures are
+          one missing permission" is the finding; the forty rows are the detail. */}
+      {triage && (
+        <SimulatorBatchTriage
+          triage={triage}
+          onEditCheck={(key) => void openCheckForEdit(key)}
+          onRetireCheck={(key) => void retireCheck(key)}
+        />
+      )}
+
       {/* Per-check rows */}
       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         Checks
@@ -231,6 +298,7 @@ export function SimulatorBatchCanvas({ target }: { target: BulkRunTarget }) {
               <span className="w-[64px] shrink-0 text-right font-mono tabular-nums text-muted-foreground/80">
                 {run.itemCount ?? "—"} item
               </span>
+              {run.classification && <FailureCategoryChip classification={run.classification} />}
               <span className="min-w-0 flex-1 truncate text-muted-foreground/70" title={run.statusText}>
                 {run.statusText}
               </span>
