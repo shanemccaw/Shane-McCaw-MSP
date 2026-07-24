@@ -181,11 +181,23 @@ async function startCheckRun(opts: {
       // executeMonitorCheck never throws for a failed check — it returns a
       // status. Map its real statuses onto the run's terminal state so the UI
       // never shows a green "completed" over a consent_revoked/error result.
-      if (result.status === "ok") {
+      //
+      // "partial" (fan-out) is treated as a completed RUN: it ran to completion
+      // and produced real, persisted aggregate data. The coverage caveat is made
+      // explicit in the statusText, and the machine-readable truth is preserved in
+      // the denormalised resultStatus column (= "partial"), so history and the
+      // bulk-run summary can still distinguish it from a clean "ok".
+      if (result.status === "ok" || result.status === "partial") {
+        const fo = (result.extractedProperties?._fanOut ?? null) as
+          | { sourceItemsSucceeded?: number; sourceItemsScanned?: number; sourceItemsFailed?: number }
+          | null;
+        const coverageNote = result.status === "partial" && fo
+          ? `Partial fan-out coverage — ${fo.sourceItemsSucceeded ?? "?"}/${fo.sourceItemsScanned ?? "?"} items scanned, ${fo.sourceItemsFailed ?? "?"} failed (${result.itemCount} aggregated item(s))`
+          : `Completed — ${result.itemCount} item(s) across ${result.pageCount} page(s)`;
         await completeRun({
           runId,
           status: "completed",
-          statusText: `Completed — ${result.itemCount} item(s) across ${result.pageCount} page(s)`,
+          statusText: coverageNote,
           result,
         });
       } else {

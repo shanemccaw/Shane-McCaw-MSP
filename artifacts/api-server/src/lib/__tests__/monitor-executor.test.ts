@@ -644,6 +644,9 @@ describe("executeMonitorCheck", () => {
     frequency: "daily" as const,
     requiresCustomerScript: false,
     scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -755,8 +758,8 @@ describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
     };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -815,8 +818,8 @@ describe("executeMonitoringPackage — license gap does not block completion", (
     const mockDb = db as unknown as { select: Mock; insert: Mock };
 
     const fakeChecks = [
-      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
-      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:a", label: "Check A", endpoint: "/graph/a", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 1, checkId: "uuid-a", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
+      { key: "check:b", label: "Check B", endpoint: "/graph/b", method: "GET", properties: [], mapping: [], severityRules: [], engines: [], frequency: "daily", requiresCustomerScript: false, scriptPackageId: null, fanOutSource: null, fanOutItemIdField: null, fanOutMaxItems: null, schemaVersion: 1, status: "active", outputSchema: null, selectParams: null, requestBody: null, description: null, id: 2, checkId: "uuid-b", createdByAdminId: null, updatedByAdminId: null, createdAt: new Date(), updatedAt: new Date() },
     ];
 
     mockDb.select
@@ -858,5 +861,249 @@ describe("executeMonitoringPackage — license gap does not block completion", (
     expect(progressEvents).toContain("check:b:license_gap");
     expect(result.licenseGapCount).toBe(2);
     expect(result.licenseGapFeatures).toContain("Microsoft Entra ID Premium (P1/P2)");
+  });
+});
+
+// ── executeMonitorCheck — fan-out (group-scoped) execution ─────────────────────
+//
+// Covers the additive fan-out capability: successful cross-item aggregation,
+// honest partial-failure handling, pagination of the ENUMERATION list itself
+// (a large tenant's groups do not fit one page), item-cap truncation honesty,
+// tenant-wide short-circuit (consent), 429 throttle backoff, and the concrete
+// identity:pim-groups extractedProperties shape.
+
+describe("executeMonitorCheck — fan-out (group-scoped)", () => {
+  const mockFetch = graphFetchForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const SINGLE_QUOTE = String.fromCharCode(39);
+  // Real per-group PIM eligibilitySchedules template with the {itemId} placeholder.
+  const PIM_ENDPOINT =
+    "/identityGovernance/privilegedAccess/group/eligibilitySchedules?$filter=groupId eq " +
+    SINGLE_QUOTE + "{itemId}" + SINGLE_QUOTE;
+
+  const fanOutCheck = {
+    id: 10,
+    checkId: "uuid-fo",
+    key: "identity:pim-groups",
+    label: "PIM for Groups — Eligible Assignments",
+    description: null,
+    endpoint: PIM_ENDPOINT,
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    properties: [] as string[],
+    mapping: [{ sourceField: "principalId", targetField: "eligibleAssignmentsTotal", transform: "count" }] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [{ expression: "{{_fanOut.sourceItemsWithResults}} > 0", severity: "warning" }] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: ["security"] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: "/groups?$select=id",
+    fanOutItemIdField: null, // defaults to "id"
+    fanOutMaxItems: null,
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  // Response factories mirroring what graphFetchForTenant hands graphFetchPaginated.
+  const jsonRes = (value: unknown[], nextLink?: string) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(nextLink ? { value, "@odata.nextLink": nextLink } : { value }),
+    headers: { get: (h: string) => (h === "content-type" ? "application/json" : null) },
+  });
+  const errRes = (status: number) => ({
+    ok: false,
+    status,
+    text: async () => "error body " + status,
+    headers: { get: () => null },
+  });
+  const throttleRes = () => ({
+    ok: false,
+    status: 429,
+    text: async () => "throttled",
+    headers: { get: (h: string) => (h === "retry-after" ? "0" : null) },
+  });
+
+  const schedule = (groupId: string, principalId: string) => ({ groupId, principalId, accessId: "member", status: "Provisioned" });
+  const scopedTo = (path: string, gid: string) => path.includes(SINGLE_QUOTE + gid + SINGLE_QUOTE);
+
+  it("aggregates per-item results across every enumerated group (success)", async () => {
+    // 3 groups; g1 -> 2 schedules, g2 -> 0, g3 -> 1.
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }, { id: "g3" }]);
+      if (scopedTo(path, "g1")) return jsonRes([schedule("g1", "p1"), schedule("g1", "p2")]);
+      if (scopedTo(path, "g2")) return jsonRes([]);
+      if (scopedTo(path, "g3")) return jsonRes([schedule("g3", "p3")]);
+      throw new Error("unexpected path " + path);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true, includeItems: true });
+
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(3); // 2 + 0 + 1 flattened schedules
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    expect(fo.sourceItemsTotal).toBe(3);
+    expect(fo.sourceItemsSucceeded).toBe(3);
+    expect(fo.sourceItemsFailed).toBe(0);
+    // PIM primary metric: number of GROUPS with >=1 eligible assignment.
+    expect(fo.sourceItemsWithResults).toBe(2);
+    // Planner-style rollup metric: total assignments across all groups (via mapping).
+    expect(result.extractedProperties.eligibleAssignmentsTotal).toBe(3);
+    // Severity fired off the fan-out coverage metric.
+    expect(result.severityMatched).toBe("warning");
+    expect((result.items ?? []).length).toBe(3);
+  });
+
+  it("reports status=partial when some groups fail and some succeed", async () => {
+    // 4 groups: g1 ok(1), g2 error, g3 ok(1), g4 error.
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }, { id: "g3" }, { id: "g4" }]);
+      if (scopedTo(path, "g1")) return jsonRes([schedule("g1", "p1")]);
+      if (scopedTo(path, "g2")) return errRes(500);
+      if (scopedTo(path, "g3")) return jsonRes([schedule("g3", "p3")]);
+      if (scopedTo(path, "g4")) return errRes(503);
+      throw new Error("unexpected path " + path);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+
+    expect(result.status).toBe("partial");
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    expect(fo.sourceItemsSucceeded).toBe(2);
+    expect(fo.sourceItemsFailed).toBe(2);
+    expect(fo.combinedItemCount).toBe(2);
+    expect((fo.sampleErrors as unknown[]).length).toBe(2);
+    // Real aggregate data survives the partial coverage.
+    expect(result.extractedProperties.eligibleAssignmentsTotal).toBe(2);
+  });
+
+  it("paginates the enumeration list itself (groups do not fit one page)", async () => {
+    // /groups returns page 1 (g1,g2 + nextLink) then page 2 (g3).
+    let groupsCall = 0;
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) {
+        groupsCall++;
+        if (groupsCall === 1) return jsonRes([{ id: "g1" }, { id: "g2" }], "https://graph.microsoft.com/v1.0/groups?$skiptoken=PAGE2");
+        return jsonRes([{ id: "g3" }]);
+      }
+      const gid = ["g1", "g2", "g3"].find((g) => scopedTo(path, g)) ?? "g?";
+      return jsonRes([schedule(gid, "p-" + gid)]);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+
+    expect(result.status).toBe("ok");
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    // All 3 groups across 2 enumeration pages were discovered and scanned.
+    expect(fo.sourceItemsTotal).toBe(3);
+    expect(fo.sourceItemsScanned).toBe(3);
+    expect(fo.sourcePageCount).toBe(2);
+    expect(result.itemCount).toBe(3);
+    expect(groupsCall).toBe(2);
+  });
+
+  it("reports status=error when every scanned group fails", async () => {
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }]);
+      return errRes(500);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    expect(result.status).toBe("error");
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    expect(fo.sourceItemsSucceeded).toBe(0);
+    expect(fo.sourceItemsFailed).toBe(2);
+  });
+
+  it("returns honest empty (status=ok, 0 items) when the tenant has no groups", async () => {
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([]);
+      throw new Error("should not fan out with zero groups");
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(0);
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    expect(fo.sourceItemsTotal).toBe(0);
+    expect(fo.sourceItemsWithResults).toBe(0);
+  });
+
+  it("propagates a per-item consent revocation as a tenant-wide consent_revoked", async () => {
+    const { markTenantConsentRevoked } = await import("../graph");
+    (markTenantConsentRevoked as Mock).mockClear?.();
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }]);
+      throw new ConsentRevokedError("t1");
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    expect(result.status).toBe("consent_revoked");
+    expect(markTenantConsentRevoked as Mock).toHaveBeenCalled();
+  });
+
+  it("backs off and retries on a 429, then succeeds (rate-limiting)", async () => {
+    let g1Calls = 0;
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }]);
+      g1Calls++;
+      if (g1Calls === 1) return throttleRes(); // first per-item hit is throttled
+      return jsonRes([schedule("g1", "p1")]);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(g1Calls).toBe(2); // proves the throttled call was retried
+  });
+
+  it("honestly truncates at the item cap and flags it", async () => {
+    const cappedCheck = { ...fanOutCheck, fanOutMaxItems: 2 };
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }, { id: "g3" }]);
+      const gid = ["g1", "g2", "g3"].find((g) => scopedTo(path, g)) ?? "g?";
+      return jsonRes([schedule(gid, "p-" + gid)]);
+    });
+
+    const result = await executeMonitorCheck({ check: cappedCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    const fo = result.extractedProperties._fanOut as Record<string, unknown>;
+    expect(fo.sourceItemsTotal).toBe(3);
+    expect(fo.sourceItemsScanned).toBe(2); // capped
+    expect(fo.truncated).toBe(true);
+  });
+
+  it("produces the concrete identity:pim-groups extractedProperties shape", async () => {
+    // Two groups both with a standing eligible assignment — the real signal the
+    // check exists to surface. Confirms the shape downstream signal rules read.
+    mockFetch.mockImplementation(async (_tenantId: string, path: string) => {
+      if (path.includes("/groups")) return jsonRes([{ id: "g1" }, { id: "g2" }]);
+      if (path.includes("eligibilitySchedules")) {
+        const gid = ["g1", "g2"].find((g) => scopedTo(path, g)) ?? "g?";
+        return jsonRes([schedule(gid, "p-" + gid)]);
+      }
+      throw new Error("unexpected path " + path);
+    });
+
+    const result = await executeMonitorCheck({ check: fanOutCheck, tenantId: "t1", triggerId: "r1", skipIdempotency: true });
+    const props = result.extractedProperties;
+    const fo = props._fanOut as Record<string, unknown>;
+
+    expect(result.status).toBe("ok");
+    expect(fo.source).toBe("/groups?$select=id");
+    expect(fo.itemIdField).toBe("id");
+    expect(fo.sourceItemsWithResults).toBe(2); // both groups have eligible assignments
+    expect(props.eligibleAssignmentsTotal).toBe(2);
+    expect(props._itemCount).toBe(2); // applyMapping stamps this for pillar coverage
+    expect(result.severityMatched).toBe("warning");
   });
 });

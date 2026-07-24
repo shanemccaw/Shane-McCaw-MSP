@@ -60,6 +60,10 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
     if (s === "warning" || s === "medium") return "warning";
     if (s === "low") return "info";
   }
+  // A fan-out check that ran but couldn't cover every item (status "partial")
+  // produced real data and may have matched a real severity above; if it didn't,
+  // surface the incomplete coverage as info rather than a silent clean "ok".
+  if (result.status === "partial") return "info";
   return "ok";
 }
 
@@ -74,6 +78,7 @@ function buildFindingTitle(result: CheckResult): string {
   if (result.status === "requires_script") return "Requires customer-side script";
   if (result.status === "license_gap") return `Not checked — requires ${licenseGapFeatureOf(result)}`;
   if (result.severityMatched) return `${result.severityMatched} finding detected`;
+  if (result.status === "partial") return "Partial coverage — some items could not be scanned";
   return "Check passed";
 }
 

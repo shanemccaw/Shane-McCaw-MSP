@@ -32,6 +32,39 @@ const log = logger.child({ channel: "engine.monitor" });
 /** Hard cap on @odata.nextLink page fetches per check to prevent runaway loops. */
 const NEXT_LINK_MAX_PAGES = 50;
 
+// ── Fan-out (group-scoped) execution tuning ───────────────────────────────────
+// These govern the ADDITIVE fan-out path only (checks with a `fanOutSource`);
+// no non-fan-out check ever reaches this code.
+
+/**
+ * Default cap on how many enumerated items (e.g. groups) a single fan-out check
+ * will scan. A large tenant can have hundreds of groups; iterating every one is
+ * real, sustained Graph load, so the fan-out is bounded by default. When the cap
+ * is hit the result records `_fanOut.truncated = true` and logs a warning — the
+ * coverage is never silently curtailed. Overridable per check via
+ * `monitor_checks.fan_out_max_items`.
+ */
+const FAN_OUT_MAX_ITEMS_DEFAULT = 500;
+
+/**
+ * How many per-item requests run concurrently. Kept deliberately small: fanning
+ * 500 groups out all at once would guarantee Graph 429s. Four in flight is a
+ * sustainable trickle that still finishes a large tenant in reasonable time, and
+ * each request additionally backs off on its own 429 (see throttleRetry below).
+ */
+const FAN_OUT_CONCURRENCY = 4;
+
+/** Per-item 429 retry budget and base backoff. Honors Graph's Retry-After header. */
+const FAN_OUT_MAX_RETRIES_ON_429 = 4;
+const FAN_OUT_RETRY_BASE_DELAY_MS = 1000;
+
+/** Max distinct per-item failure messages retained on the result for diagnosis. */
+const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * How much of a failed Graph response body is kept in the error message.
  *
@@ -69,7 +102,7 @@ export interface MappingRule {
 
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   errorMessage?: string;
@@ -155,21 +188,41 @@ const DATE_PLACEHOLDER_RE = /\{(\d+)DaysAgo\}/g;
 const IDENTITY_PLACEHOLDER_RE = /\{(id|tenantId|organizationId)\}/g;
 
 /**
+ * The per-item placeholder used ONLY by the fan-out execution path. It is
+ * deliberately a distinct token from the tenant-identity `{id}`/`{tenantId}`:
+ * `{itemId}` is substituted with the id of the CURRENT enumerated item (e.g. one
+ * group's GUID), which changes on every per-item request, whereas the identity
+ * placeholders resolve once to the fixed tenant GUID. Keeping them separate is
+ * what lets a fan-out endpoint carry both — e.g. a template scoped to one group
+ * within one tenant — without the two substitutions colliding.
+ */
+const ITEM_ID_PLACEHOLDER_RE = /\{itemId\}/g;
+
+/**
  * Resolves the placeholder tokens a monitor check's stored endpoint may contain.
  *
  * `tenantId` is optional so existing callers (and the date-only tests) are
  * unaffected; when it's absent, identity placeholders are deliberately left
  * as-is rather than substituted with an empty string, which would silently
  * produce a wrong-but-plausible URL like `/organization//branding`.
+ *
+ * `itemId` is the fan-out per-item id. It's optional and independent of tenantId:
+ * when present, `{itemId}` tokens are substituted with it. Absent (every
+ * non-fan-out call), `{itemId}` is left as-is — the same fail-loud-not-silent
+ * rule the identity placeholders follow, so a fan-out template accidentally run
+ * through the normal path produces a visibly-wrong URL rather than a plausible one.
  */
-export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string): string {
+export function resolveEndpointPlaceholders(endpoint: string, tenantId?: string, itemId?: string): string {
   const withDates = endpoint.replace(DATE_PLACEHOLDER_RE, (_match, days: string) => {
     const n = Number(days);
     const d = new Date(Date.now() - n * 24 * 60 * 60 * 1000);
     return d.toISOString();
   });
-  if (!tenantId) return withDates;
-  return withDates.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
+  const withItem = itemId != null
+    ? withDates.replace(ITEM_ID_PLACEHOLDER_RE, itemId)
+    : withDates;
+  if (!tenantId) return withItem;
+  return withItem.replace(IDENTITY_PLACEHOLDER_RE, tenantId);
 }
 
 // ── Microsoft 365 usage-report (CSV) responses ────────────────────────────────
@@ -475,16 +528,34 @@ interface PaginatedResult {
   rawResponse: unknown;
 }
 
+/**
+ * Opt-in throttle handling for a single paginated fetch. ONLY the fan-out path
+ * passes this. When absent (every existing caller — scheduled package runs,
+ * simulator runs, the date-only tests), the loop below is byte-for-byte the same
+ * as before: a 429 falls straight through to the generic `!res.ok` throw. When
+ * present, a 429 is retried up to `maxRetries` times, waiting the server's
+ * Retry-After (seconds) if given, otherwise an exponential backoff off
+ * `baseDelayMs`. This keeps the shared one-check-one-URL semantics untouched
+ * while giving the fan-out the throttle resilience its per-group hammering needs.
+ */
+export interface ThrottleRetryOptions {
+  maxRetries: number;
+  baseDelayMs: number;
+}
+
 export async function graphFetchPaginated(
   tenantId: string,
   endpoint: string,
   method: string,
   requestBody?: unknown,
+  fetchOpts?: { throttleRetry?: ThrottleRetryOptions },
 ): Promise<PaginatedResult> {
   const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
   const items: unknown[] = [];
   let pageCount = 0;
   let rawResponse: unknown = null;
+  const throttleRetry = fetchOpts?.throttleRetry;
+  let throttleAttempts = 0;
 
   // Resolve placeholders before building the URL: relative dates (e.g.
   // {30DaysAgo}) because Graph's $filter requires a literal ISO 8601 date rather
@@ -522,6 +593,27 @@ export async function graphFetchPaginated(
     // graphFetchForTenant handles auth and consent-revoked detection
     const fullPath = url.startsWith(GRAPH_BASE) ? url.slice(GRAPH_BASE.length) : url;
     const res = await graphFetchForTenant(tenantId, fullPath, options);
+
+    // Throttle handling — opt-in (fan-out only). A 429 with retries remaining is
+    // waited-out and retried against the SAME url (pageCount/url not advanced), so
+    // pagination resumes exactly where it throttled. Default callers never set
+    // throttleRetry, so this whole block is skipped and a 429 hits the generic
+    // throw below, preserving the pre-existing behavior for every other check.
+    if (res.status === 429 && throttleRetry && throttleAttempts < throttleRetry.maxRetries) {
+      throttleAttempts++;
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterSec = retryAfterHeader != null ? Number(retryAfterHeader) : NaN;
+      const delayMs = Number.isFinite(retryAfterSec) && retryAfterSec >= 0
+        ? retryAfterSec * 1000
+        : throttleRetry.baseDelayMs * Math.pow(2, throttleAttempts - 1);
+      await res.text().catch(() => "");
+      log.warn(
+        { tenantId, endpoint, attempt: throttleAttempts, delayMs, retryAfter: retryAfterHeader },
+        "monitor-executor: Graph 429 throttled — backing off and retrying (fan-out)",
+      );
+      await sleep(delayMs);
+      continue; // retry same url
+    }
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
@@ -612,6 +704,236 @@ export function licenseGapProfileFlags(feature: string): Record<string, boolean>
   return {};
 }
 
+// ── Fan-out (group-scoped) check executor ─────────────────────────────────────
+//
+// Runs a check whose target endpoint has no tenant-wide form and must instead be
+// issued once per enumerated entity (PIM for Groups eligibilitySchedules needs a
+// groupId $filter; Planner /plans needs an owner group id). The shape deliberately
+// GENERALISES across both real use cases rather than hard-coding either:
+//
+//   1. Enumerate `fanOutSource` (e.g. /groups) with full @odata.nextLink paging —
+//      a large tenant's hundreds of groups are NOT assumed to fit one page.
+//   2. Issue the check's own `endpoint` once per item, substituting the item id
+//      into `{itemId}`, with bounded concurrency + per-request 429 backoff.
+//   3. Aggregate:
+//        • the check's normal `mapping`/`properties` run over the FLATTENED union
+//          of every per-item response — this yields the cross-group ROLLUP totals
+//          (Planner's "total plans/tasks across the tenant"); and
+//        • `_fanOut.sourceItemsWithResults` yields the count of ENUMERATED ITEMS
+//          that returned ≥1 result (PIM's "groups with eligible assignments").
+//      Both metrics are always present; each check's severity rules read whichever
+//      one is its primary signal. This is why the two use cases share one path.
+//   4. Report partial coverage honestly (see the `partial` status).
+//
+// Consent revocation and license gaps are tenant-wide conditions, so a per-item
+// occurrence THROWS out to executeMonitorCheck's existing catch, which owns the
+// auto-revoke + license_gap persistence — this path never duplicates that logic.
+async function runFanOutCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+  const throttleRetry: ThrottleRetryOptions = {
+    maxRetries: FAN_OUT_MAX_RETRIES_ON_429,
+    baseDelayMs: FAN_OUT_RETRY_BASE_DELAY_MS,
+  };
+  const idField = check.fanOutItemIdField ?? "id";
+  const maxItems = check.fanOutMaxItems ?? FAN_OUT_MAX_ITEMS_DEFAULT;
+
+  // 1. Enumerate the source list. Any throw here (consent/license/generic) is
+  //    deliberately allowed to propagate to executeMonitorCheck's catch.
+  const enumResult = await graphFetchPaginated(
+    tenantId,
+    check.fanOutSource!,
+    "GET",
+    undefined,
+    { throttleRetry },
+  );
+
+  const allIds = enumResult.items
+    .map((it) => (typeof it === "object" && it !== null
+      ? (it as Record<string, unknown>)[idField]
+      : undefined))
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+
+  const truncated = allIds.length > maxItems;
+  const ids = truncated ? allIds.slice(0, maxItems) : allIds;
+  if (truncated) {
+    log.warn(
+      { checkKey: check.key, tenantId, enumerated: allIds.length, cap: maxItems },
+      "monitor-executor: fan-out item cap reached — scanning first N, coverage truncated (recorded in _fanOut.truncated)",
+    );
+  }
+
+  // 2. Per-item fan-out, bounded concurrency. Each worker NEVER rejects — it tags
+  //    its outcome — so one item's failure can't take the batch down.
+  const combinedItems: unknown[] = [];
+  let succeeded = 0;
+  let failed = 0;
+  let withResults = 0;
+  let perItemPageTotal = 0;
+  let licenseGapCount = 0;
+  const sampleErrors: Array<{ itemId: string; message: string }> = [];
+  let consentErr: ConsentRevokedError | null = null;
+  let licenseErr: LicenseGapError | null = null;
+
+  const recordError = (itemId: string, message: string) => {
+    failed++;
+    if (sampleErrors.length < FAN_OUT_SAMPLE_ERROR_LIMIT) sampleErrors.push({ itemId, message });
+  };
+
+  // Stop early on consent (auth-level, tenant-fatal) or on a license gap while
+  // nothing has succeeded yet (a tenant-wide missing SKU — no point hammering
+  // every remaining group to re-learn the tenant lacks the add-on).
+  for (
+    let i = 0;
+    i < ids.length && !consentErr && !(licenseErr && succeeded === 0);
+    i += FAN_OUT_CONCURRENCY
+  ) {
+    const batch = ids.slice(i, i + FAN_OUT_CONCURRENCY);
+    const outcomes = await Promise.all(batch.map(async (id) => {
+      try {
+        // Substitute {itemId} here; graphFetchPaginated still resolves the tenant
+        // identity + date placeholders and prepends the Graph base.
+        const perItemEndpoint = resolveEndpointPlaceholders(check.endpoint, undefined, id);
+        const r = await graphFetchPaginated(
+          tenantId,
+          perItemEndpoint,
+          check.method ?? "GET",
+          check.requestBody as unknown,
+          { throttleRetry },
+        );
+        return { id, ok: true as const, items: r.items, pageCount: r.pageCount };
+      } catch (e) {
+        return { id, ok: false as const, error: e };
+      }
+    }));
+
+    for (const o of outcomes) {
+      if (o.ok) {
+        succeeded++;
+        perItemPageTotal += o.pageCount;
+        if (o.items.length > 0) withResults++;
+        combinedItems.push(...o.items);
+        continue;
+      }
+      const e = o.error;
+      if (e instanceof ConsentRevokedError) { consentErr = e; continue; }
+      if (e instanceof LicenseGapError) {
+        licenseErr ??= e;
+        licenseGapCount++;
+        // Only counted as a hard failure once we know it isn't the pure-SKU-wall
+        // case (handled by the throw below); recorded for transparency regardless.
+        if (sampleErrors.length < FAN_OUT_SAMPLE_ERROR_LIMIT) {
+          sampleErrors.push({ itemId: o.id, message: `license_gap: ${e.feature}` });
+        }
+        continue;
+      }
+      recordError(o.id, e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  // Tenant-wide conditions → hand back to the shared catch, which owns auto-revoke
+  // and the license_gap persistence contract.
+  if (consentErr) throw consentErr;
+  if (licenseErr && succeeded === 0 && failed === 0) throw licenseErr;
+
+  // 3. Aggregate. Mapping/properties run over the flattened union (cross-item
+  //    rollup); _fanOut carries the per-source-item coverage picture.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(combinedItems, mapping, properties);
+  extracted._fanOut = {
+    source: check.fanOutSource,
+    itemIdField: idField,
+    sourceItemsTotal: allIds.length,
+    sourceItemsScanned: ids.length,
+    sourceItemsSucceeded: succeeded,
+    sourceItemsFailed: failed,
+    sourceItemsWithResults: withResults,
+    combinedItemCount: combinedItems.length,
+    licenseGapCount,
+    truncated,
+    sourcePageCount: enumResult.pageCount,
+    perItemPageCount: perItemPageTotal,
+    sampleErrors,
+  };
+
+  // 4. Honest status. Never "ok" over real per-item failures; never "error" when
+  //    real aggregate data WAS collected.
+  let status: CheckResult["status"];
+  if (ids.length === 0) {
+    status = "ok"; // zero enumerated items — an honest empty tenant, not a fault
+  } else if (succeeded === 0) {
+    status = "error"; // scanned items, none yielded data (and not the pure-SKU case)
+  } else if (failed === 0 && licenseGapCount === 0) {
+    status = "ok";
+  } else {
+    status = "partial"; // real data collected, but coverage was incomplete
+  }
+
+  // Schema validation (same contract as the normal path).
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: fan-out output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatched = classifySeverity(severityRules, extracted);
+
+  const pageCount = enumResult.pageCount + perItemPageTotal;
+  const rawResponse = {
+    _format: "fanOut",
+    _fanOut: extracted._fanOut,
+    sourceSample: enumResult.items.slice(0, 5),
+  };
+
+  const [row] = await db
+    .insert(tenantMonitorProfilesTable)
+    .values({
+      tenantId,
+      checkKey: check.key,
+      checkSchemaVersion: check.schemaVersion,
+      triggerId,
+      idempotencyKey,
+      status,
+      rawResponse: rawResponse as Record<string, unknown>,
+      extractedProperties: extracted,
+      severityMatched,
+      errorMessage: status === "ok"
+        ? undefined
+        : `Fan-out coverage: ${succeeded}/${ids.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
+      itemCount: combinedItems.length,
+      pageCount,
+    })
+    .onConflictDoNothing()
+    .returning({ profileId: tenantMonitorProfilesTable.profileId });
+
+  log.info(
+    { checkKey: check.key, tenantId, status, ...extracted._fanOut as Record<string, unknown> },
+    "monitor-executor: fan-out check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status,
+    extractedProperties: extracted,
+    severityMatched,
+    errorMessage: status === "ok" ? undefined : `${succeeded}/${ids.length} items succeeded, ${failed} failed`,
+    itemCount: combinedItems.length,
+    pageCount,
+    profileId: row?.profileId,
+    ...(opts.includeItems ? { items: combinedItems } : {}),
+  };
+}
+
 // ── Single check executor ─────────────────────────────────────────────────────
 
 export async function executeMonitorCheck(opts: {
@@ -692,6 +1014,15 @@ export async function executeMonitorCheck(opts: {
   }
 
   try {
+    // Fan-out (group-scoped) checks take an entirely separate, additive path.
+    // Enumeration-level consent/license/generic errors it throws are caught by
+    // this same try/catch below, so the auto-revoke + license_gap persistence
+    // contract is shared, not duplicated. Non-fan-out checks (fanOutSource NULL —
+    // every existing check) fall straight through to the unchanged path.
+    if (check.fanOutSource) {
+      return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems });
+    }
+
     // 1. Paginated Graph API fetch
     const { items, pageCount, rawResponse } = await graphFetchPaginated(
       tenantId,
@@ -991,8 +1322,11 @@ export async function executeMonitoringPackage(opts: {
   // failure — so they never make a run "partial_failure". A run is only
   // partial_failure for genuinely-unresolved "error" results; a tenant whose only
   // non-ok results are license gaps completes honestly (unblocking doc generation).
+  // A fan-out check that returned status "partial" collected real data but had
+  // per-item failures — it counts toward the run's partial_failure state exactly
+  // like a hard "error", so the run never reads as a clean "completed" over it.
   const hasConsentRevoked = results.some(r => r.status === "consent_revoked");
-  const hasErrors = results.some(r => r.status === "error");
+  const hasErrors = results.some(r => r.status === "error" || r.status === "partial");
   const runStatus: PackageRunResult["runStatus"] = hasConsentRevoked
     ? "consent_revoked"
     : hasErrors
@@ -1037,6 +1371,8 @@ export interface MonitoringEngineOutput {
     requiresScript: number;
     consentRevoked: number;
     licenseGap: number;
+    /** Fan-out checks that returned real data but with incomplete per-item coverage. */
+    partial: number;
     coverage: number;
     failures: string[];
   };
@@ -1090,6 +1426,10 @@ export async function computeMonitoringEngine(customerId: number): Promise<Monit
   const requiresScript = results.filter(r => r.status === "requires_script").length;
   const consentRevoked = results.filter(r => r.status === "consent_revoked").length;
   const licenseGap = results.filter(r => r.status === "license_gap").length;
+  const partial = results.filter(r => r.status === "partial").length;
+  // A "partial" fan-out produced real data but with incomplete coverage, so it is
+  // deliberately NOT counted toward full coverage (that would overstate it) yet
+  // also NOT a full failure (real data was collected). It surfaces as its own line.
   const covered = ok + requiresScript;
   const coverage = total > 0 ? Math.round((covered / total) * 100) : 0;
   // license_gap is NOT a failure — it's a known SKU limitation, so it stays out
@@ -1099,7 +1439,7 @@ export async function computeMonitoringEngine(customerId: number): Promise<Monit
   return {
     engine: "monitoring",
     results,
-    breakdown: { total, ok, error, requiresScript, consentRevoked, licenseGap, coverage, failures },
+    breakdown: { total, ok, error, requiresScript, consentRevoked, licenseGap, partial, coverage, failures },
     logs: [],
     debug: { customerId, checksEvaluated: total },
     timestamp: new Date().toISOString(),
@@ -1110,7 +1450,7 @@ export function computeMonitoringEngineForPayload(): MonitoringEngineOutput {
   return {
     engine: "monitoring",
     results: [],
-    breakdown: { total: 0, ok: 0, error: 0, requiresScript: 0, consentRevoked: 0, licenseGap: 0, coverage: 0, failures: [] },
+    breakdown: { total: 0, ok: 0, error: 0, requiresScript: 0, consentRevoked: 0, licenseGap: 0, partial: 0, coverage: 0, failures: [] },
     logs: ["Payload mode: no historical monitor profiles to evaluate"],
     debug: { payloadMode: true },
     timestamp: new Date().toISOString(),

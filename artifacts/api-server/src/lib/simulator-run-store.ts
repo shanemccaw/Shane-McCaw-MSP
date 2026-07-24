@@ -473,6 +473,8 @@ export interface BatchSummary {
   licenseGap: number;
   consentRevoked: number;
   requiresScript: number;
+  /** Fan-out checks that completed with real data but incomplete per-item coverage. */
+  partial: number;
   /** Distinct customer-safe add-on names behind the license_gap results. */
   licenseGapFeatures: string[];
   /** True once no run in the batch is still pending or running. */
@@ -508,6 +510,8 @@ export function summarizeBatch(batchId: string, runs: MonitorCheckRunSummary[]):
     licenseGap: count((r) => r.resultStatus === "license_gap"),
     consentRevoked: count((r) => r.resultStatus === "consent_revoked"),
     requiresScript: count((r) => r.resultStatus === "requires_script"),
+    // Fan-out checks that completed with real data but incomplete per-item coverage.
+    partial: count((r) => r.resultStatus === "partial"),
     licenseGapFeatures,
     finished: runs.every((r) => r.status === "completed" || r.status === "failed"),
   };

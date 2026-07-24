@@ -1460,6 +1460,23 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   frequency: text("frequency", { enum: MONITOR_CHECK_FREQUENCY }).notNull().default("daily"),
   requiresCustomerScript: boolean("requires_customer_script").notNull().default(false),
   scriptPackageId: uuid("script_package_id").references(() => scriptPackagesTable.id, { onDelete: "set null" }),
+  // ── Fan-out (group-scoped) execution ──────────────────────────────────────
+  // A small class of Graph endpoints have NO tenant-wide form: they require a
+  // per-entity $filter (PIM for Groups eligibilitySchedules needs a groupId;
+  // Planner /plans needs an owner group id). Covering a tenant means enumerating
+  // every entity and issuing one request per entity, which the default
+  // one-check-one-URL model can't express. When `fanOutSource` is set, the
+  // executor takes an ADDITIVE fan-out path: it enumerates `fanOutSource`
+  // (a Graph list endpoint, paginated), then runs the check's own `endpoint`
+  // once per enumerated item with the item's id substituted into a `{itemId}`
+  // placeholder, and aggregates the per-item results. NULL (the default for
+  // every existing check) leaves the one-check-one-URL path completely unchanged.
+  /** Graph list endpoint enumerating the items to iterate, e.g. `/groups?$select=id`. NULL = no fan-out. */
+  fanOutSource: text("fan_out_source"),
+  /** Field on each enumerated item whose value is substituted into the per-item `{itemId}` placeholder. Defaults to "id" when NULL. */
+  fanOutItemIdField: text("fan_out_item_id_field"),
+  /** Per-check cap on how many enumerated items are scanned (throttle guard). NULL = platform default (FAN_OUT_MAX_ITEMS_DEFAULT). */
+  fanOutMaxItems: integer("fan_out_max_items"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),
@@ -1517,7 +1534,14 @@ export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferS
 // Microsoft 365 SKU/add-on (e.g. Entra ID Premium, Defender for Office 365). This
 // is an accurate, known limitation — NOT a security finding, a consent revocation,
 // or a technical failure — and must never block a scan from completing.
-export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap"] as const;
+//
+// "partial": a fan-out (group-scoped) check completed with real aggregate data,
+// but some of the per-item requests failed — e.g. 160 of 200 groups returned
+// their PIM schedules and 40 errored. This is deliberately distinct from both
+// "ok" (which would hide that coverage was incomplete) and "error" (which would
+// throw away the real data that WAS collected). Only produced by the fan-out
+// execution path; the one-check-one-URL path never yields it.
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial"] as const;
 export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
 
 export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
