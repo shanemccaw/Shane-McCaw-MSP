@@ -423,9 +423,19 @@ export function traceCheckResponse(opts: {
   // The item-count key, traced the same way (never suggested for: a threshold
   // rule's direction depends on what the endpoint returns, which the operator
   // knows and a name-pattern cannot).
-  const itemCountRules = rulesBySourceKey.get(checkKey) ?? [];
+  //
+  // Two storage conventions both legitimately read this value, and both must
+  // be found here or a real rule reads as "no rules read this":
+  //   • `threshold` rules store the BARE checkKey as sourceKey — evaluateRule
+  //     appends `__itemCount` itself at evaluation time.
+  //   • `profile_key_eq/gt/lt/truthy/falsy` rules read mergedProfile[sourceKey]
+  //     literally, with no auto-suffixing, so a rule targeting this value must
+  //     store the full `<checkKey>__itemCount` sourceKey to evaluate correctly.
+  const itemCountRules = [
+    ...(rulesBySourceKey.get(checkKey) ?? []).filter((r) => r.ruleType === "threshold"),
+    ...(rulesBySourceKey.get(itemCountKey) ?? []),
+  ];
   const itemCountTraced: TracedRule[] = itemCountRules
-    .filter((r) => r.ruleType === "threshold")
     .map((rule) => {
       const { result, reason } = evaluateRule(rule, mergedProfile, parsedFindings);
       return {

@@ -167,6 +167,53 @@ describe("traceCheckResponse — identifies fed vs unfed keys against a real res
     expect(itemCountKey.rules[0]!.reason).toContain("itemCount = 3");
   });
 
+  it("traces a profile_key_eq rule stored against the FULL <checkKey>__itemCount sourceKey (the real signal.governance.access-review-completion case)", () => {
+    // profile_key_eq does not auto-append __itemCount like threshold does —
+    // evaluateRule reads mergedProfile[sourceKey] literally — so a rule
+    // targeting the itemCount value must store the full suffixed sourceKey to
+    // evaluate correctly. The trace must find it there too, not just under
+    // the bare checkKey convention threshold rules use.
+    const trace = traceCheckResponse({
+      checkKey: "governance:access-review-completion",
+      items: MFA_ITEMS.slice(0, 2),
+      mapping: [],
+      properties: [],
+      rules: [
+        makeRule({
+          id: 42,
+          ruleType: "profile_key_eq",
+          sourceKey: "governance:access-review-completion__itemCount",
+          compareValue: "2",
+        }),
+      ],
+    });
+
+    const itemCountKey = trace.keys.find(k => k.key === "governance:access-review-completion__itemCount")!;
+    expect(itemCountKey.uncovered).toBe(false);
+    expect(itemCountKey.rules).toHaveLength(1);
+    expect(itemCountKey.rules[0]!.ruleId).toBe(42);
+    expect(itemCountKey.rules[0]!.result).toBe(true); // 2 == 2
+  });
+
+  it("still finds a threshold rule under the bare checkKey alongside a profile_key_* rule under the suffixed key", () => {
+    const trace = traceCheckResponse({
+      checkKey: "identity:mfa-registration",
+      items: MFA_ITEMS,
+      mapping: [],
+      properties: [],
+      rules: [
+        makeRule({ id: 7, ruleType: "threshold", sourceKey: "identity:mfa-registration", compareValue: "2" }),
+        makeRule({ id: 8, ruleType: "profile_key_gt", sourceKey: "identity:mfa-registration__itemCount", compareValue: "10" }),
+      ],
+    });
+
+    const itemCountKey = trace.keys.find(k => k.key === "identity:mfa-registration__itemCount")!;
+    const ruleIds = itemCountKey.rules.map(r => r.ruleId).sort();
+    expect(ruleIds).toEqual([7, 8]);
+    expect(itemCountKey.rules.find(r => r.ruleId === 7)!.result).toBe(true); // 3 > 2
+    expect(itemCountKey.rules.find(r => r.ruleId === 8)!.result).toBe(false); // 3 > 10 is false
+  });
+
   it("uses the REAL applyMapping transforms rather than a local reimplementation", () => {
     // countEquals carries its comparison value inline in the transform string —
     // a behaviour only the real applyMapping implements.
