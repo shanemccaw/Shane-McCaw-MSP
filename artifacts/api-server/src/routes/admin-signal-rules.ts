@@ -775,10 +775,33 @@ router.delete("/admin/signal-rules/:id", requireAdmin, async (req: Request, res:
     `);
     const prior = priorResult.rows[0] as unknown as SignalDerivationRule | undefined;
     if (!prior) { res.status(404).json({ error: "Not found" }); return; }
-    await db.execute(sql`DELETE FROM signal_derivation_rules WHERE id = ${id}`);
+
+    let groupDeleted = false;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE id = ${id}`);
+      if (prior.groupId != null) {
+        const remaining = await tx.execute(sql`
+          SELECT id FROM signal_derivation_rules WHERE group_id = ${prior.groupId} LIMIT 1
+        `);
+        if ((remaining.rows as unknown[]).length === 0) {
+          await tx.execute(sql`DELETE FROM signal_rule_groups WHERE id = ${prior.groupId}`);
+          groupDeleted = true;
+        }
+      }
+    });
+
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
-    await appendAuditLog({ action: "delete", signalKey: prior.signalKey, ruleId: id, before: prior, adminUserId: adminId });
-    res.json({ ok: true });
+    await appendAuditLog({
+      action: "delete",
+      signalKey: prior.signalKey,
+      ruleId: id,
+      before: prior,
+      adminUserId: adminId,
+      note: groupDeleted
+        ? `Also deleted now-orphaned group ${prior.groupId} (no other rules referenced it)`
+        : null,
+    });
+    res.json({ ok: true, groupDeleted });
   } catch (err) {
     log.error({ err }, "DELETE /admin/signal-rules/:id failed");
     res.status(500).json({ error: "Failed to delete rule" });
