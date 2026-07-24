@@ -36,7 +36,7 @@
 // rules. Suggestions are NEVER auto-applied — Accept only opens an editable
 // draft, and the operator still has to save it.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -120,13 +120,20 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-export function SimulatorEngineTrace({
-  runId,
-  checkKey,
-  runStatus,
-  onRerun,
-  rerunning,
-}: {
+export interface SimulatorEngineTraceHandle {
+  /**
+   * Full Response mode (Part A): traces a raw Graph field that ISN'T in the
+   * check's configured `properties` yet, by re-tracing with that field added
+   * to the properties list. Reuses the exact same trace route + inferSuggestion
+   * pipeline every other suggestion here goes through — no second suggestion
+   * engine. Opens the shared rule editor as a draft on success; toasts if the
+   * property's value type isn't rule-readable (object/array/null) or there is
+   * no captured run to trace yet.
+   */
+  suggestRuleForProperty: (propKey: string) => Promise<void>;
+}
+
+export const SimulatorEngineTrace = forwardRef<SimulatorEngineTraceHandle, {
   /** The completed run whose captured response is traced. Null when nothing has run yet. */
   runId: string | null;
   checkKey: string;
@@ -134,7 +141,9 @@ export function SimulatorEngineTrace({
   /** Triggers a genuinely new live execution via the phase-1 run route. */
   onRerun: () => void;
   rerunning: boolean;
-}) {
+  /** The check's own currently configured raw properties list. */
+  checkProperties: string[];
+}>(function SimulatorEngineTrace({ runId, checkKey, runStatus, onRerun, rerunning, checkProperties }, ref) {
   const { fetchWithAuth } = useAuth();
 
   const [trace, setTrace] = useState<CheckTrace | null>(null);
@@ -310,6 +319,54 @@ export function SimulatorEngineTrace({
       setRuleSaving(false);
     }
   };
+
+  /**
+   * FULL RESPONSE — suggest a rule for a raw Graph field not yet in this
+   * check's `properties`. Re-traces with that field appended (server applies
+   * the SAME applyMapping raw-property extraction as every other property:
+   * `${propKey}_count` / `${propKey}_first` / `${propKey}_values`), then
+   * accepts whichever produced suggestion actually reads it — `_first` first,
+   * since that carries the field's real observed value/type, falling back to
+   * `_count` if `_first` was null on every item.
+   */
+  const suggestRuleForProperty = useCallback(
+    async (propKey: string) => {
+      if (!runId) {
+        toast.error("Run this endpoint first — there's no captured response to trace yet.");
+        return;
+      }
+      try {
+        const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}/trace`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: Array.from(new Set([...checkProperties, propKey])) }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast.error(data.error || "Failed to trace this property");
+          return;
+        }
+        const freshTrace = data.trace as CheckTrace;
+        setTrace(freshTrace);
+        const candidate =
+          freshTrace.suggestions.find((s) => s.sourceKey === `${propKey}_first`) ??
+          freshTrace.suggestions.find((s) => s.sourceKey === `${propKey}_count`) ??
+          freshTrace.suggestions.find((s) => s.sourceKey.startsWith(`${propKey}_`));
+        if (!candidate) {
+          toast.error(
+            `"${propKey}" didn't produce a rule-readable value on this response (object, array, or null on every item) — no suggestion available.`,
+          );
+          return;
+        }
+        acceptSuggestion(candidate);
+      } catch (err: any) {
+        toast.error(err.message || "Network error tracing that property");
+      }
+    },
+    [runId, checkProperties, fetchWithAuth], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  useImperativeHandle(ref, () => ({ suggestRuleForProperty }), [suggestRuleForProperty]);
 
   const visibleSuggestions = useMemo(
     () => (trace?.suggestions ?? []).filter(s => !discarded[s.sourceKey]),
@@ -556,6 +613,6 @@ export function SimulatorEngineTrace({
       )}
     </div>
   );
-}
+});
 
 export default SimulatorEngineTrace;

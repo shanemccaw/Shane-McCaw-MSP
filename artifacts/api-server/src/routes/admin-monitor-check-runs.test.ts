@@ -515,6 +515,127 @@ describe("GET /admin/monitor-check-runs/:runId", () => {
   });
 });
 
+// ── Simulator Studio: Full Response mode ───────────────────────────────────────
+//
+// Full Response is a client-side-only concept: the canvas strips $select from
+// the URL it sends as a per-run `endpoint` override before calling POST
+// /monitor-checks/:key/run. There is nothing new on the server to "turn on" —
+// what these tests prove is the constraint the brief cares about: a stripped
+// override flows through to executeMonitorCheck exactly like any other
+// override (proving it can't silently do something different), and the
+// check's own stored endpoint/selectParams are never written to as a result.
+
+describe("Full Response mode — per-run $select override never touches the catalog", () => {
+  it("a run whose override endpoint already has $select stripped reaches executeMonitorCheck with $select absent, while the stored check keeps its own selectParams untouched", async () => {
+    const checkWithSelectParams = { ...CHECK, selectParams: "$select=id,displayName" };
+    selectQueue = [[checkWithSelectParams], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: checkWithSelectParams.key,
+      status: "ok",
+      extractedProperties: {},
+      severityMatched: null,
+      itemCount: 3,
+      pageCount: 1,
+    });
+
+    const app = makeApp();
+    // This is exactly what SimulatorEndpointCanvas sends when Full Response is
+    // ON: the endpoint the operator would normally run, with $select removed.
+    const res = await auth(request(app).post(`/api/admin/monitor-checks/${checkWithSelectParams.key}/run`)).send({
+      customerId: 42,
+      endpoint: "/reports/authenticationMethods/userRegistrationDetails",
+    });
+    expect(res.status).toBe(202);
+    await waitForTerminal(app, res.body.runId);
+
+    const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
+    expect(arg.check.endpoint).not.toMatch(/\$select/i);
+    expect(arg.check.endpoint).toBe("/reports/authenticationMethods/userRegistrationDetails");
+
+    // The stored row's own selectParams is what the mock DB fixture still
+    // holds — nothing on this path ever calls db.update on monitor_checks, so
+    // there is no write path a Full Response run could have used.
+    expect(checkWithSelectParams.selectParams).toBe("$select=id,displayName");
+  });
+
+  it("a normal (non-Full-Response) run keeps $select in the override endpoint it sends", async () => {
+    selectQueue = [[CHECK], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: CHECK.key,
+      status: "ok",
+      extractedProperties: {},
+      severityMatched: null,
+      itemCount: 3,
+      pageCount: 1,
+    });
+
+    const app = makeApp();
+    const res = await auth(request(app).post(`/api/admin/monitor-checks/${CHECK.key}/run`)).send({
+      customerId: 42,
+      endpoint: "/reports/authenticationMethods/userRegistrationDetails?$select=id,displayName",
+    });
+    await waitForTerminal(app, res.body.runId);
+
+    const arg = executeMonitorCheck.mock.calls[0]![0] as Record<string, any>;
+    expect(arg.check.endpoint).toMatch(/\$select=id,displayName/);
+  });
+});
+
+describe("GET /admin/monitor-check-runs/:runId/items — Full Response raw view", () => {
+  it("rejects an unauthenticated request", async () => {
+    const res = await request(makeApp()).get("/api/admin/monitor-check-runs/whatever/items");
+    expect(res.status).toBe(401);
+  });
+
+  it("404s for an unknown run id", async () => {
+    const res = await auth(request(makeApp()).get("/api/admin/monitor-check-runs/does-not-exist/items"));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns the full captured items — every field Graph returned, not just the check's configured properties", async () => {
+    const app = makeApp();
+    const rawItems = [
+      { id: "u1", displayName: "Alice", accountEnabled: true, onPremisesSyncEnabled: null, extraField: "something new" },
+      { id: "u2", displayName: "Bob", accountEnabled: false, onPremisesSyncEnabled: true, extraField: "something else" },
+    ];
+    const runId = await startCompletedRun(app, rawItems);
+
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs/${runId}/items`));
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual(rawItems);
+    expect(res.body.itemCount).toBe(2);
+    // Fields never in CHECK.properties (["isMfaRegistered"]) are still present —
+    // this route is deliberately NOT filtered through applyMapping/properties.
+    expect(res.body.items[0].extraField).toBe("something new");
+  });
+
+  it("409s with the real reason when the run's items were omitted (too large to persist)", async () => {
+    const app = makeApp();
+    selectQueue = [[CHECK], [CUSTOMER]];
+    executeMonitorCheck.mockResolvedValue({
+      checkKey: CHECK.key,
+      status: "ok",
+      extractedProperties: {},
+      severityMatched: null,
+      itemCount: 500000,
+      pageCount: 40,
+      items: undefined, // simulator-run-store omits large payloads rather than truncating
+    });
+    const start = await auth(request(app).post(`/api/admin/monitor-checks/${CHECK.key}/run`)).send({ customerId: 42 });
+    await waitForTerminal(app, start.body.runId);
+    // Force the omission flag the way completeRun would have set it for an
+    // oversized payload, since this mock DB doesn't run the real byte-size check.
+    const row = runRows.find((r) => r.runId === start.body.runId)!;
+    row.itemsOmitted = true;
+    row.itemsOmittedReason = "The captured response was 42 MB across 500000 item(s), which exceeds the 16 MB storage ceiling.";
+    row.items = null;
+
+    const res = await auth(request(app).get(`/api/admin/monitor-check-runs/${start.body.runId}/items`));
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/42 MB/);
+  });
+});
+
 // ── Phase 2: engine trace ─────────────────────────────────────────────────────
 
 const MAPPED_CHECK = {

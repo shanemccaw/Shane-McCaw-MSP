@@ -503,6 +503,39 @@ router.get("/admin/monitor-check-runs/:runId", requireAdmin, async (req: Request
   }
 });
 
+// ── GET /api/admin/monitor-check-runs/:runId/items ─────────────────────────────
+// Full Response mode (Simulator Studio Part A): the poll route strips `items`
+// from every response so a 1-second poll never rides a potentially-thousands-
+// of-objects payload. This is the deliberate, explicit opt-in read for the ONE
+// case that needs the raw captured items — showing every field Graph actually
+// returned, so the operator can pick one and build a rule around it, rather
+// than only ever seeing the fields the check's current select_params/mapping
+// already narrows to. No new persistence: `items` already exists on the run
+// (see completeRun in simulator-run-store.ts), this just exposes it on demand.
+
+router.get("/admin/monitor-check-runs/:runId/items", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const run = await getRun(req.params.runId as string);
+    if (!run) return void res.status(404).json({ error: "Run not found" });
+
+    if (!Array.isArray(run.items)) {
+      return void res.status(409).json({
+        error: run.itemsOmitted
+          ? `That run's response was not stored: ${run.itemsOmittedReason ?? "it was too large to persist"}`
+          : run.status === "failed"
+            ? "That run did not complete successfully — there is no captured response"
+            : "That run has no captured response yet",
+        runStatus: run.status,
+      });
+    }
+
+    res.json({ items: run.items, itemCount: run.items.length });
+  } catch (err) {
+    log.error({ err }, "admin-monitor-check-runs: failed to load run items");
+    res.status(500).json({ error: "Failed to load this run's captured items" });
+  }
+});
+
 // ── GET /api/admin/monitor-check-runs/:runId/diff?against=<runId> ─────────────
 // What changed between two persisted runs of the SAME check: which produced
 // values differ, and which rules started or stopped firing.

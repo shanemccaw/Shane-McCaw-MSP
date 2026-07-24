@@ -34,6 +34,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { readTreeState, writeTreeState, DEFAULT_EXPANDED_CATS } from "./simulatorTreeState";
 
 interface EventDef {
   id: string;
@@ -132,31 +133,56 @@ export function SimulatorLeftTree() {
   const [runningEngines, setRunningEngines] = useState<Record<string, boolean>>({});
   const pollTimersRef = useRef<number[]>([]);
 
-  // Tree toggle states
-  const [scenariosOpen, setScenariosOpen] = useState(true);
-  const [scriptsOpen, setScriptsOpen] = useState(true);
-  const [migrationsOpen, setMigrationsOpen] = useState(true);
-  const [exceptionsOpen, setExceptionsOpen] = useState(true);
-  const [suitesOpen, setSuitesOpen] = useState(true);
-  const [enginesOpen, setEnginesOpen] = useState(true);
-  const [busEventsOpen, setBusEventsOpen] = useState(true);
-  const [endpointsOpen, setEndpointsOpen] = useState(true);
+  // Tree toggle states — seeded from the persisted state, if any, so a reload
+  // doesn't reset every node back to its hardcoded default.
+  const initialTreeState = useRef(readTreeState()).current;
+  const [scenariosOpen, setScenariosOpen] = useState(initialTreeState?.sections.scenarios ?? true);
+  const [scriptsOpen, setScriptsOpen] = useState(initialTreeState?.sections.scripts ?? true);
+  const [migrationsOpen, setMigrationsOpen] = useState(initialTreeState?.sections.migrations ?? true);
+  const [exceptionsOpen, setExceptionsOpen] = useState(initialTreeState?.sections.exceptions ?? true);
+  const [suitesOpen, setSuitesOpen] = useState(initialTreeState?.sections.suites ?? true);
+  const [enginesOpen, setEnginesOpen] = useState(initialTreeState?.sections.engines ?? true);
+  const [busEventsOpen, setBusEventsOpen] = useState(initialTreeState?.sections.busEvents ?? true);
+  const [endpointsOpen, setEndpointsOpen] = useState(initialTreeState?.sections.endpoints ?? true);
   // Which endpoint the center canvas is showing — highlighted in the tree.
   const [selectedEndpointKey, setSelectedEndpointKey] = useState<string | null>(null);
 
   // Categorized expansion states
-  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({
-    billing: true,
-    security: true,
-    sla: true,
-    crm: true,
-    "QA Asserts": true,
-    Maintenance: true,
-  });
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>(
+    initialTreeState?.cats ?? DEFAULT_EXPANDED_CATS,
+  );
 
   const toggleCat = (catName: string) => {
     setExpandedCats((prev) => ({ ...prev, [catName]: !prev[catName] }));
   };
+
+  // Persist whenever any node's open/closed state changes. One combined write
+  // (not one key per node) keeps this to a single localStorage round-trip.
+  useEffect(() => {
+    writeTreeState({
+      sections: {
+        scenarios: scenariosOpen,
+        scripts: scriptsOpen,
+        migrations: migrationsOpen,
+        exceptions: exceptionsOpen,
+        suites: suitesOpen,
+        engines: enginesOpen,
+        busEvents: busEventsOpen,
+        endpoints: endpointsOpen,
+      },
+      cats: expandedCats,
+    });
+  }, [
+    scenariosOpen,
+    scriptsOpen,
+    migrationsOpen,
+    exceptionsOpen,
+    suitesOpen,
+    enginesOpen,
+    busEventsOpen,
+    endpointsOpen,
+    expandedCats,
+  ]);
 
   // Group event types by dot-prefix; keys are namespaced ("evt:auth") so event
   // groups never collide with scenario/script categories in expandedCats.

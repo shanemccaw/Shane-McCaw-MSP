@@ -39,18 +39,19 @@
 // which PATCHes the existing /api/admin/monitor-checks/:key CRUD route.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Play, Save, Archive, RotateCcw } from "lucide-react";
+import { Loader2, Play, Save, Archive, RotateCcw, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useTestbedContext } from "@/contexts/TestbedContext";
 import { JsonResponseViewer } from "./JsonResponseViewer";
-import { SimulatorEngineTrace } from "./SimulatorEngineTrace";
+import { SimulatorEngineTrace, type SimulatorEngineTraceHandle } from "./SimulatorEngineTrace";
 import { SimulatorRunHistory } from "./SimulatorRunHistory";
 import {
   SimulatorFailureClassification,
   type FailureClassification,
 } from "./SimulatorFailureClassification";
+import { stripSelectParam } from "./simulatorFullResponse";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -118,6 +119,20 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   // list refetches instead of showing a stale set.
   const [historyToken, setHistoryToken] = useState(0);
   const pollRef = useRef<number | null>(null);
+  const engineTraceRef = useRef<SimulatorEngineTraceHandle | null>(null);
+
+  // FULL RESPONSE MODE (Part A) — per-run only. Toggling this NEVER mutates
+  // `selectParams`/the stored check: it only changes what handleRun sends as
+  // its endpoint override. See simulatorFullResponse.ts for why $select must be
+  // stripped from BOTH the dedicated selectParams field and any $select baked
+  // directly into `endpoint` (real seeded checks do both).
+  const [fullResponse, setFullResponse] = useState(false);
+  // The raw, unmapped items Graph returned for the run currently shown — only
+  // populated after a Full Response run, fetched via the dedicated
+  // GET .../items route (the poll response deliberately omits items).
+  const [rawItems, setRawItems] = useState<unknown[] | null>(null);
+  const [rawItemsError, setRawItemsError] = useState<string | null>(null);
+  const [loadingRawItems, setLoadingRawItems] = useState(false);
 
   // Tie-to-action targets: "Edit endpoint" focuses the real field in the form
   // already on this page. It opens and selects — it never saves.
@@ -133,6 +148,9 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     setRequestBodyText(check.requestBody ? JSON.stringify(check.requestBody, null, 2) : "");
     setRun(null);
     setClassification(null);
+    setFullResponse(false);
+    setRawItems(null);
+    setRawItemsError(null);
   }, [check.key]);
 
   /** Opens the edit form on the field the classification points at. Never saves. */
@@ -165,9 +183,18 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     return `${endpoint}${sep}${trimmed.replace(/^[?&]/, "")}`;
   }, [endpoint, selectParams]);
 
-  const fullUrl = effectiveEndpoint.startsWith("http")
-    ? effectiveEndpoint
-    : `${GRAPH_BASE}${effectiveEndpoint.startsWith("/") ? "" : "/"}${effectiveEndpoint}`;
+  // FULL RESPONSE (Part A) — omits $select for this one execution ONLY. Strips
+  // it from the effective URL right before it becomes the run's endpoint
+  // override; `endpoint`/`selectParams` state (and what Save/PATCH persists)
+  // are untouched either way.
+  const runEndpoint = useMemo(
+    () => (fullResponse ? stripSelectParam(effectiveEndpoint) : effectiveEndpoint),
+    [fullResponse, effectiveEndpoint],
+  );
+
+  const fullUrl = runEndpoint.startsWith("http")
+    ? runEndpoint
+    : `${GRAPH_BASE}${runEndpoint.startsWith("/") ? "" : "/"}${runEndpoint}`;
 
   const parsedBody = useMemo(() => {
     if (!requestBodyText.trim()) return { ok: true as const, value: null };
@@ -192,6 +219,28 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
     }
   };
 
+  /** Fetches the raw captured items for a completed run — the dedicated Full
+   *  Response read, since the poll response deliberately omits `items`. */
+  const loadRawItems = async (runId: string) => {
+    setLoadingRawItems(true);
+    setRawItemsError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}/items`);
+      const data = await res.json();
+      if (!res.ok) {
+        setRawItemsError(data.error || "Failed to load the full captured response");
+        setRawItems(null);
+        return;
+      }
+      setRawItems(data.items as unknown[]);
+    } catch (err: any) {
+      setRawItemsError(err.message || "Network error loading the full captured response");
+      setRawItems(null);
+    } finally {
+      setLoadingRawItems(false);
+    }
+  };
+
   const handleRun = async () => {
     if (isRunning) return;
     if (selectedCustomerId == null) {
@@ -203,16 +252,22 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       return;
     }
 
+    // Captured at run start so a mid-run toggle of Full Response can't change
+    // which response this particular run's completion fetches items for.
+    const thisRunIsFullResponse = fullResponse;
+
     setStarting(true);
     setRun(null);
     setClassification(null);
+    setRawItems(null);
+    setRawItemsError(null);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-checks/${encodeURIComponent(check.key)}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId: selectedCustomerId,
-          endpoint: effectiveEndpoint,
+          endpoint: runEndpoint,
           method,
           requestBody: parsedBody.value,
         }),
@@ -247,8 +302,12 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
                 stopPolling();
                 // The run is now a persisted row — refresh history so it appears.
                 setHistoryToken((t) => t + 1);
-                if (current.status === "completed") toast.success(`${check.key} completed`);
-                else toast.error(current.statusText || "Run failed");
+                if (current.status === "completed") {
+                  toast.success(`${check.key} completed`);
+                  if (thisRunIsFullResponse) void loadRawItems(runId);
+                } else {
+                  toast.error(current.statusText || "Run failed");
+                }
                 return;
               }
             }
@@ -276,6 +335,8 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
   // stored response, so re-evaluating it still issues no Graph request.
   const handleOpenRun = async (runId: string) => {
     stopPolling();
+    setRawItems(null);
+    setRawItemsError(null);
     try {
       const res = await fetchWithAuth(`/api/admin/monitor-check-runs/${runId}`);
       const data = await res.json();
@@ -409,6 +470,18 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
               <RotateCcw className="h-3 w-3" /> Reactivate
             </button>
           )}
+          <label
+            className="flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            title="This Run only — requests every field this endpoint returns by omitting $select. Never changes the check's stored select_params/properties, and never affects scheduled production scans."
+          >
+            <input
+              type="checkbox"
+              checked={fullResponse}
+              onChange={(e) => setFullResponse(e.target.checked)}
+              className="h-3 w-3"
+            />
+            Full Response
+          </label>
           <button
             onClick={handleRun}
             disabled={isRunning || check.requiresCustomerScript}
@@ -424,6 +497,13 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
           </button>
         </div>
       </div>
+
+      {fullResponse && (
+        <div className="mb-3 rounded border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-primary">
+          Full Response is ON for the next run only — $select is stripped from the request below (other params like
+          $filter/$expand are kept). This never saves to the check's config and never applies to scheduled scans.
+        </div>
+      )}
 
       {check.requiresCustomerScript && (
         <div className="mb-3 rounded border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-300">
@@ -550,24 +630,67 @@ export function SimulatorEndpointCanvas({ check }: { check: MonitorCheckSummary 
       )}
 
       {/* Response */}
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        Response
-      </label>
+      <div className="mb-1 flex items-center justify-between">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Response
+        </label>
+        {run?.status === "completed" && (
+          <button
+            onClick={() => void loadRawItems(run.runId)}
+            disabled={loadingRawItems}
+            className="flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            title="Load the full, unmapped items this run actually captured — every field Graph returned, not just this check's configured properties"
+          >
+            {loadingRawItems ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+            View full response
+          </button>
+        )}
+      </div>
       <JsonResponseViewer
-        value={run?.result ?? (run?.error ? { error: run.error } : undefined)}
+        value={rawItems ?? run?.result ?? (run?.error ? { error: run.error } : undefined)}
         emptyLabel="Run this endpoint to see the real tenant response"
         className="min-h-[160px]"
       />
+      {rawItemsError && <p className="mt-1 text-[10px] text-destructive">{rawItemsError}</p>}
+
+      {/* Property picker — pick ANY real field the full response returned and
+          jump straight into a pre-filled rule draft, reusing the trace route's
+          suggestion pipeline (SimulatorEngineTrace.suggestRuleForProperty) —
+          the same inferSuggestion() Phase 2 built, not a second version. */}
+      {rawItems && rawItems.length > 0 && (
+        <div className="mt-2 rounded border border-border bg-card p-2">
+          <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Lightbulb className="h-3 w-3" />
+            Build a rule from a returned field
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {Object.keys(rawItems[0] as Record<string, unknown>)
+              .filter((k) => !check.properties.includes(k))
+              .map((k) => (
+                <button
+                  key={k}
+                  onClick={() => void engineTraceRef.current?.suggestRuleForProperty(k)}
+                  className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  title={`Suggest a signal_derivation_rules row for "${k}" — opens an editable draft, nothing is created until you save`}
+                >
+                  {k}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Engine trace — response -> mapping -> profile keys -> rules -> fired?
           "Re-run" is wired to the same handleRun the header's Run button uses,
           so the live-tenant path is one code path, not two. */}
       <SimulatorEngineTrace
+        ref={engineTraceRef}
         runId={run?.runId ?? null}
         checkKey={check.key}
         runStatus={run?.status ?? null}
         onRerun={() => void handleRun()}
         rerunning={isRunning}
+        checkProperties={check.properties}
       />
 
       {/* Persisted run history for this endpoint, and the two-run diff. */}
