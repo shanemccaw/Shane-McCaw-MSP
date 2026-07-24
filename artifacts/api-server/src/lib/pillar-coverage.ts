@@ -218,6 +218,50 @@ export function ruleIsFedByPackage(
   }
 }
 
+/**
+ * The set of signal keys that at least one currently-configured monitor check
+ * can genuinely feed, evaluated across the ENTIRE monitor_checks catalog (NOT
+ * scoped to any single package). Reuses the EXACT Stage-3 producible-key logic
+ * `getPillarCoverage` uses for one package (`buildProducibleProfileKeys` +
+ * `ruleIsFedByPackage`) — here "covered checks" is every check in the catalog,
+ * so a rule counts as evaluable iff SOME real check anywhere can produce its
+ * sourceKey.
+ *
+ * This is precisely the set the display-normalization denominator
+ * (`theoreticalMax` in `computePillarDisplayScore`) must be restricted to: a
+ * rule whose sourceKey no check can ever produce can never fire, so it must not
+ * inflate the max and silently dilute a pillar's live score — the real,
+ * live-reproduced exploit (a test rule with an extreme weight moving a pillar
+ * toward 100% the instant it was created, despite never contributing to the
+ * raw score). Takes effect for live/current scoring immediately — no draft or
+ * promotion gating; a newly-created rule with a real producible sourceKey is
+ * evaluable at once, exactly as before.
+ *
+ * Async — reads monitor_checks. Exported for reuse by the live-scoring callers
+ * of `computeDisplayHealth` (msp-diagnostics, cio-narrative-generator).
+ */
+export async function fetchEvaluableSignalKeys(
+  rules: Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "signalKey">[],
+): Promise<Set<string>> {
+  const checkDefinitions: CheckDefinitionRow[] = await db
+    .select({
+      key: monitorChecksTable.key,
+      mapping: monitorChecksTable.mapping,
+      properties: monitorChecksTable.properties,
+      requiresCustomerScript: monitorChecksTable.requiresCustomerScript,
+    })
+    .from(monitorChecksTable);
+
+  const allCheckKeys = new Set(checkDefinitions.map((c) => c.key));
+  const producibleProfileKeys = buildProducibleProfileKeys(allCheckKeys, checkDefinitions);
+
+  return new Set(
+    rules
+      .filter((r) => ruleIsFedByPackage(r, allCheckKeys, producibleProfileKeys))
+      .map((r) => r.signalKey),
+  );
+}
+
 export async function getPillarCoverage(
   packageKey: string,
   customerId: number,
@@ -269,8 +313,11 @@ export async function getPillarCoverage(
     // Same honest display normalization for all seven pillars.
     // `healthOutput` comes from `calculateArchitectureHealthScore`, whose
     // breakdown already includes the Security Engine's real security entry —
-    // no separate scoring path here.
-    const displayScore = computePillarDisplayScore(pillar, healthOutput, impacts);
+    // no separate scoring path here. theoreticalMax is restricted to the
+    // package's genuinely-fed signals (`coveredSignalKeys`) — the same set the
+    // numerator's coverage decision above uses — so a rule the package can't
+    // feed can't inflate this pillar's denominator either.
+    const displayScore = computePillarDisplayScore(pillar, healthOutput, impacts, coveredSignalKeys);
     if (displayScore == null) continue; // no rules configured anywhere for this pillar — don't fabricate
 
     covered.push({ pillar, label: PILLAR_LABELS[pillar], score: displayScore });

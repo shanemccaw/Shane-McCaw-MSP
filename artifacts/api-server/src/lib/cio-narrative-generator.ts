@@ -35,6 +35,7 @@ import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
 import { calculateArchitectureHealthScore } from "./health-engine";
 import { computeDisplayHealth } from "./health-display";
+import { fetchEvaluableSignalKeys } from "./pillar-coverage";
 import { fetchSignalRulesAndGroups } from "./priority-engine";
 import { latestCheckProps, extractGroupByCountCounts } from "./dashboard-resolvers";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine";
@@ -109,7 +110,11 @@ async function buildBenchmarkBlock(customerId: number): Promise<string> {
       fetchSignalRulesAndGroups(),
       db.select().from(industryBenchmarkReferenceTable),
     ]);
-    const displayPillars = computeDisplayHealth(output, rules, groups);
+    // theoreticalMax counts only signals a real monitor check can genuinely
+    // feed — non-producible (orphaned/miswired) rules can never fire and must
+    // not dilute the pillar's score.
+    const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+    const displayPillars = computeDisplayHealth(output, rules, groups, evaluableSignalKeys);
     const benchmarkMap = new Map(benchmarks.map((b) => [b.pillar, b]));
 
     const lines: string[] = [];

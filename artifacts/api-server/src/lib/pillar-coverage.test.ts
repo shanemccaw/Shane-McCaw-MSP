@@ -66,6 +66,7 @@ import {
   getPillarCoverage,
   buildProducibleProfileKeys,
   ruleIsFedByPackage,
+  fetchEvaluableSignalKeys,
 } from "./pillar-coverage.ts";
 import { computePillarDisplayScore, computeDisplayHealth } from "./health-display.ts";
 import {
@@ -547,13 +548,15 @@ describe("computePillarDisplayScore — shared normalization, no fabrication", (
     const output = computeHealthEngine({ "check:sec": true }, [], [secRule], []);
     const impacts = getSignalHealthImpacts([secRule], []);
     expect(output.breakdown.find((b) => b.pillar === "security")).toBeUndefined();
-    expect(computePillarDisplayScore("security", output, impacts)).toBeNull();
+    // sig:sec IS evaluable here (theoreticalMax > 0) so the null is genuinely
+    // the missing-breakdown guard, not an empty denominator.
+    expect(computePillarDisplayScore("security", output, impacts, new Set(["sig:sec"]))).toBeNull();
   });
 
   it("returns null when no rules anywhere configure an impact for the pillar (theoreticalMax 0)", () => {
     const output = computeHealthEngine({}, [], [secRule], []);
     const impacts = getSignalHealthImpacts([secRule], []);
-    expect(computePillarDisplayScore("licensing", output, impacts)).toBeNull();
+    expect(computePillarDisplayScore("licensing", output, impacts, new Set(["sig:sec"]))).toBeNull();
   });
 
   it("computeDisplayHealth is unchanged for the six health pillars", () => {
@@ -561,12 +564,110 @@ describe("computePillarDisplayScore — shared normalization, no fabrication", (
       signalKey: "sig:gov", ruleType: "profile_key_truthy", sourceKey: "check:gov", governanceImpact: 10,
     });
     const output = computeHealthEngine({ "check:gov": true }, [], [govRule], []);
-    const display = computeDisplayHealth(output, [govRule], []);
+    const display = computeDisplayHealth(output, [govRule], [], new Set(["sig:gov"]));
 
     expect(display.map((p) => p.pillar)).toEqual([...HEALTH_PILLARS]);
     expect(display.find((p) => p.pillar === "governance")!.displayScore).toBe(0); // 10 of max 10 fired
     for (const p of display) {
       if (p.pillar !== "governance") expect(p.displayScore).toBeNull(); // no impacts configured
     }
+  });
+
+  it("theoreticalMax excludes non-evaluable signals — a non-producible rule's impact must not dilute the denominator", () => {
+    // Governance real risk fully realized: raw 20 of an evaluable max 20 → 0.
+    const realRule = makeRule({
+      signalKey: "gov:real", ruleType: "profile_key_truthy", sourceKey: "gov:real-check", governanceImpact: 20,
+    });
+    // Orphaned rule: extreme impact but its signal is NOT in the evaluable set.
+    const orphanRule = makeRule({
+      signalKey: "gov:orphan", ruleType: "profile_key_truthy", sourceKey: "gov:nonexistent", governanceImpact: 1000,
+    });
+    const output = computeHealthEngine({ "gov:real-check": true }, [], [realRule, orphanRule], []);
+    const impacts = getSignalHealthImpacts([realRule, orphanRule], []);
+
+    // Only the real signal is evaluable → theoreticalMax 20 → 100 − 20/20·100 = 0.
+    expect(computePillarDisplayScore("governance", output, impacts, new Set(["gov:real"]))).toBe(0);
+    // The OLD (buggy) behaviour, reproduced by treating BOTH as evaluable:
+    // theoreticalMax 1020 → 100 − 20/1020·100 = round(98.04) = 98 (falsely healthier).
+    expect(computePillarDisplayScore("governance", output, impacts, new Set(["gov:real", "gov:orphan"]))).toBe(98);
+  });
+});
+
+describe("fetchEvaluableSignalKeys + live scoring — Shane's exact exploit against the real catalog", () => {
+  // Wires db.select so the FULL monitor_checks catalog (fetchEvaluableSignalKeys
+  // reads it with no `.where`) resolves to `defs`. The object is both awaitable
+  // and `.where`-able so this same mock also serves any `.where`-shaped read.
+  function wireCatalog(defs: CheckDef[]) {
+    const rows = defs.map((d) => ({
+      key: d.key,
+      mapping: d.mapping ?? [],
+      properties: d.properties ?? [],
+      requiresCustomerScript: d.requiresCustomerScript ?? false,
+    }));
+    vi.mocked(db.select).mockImplementation((() => ({
+      from: (table: unknown) => {
+        if (table === monitorChecksTable) {
+          return Object.assign(Promise.resolve(rows), { where: async () => rows });
+        }
+        throw new Error("wireCatalog: unexpected table in db.select mock");
+      },
+    })) as unknown as typeof db.select);
+  }
+
+  it("a rule with an EXTREME weight whose sourceKey no check produces does NOT move theoreticalMax (score stays honest)", async () => {
+    // Only `gov:real-check` exists in the catalog. `gov:phantom-check` does not.
+    wireCatalog([{ key: "gov:real-check" }]);
+
+    const realRule = makeRule({
+      signalKey: "governance:real", ruleType: "profile_key_truthy",
+      sourceKey: "gov:real-check", governanceImpact: 20,
+    });
+    // Shane's test rule: weight 1000 + governanceImpact 1000, but its sourceKey
+    // matches nothing producible → it can never fire and must never count.
+    const extremeOrphan = makeRule({
+      signalKey: "governance:orphan", ruleType: "profile_key_truthy",
+      sourceKey: "gov:phantom-check", weight: 1000, governanceImpact: 1000,
+    });
+
+    // Only the real signal fires (raw governance 20); the orphan never fires.
+    const output = computeHealthEngine({ "gov:real-check": true }, [], [realRule, extremeOrphan], []);
+    expect(output.breakdown.find((b) => b.pillar === "governance")!.score).toBe(20);
+
+    const evaluable = await fetchEvaluableSignalKeys([realRule, extremeOrphan]);
+    expect(evaluable.has("governance:real")).toBe(true);
+    expect(evaluable.has("governance:orphan")).toBe(false); // sourceKey not producible by any real check
+
+    const gov = computeDisplayHealth(output, [realRule, extremeOrphan], [], evaluable)
+      .find((p) => p.pillar === "governance")!;
+    // theoreticalMax = 20 (the orphan's 1000 is excluded) → 100 − 20/20·100 = 0.
+    // The bug would have produced ~98 (falsely healthier the instant the rule was created).
+    expect(gov.displayScore).toBe(0);
+  });
+
+  it("a rule with the SAME extreme weight but a REAL producible sourceKey DOES move theoreticalMax (genuine headroom)", async () => {
+    // Both checks exist — the high-weight rule now reads a producible key.
+    wireCatalog([{ key: "gov:real-check" }, { key: "gov:real-check-2" }]);
+
+    const realRule = makeRule({
+      signalKey: "governance:real", ruleType: "profile_key_truthy",
+      sourceKey: "gov:real-check", governanceImpact: 20,
+    });
+    const extremeReal = makeRule({
+      signalKey: "governance:big", ruleType: "profile_key_truthy",
+      sourceKey: "gov:real-check-2", weight: 1000, governanceImpact: 1000,
+    });
+
+    // Big rule doesn't fire this scan (its key absent from the profile), but it
+    // is evaluable, so it legitimately widens the theoretical maximum.
+    const output = computeHealthEngine({ "gov:real-check": true }, [], [realRule, extremeReal], []);
+    expect(output.breakdown.find((b) => b.pillar === "governance")!.score).toBe(20);
+
+    const evaluable = await fetchEvaluableSignalKeys([realRule, extremeReal]);
+    expect(evaluable.has("governance:big")).toBe(true); // producible → counts toward theoreticalMax
+
+    const gov = computeDisplayHealth(output, [realRule, extremeReal], [], evaluable)
+      .find((p) => p.pillar === "governance")!;
+    // theoreticalMax = 20 + 1000 = 1020 → 100 − 20/1020·100 = round(98.04) = 98.
+    expect(gov.displayScore).toBe(98);
   });
 });

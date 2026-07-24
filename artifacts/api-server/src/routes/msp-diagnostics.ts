@@ -49,6 +49,7 @@ import { runDiagnostics } from "../lib/diagnostics-runner";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-channels";
 import { calculateArchitectureHealthScore } from "../lib/health-engine";
 import { computeDisplayHealth } from "../lib/health-display";
+import { fetchEvaluableSignalKeys } from "../lib/pillar-coverage";
 import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
 import jwt from "jsonwebtoken";
@@ -654,7 +655,11 @@ router.get(
         db.select().from(industryBenchmarkReferenceTable),
       ]);
 
-      const displayPillars = computeDisplayHealth(output, rules, groups);
+      // Restrict each pillar's theoreticalMax denominator to signals a real
+      // monitor check can genuinely feed — a rule reading a non-producible key
+      // can never fire, so it must not dilute the live score.
+      const evaluableSignalKeys = await fetchEvaluableSignalKeys(rules);
+      const displayPillars = computeDisplayHealth(output, rules, groups, evaluableSignalKeys);
 
       const benchmarkMap = new Map(benchmarks.map(b => [b.pillar, b]));
 

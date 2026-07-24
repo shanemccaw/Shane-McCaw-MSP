@@ -10,15 +10,36 @@
  * the customer portal).
  *
  * Algorithm (per pillar):
- *   theoreticalMax = sum over ALL signals of the MAX configured impact value
- *                    for that pillar (regardless of whether the signal fired).
+ *   theoreticalMax = sum over the GENUINELY EVALUABLE signals of the MAX
+ *                    configured impact value for that pillar (regardless of
+ *                    whether the signal actually fired). "Evaluable" means the
+ *                    signal's rule reads a sourceKey that some real monitor
+ *                    check can genuinely produce — the caller supplies this set
+ *                    (see `fetchEvaluableSignalKeys` in pillar-coverage.ts,
+ *                    which reuses the EXACT producible-profile-key logic
+ *                    getPillarCoverage already uses). A rule that can never
+ *                    fire — orphaned, miswired, or reading a key no check
+ *                    produces — is EXCLUDED from the denominator. Otherwise its
+ *                    weight silently inflates theoreticalMax the instant it is
+ *                    created, shrinking (rawScore / theoreticalMax) and pushing
+ *                    the pillar's score artificially HEALTHIER even though the
+ *                    rule protects no one: the real, live-reproduced exploit
+ *                    this guards against (a test rule with an extreme weight
+ *                    that never fired still moved a pillar toward 100%).
  *   displayScore   = round(100 − min(100, (pillarRawScore / theoreticalMax) × 100))
  *                    clamped to [0, 100].
  *
- * If theoreticalMax is 0 (no rules have any impact configured for a pillar),
- * displayScore is returned as null and the UI should render "Not enough data yet".
+ * The numerator (`pillarRawScore`) already excludes non-fed rules — a rule can
+ * only contribute there by firing, which requires its sourceKey be present in
+ * the tenant's profile, which only a producing check can put there. This layer
+ * brings the DENOMINATOR into the same alignment; the numerator is untouched.
  *
- * Pure — no DB access. Callers are responsible for fetching rules/groups.
+ * If theoreticalMax is 0 (no EVALUABLE rule configures any impact for a
+ * pillar), displayScore is returned as null and the UI should render "Not
+ * enough data yet".
+ *
+ * Pure — no DB access. Callers are responsible for fetching rules/groups AND
+ * the evaluable-signal-key set.
  */
 
 import {
@@ -38,21 +59,28 @@ type PillarImpactField = keyof Omit<SignalHealthImpactConfig, "signalKey">;
  * computed security pillar (Security Engine — its breakdown entry is combined
  * into `HealthEngineOutput.breakdown` by `calculateArchitectureHealthScore`)
  * gets the exact same honest normalization as the six health pillars, without
- * a second normalization path. Returns null when no rules anywhere configure
+ * a second normalization path. Returns null when no EVALUABLE rule configures
  * an impact for the pillar (theoreticalMax = 0 — never fabricate), and also
  * when the output's breakdown carries no entry for the pillar at all (a
  * pure `computeHealthEngine` output has no security entry — treating that as
  * rawScore 0 would fabricate a perfect 100).
+ *
+ * `evaluableSignalKeys` is the set of signal keys whose rules read a sourceKey
+ * some real monitor check can genuinely produce (see file header). Only their
+ * impacts count toward theoreticalMax; a rule reading a non-producible key can
+ * never fire and so must not inflate the denominator.
  */
 export function computePillarDisplayScore(
   pillar: HealthPillar | "security",
   output: HealthEngineOutput,
   impacts: Map<string, SignalHealthImpactConfig>,
+  evaluableSignalKeys: ReadonlySet<string>,
 ): number | null {
   const field = PILLAR_FIELD[pillar] as PillarImpactField;
 
   let theoreticalMax = 0;
-  for (const config of impacts.values()) {
+  for (const [signalKey, config] of impacts.entries()) {
+    if (!evaluableSignalKeys.has(signalKey)) continue; // non-producible → can never fire → must not dilute the denominator
     theoreticalMax += config[field] as number;
   }
 
@@ -70,16 +98,23 @@ export function computePillarDisplayScore(
 /**
  * Converts a `HealthEngineOutput` into a customer-facing display score for
  * each pillar. Returns an array in the same order as `HEALTH_PILLARS`.
+ *
+ * `evaluableSignalKeys` restricts each pillar's theoreticalMax denominator to
+ * genuinely evaluable rules (see `computePillarDisplayScore` / the file
+ * header). Callers build it once via `fetchEvaluableSignalKeys`
+ * (pillar-coverage.ts) from the live monitor_checks catalog and pass it in,
+ * keeping this function pure.
  */
 export function computeDisplayHealth(
   output: HealthEngineOutput,
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
+  evaluableSignalKeys: ReadonlySet<string>,
 ): { pillar: HealthPillar; displayScore: number | null }[] {
   const impacts = getSignalHealthImpacts(rules, groups);
 
   return HEALTH_PILLARS.map(pillar => ({
     pillar,
-    displayScore: computePillarDisplayScore(pillar, output, impacts),
+    displayScore: computePillarDisplayScore(pillar, output, impacts, evaluableSignalKeys),
   }));
 }
